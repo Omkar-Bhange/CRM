@@ -14,93 +14,7 @@ import {
 } from "lucide-react";
 const API_URL = "http://localhost:5000";
 
-const employees = [
-    {
-        id: 1,
-        employeeCode: "EMP-001",
-        name: "Akash Pawar",
-        initials: "AP",
-        role: "ERP Support",
-        department: "Support",
-        status: "Working",
-        currentTask: "GST report mismatch fix",
-        client: "Shree Ganesh Industries",
-        project: "NexERP",
-        loginTime: "09:02 AM",
-        activeTime: "6h 20m",
-        openTasks: 3,
-        completedToday: 2,
-        lastActivity: "2 minutes ago",
-    },
-    {
-        id: 2,
-        employeeCode: "EMP-002",
-        name: "Sneha Kale",
-        initials: "SK",
-        role: "Software Support",
-        department: "Support",
-        status: "Working",
-        currentTask: "StockPro V2 module testing",
-        client: "Internal Development",
-        project: "StockPro",
-        loginTime: "09:15 AM",
-        activeTime: "5h 55m",
-        openTasks: 2,
-        completedToday: 1,
-        lastActivity: "5 minutes ago",
-    },
-    {
-        id: 3,
-        employeeCode: "EMP-003",
-        name: "Rohit More",
-        initials: "RM",
-        role: "Client Support",
-        department: "Support",
-        status: "Free",
-        currentTask: "Available for assignment",
-        client: "—",
-        project: "—",
-        loginTime: "08:55 AM",
-        activeTime: "6h 40m",
-        openTasks: 0,
-        completedToday: 4,
-        lastActivity: "1 minute ago",
-    },
-    {
-        id: 4,
-        employeeCode: "EMP-004",
-        name: "Pooja Shinde",
-        initials: "PS",
-        role: "Documentation",
-        department: "Operations",
-        status: "Free",
-        currentTask: "Available for assignment",
-        client: "—",
-        project: "—",
-        loginTime: "09:30 AM",
-        activeTime: "5h 10m",
-        openTasks: 1,
-        completedToday: 3,
-        lastActivity: "4 minutes ago",
-    },
-    {
-        id: 5,
-        employeeCode: "EMP-005",
-        name: "Nilesh Jadhav",
-        initials: "NJ",
-        role: "Developer",
-        department: "Development",
-        status: "Leave",
-        currentTask: "On leave",
-        client: "—",
-        project: "—",
-        loginTime: "—",
-        activeTime: "0h",
-        openTasks: 2,
-        completedToday: 0,
-        lastActivity: "Yesterday",
-    },
-];
+
 const pcActivityData = {
     1: {
         "2026-07-14": {
@@ -248,14 +162,48 @@ export default function Team() {
 
     const [taskForm, setTaskForm] = useState({
         title: "",
-        workType: "Client Support",
-        clientId: "",
-        client: "",
-        project: "",
-        priority: "Medium",
-        dueDate: "",
-        estimatedTime: "",
-        description: "",
+
+        workType:
+            "Client Support",
+
+        taskFor:
+            "Project",
+
+        generalTaskFor:
+            "",
+
+        clientId:
+            "",
+
+        client:
+            "Internal Development",
+
+        productId:
+            "",
+
+        projectId:
+            "",
+
+        projectCode:
+            "",
+
+        projectName:
+            "",
+
+        priority:
+            "",
+
+        status:
+            "",
+
+        dueDate:
+            "",
+
+        estimatedTime:
+            "",
+
+        description:
+            "",
     });
     const [employeeForm, setEmployeeForm] = useState({
         employeeCode: "",
@@ -271,6 +219,39 @@ export default function Team() {
     });
     const [employeeList, setEmployeeList] = useState([]);
     const [clientList, setClientList] = useState([]);
+    const [projects, setProjects] =
+        useState([]);
+
+    const [products, setProducts] =
+        useState([]);
+
+    const [projectsLoading, setProjectsLoading] =
+        useState(false);
+
+    const [productsLoading, setProductsLoading] =
+        useState(false);
+
+    const [projectsError, setProjectsError] =
+        useState("");
+
+    const [productsError, setProductsError] =
+        useState("");
+
+    const [taskPriorities, setTaskPriorities] =
+        useState([]);
+
+    const [taskStatuses, setTaskStatuses] =
+        useState([]);
+
+    const [
+        taskSettingsLoading,
+        setTaskSettingsLoading,
+    ] = useState(false);
+
+    const [
+        taskSettingsError,
+        setTaskSettingsError,
+    ] = useState("");
     const [clientsLoading, setClientsLoading] = useState(false);
     const [clientsError, setClientsError] = useState("");
     const [employeesLoading, setEmployeesLoading] = useState(true);
@@ -322,10 +303,23 @@ export default function Team() {
             : `${hours}h`;
     };
 
-    const normalizeEmployeeFromApi = (employee) => ({
+    const normalizeEmployeeFromApi = (
+        employee = {}
+    ) => ({
         ...employee,
 
-        id: employee._id || employee.id,
+        id:
+            employee._id ||
+            employee.id ||
+            "",
+
+        employeeCode:
+            employee.employeeCode ||
+            "",
+
+        name:
+            employee.name ||
+            "",
 
         initials:
             employee.initials ||
@@ -333,7 +327,9 @@ export default function Team() {
                 .split(" ")
                 .filter(Boolean)
                 .slice(0, 2)
-                .map((word) => word.charAt(0).toUpperCase())
+                .map((word) =>
+                    word.charAt(0).toUpperCase()
+                )
                 .join("") ||
             "NA",
 
@@ -351,17 +347,23 @@ export default function Team() {
             employee.currentTask ||
             "Available for assignment",
 
-        loginTime: formatEmployeeTime(employee.loginTime),
+        loginTime:
+            formatEmployeeTime(
+                employee.loginTime
+            ),
 
-        activeTime: formatActiveTime(
-            employee.activeMinutes
-        ),
+        activeTime:
+            formatActiveTime(
+                employee.activeMinutes
+            ),
 
-        openTasks: Number(employee.openTasks || 0),
+        openTasks:
+            Number(employee.openTasks || 0),
 
-        completedToday: Number(
-            employee.completedToday || 0
-        ),
+        completedToday:
+            Number(
+                employee.completedToday || 0
+            ),
 
         lastActivity:
             employee.lastActivityAt
@@ -369,6 +371,9 @@ export default function Team() {
                     employee.lastActivityAt
                 ).toLocaleString("en-IN")
                 : "No activity yet",
+
+        isActive:
+            employee.isActive !== false,
     });
 
     const workingCount = employeeList.filter(
@@ -450,74 +455,173 @@ export default function Team() {
 
         return `${hours}h ${remainingMinutes}m`;
     };
-    const normalizeTaskFromApi = (task) => ({
-        ...task,
-
-        id: task._id || task.id,
-
-        taskNo:
-            task.taskCode ||
-            task.taskNo ||
-            "",
-
-        employeeId:
+    const normalizeTaskFromApi = (
+        task = {}
+    ) => {
+        const assignedEmployeeId =
+            task.assignedEmployeeId?._id ||
             task.assignedEmployeeId ||
-            task.employeeId ||
+            "";
+
+        const assignedEmployeeName =
+            task.assignedEmployeeName ||
+            "";
+
+        return {
+            ...task,
+
+            id:
+                task._id ||
+                task.id ||
+                "",
+
+            taskNo:
+                task.taskCode ||
+                task.taskNo ||
+                "",
+
+            assignedEmployeeId:
+                assignedEmployeeId
+                    ? String(assignedEmployeeId)
+                    : "",
+
+            assignedEmployeeCode:
+                task.assignedEmployeeCode ||
+                "",
+
+            assignedEmployeeName:
+                assignedEmployeeName ||
+                "Not assigned",
+
+            assignedEmployeeInitials:
+                String(assignedEmployeeName)
+                    .split(" ")
+                    .filter(Boolean)
+                    .slice(0, 2)
+                    .map((word) =>
+                        word
+                            .charAt(0)
+                            .toUpperCase()
+                    )
+                    .join(""),
+
+            client:
+                task.clientName ||
+                task.client ||
+                "Internal Development",
+
+            projectId:
+                task.projectId
+                    ? String(task.projectId)
+                    : "",
+
+            projectCode:
+                task.projectCode ||
+                "",
+
+            projectName:
+                task.projectName ||
+                task.project ||
+                "",
+
+            project:
+                task.projectName ||
+                task.project ||
+                "",
+
+            estimatedTime:
+                formatTaskMinutes(
+                    task.estimatedMinutes
+                ),
+
+            spentTime:
+                formatTaskMinutes(
+                    task.spentMinutes
+                ),
+
+            progress:
+                Number(task.progress || 0),
+
+            dueDate:
+                task.dueDate
+                    ? String(task.dueDate)
+                        .slice(0, 10)
+                    : "",
+
+            assignedAt:
+                task.createdAt
+                    ? new Date(
+                        task.createdAt
+                    ).toLocaleString(
+                        "en-IN",
+                        {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                        }
+                    )
+                    : "",
+        };
+    };
+
+    const normalizeProjectFromApi = (
+        project = {}
+    ) => ({
+        ...project,
+
+        id:
+            project._id ||
+            project.id ||
             "",
 
-        employeeName:
-            task.assignedEmployeeName ||
-            task.employeeName ||
+        projectCode:
+            project.projectCode ||
             "",
 
-        employeeInitials: String(
-            task.assignedEmployeeName ||
-            task.employeeName ||
-            ""
-        )
-            .split(" ")
-            .filter(Boolean)
-            .slice(0, 2)
-            .map((word) =>
-                word.charAt(0).toUpperCase()
-            )
-            .join(""),
+        projectName:
+            project.projectName ||
+            "",
 
-        client:
-            task.clientName ||
-            task.client ||
+        projectType:
+            project.projectType ||
             "Internal Development",
 
-        project: task.project || "",
+        clientId:
+            project.clientId
+                ? String(project.clientId)
+                : "",
 
-        estimatedTime: formatTaskMinutes(
-            task.estimatedMinutes
-        ),
+        clientCode:
+            project.clientCode ||
+            "",
 
-        spentTime: formatTaskMinutes(
-            task.spentMinutes
-        ),
+        clientName:
+            project.clientName ||
+            "",
 
-        progress: Number(task.progress || 0),
+        productId:
+            project.productId
+                ? String(project.productId)
+                : "",
 
-        dueDate: task.dueDate
-            ? String(task.dueDate).slice(0, 10)
-            : "",
+        productCode:
+            project.productCode ||
+            "",
 
-        assignedAt: task.createdAt
-            ? new Date(task.createdAt).toLocaleString(
-                "en-IN",
-                {
-                    day: "2-digit",
-                    month: "short",
-                    year: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                }
-            )
-            : "",
+        productName:
+            project.productName ||
+            "",
+
+        status:
+            project.status ||
+            "Planned",
+
+        priority:
+            project.priority ||
+            "",
     });
-
     const loadTasks = async () => {
         try {
             setTasksLoading(true);
@@ -567,19 +671,60 @@ export default function Team() {
             setTasksLoading(false);
         }
     };
-    const openAssignTaskDrawer = (employee) => {
+    const openAssignTaskDrawer = (
+        employee
+    ) => {
         setTaskEmployee(employee);
 
         setTaskForm({
-            title: "",
-            workType: "Client Support",
-            clientId: "",
-            client: "",
-            project: "",
-            priority: "Medium",
-            dueDate: "",
-            estimatedTime: "",
-            description: "",
+            title:
+                "",
+
+            workType:
+                "Client Support",
+
+            taskFor:
+                "Project",
+
+            generalTaskFor:
+                "",
+
+            clientId:
+                "",
+
+            client:
+                "Internal Development",
+
+            productId:
+                "",
+
+            projectId:
+                "",
+
+            projectCode:
+                "",
+
+            projectName:
+                "",
+
+            priority:
+                taskPriorities[0]
+                    ?.name ||
+                "",
+
+            status:
+                taskStatuses[0]
+                    ?.name ||
+                "",
+
+            dueDate:
+                "",
+
+            estimatedTime:
+                "",
+
+            description:
+                "",
         });
 
         setAssignTaskOpen(true);
@@ -589,24 +734,66 @@ export default function Team() {
         setTaskEmployee(null);
 
         setTaskForm({
-            title: "",
-            workType: "Client Support",
-            clientId: "",
-            client: "",
-            project: "",
-            priority: "Medium",
-            dueDate: "",
-            estimatedTime: "",
-            description: "",
+            title:
+                "",
+
+            workType:
+                "Client Support",
+
+            taskFor:
+                "Project",
+
+            generalTaskFor:
+                "",
+
+            clientId:
+                "",
+
+            client:
+                "Internal Development",
+
+            productId:
+                "",
+
+            projectId:
+                "",
+
+            projectCode:
+                "",
+
+            projectName:
+                "",
+
+            priority:
+                taskPriorities[0]
+                    ?.name ||
+                "",
+
+            status:
+                taskStatuses[0]
+                    ?.name ||
+                "",
+
+            dueDate:
+                "",
+
+            estimatedTime:
+                "",
+
+            description:
+                "",
         });
     };
-
-    const handleTaskFormChange = (event) => {
-        const { name, value } = event.target;
+    const handleTaskFormChange = (
+        event
+    ) => {
+        const { name, value } =
+            event.target;
 
         setTaskForm((current) => ({
             ...current,
-            [name]: value,
+            [name]:
+                value,
         }));
     };
     const handleAssignTask = async (event) => {
@@ -618,7 +805,6 @@ export default function Team() {
         }
 
         const employeeId =
-            taskEmployee._id ||
             taskEmployee.id;
 
         if (!employeeId) {
@@ -626,16 +812,60 @@ export default function Team() {
             return;
         }
 
-        const title = taskForm.title.trim();
-        const project = taskForm.project.trim();
+        const title =
+            taskForm.title.trim();
 
         if (!title) {
-            alert("Please enter task title.");
+            alert(
+                "Please enter task title."
+            );
             return;
         }
 
-        if (!project) {
-            alert("Please select or enter a project.");
+        if (
+            taskForm.taskFor ===
+            "Project" &&
+            !taskForm.projectId
+        ) {
+            alert(
+                "Please select a project."
+            );
+            return;
+        }
+
+        if (
+            taskForm.taskFor ===
+            "Product" &&
+            !taskForm.productId
+        ) {
+            alert(
+                "Please select a product."
+            );
+            return;
+        }
+
+        if (
+            taskForm.taskFor ===
+            "General" &&
+            !taskForm.generalTaskFor.trim()
+        ) {
+            alert(
+                "Please enter who or what this general task is for."
+            );
+            return;
+        }
+
+        if (!taskForm.priority) {
+            alert(
+                "Please select priority."
+            );
+            return;
+        }
+
+        if (!taskForm.status) {
+            alert(
+                "Please select initial status."
+            );
             return;
         }
 
@@ -679,22 +909,44 @@ export default function Team() {
 
                     body: JSON.stringify({
                         title,
-                        description: taskForm.description.trim(),
-                        workType: taskForm.workType,
 
-                        clientId: taskForm.clientId || null,
+                        description:
+                            taskForm.description.trim(),
+
+                        workType:
+                            taskForm.workType,
+
+                        taskFor:
+                            taskForm.taskFor,
+
+                        generalTaskFor:
+                            taskForm.generalTaskFor
+                                .trim(),
+
+                        clientId:
+                            taskForm.clientId ||
+                            null,
 
                         clientName:
-                            taskForm.client.trim() ||
+                            taskForm.client ||
                             "Internal Development",
 
-                        project,
+                        productId:
+                            taskForm.productId ||
+                            null,
+
+                        projectId:
+                            taskForm.projectId ||
+                            null,
 
                         assignedEmployeeId:
                             employeeId,
 
                         priority:
                             taskForm.priority,
+
+                        status:
+                            taskForm.status,
 
                         dueDate:
                             taskForm.dueDate,
@@ -726,8 +978,8 @@ export default function Team() {
             setSelectedEmployee((current) => {
                 if (
                     !current ||
-                    (current._id || current.id) !==
-                    employeeId
+                    String(current.id) !==
+                    String(employeeId)
                 ) {
                     return current;
                 }
@@ -785,7 +1037,7 @@ export default function Team() {
     };
 
     const openEditEmployeeDrawer = (employee) => {
-        const employeeId = employee._id || employee.id;
+        const employeeId = employee.id;
 
         if (!employeeId) {
             alert("Employee ID is missing.");
@@ -878,33 +1130,36 @@ export default function Team() {
             return;
         }
 
-        const duplicateCode = employeeList.some((employee) => {
-            const employeeId = employee._id || employee.id;
-
-            return (
-                employeeId !== editingEmployeeId &&
-                String(employee.employeeCode || "")
-                    .trim()
-                    .toLowerCase() ===
-                employeeCode.toLowerCase()
-            );
-        });
+        const duplicateCode =
+            employeeList.some((employee) => {
+                return (
+                    String(employee.id) !==
+                    String(editingEmployeeId) &&
+                    String(
+                        employee.employeeCode || ""
+                    )
+                        .trim()
+                        .toLowerCase() ===
+                    employeeCode.toLowerCase()
+                );
+            });
 
         if (duplicateCode) {
             alert("This employee code already exists.");
             return;
         }
 
-        const duplicateEmail = employeeList.some((employee) => {
-            const employeeId = employee._id || employee.id;
-
-            return (
-                employeeId !== editingEmployeeId &&
-                String(employee.email || "")
-                    .trim()
-                    .toLowerCase() === email
-            );
-        });
+        const duplicateEmail =
+            employeeList.some((employee) => {
+                return (
+                    String(employee.id) !==
+                    String(editingEmployeeId) &&
+                    String(employee.email || "")
+                        .trim()
+                        .toLowerCase() ===
+                    email
+                );
+            });
 
         if (duplicateEmail) {
             alert("This employee email already exists.");
@@ -960,8 +1215,8 @@ export default function Team() {
             if (isEditing) {
                 setEmployeeList((current) =>
                     current.map((employee) =>
-                        (employee._id || employee.id) ===
-                            editingEmployeeId
+                        String(employee.id) ===
+                            String(editingEmployeeId)
                             ? savedEmployee
                             : employee
                     )
@@ -969,8 +1224,8 @@ export default function Team() {
 
                 setSelectedEmployee((current) =>
                     current &&
-                        (current._id || current.id) ===
-                        editingEmployeeId
+                        String(current.id) ===
+                        String(editingEmployeeId)
                         ? savedEmployee
                         : current
                 );
@@ -1047,61 +1302,444 @@ export default function Team() {
             setEmployeesLoading(false);
         }
     };
-    const normalizeClientFromApi = (client) => ({
-        ...client,
-        id: client._id || client.id,
-        code: client.clientCode || client.code || "",
-        companyName: client.companyName || "",
-        products: Array.isArray(client.products)
+    const normalizeClientFromApi = (
+    client = {}
+) => ({
+    ...client,
+
+    id:
+        client._id ||
+        client.id ||
+        "",
+
+    code:
+        client.clientCode ||
+        client.code ||
+        "",
+
+    companyName:
+        client.companyName ||
+        client.clientName ||
+        client.name ||
+        "",
+
+    products:
+        Array.isArray(client.products)
             ? client.products
             : [],
-    });
+});
 
     const loadClients = async () => {
+    try {
+        setClientsLoading(true);
+        setClientsError("");
+
+        const response = await fetch(
+            `${API_URL}/api/admin/clients`,
+            {
+                method: "GET",
+
+                headers: {
+                    Accept:
+                        "application/json",
+
+                    Authorization:
+                        `Bearer ${getAuthToken()}`,
+                },
+            }
+        );
+
+        const result =
+            await response.json();
+
+        console.log(
+            "Employee assign task clients response:",
+            result
+        );
+
+        if (
+            !response.ok ||
+            !result.success
+        ) {
+            throw new Error(
+                result.message ||
+                "Unable to load clients."
+            );
+        }
+
+        /*
+         * Support both possible API response structures:
+         *
+         * { success: true, data: [...] }
+         * { success: true, clients: [...] }
+         */
+        const rawClients =
+            Array.isArray(result.data)
+                ? result.data
+                : Array.isArray(
+                    result.clients
+                )
+                    ? result.clients
+                    : [];
+
+        const normalizedClients =
+            rawClients
+                .map(
+                    normalizeClientFromApi
+                )
+                .filter(
+                    (client) =>
+                        client.id &&
+                        client.companyName
+                )
+                .sort((a, b) =>
+                    a.companyName.localeCompare(
+                        b.companyName
+                    )
+                );
+
+        console.log(
+            "Normalized client list:",
+            normalizedClients
+        );
+
+        setClientList(
+            normalizedClients
+        );
+    } catch (error) {
+        console.error(
+            "Load clients error:",
+            error
+        );
+
+        setClientList([]);
+
+        setClientsError(
+            error.message ||
+            "Unable to load clients."
+        );
+    } finally {
+        setClientsLoading(false);
+    }
+};
+    const loadProducts = async () => {
         try {
-            setClientsLoading(true);
-            setClientsError("");
+            setProductsLoading(true);
+            setProductsError("");
 
             const response = await fetch(
-                `${API_URL}/api/admin/clients`,
+                `${API_URL}/api/admin/products`,
                 {
                     headers: {
-                        Authorization: `Bearer ${getAuthToken()}`,
+                        Accept:
+                            "application/json",
+
+                        Authorization:
+                            `Bearer ${getAuthToken()}`,
                     },
                 }
             );
 
-            const result = await response.json();
+            const result =
+                await response.json();
 
-            if (!response.ok || !result.success) {
+            if (
+                !response.ok ||
+                !result.success
+            ) {
                 throw new Error(
-                    result.message || "Unable to load clients."
+                    result.message ||
+                    "Unable to load products."
                 );
             }
 
-            const normalizedClients = Array.isArray(result.data)
-                ? result.data.map(normalizeClientFromApi)
-                : [];
+            const normalizedProducts =
+                Array.isArray(result.data)
+                    ? result.data
+                        .filter(
+                            (product) =>
+                                product.status ===
+                                "Active"
+                        )
+                        .map((product) => ({
+                            id:
+                                product._id ||
+                                product.id ||
+                                "",
 
-            setClientList(normalizedClients);
+                            productCode:
+                                product.productCode ||
+                                "",
+
+                            productName:
+                                product.productName ||
+                                "",
+                        }))
+                        .filter(
+                            (product) =>
+                                product.id &&
+                                product.productName
+                        )
+                        .sort((a, b) =>
+                            a.productName.localeCompare(
+                                b.productName
+                            )
+                        )
+                    : [];
+
+            setProducts(
+                normalizedProducts
+            );
         } catch (error) {
-            console.error("Load clients error:", error);
-
-            setClientsError(
-                error.message || "Unable to load clients."
+            console.error(
+                "Load products error:",
+                error
             );
 
-            setClientList([]);
+            setProducts([]);
+
+            setProductsError(
+                error.message ||
+                "Unable to load products."
+            );
         } finally {
-            setClientsLoading(false);
+            setProductsLoading(false);
+        }
+    };
+    const loadProjects = async () => {
+        try {
+            setProjectsLoading(true);
+            setProjectsError("");
+
+            const response = await fetch(
+                `${API_URL}/api/admin/projects`,
+                {
+                    headers: {
+                        Accept:
+                            "application/json",
+
+                        Authorization:
+                            `Bearer ${getAuthToken()}`,
+                    },
+                }
+            );
+
+            const result =
+                await response.json();
+
+            if (
+                !response.ok ||
+                !result.success
+            ) {
+                throw new Error(
+                    result.message ||
+                    "Unable to load projects."
+                );
+            }
+
+            const normalizedProjects =
+                Array.isArray(result.data)
+                    ? result.data
+                        .map(
+                            normalizeProjectFromApi
+                        )
+                        .filter(
+                            (project) =>
+                                project.id &&
+                                ![
+                                    "Completed",
+                                    "Cancelled",
+                                ].includes(
+                                    project.status
+                                )
+                        )
+                        .sort((a, b) =>
+                            a.projectName.localeCompare(
+                                b.projectName
+                            )
+                        )
+                    : [];
+
+            setProjects(
+                normalizedProjects
+            );
+        } catch (error) {
+            console.error(
+                "Load projects error:",
+                error
+            );
+
+            setProjects([]);
+
+            setProjectsError(
+                error.message ||
+                "Unable to load projects."
+            );
+        } finally {
+            setProjectsLoading(false);
         }
     };
 
-    useEffect(() => {
-        loadEmployees();
-        loadTasks();
-        loadClients();
-    }, []);
+    const loadTaskSettings = async () => {
+        try {
+            setTaskSettingsLoading(true);
+            setTaskSettingsError("");
+
+            const response = await fetch(
+                `${API_URL}/api/settings`,
+                {
+                    headers: {
+                        Accept:
+                            "application/json",
+
+                        Authorization:
+                            `Bearer ${getAuthToken()}`,
+                    },
+                }
+            );
+
+            const result =
+                await response.json();
+
+            if (
+                !response.ok ||
+                !result.success
+            ) {
+                throw new Error(
+                    result.message ||
+                    "Unable to load task settings."
+                );
+            }
+
+            const settings =
+                result.data || {};
+
+            const priorities =
+                Array.isArray(
+                    settings.priorities
+                )
+                    ? settings.priorities
+                        .filter(
+                            (item) =>
+                                item.status ===
+                                "Active"
+                        )
+                        .map((item) => ({
+                            id:
+                                item._id ||
+                                item.id ||
+                                item.name,
+
+                            name:
+                                String(
+                                    item.name ||
+                                    ""
+                                ).trim(),
+
+                            color:
+                                item.color ||
+                                "Slate",
+                        }))
+                        .filter(
+                            (item) =>
+                                item.name
+                        )
+                    : [];
+
+            const statuses =
+                Array.isArray(
+                    settings.taskStatuses
+                )
+                    ? settings.taskStatuses
+                        .filter(
+                            (item) =>
+                                item.status ===
+                                "Active"
+                        )
+                        .sort(
+                            (a, b) =>
+                                Number(
+                                    a.order || 0
+                                ) -
+                                Number(
+                                    b.order || 0
+                                )
+                        )
+                        .map((item) => ({
+                            id:
+                                item._id ||
+                                item.id ||
+                                item.name,
+
+                            name:
+                                String(
+                                    item.name ||
+                                    ""
+                                ).trim(),
+
+                            order:
+                                Number(
+                                    item.order || 0
+                                ),
+
+                            isFinal:
+                                Boolean(
+                                    item.isFinal
+                                ),
+                        }))
+                        .filter(
+                            (item) =>
+                                item.name
+                        )
+                    : [];
+
+            setTaskPriorities(
+                priorities
+            );
+
+            setTaskStatuses(
+                statuses
+            );
+
+            setTaskForm((current) => ({
+                ...current,
+
+                priority:
+                    current.priority ||
+                    priorities[0]?.name ||
+                    "",
+
+                status:
+                    current.status ||
+                    statuses[0]?.name ||
+                    "",
+            }));
+        } catch (error) {
+            console.error(
+                "Load task settings error:",
+                error
+            );
+
+            setTaskPriorities([]);
+            setTaskStatuses([]);
+
+            setTaskSettingsError(
+                error.message ||
+                "Unable to load task settings."
+            );
+        } finally {
+            setTaskSettingsLoading(false);
+        }
+    };
+
+   useEffect(() => {
+    loadEmployees();
+    loadTasks();
+    loadClients();
+    loadProjects();
+    loadProducts();
+    loadTaskSettings();
+}, []);
     const selectedPcActivity = selectedEmployee
         ? pcActivityData[selectedEmployee.id]?.[pcActivityDate] || {
             currentActivity: {
@@ -1129,13 +1767,18 @@ export default function Team() {
         }
         : null;
 
-    const selectedEmployeeTasks = selectedEmployee
-        ? assignedTasks.filter(
-            (task) =>
-                String(task.employeeId) ===
-                String(selectedEmployee._id || selectedEmployee.id)
-        )
-        : [];
+    const selectedEmployeeTasks =
+        selectedEmployee
+            ? assignedTasks.filter(
+                (task) =>
+                    String(
+                        task.assignedEmployeeId
+                    ) ===
+                    String(
+                        selectedEmployee.id
+                    )
+            )
+            : [];
     const updateTaskStatus = async (
         taskId,
         nextStatus
@@ -1204,7 +1847,8 @@ export default function Team() {
                     !current ||
                     String(current.id) !==
                     String(
-                        updatedTask.employeeId
+                        updatedTask
+                            .assignedEmployeeId
                     )
                 ) {
                     return current;
@@ -1286,16 +1930,91 @@ export default function Team() {
         (client) =>
             String(client.id) === String(taskForm.clientId)
     );
+    const selectedTaskProject =
+        projects.find(
+            (project) =>
+                String(project.id) ===
+                String(taskForm.projectId)
+        );
 
-    const selectedClientProducts = selectedTaskClient
-        ? selectedTaskClient.products
-            .map((product) =>
-                typeof product === "string"
-                    ? product
-                    : product?.productName
-            )
-            .filter(Boolean)
-        : [];
+    const availableProjects =
+        projects.filter((project) => {
+            if (
+                taskForm.clientId &&
+                project.clientId &&
+                String(project.clientId) !==
+                String(taskForm.clientId)
+            ) {
+                return false;
+            }
+
+            if (
+                taskForm.productId &&
+                project.productId &&
+                String(project.productId) !==
+                String(taskForm.productId)
+            ) {
+                return false;
+            }
+
+            return true;
+        });
+
+    const availableProducts =
+        products.filter((product) => {
+            if (!selectedTaskClient) {
+                return true;
+            }
+
+            const clientProducts =
+                Array.isArray(
+                    selectedTaskClient.products
+                )
+                    ? selectedTaskClient.products
+                    : [];
+
+            if (
+                clientProducts.length === 0
+            ) {
+                return true;
+            }
+
+            return clientProducts.some(
+                (clientProduct) => {
+                    if (
+                        typeof clientProduct ===
+                        "string"
+                    ) {
+                        return (
+                            clientProduct ===
+                            product.productName
+                        );
+                    }
+
+                    const clientProductId =
+                        clientProduct?._id ||
+                        clientProduct?.id ||
+                        "";
+
+                    const clientProductName =
+                        clientProduct
+                            ?.productName ||
+                        clientProduct?.name ||
+                        "";
+
+                    return (
+                        String(
+                            clientProductId
+                        ) ===
+                        String(
+                            product.id
+                        ) ||
+                        clientProductName ===
+                        product.productName
+                    );
+                }
+            );
+        });
     return (
         <div>
             <div className="flex flex-col gap-4 border-b border-slate-200 pb-6 sm:flex-row sm:items-end sm:justify-between">
@@ -1885,7 +2604,18 @@ export default function Team() {
                                                             </span>
 
                                                             <span className="font-semibold text-slate-700">
-                                                                {task.employeeName}
+                                                                <div className="text-right">
+                                                                    <p className="font-semibold text-slate-700">
+                                                                        {task.assignedEmployeeName ||
+                                                                            "Not assigned"}
+                                                                    </p>
+
+                                                                    {task.assignedEmployeeCode && (
+                                                                        <p className="mt-0.5 text-[9px] text-slate-400">
+                                                                            {task.assignedEmployeeCode}
+                                                                        </p>
+                                                                    )}
+                                                                </div>
                                                             </span>
                                                         </div>
 
@@ -3783,129 +4513,338 @@ export default function Team() {
                                             <label className="text-[11px] font-semibold text-slate-600">
                                                 Priority
                                             </label>
-
                                             <select
                                                 name="priority"
                                                 value={taskForm.priority}
-                                                onChange={handleTaskFormChange}
-                                                className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                onChange={
+                                                    handleTaskFormChange
+                                                }
+                                                disabled={
+                                                    taskSettingsLoading
+                                                }
+                                                className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100 disabled:opacity-60"
                                             >
-                                                <option value="Low">Low</option>
-                                                <option value="Medium">Medium</option>
-                                                <option value="High">High</option>
-                                                <option value="Critical">Critical</option>
+                                                <option value="">
+                                                    Select priority
+                                                </option>
+
+                                                {taskPriorities.map(
+                                                    (priority) => (
+                                                        <option
+                                                            key={priority.id}
+                                                            value={priority.name}
+                                                        >
+                                                            {priority.name}
+                                                        </option>
+                                                    )
+                                                )}
                                             </select>
                                         </div>
-
                                         <div>
-
-
-                                            <div>
-                                                <label className="mb-2 block text-xs font-semibold text-slate-700">
-                                                    Client
-                                                </label>
-
-                                                <select
-                                                    name="clientId"
-                                                    value={taskForm.clientId}
-                                                    disabled={clientsLoading}
-                                                    onChange={(event) => {
-                                                        const selectedClientId = event.target.value;
-
-                                                        const selectedClient = clientList.find(
-                                                            (client) =>
-                                                                String(client.id) ===
-                                                                String(selectedClientId)
-                                                        );
-
-                                                        setTaskForm((current) => ({
-                                                            ...current,
-                                                            clientId: selectedClientId,
-                                                            client:
-                                                                selectedClient?.companyName ||
-                                                                "Internal Development",
-                                                            project: "",
-                                                        }));
-                                                    }}
-                                                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100 disabled:opacity-60"
-                                                >
-                                                    <option value="">
-                                                        Internal Development
-                                                    </option>
-
-                                                    {clientList.map((client) => (
-                                                        <option
-                                                            key={client.id}
-                                                            value={client.id}
-                                                        >
-                                                            {client.companyName}
-                                                            {client.code ? ` (${client.code})` : ""}
-                                                        </option>
-                                                    ))}
-                                                </select>
-
-                                                {clientsLoading && (
-                                                    <p className="mt-1 text-[10px] text-slate-400">
-                                                        Loading clients...
-                                                    </p>
-                                                )}
-
-                                                {clientsError && (
-                                                    <p className="mt-1 text-[10px] text-rose-600">
-                                                        {clientsError}
-                                                    </p>
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        <div>
-                                            <label className="mb-2 block text-xs font-semibold text-slate-700">
-                                                 Product *
+                                            <label className="block text-[10px] font-semibold text-slate-600">
+                                                Task For *
                                             </label>
 
                                             <select
-                                                name="project"
-                                                value={taskForm.project}
-                                                onChange={handleTaskFormChange}
-                                                required
-                                                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+                                                name="taskFor"
+                                                value={taskForm.taskFor}
+                                                onChange={(event) => {
+                                                    const value =
+                                                        event.target.value;
+
+                                                    setTaskForm((current) => ({
+                                                        ...current,
+
+                                                        taskFor:
+                                                            value,
+
+                                                        productId:
+                                                            "",
+
+                                                        projectId:
+                                                            "",
+
+                                                        projectCode:
+                                                            "",
+
+                                                        projectName:
+                                                            "",
+
+                                                        generalTaskFor:
+                                                            "",
+                                                    }));
+                                                }}
+                                                className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                                             >
-                                                <option value="">
-                                                    Select project
+                                                <option value="Project">
+                                                    Project
                                                 </option>
 
-                                                {taskForm.clientId ? (
-                                                    selectedClientProducts.length > 0 ? (
-                                                        selectedClientProducts.map((productName) => (
-                                                            <option
-                                                                key={productName}
-                                                                value={productName}
-                                                            >
-                                                                {productName}
-                                                            </option>
-                                                        ))
-                                                    ) : (
-                                                        <option value="" disabled>
-                                                            No products assigned to this client
-                                                        </option>
-                                                    )
-                                                ) : (
-                                                    <>
-                                                        <option value="Internal Development">
-                                                            Internal Development
-                                                        </option>
+                                                <option value="Product">
+                                                    Product
+                                                </option>
 
-                                                        <option value="NexERP">NexERP</option>
-                                                        <option value="BillFlow">BillFlow</option>
-                                                        <option value="RetailPOS">RetailPOS</option>
-                                                        <option value="StockPro">StockPro</option>
-                                                        <option value="Documentation">
-                                                            Documentation
-                                                        </option>
-                                                    </>
-                                                )}
+                                                <option value="General">
+                                                    General / Internal
+                                                </option>
                                             </select>
                                         </div>
+
+                                        <div>
+
+
+                                           <div>
+    <label className="mb-2 block text-xs font-semibold text-slate-700">
+        Client
+    </label>
+
+    <select
+        name="clientId"
+        value={taskForm.clientId}
+        disabled={clientsLoading}
+        onChange={(event) => {
+            const clientId =
+                event.target.value;
+
+            const selectedClient =
+                clientList.find(
+                    (client) =>
+                        String(client.id) ===
+                        String(clientId)
+                );
+
+            setTaskForm((current) => ({
+                ...current,
+
+                clientId,
+
+                client:
+                    selectedClient
+                        ?.companyName ||
+                    "Internal Development",
+
+                productId:
+                    "",
+
+                projectId:
+                    "",
+
+                projectCode:
+                    "",
+
+                projectName:
+                    "",
+            }));
+        }}
+        className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100 disabled:opacity-60"
+    >
+        <option value="">
+            {clientsLoading
+                ? "Loading clients..."
+                : "Internal Development"}
+        </option>
+
+        {clientList.map((client) => (
+            <option
+                key={String(client.id)}
+                value={String(client.id)}
+            >
+                {client.companyName}
+
+                {client.code
+                    ? ` (${client.code})`
+                    : ""}
+            </option>
+        ))}
+    </select>
+
+    {!clientsLoading &&
+        !clientsError &&
+        clientList.length === 0 && (
+            <p className="mt-1 text-[10px] text-amber-600">
+                No clients received from Client Master.
+            </p>
+        )}
+
+    {clientsError && (
+        <div className="mt-1 flex items-center justify-between gap-2">
+            <p className="text-[10px] text-rose-600">
+                {clientsError}
+            </p>
+
+            <button
+                type="button"
+                onClick={loadClients}
+                className="text-[10px] font-semibold text-violet-700"
+            >
+                Retry
+            </button>
+        </div>
+    )}
+</div>
+                                        </div>
+
+
+                                        {taskForm.taskFor ===
+                                            "Project" && (
+                                                <div>
+                                                    <label className="block text-[10px] font-semibold text-slate-600">
+                                                        Project *
+                                                    </label>
+
+                                                    <select
+                                                        name="projectId"
+                                                        value={taskForm.projectId}
+                                                        disabled={projectsLoading}
+                                                        onChange={(event) => {
+                                                            const projectId =
+                                                                event.target.value;
+
+                                                            const selectedProject =
+                                                                projects.find(
+                                                                    (project) =>
+                                                                        String(
+                                                                            project.id
+                                                                        ) ===
+                                                                        String(
+                                                                            projectId
+                                                                        )
+                                                                );
+
+                                                            setTaskForm(
+                                                                (current) => ({
+                                                                    ...current,
+
+                                                                    projectId:
+                                                                        projectId,
+
+                                                                    projectCode:
+                                                                        selectedProject
+                                                                            ?.projectCode ||
+                                                                        "",
+
+                                                                    projectName:
+                                                                        selectedProject
+                                                                            ?.projectName ||
+                                                                        "",
+
+                                                                    clientId:
+                                                                        selectedProject
+                                                                            ?.clientId ||
+                                                                        current.clientId,
+
+                                                                    client:
+                                                                        selectedProject
+                                                                            ?.clientName ||
+                                                                        current.client,
+
+                                                                    productId:
+                                                                        selectedProject
+                                                                            ?.productId ||
+                                                                        current.productId,
+                                                                })
+                                                            );
+                                                        }}
+                                                        className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100 disabled:opacity-60"
+                                                    >
+                                                        <option value="">
+                                                            {projectsLoading
+                                                                ? "Loading projects..."
+                                                                : "Select project"}
+                                                        </option>
+
+                                                        {availableProjects.map(
+                                                            (project) => (
+                                                                <option
+                                                                    key={project.id}
+                                                                    value={project.id}
+                                                                >
+                                                                    {project.projectCode
+                                                                        ? `${project.projectCode} - `
+                                                                        : ""}
+                                                                    {project.projectName}
+                                                                </option>
+                                                            )
+                                                        )}
+                                                    </select>
+                                                </div>
+                                            )}
+                                        {taskForm.taskFor ===
+                                            "Product" && (
+                                                <div>
+                                                    <label className="block text-[10px] font-semibold text-slate-600">
+                                                        Product *
+                                                    </label>
+
+                                                    <select
+                                                        name="productId"
+                                                        value={taskForm.productId}
+                                                        disabled={productsLoading}
+                                                        onChange={(event) => {
+                                                            setTaskForm(
+                                                                (current) => ({
+                                                                    ...current,
+
+                                                                    productId:
+                                                                        event.target
+                                                                            .value,
+
+                                                                    projectId:
+                                                                        "",
+
+                                                                    projectCode:
+                                                                        "",
+
+                                                                    projectName:
+                                                                        "",
+                                                                })
+                                                            );
+                                                        }}
+                                                        className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100 disabled:opacity-60"
+                                                    >
+                                                        <option value="">
+                                                            {productsLoading
+                                                                ? "Loading products..."
+                                                                : "Select product"}
+                                                        </option>
+
+                                                        {availableProducts.map(
+                                                            (product) => (
+                                                                <option
+                                                                    key={product.id}
+                                                                    value={product.id}
+                                                                >
+                                                                    {product.productCode
+                                                                        ? `${product.productCode} - `
+                                                                        : ""}
+                                                                    {product.productName}
+                                                                </option>
+                                                            )
+                                                        )}
+                                                    </select>
+                                                </div>
+                                            )}
+                                        {taskForm.taskFor ===
+                                            "General" && (
+                                                <div>
+                                                    <label className="block text-[10px] font-semibold text-slate-600">
+                                                        General Task For *
+                                                    </label>
+
+                                                    <input
+                                                        type="text"
+                                                        name="generalTaskFor"
+                                                        value={
+                                                            taskForm.generalTaskFor
+                                                        }
+                                                        onChange={
+                                                            handleTaskFormChange
+                                                        }
+                                                        placeholder="Example: Office, Training, Internal meeting"
+                                                        className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                    />
+                                                </div>
+                                            )}
 
                                         <div>
                                             <label className="text-[11px] font-semibold text-slate-600">
@@ -3919,6 +4858,38 @@ export default function Team() {
                                                 onChange={handleTaskFormChange}
                                                 className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                                             />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-semibold text-slate-600">
+                                                Initial Status *
+                                            </label>
+
+                                            <select
+                                                name="status"
+                                                value={taskForm.status}
+                                                onChange={
+                                                    handleTaskFormChange
+                                                }
+                                                disabled={
+                                                    taskSettingsLoading
+                                                }
+                                                className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100 disabled:opacity-60"
+                                            >
+                                                <option value="">
+                                                    Select status
+                                                </option>
+
+                                                {taskStatuses.map(
+                                                    (status) => (
+                                                        <option
+                                                            key={status.id}
+                                                            value={status.name}
+                                                        >
+                                                            {status.name}
+                                                        </option>
+                                                    )
+                                                )}
+                                            </select>
                                         </div>
 
                                         <div>

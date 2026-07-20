@@ -839,8 +839,21 @@ export default function Admin({ onLogout }) {
     const [savingProduct, setSavingProduct] = useState(false);
     const [editingProductId, setEditingProductId] = useState(null);
     const [deletingProductId, setDeletingProductId] = useState(null);
+    const [productMasters, setProductMasters] = useState([]);
+    const [productMastersLoading, setProductMastersLoading] =
+        useState(false);
+    const [productMastersError, setProductMastersError] =
+        useState("");
+
+    const [employees, setEmployees] = useState([]);
+    const [employeesLoading, setEmployeesLoading] =
+        useState(false);
+    const [employeesError, setEmployeesError] =
+        useState("");
 
     const [productForm, setProductForm] = useState({
+        productId: "",
+        productCode: "",
         productName: "",
         version: "v1.0.0",
         purchaseDate: "",
@@ -852,7 +865,6 @@ export default function Admin({ onLogout }) {
         installationStatus: "Installed",
         notes: "",
     });
-
     const [clientForm, setClientForm] = useState({
         code: "",
         companyName: "",
@@ -860,12 +872,21 @@ export default function Admin({ onLogout }) {
         email: "",
         mobile: "",
         city: "",
-        products: "",
+
+        productId: "",
+        productVersion: "v1.0.0",
+        licensedUsers: 1,
+        supportType: "Standard",
+        installationStatus: "Installed",
+
         amcStatus: "Not Started",
         nextRenewal: "",
-        openTickets: 0,
-        assignedTo: "",
+       assignedEmployeeId: "",
+assignedEmployeeCode: "",
+assignedEmployeeName: "",
         status: "Active",
+        createLogin: true,
+        temporaryPassword: "",
     });
     const getAuthToken = () => {
         return (
@@ -875,36 +896,146 @@ export default function Admin({ onLogout }) {
         );
     };
 
-    const normalizeClientFromApi = (client) => ({
+    const normalizeClientFromApi = (client = {}) => ({
         ...client,
 
-        id: client._id,
-        code: client.clientCode,
+        id:
+            client.id ||
+            client._id ||
+            "",
 
-        products: Array.isArray(client.products)
-            ? client.products.map((product) => {
-                if (typeof product === "string") {
-                    return {
-                        productName: product,
-                        version: "v1.0.0",
-                        purchaseDate: "",
-                        installationDate: "",
-                        licensedUsers: 1,
-                        supportType: "Standard",
-                        amcStatus:
-                            client.amcStatus || "Not Started",
-                        expiryDate:
-                            client.nextRenewal || "",
-                        installationStatus: "Installed",
-                        notes: "",
-                    };
-                }
+        _id:
+            client._id ||
+            client.id ||
+            "",
 
-                return product;
-            })
-            : [],
+        code:
+            client.clientCode ||
+            client.code ||
+            "",
 
-        nextRenewal: client.nextRenewal || "",
+        clientCode:
+            client.clientCode ||
+            client.code ||
+            "",
+
+        companyName:
+            client.companyName ||
+            "",
+
+        contactPerson:
+            client.contactPerson ||
+            "",
+
+        email:
+            client.email ||
+            "",
+
+        mobile:
+            client.mobile ||
+            "",
+
+        city:
+            client.city ||
+            "",
+
+        products:
+            Array.isArray(client.products)
+                ? client.products.map((product) => ({
+                    ...product,
+
+                    id:
+                        product.id ||
+                        product._id ||
+                        "",
+
+                    _id:
+                        product._id ||
+                        product.id ||
+                        "",
+
+                    productId:
+                        product.productId ||
+                        "",
+
+                    productCode:
+                        product.productCode ||
+                        "",
+
+                    productName:
+                        product.productName ||
+                        "",
+
+                    version:
+                        product.version ||
+                        "v1.0.0",
+
+                    purchaseDate:
+                        product.purchaseDate ||
+                        "",
+
+                    installationDate:
+                        product.installationDate ||
+                        "",
+
+                    licensedUsers:
+                        Number(
+                            product.licensedUsers ||
+                            1
+                        ),
+
+                    supportType:
+                        product.supportType ||
+                        "Standard",
+
+                    amcStatus:
+                        product.amcStatus ||
+                        "Not Started",
+
+                    expiryDate:
+                        product.expiryDate ||
+                        "",
+
+                    installationStatus:
+                        product.installationStatus ||
+                        "Installed",
+
+                    notes:
+                        product.notes ||
+                        "",
+                }))
+                : [],
+
+        amcStatus:
+            client.amcStatus ||
+            "Not Started",
+
+        nextRenewal:
+            client.nextRenewal ||
+            "",
+
+        openTickets:
+            Number(
+                client.openTickets ||
+                0
+            ),
+
+      assignedEmployeeId:
+    client.assignedEmployeeId?._id ||
+    client.assignedEmployeeId ||
+    "",
+
+assignedEmployeeCode:
+    client.assignedEmployeeCode ||
+    "",
+
+assignedEmployeeName:
+    client.assignedEmployeeName ||
+    "Unassigned",
+
+        status:
+            client.status ||
+            "Active",
     });
 
     const loadClients = async () => {
@@ -946,9 +1077,297 @@ export default function Admin({ onLogout }) {
             setClientsLoading(false);
         }
     };
+    const loadClientDetails = async (
+        clientId
+    ) => {
+        if (!clientId) {
+            throw new Error(
+                "Client ID is missing."
+            );
+        }
+
+        const response = await fetch(
+            `${API_URL}/api/admin/client/${clientId}`,
+            {
+                method: "GET",
+
+                headers: {
+                    Accept:
+                        "application/json",
+
+                    Authorization:
+                        `Bearer ${getAuthToken()}`,
+                },
+            }
+        );
+
+        const result =
+            await response.json();
+
+        if (
+            !response.ok ||
+            !result.success
+        ) {
+            throw new Error(
+                result.message ||
+                "Unable to load client details."
+            );
+        }
+
+        return normalizeClientFromApi(
+            result.data
+        );
+    };
+
+    const loadProductMasters = async () => {
+        try {
+            setProductMastersLoading(true);
+            setProductMastersError("");
+
+            const response = await fetch(
+                `${API_URL}/api/admin/products`,
+                {
+                    method: "GET",
+
+                    headers: {
+                        Accept: "application/json",
+
+                        Authorization:
+                            `Bearer ${getAuthToken()}`,
+                    },
+                }
+            );
+
+            const result = await response.json();
+
+            if (
+                !response.ok ||
+                !result.success
+            ) {
+                throw new Error(
+                    result.message ||
+                    "Unable to load Product Master."
+                );
+            }
+
+            const sourceProducts =
+                Array.isArray(result.data)
+                    ? result.data
+                    : Array.isArray(result.products)
+                        ? result.products
+                        : [];
+
+            const normalizedProducts =
+                sourceProducts
+                    .map((product) => ({
+                        id:
+                            product.id ||
+                            product._id ||
+                            "",
+
+                        _id:
+                            product._id ||
+                            product.id ||
+                            "",
+
+                        productCode:
+                            String(
+                                product.productCode ||
+                                ""
+                            ).trim(),
+
+                        productName:
+                            String(
+                                product.productName ||
+                                ""
+                            ).trim(),
+
+                        currentVersion:
+                            String(
+                                product.currentVersion ||
+                                product.version ||
+                                "v1.0.0"
+                            ).trim(),
+
+                        category:
+                            product.category ||
+                            "Software",
+
+                        platform:
+                            product.platform ||
+                            "Web",
+
+                        status:
+                            product.status ||
+                            "Active",
+                    }))
+                    .filter(
+                        (product) =>
+                            product.id &&
+                            product.productName &&
+                            product.status === "Active"
+                    )
+                    .sort((first, second) =>
+                        first.productName.localeCompare(
+                            second.productName
+                        )
+                    );
+
+            setProductMasters(
+                normalizedProducts
+            );
+
+            if (
+                normalizedProducts.length === 0
+            ) {
+                setProductMastersError(
+                    "No active products found in Product Master."
+                );
+            }
+        } catch (error) {
+            console.error(
+                "Load Product Master error:",
+                error
+            );
+
+            setProductMasters([]);
+
+            setProductMastersError(
+                error.message ||
+                "Unable to load Product Master."
+            );
+        } finally {
+            setProductMastersLoading(false);
+        }
+    };
+
+    const loadEmployees = async () => {
+        try {
+            setEmployeesLoading(true);
+            setEmployeesError("");
+
+            const response = await fetch(
+                `${API_URL}/api/employee/employees`,
+                {
+                    method: "GET",
+
+                    headers: {
+                        Accept: "application/json",
+
+                        Authorization:
+                            `Bearer ${getAuthToken()}`,
+                    },
+                }
+            );
+
+            const result = await response.json();
+
+            if (
+                !response.ok ||
+                !result.success
+            ) {
+                throw new Error(
+                    result.message ||
+                    "Unable to load employees."
+                );
+            }
+
+            const sourceEmployees =
+                Array.isArray(result.data)
+                    ? result.data
+                    : Array.isArray(result.employees)
+                        ? result.employees
+                        : [];
+
+            const normalizedEmployees =
+                sourceEmployees
+                    .map((employee) => ({
+                        id:
+                            employee.id ||
+                            employee._id ||
+                            "",
+
+                        _id:
+                            employee._id ||
+                            employee.id ||
+                            "",
+
+                        employeeCode:
+                            employee.employeeCode ||
+                            employee.code ||
+                            "",
+
+                        name:
+                            employee.name ||
+                            employee.employeeName ||
+                            employee.fullName ||
+                            "",
+
+                        department:
+                            employee.department ||
+                            "",
+
+                        designation:
+                            employee.designation ||
+                            employee.role ||
+                            "",
+
+                        status:
+                            employee.status ||
+                            (
+                                employee.isActive === false
+                                    ? "Inactive"
+                                    : "Active"
+                            ),
+
+                        isActive:
+                            employee.isActive !== false &&
+                            employee.status !== "Inactive",
+                    }))
+                    .filter(
+                        (employee) =>
+                            employee.id &&
+                            employee.name &&
+                            employee.isActive
+                    )
+                    .sort((first, second) =>
+                        first.name.localeCompare(
+                            second.name
+                        )
+                    );
+
+            setEmployees(
+                normalizedEmployees
+            );
+
+            if (
+                normalizedEmployees.length === 0
+            ) {
+                setEmployeesError(
+                    "No active employees found."
+                );
+            }
+        } catch (error) {
+            console.error(
+                "Load employees error:",
+                error
+            );
+
+            setEmployees([]);
+
+            setEmployeesError(
+                error.message ||
+                "Unable to load employees."
+            );
+        } finally {
+            setEmployeesLoading(false);
+        }
+    };
 
     useEffect(() => {
         loadClients();
+        loadProductMasters();
+        loadEmployees();
     }, []);
 
     const selectedMenu =
@@ -968,7 +1387,8 @@ export default function Admin({ onLogout }) {
                 client.email,
                 client.mobile,
                 client.city,
-                client.assignedTo,
+              client.assignedEmployeeName,
+client.assignedEmployeeCode,
                 ...(Array.isArray(client.products)
                     ? client.products.map((product) =>
                         typeof product === "string"
@@ -1008,40 +1428,49 @@ export default function Admin({ onLogout }) {
             email: "",
             mobile: "",
             city: "",
-            products: "",
+
+            productId: "",
+            productVersion: "v1.0.0",
+            licensedUsers: 1,
+            supportType: "Standard",
+            installationStatus: "Installed",
+
             amcStatus: "Not Started",
             nextRenewal: "",
-            openTickets: 0,
-            assignedTo: "",
+            assignedEmployeeId: "",
+assignedEmployeeCode: "",
+assignedEmployeeName: "",
             status: "Active",
         });
     };
-
     const openClientDrawer = (client = null) => {
         if (client) {
             setEditingClientId(client._id || client.id);
 
             setClientForm({
-                code: client.code || client.clientCode || "",
+                code: client.clientCode || client.code || "",
                 companyName: client.companyName || "",
                 contactPerson: client.contactPerson || "",
                 email: client.email || "",
                 mobile: client.mobile || "",
                 city: client.city || "",
-                products: Array.isArray(client.products)
-                    ? client.products
-                        .map((product) =>
-                            typeof product === "string"
-                                ? product
-                                : product.productName
-                        )
-                        .filter(Boolean)
-                        .join(", ")
-                    : "",
+
+                productId: "",
+                productVersion: "v1.0.0",
+                licensedUsers: 1,
+                supportType: "Standard",
+                installationStatus: "Installed",
+
                 amcStatus: client.amcStatus || "Not Started",
                 nextRenewal: client.nextRenewal || "",
-                openTickets: Number(client.openTickets || 0),
-                assignedTo: client.assignedTo || "",
+                assignedEmployeeId:
+    client.assignedEmployeeId || "",
+
+assignedEmployeeCode:
+    client.assignedEmployeeCode || "",
+
+assignedEmployeeName:
+    client.assignedEmployeeName || "",
                 status: client.status || "Active",
             });
 
@@ -1049,52 +1478,139 @@ export default function Admin({ onLogout }) {
             return;
         }
 
-        const highestClientNumber = clients.reduce(
-            (highest, currentClient) => {
-                const number = Number(
-                    String(
-                        currentClient.code ||
-                        currentClient.clientCode ||
-                        ""
-                    ).replace("CL-", "")
-                );
+        const highestClientNumber =
+            clients.reduce(
+                (
+                    highest,
+                    currentClient
+                ) => {
+                    const code =
+                        String(
+                            currentClient.clientCode ||
+                            currentClient.code ||
+                            ""
+                        ).trim();
 
-                return Number.isFinite(number)
-                    ? Math.max(highest, number)
-                    : highest;
-            },
-            1000
-        );
+                    const match =
+                        code.match(
+                            /^CL-(\d+)$/i
+                        );
+
+                    if (!match) {
+                        return highest;
+                    }
+
+                    return Math.max(
+                        highest,
+                        Number(match[1]) ||
+                        0
+                    );
+                },
+                1000
+            );
 
         setEditingClientId(null);
 
         setClientForm({
-            code: `CL-${highestClientNumber + 1}`,
+            code:
+                `CL-${highestClientNumber + 1}`,
+
             companyName: "",
             contactPerson: "",
             email: "",
             mobile: "",
             city: "",
-            products: "",
-            amcStatus: "Not Started",
+
+            productId: "",
+            productVersion: "v1.0.0",
+            licensedUsers: 1,
+            supportType: "Standard",
+            installationStatus:
+                "Installed",
+
+            amcStatus:
+                "Not Started",
+
             nextRenewal: "",
-            openTickets: 0,
-            assignedTo: "",
+            assignedEmployeeId: "",
+assignedEmployeeCode: "",
+assignedEmployeeName: "",
             status: "Active",
         });
 
         setClientDrawerOpen(true);
     };
-
     const closeClientDrawer = () => {
         setClientDrawerOpen(false);
         setEditingClientId(null);
         resetClientForm();
     };
 
-    const openClientDetails = (client) => {
-        setSelectedClient(client);
-        setClientDetailsTab("overview");
+    const openClientDetails = async (
+        client
+    ) => {
+        const clientId =
+            client?._id ||
+            client?.id;
+
+        if (!clientId) {
+            alert(
+                "Client ID is missing."
+            );
+            return;
+        }
+
+        /*
+         * Show current list data immediately.
+         */
+        setSelectedClient(
+            normalizeClientFromApi(
+                client
+            )
+        );
+
+        setClientDetailsTab(
+            "overview"
+        );
+
+        /*
+         * Reload complete client record,
+         * including assigned products.
+         */
+        try {
+            const fullClient =
+                await loadClientDetails(
+                    clientId
+                );
+
+            setSelectedClient(
+                fullClient
+            );
+
+            setClients(
+                (currentClients) =>
+                    currentClients.map(
+                        (currentClient) =>
+                            String(
+                                currentClient._id ||
+                                currentClient.id
+                            ) ===
+                                String(clientId)
+                                ? fullClient
+                                : currentClient
+                    )
+            );
+        } catch (error) {
+            console.error(
+                "Load client details error:",
+                error
+            );
+
+            alert(
+                error.message ||
+                "Unable to load client products."
+            );
+        }
     };
 
     const closeClientDetails = () => {
@@ -1103,6 +1619,8 @@ export default function Admin({ onLogout }) {
     };
     const resetProductForm = () => {
         setProductForm({
+            productId: "",
+            productCode: "",
             productName: "",
             version: "v1.0.0",
             purchaseDate: "",
@@ -1116,65 +1634,127 @@ export default function Admin({ onLogout }) {
         });
     };
 
-   const openProductDrawer = (product = null) => {
-    if (!selectedClient) {
-        alert("Please select a client first.");
-        return;
-    }
-
-    const isActualProduct =
-        product &&
-        typeof product === "object" &&
-        !("nativeEvent" in product) &&
-        (product._id ||
-            product.id ||
-            product.productName ||
-            product.name);
-
-    if (isActualProduct) {
-        const productId = product._id || product.id;
-
-        if (!productId) {
-            alert("Product ID is missing.");
+    const openProductDrawer = async (
+        product = null
+    ) => {
+        if (!selectedClient) {
+            alert(
+                "Please select a client first."
+            );
             return;
         }
 
-        setEditingProductId(productId);
+        /*
+         * Reload Product Master so newly created
+         * products appear immediately.
+         */
+        await loadProductMasters();
 
-        setProductForm({
-            productName:
-                product.productName || product.name || "",
-            version: product.version || "v1.0.0",
-            purchaseDate:
-                product.purchaseDate === "Not available"
-                    ? ""
-                    : product.purchaseDate || "",
-            installationDate:
-                product.installationDate === "Not available"
-                    ? ""
-                    : product.installationDate || "",
-            licensedUsers: Number(
-                product.licensedUsers || product.users || 1
-            ),
-            supportType: product.supportType || "Standard",
-            amcStatus: product.amcStatus || "Not Started",
-            expiryDate:
-                product.expiryDate === "Not available"
-                    ? ""
-                    : product.expiryDate || "",
-            installationStatus:
-                product.installationStatus || "Installed",
-            notes: product.notes || "",
-        });
+        const isActualProduct =
+            product &&
+            typeof product === "object" &&
+            !("nativeEvent" in product) &&
+            (
+                product._id ||
+                product.id ||
+                product.productId
+            );
 
+        if (isActualProduct) {
+            const assignmentId =
+                product._id ||
+                product.id;
+
+            if (!assignmentId) {
+                alert(
+                    "Product assignment ID is missing."
+                );
+                return;
+            }
+
+            setEditingProductId(
+                assignmentId
+            );
+
+            setProductForm({
+                productId:
+                    product.productId ||
+                    "",
+
+                productCode:
+                    product.productCode ||
+                    "",
+
+                productName:
+                    product.productName ||
+                    "",
+
+                version:
+                    product.version ||
+                    "v1.0.0",
+
+                purchaseDate:
+                    product.purchaseDate &&
+                        product.purchaseDate !==
+                        "Not available"
+                        ? String(
+                            product.purchaseDate
+                        ).slice(0, 10)
+                        : "",
+
+                installationDate:
+                    product.installationDate &&
+                        product.installationDate !==
+                        "Not available"
+                        ? String(
+                            product.installationDate
+                        ).slice(0, 10)
+                        : "",
+
+                licensedUsers:
+                    Math.max(
+                        Number(
+                            product.licensedUsers ||
+                            product.users ||
+                            1
+                        ),
+                        1
+                    ),
+
+                supportType:
+                    product.supportType ||
+                    "Standard",
+
+                amcStatus:
+                    product.amcStatus ||
+                    "Not Started",
+
+                expiryDate:
+                    product.expiryDate &&
+                        product.expiryDate !==
+                        "Not available"
+                        ? String(
+                            product.expiryDate
+                        ).slice(0, 10)
+                        : "",
+
+                installationStatus:
+                    product.installationStatus ||
+                    "Installed",
+
+                notes:
+                    product.notes ||
+                    "",
+            });
+
+            setProductDrawerOpen(true);
+            return;
+        }
+
+        setEditingProductId(null);
+        resetProductForm();
         setProductDrawerOpen(true);
-        return;
-    }
-
-    setEditingProductId(null);
-    resetProductForm();
-    setProductDrawerOpen(true);
-};
+    };
 
     const closeProductDrawer = () => {
         if (savingProduct) {
@@ -1185,58 +1765,84 @@ export default function Admin({ onLogout }) {
         setEditingProductId(null);
         resetProductForm();
     };
+    const handleProductInputChange = (
+        event
+    ) => {
+        const {
+            name,
+            value,
+        } = event.target;
 
-    const handleProductInputChange = (event) => {
-        const { name, value } = event.target;
-
-        setProductForm((current) => ({
-            ...current,
-            [name]: value,
-        }));
+        setProductForm(
+            (current) => ({
+                ...current,
+                [name]: value,
+            })
+        );
     };
-    const handleAssignProduct = async (event) => {
+    const handleAssignProduct = async (
+        event
+    ) => {
         event.preventDefault();
 
         if (!selectedClient) {
-            alert("Client information is missing.");
+            alert(
+                "Client information is missing."
+            );
             return;
         }
 
         const clientId =
-            selectedClient._id || selectedClient.id;
+            selectedClient._id ||
+            selectedClient.id;
 
-        const productName =
-            productForm.productName.trim();
+        const productId =
+            productForm.productId;
 
         if (!clientId) {
-            alert("Client ID is missing.");
+            alert(
+                "Client ID is missing."
+            );
             return;
         }
 
-        if (!productName) {
-            alert("Product name is required.");
+        if (!productId) {
+            alert(
+                "Please select a product."
+            );
             return;
         }
 
-        const isEditing = Boolean(editingProductId);
+        const isEditing =
+            Boolean(
+                editingProductId
+            );
 
         const duplicateProduct =
-            getSelectedClientProducts().some((product) => {
-                const currentProductId =
-                    product._id || product.id;
+            getSelectedClientProducts().some(
+                (product) => {
+                    const assignmentId =
+                        product._id ||
+                        product.id;
 
-                return (
-                    currentProductId !== editingProductId &&
-                    String(
-                        product.productName ||
-                        product.name ||
-                        ""
-                    )
-                        .trim()
-                        .toLowerCase() ===
-                    productName.toLowerCase()
-                );
-            });
+                    return (
+                        String(
+                            assignmentId
+                        ) !==
+                        String(
+                            editingProductId ||
+                            ""
+                        ) &&
+                        String(
+                            product.productId ||
+                            ""
+                        ) ===
+                        String(
+                            productId
+                        )
+                    );
+                }
+            );
 
         if (duplicateProduct) {
             alert(
@@ -1248,79 +1854,141 @@ export default function Admin({ onLogout }) {
         try {
             setSavingProduct(true);
 
-            const endpoint = isEditing
-                ? `${API_URL}/api/admin/client/${clientId}/product/${editingProductId}`
-                : `${API_URL}/api/admin/client/${clientId}/product`;
+            const endpoint =
+                isEditing
+                    ? `${API_URL}/api/admin/client/${clientId}/product/${editingProductId}`
+                    : `${API_URL}/api/admin/client/${clientId}/product`;
 
-            const response = await fetch(endpoint, {
-                method: isEditing ? "PUT" : "POST",
+            const response =
+                await fetch(
+                    endpoint,
+                    {
+                        method:
+                            isEditing
+                                ? "PUT"
+                                : "POST",
 
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${getAuthToken()}`,
-                },
+                        headers: {
+                            "Content-Type":
+                                "application/json",
 
-                body: JSON.stringify({
-                    productName,
+                            Accept:
+                                "application/json",
 
-                    version:
-                        productForm.version.trim() ||
-                        "v1.0.0",
+                            Authorization:
+                                `Bearer ${getAuthToken()}`,
+                        },
 
-                    purchaseDate:
-                        productForm.purchaseDate,
+                        body:
+                            JSON.stringify({
+                                productId:
+                                    productForm.productId,
 
-                    installationDate:
-                        productForm.installationDate,
+                                version:
+                                    productForm.version.trim() ||
+                                    "v1.0.0",
 
-                    licensedUsers: Math.max(
-                        Number(
-                            productForm.licensedUsers || 1
-                        ),
-                        1
-                    ),
+                                purchaseDate:
+                                    productForm.purchaseDate,
 
-                    supportType:
-                        productForm.supportType,
+                                installationDate:
+                                    productForm.installationDate,
 
-                    amcStatus:
-                        productForm.amcStatus,
+                                licensedUsers:
+                                    Math.max(
+                                        Number(
+                                            productForm.licensedUsers ||
+                                            1
+                                        ),
+                                        1
+                                    ),
 
-                    expiryDate:
-                        productForm.expiryDate,
+                                supportType:
+                                    productForm.supportType,
 
-                    installationStatus:
-                        productForm.installationStatus,
+                                amcStatus:
+                                    productForm.amcStatus,
 
-                    notes:
-                        productForm.notes.trim(),
-                }),
-            });
+                                expiryDate:
+                                    productForm.expiryDate,
 
-            const result = await response.json();
+                                installationStatus:
+                                    productForm.installationStatus,
 
-            if (!response.ok || !result.success) {
+                                notes:
+                                    productForm.notes.trim(),
+                            }),
+                    }
+                );
+
+            const result =
+                await response.json();
+
+            if (
+                !response.ok ||
+                !result.success
+            ) {
                 throw new Error(
                     result.message ||
-                    `Unable to ${isEditing ? "update" : "assign"
+                    `Unable to ${isEditing
+                        ? "update"
+                        : "assign"
                     } product.`
                 );
             }
+            /*
+             * First use API response.
+             */
+            let updatedClient =
+                normalizeClientFromApi(
+                    result.data
+                );
 
-            const updatedClient =
-                normalizeClientFromApi(result.data);
+            /*
+             * Then fetch complete MongoDB record
+             * so assigned products are guaranteed
+             * to be present in Client Details.
+             */
+            try {
+                updatedClient =
+                    await loadClientDetails(
+                        clientId
+                    );
+            } catch (
+            refreshError
+            ) {
+                console.warn(
+                    "Product saved, but client refresh failed:",
+                    refreshError
+                );
+            }
 
-            setClients((currentClients) =>
-                currentClients.map((client) =>
-                    (client._id || client.id) === clientId
-                        ? updatedClient
-                        : client
-                )
+            setClients(
+                (currentClients) =>
+                    currentClients.map(
+                        (client) =>
+                            String(
+                                client._id ||
+                                client.id
+                            ) ===
+                                String(clientId)
+                                ? updatedClient
+                                : client
+                    )
             );
 
-            setSelectedClient(updatedClient);
-            setProductDrawerOpen(false);
-            setEditingProductId(null);
+            setSelectedClient(
+                updatedClient
+            );
+
+            setProductDrawerOpen(
+                false
+            );
+
+            setEditingProductId(
+                null
+            );
+
             resetProductForm();
 
             alert(
@@ -1329,7 +1997,10 @@ export default function Admin({ onLogout }) {
                     : "Product assigned successfully."
             );
         } catch (error) {
-            console.error("Save product error:", error);
+            console.error(
+                "Save product error:",
+                error
+            );
 
             alert(
                 error.message ||
@@ -1431,119 +2102,268 @@ export default function Admin({ onLogout }) {
         });
     };
 
-    const handleSaveClient = async (event) => {
+    const handleSaveClient = async (
+        event
+    ) => {
         event.preventDefault();
 
-        const clientCode = clientForm.code.trim();
-        const companyName = clientForm.companyName.trim();
-        const mobile = clientForm.mobile.trim();
+        const clientCode =
+            clientForm.code
+                .trim()
+                .toUpperCase();
 
-        if (!clientCode || !companyName) {
-            alert("Client code and company name are required.");
+        const companyName =
+            clientForm.companyName.trim();
+
+        const mobile =
+            clientForm.mobile.trim();
+
+        if (
+            !clientCode ||
+            !companyName
+        ) {
+            alert(
+                "Client code and company name are required."
+            );
             return;
         }
 
-        const duplicateCode = clients.some((client) => {
-            const currentId = client._id || client.id;
+        const duplicateCode =
+            clients.some(
+                (client) => {
+                    const currentId =
+                        client._id ||
+                        client.id;
 
-            return (
-                currentId !== editingClientId &&
-                String(client.code || client.clientCode || "")
-                    .trim()
-                    .toLowerCase() === clientCode.toLowerCase()
+                    return (
+                        String(
+                            currentId
+                        ) !==
+                        String(
+                            editingClientId ||
+                            ""
+                        ) &&
+                        String(
+                            client.code ||
+                            client.clientCode ||
+                            ""
+                        )
+                            .trim()
+                            .toLowerCase() ===
+                        clientCode.toLowerCase()
+                    );
+                }
             );
-        });
 
         if (duplicateCode) {
-            alert("This client code already exists.");
+            alert(
+                "This client code already exists."
+            );
             return;
         }
 
         const duplicateMobile =
             mobile &&
-            clients.some((client) => {
-                const currentId = client._id || client.id;
+            clients.some(
+                (client) => {
+                    const currentId =
+                        client._id ||
+                        client.id;
 
-                return (
-                    currentId !== editingClientId &&
-                    String(client.mobile || "").trim() === mobile
-                );
-            });
+                    return (
+                        String(
+                            currentId
+                        ) !==
+                        String(
+                            editingClientId ||
+                            ""
+                        ) &&
+                        String(
+                            client.mobile ||
+                            ""
+                        ).trim() ===
+                        mobile
+                    );
+                }
+            );
 
         if (duplicateMobile) {
-            alert("A client with this mobile number already exists.");
+            alert(
+                "A client with this mobile number already exists."
+            );
             return;
         }
-
-        const productList = clientForm.products
-            .split(",")
-            .map((product) => product.trim())
-            .filter(Boolean);
 
         try {
             setSavingClient(true);
 
-            const isEditing = Boolean(editingClientId);
+            const isEditing =
+                Boolean(
+                    editingClientId
+                );
 
-            const endpoint = isEditing
-                ? `${API_URL}/api/admin/client/${editingClientId}`
-                : `${API_URL}/api/admin/client`;
+            const endpoint =
+                isEditing
+                    ? `${API_URL}/api/admin/client/${editingClientId}`
+                    : `${API_URL}/api/admin/client`;
 
-            const response = await fetch(endpoint, {
-                method: isEditing ? "PUT" : "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${getAuthToken()}`,
-                },
-                body: JSON.stringify({
-                    clientCode,
-                    companyName,
-                    contactPerson: clientForm.contactPerson.trim(),
-                    email: clientForm.email.trim().toLowerCase(),
-                    mobile,
-                    city: clientForm.city.trim(),
-                    products: productList,
-                    amcStatus: clientForm.amcStatus,
-                    nextRenewal: clientForm.nextRenewal || "",
-                    openTickets: Number(clientForm.openTickets || 0),
-                    assignedTo:
-                        clientForm.assignedTo.trim() || "Unassigned",
-                    status: clientForm.status,
-                }),
-            });
+            const body = {
+                clientCode,
+                companyName,
 
-            const result = await response.json();
+                contactPerson:
+                    clientForm.contactPerson.trim(),
 
-            if (!response.ok || !result.success) {
+                email:
+                    clientForm.email
+                        .trim()
+                        .toLowerCase(),
+                createLogin: clientForm.createLogin,
+                temporaryPassword:
+                    clientForm.temporaryPassword,
+
+                mobile,
+
+                city:
+                    clientForm.city.trim(),
+
+                amcStatus:
+                    clientForm.amcStatus,
+
+                nextRenewal:
+                    clientForm.nextRenewal ||
+                    "",
+
+              assignedEmployeeId:
+    clientForm.assignedEmployeeId || "",
+
+                status:
+                    clientForm.status,
+            };
+
+            /*
+             * Only new clients receive an empty
+             * product list. Editing a client must
+             * not remove assigned products.
+             */
+            if (!isEditing) {
+                body.products =
+                    clientForm.productId
+                        ? [
+                            {
+                                productId:
+                                    clientForm.productId,
+
+                                version:
+                                    clientForm.productVersion.trim() ||
+                                    "v1.0.0",
+
+                                purchaseDate:
+                                    new Date()
+                                        .toISOString()
+                                        .slice(0, 10),
+
+                                installationDate:
+                                    "",
+
+                                licensedUsers:
+                                    Math.max(
+                                        Number(
+                                            clientForm.licensedUsers ||
+                                            1
+                                        ),
+                                        1
+                                    ),
+
+                                supportType:
+                                    clientForm.supportType ||
+                                    "Standard",
+
+                                amcStatus:
+                                    clientForm.amcStatus ||
+                                    "Not Started",
+
+                                expiryDate:
+                                    clientForm.nextRenewal ||
+                                    "",
+
+                                installationStatus:
+                                    clientForm.installationStatus ||
+                                    "Installed",
+
+                                notes: "",
+                            },
+                        ]
+                        : [];
+            }
+
+            const response =
+                await fetch(
+                    endpoint,
+                    {
+                        method:
+                            isEditing
+                                ? "PUT"
+                                : "POST",
+
+                        headers: {
+                            "Content-Type":
+                                "application/json",
+
+                            Accept:
+                                "application/json",
+
+                            Authorization:
+                                `Bearer ${getAuthToken()}`,
+                        },
+
+                        body:
+                            JSON.stringify(
+                                body
+                            ),
+                    }
+                );
+
+            const result =
+                await response.json();
+
+            if (
+                !response.ok ||
+                !result.success
+            ) {
                 throw new Error(
                     result.message ||
-                    `Unable to ${isEditing ? "update" : "save"} client.`
+                    `Unable to ${isEditing
+                        ? "update"
+                        : "save"
+                    } client.`
                 );
             }
 
-            const savedClient = normalizeClientFromApi(result.data);
-
-            if (isEditing) {
-                setClients((currentClients) =>
-                    currentClients.map((client) =>
-                        (client._id || client.id) === editingClientId
-                            ? savedClient
-                            : client
-                    )
+            const savedClient =
+                normalizeClientFromApi(
+                    result.data
                 );
 
-                if (
-                    selectedClient &&
-                    (selectedClient._id || selectedClient.id) ===
-                    editingClientId
-                ) {
-                    setSelectedClient(savedClient);
-                }
-            } else {
-                setClients((currentClients) => [
-                    ...currentClients,
-                    savedClient,
-                ]);
+            /*
+             * Reload the complete Client list from MongoDB.
+             * Do not manually append savedClient after this,
+             * otherwise the same client appears twice.
+             */
+            await loadClients();
+
+            if (
+                isEditing &&
+                selectedClient &&
+                String(
+                    selectedClient._id ||
+                    selectedClient.id
+                ) ===
+                String(editingClientId)
+            ) {
+                setSelectedClient(
+                    savedClient
+                );
             }
 
             closeClientDrawer();
@@ -1554,8 +2374,15 @@ export default function Admin({ onLogout }) {
                     : "Client added successfully."
             );
         } catch (error) {
-            console.error("Save client error:", error);
-            alert(error.message || "Unable to save client.");
+            console.error(
+                "Save client error:",
+                error
+            );
+
+            alert(
+                error.message ||
+                "Unable to save client."
+            );
         } finally {
             setSavingClient(false);
         }
@@ -1691,47 +2518,119 @@ export default function Admin({ onLogout }) {
 
         return "bg-slate-100 text-slate-600 ring-slate-500/10";
     };
-    const getSelectedClientProducts = () => {
-        if (!selectedClient || !Array.isArray(selectedClient.products)) {
-            return [];
-        }
+    const getSelectedClientProducts =
+        () => {
+            const products =
+                selectedClient?.products;
 
-        return selectedClient.products.map((product, index) => {
-            if (typeof product === "string") {
-                return {
-                    id: `${selectedClient.id}-${index}`,
-                    name: product,
-                    productName: product,
-                    version: "v1.0.0",
-                    purchaseDate: "Not available",
-                    installationDate: "Not available",
-                    users: 1,
-                    licensedUsers: 1,
-                    supportType: "Standard",
-                    amcStatus:
-                        selectedClient.amcStatus || "Not Started",
-                    expiryDate:
-                        selectedClient.nextRenewal || "Not available",
-                    installationStatus: "Installed",
-                    notes: "",
-                };
+            if (
+                !Array.isArray(products)
+            ) {
+                return [];
             }
 
-            return {
-                ...product,
-                id: product._id || `${selectedClient.id}-${index}`,
-                name: product.productName || "Unnamed Product",
-                users: Number(product.licensedUsers || 1),
-                licensedUsers: Number(product.licensedUsers || 1),
-                purchaseDate:
-                    product.purchaseDate || "Not available",
-                installationDate:
-                    product.installationDate || "Not available",
-                expiryDate:
-                    product.expiryDate || "Not available",
-            };
-        });
-    };
+            return products
+                .filter(Boolean)
+                .map(
+                    (
+                        product,
+                        index
+                    ) => {
+                        const assignmentId =
+                            product._id ||
+                            product.id ||
+                            "";
+
+                        return {
+                            ...product,
+
+                            id:
+                                assignmentId ||
+                                `client-product-${index}`,
+
+                            _id:
+                                assignmentId,
+
+                            productId:
+                                product.productId?._id ||
+                                product.productId ||
+                                "",
+
+                            productCode:
+                                product.productCode ||
+                                product.productId
+                                    ?.productCode ||
+                                "",
+
+                            productName:
+                                product.productName ||
+                                product.productId
+                                    ?.productName ||
+                                "Unnamed Product",
+
+                            name:
+                                product.productName ||
+                                product.productId
+                                    ?.productName ||
+                                "Unnamed Product",
+
+                            version:
+                                product.version ||
+                                product.productId
+                                    ?.currentVersion ||
+                                "v1.0.0",
+
+                            licensedUsers:
+                                Math.max(
+                                    Number(
+                                        product.licensedUsers ||
+                                        product.users ||
+                                        1
+                                    ),
+                                    1
+                                ),
+
+                            users:
+                                Math.max(
+                                    Number(
+                                        product.licensedUsers ||
+                                        product.users ||
+                                        1
+                                    ),
+                                    1
+                                ),
+
+                            purchaseDate:
+                                product.purchaseDate ||
+                                "Not available",
+
+                            installationDate:
+                                product.installationDate ||
+                                "Not available",
+
+                            supportType:
+                                product.supportType ||
+                                "Standard",
+
+                            amcStatus:
+                                product.amcStatus ||
+                                "Not Started",
+
+                            expiryDate:
+                                product.expiryDate ||
+                                "Not available",
+
+                            installationStatus:
+                                product.installationStatus ||
+                                "Installed",
+
+                            notes:
+                                product.notes ||
+                                "",
+                        };
+                    }
+                );
+        };
 
 
     const getSelectedClientTickets = () => {
@@ -2961,7 +3860,7 @@ export default function Admin({ onLogout }) {
                                                     </p>
 
                                                     <p className="mt-2 text-sm font-semibold text-slate-800">
-                                                        {selectedClient.assignedTo}
+                                                       {selectedClient.assignedEmployeeName || "Unassigned"}
                                                     </p>
                                                 </div>
                                             </div>
@@ -3288,112 +4187,132 @@ export default function Admin({ onLogout }) {
                                                                     </thead>
 
                                                                     <tbody>
-                                                                        {getSelectedClientProducts().map((product) => (
-                                                                            <tr
-                                                                                key={product.id}
-                                                                                className="border-b border-slate-100 transition last:border-b-0 hover:bg-slate-50/70"
-                                                                            >
-                                                                                <td className="px-5 py-4 lg:px-6">
-                                                                                    <div className="flex items-center gap-3">
-                                                                                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
-                                                                                            <Box size={18} />
-                                                                                        </div>
+                                                                        {getSelectedClientProducts()
+                                                                            .length === 0 ? (
+                                                                            <tr>
+                                                                                <td
+                                                                                    colSpan={9}
+                                                                                    className="px-6 py-10 text-center"
+                                                                                >
+                                                                                    <Box
+                                                                                        size={28}
+                                                                                        className="mx-auto text-slate-300"
+                                                                                    />
 
-                                                                                        <div>
-                                                                                            <p className="text-sm font-semibold text-slate-900">
-                                                                                                {product.name}
-                                                                                            </p>
+                                                                                    <p className="mt-3 text-sm font-semibold text-slate-700">
+                                                                                        No products assigned
+                                                                                    </p>
 
-                                                                                            <p className="mt-0.5 text-[10px] text-slate-400">
-                                                                                                Installed {product.installationDate}
-                                                                                            </p>
-                                                                                        </div>
-                                                                                    </div>
-                                                                                </td>
-
-                                                                                <td className="px-5 py-4">
-                                                                                    <span className="rounded-lg bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">
-                                                                                        {product.version}
-                                                                                    </span>
-                                                                                </td>
-
-                                                                                <td className="px-5 py-4 text-xs font-medium text-slate-600">
-                                                                                    {product.purchaseDate}
-                                                                                </td>
-
-                                                                                <td className="px-5 py-4">
-                                                                                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                                                                                        <UsersRound size={14} className="text-slate-400" />
-                                                                                        {product.users}
-                                                                                    </span>
-                                                                                </td>
-
-                                                                                <td className="px-5 py-4">
-                                                                                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                                                                                        <ShieldCheck
-                                                                                            size={14}
-                                                                                            className="text-emerald-500"
-                                                                                        />
-                                                                                        {product.supportType}
-                                                                                    </span>
-                                                                                </td>
-
-                                                                                <td className="px-5 py-4">
-                                                                                    <span
-                                                                                        className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ring-inset ${getClientAmcClasses(
-                                                                                            product.amcStatus
-                                                                                        )}`}
-                                                                                    >
-                                                                                        {product.amcStatus}
-                                                                                    </span>
-                                                                                </td>
-
-                                                                                <td className="px-5 py-4 text-xs font-medium text-slate-600">
-                                                                                    {product.expiryDate}
-                                                                                </td>
-
-                                                                                <td className="px-5 py-4">
-                                                                                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700">
-                                                                                        <MonitorCog size={13} />
-                                                                                        {product.installationStatus}
-                                                                                    </span>
-                                                                                </td>
-
-                                                                                <td className="px-5 py-4 lg:px-6">
-                                                                                    <div className="flex justify-end gap-2">
-                                                                                        <button
-                                                                                            type="button"
-                                                                                            onClick={() => openProductDrawer(product)}
-                                                                                            className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
-                                                                                            title="Edit product"
-                                                                                        >
-                                                                                            <Pencil size={15} />
-                                                                                        </button>
-
-                                                                                        <button
-                                                                                            type="button"
-                                                                                            disabled={
-                                                                                                deletingProductId ===
-                                                                                                (product._id || product.id)
-                                                                                            }
-                                                                                            onClick={() => handleDeleteProduct(product)}
-                                                                                            className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
-                                                                                            title="Delete product"
-                                                                                        >
-                                                                                            {deletingProductId ===
-                                                                                                (product._id || product.id) ? (
-                                                                                                <RefreshCw
-                                                                                                    size={15}
-                                                                                                    className="animate-spin"
-                                                                                                />
-                                                                                            ) : (
-                                                                                                <Trash2 size={15} />
-                                                                                            )}
-                                                                                        </button>
-                                                                                    </div>
+                                                                                    <p className="mt-1 text-xs text-slate-500">
+                                                                                        Click Assign Product to add software and licence details.
+                                                                                    </p>
                                                                                 </td>
                                                                             </tr>
-                                                                        ))}
+                                                                        ) : (
+                                                                            getSelectedClientProducts().map(
+                                                                                (product) => (
+                                                                                    <tr
+                                                                                        key={
+                                                                                            product.id ||
+                                                                                            product.productId
+                                                                                        }
+                                                                                        className="border-b border-slate-100 last:border-b-0"
+                                                                                    >
+                                                                                        <td className="px-5 py-4">
+                                                                                            <p className="text-sm font-semibold text-slate-900">
+                                                                                                {product.productName}
+                                                                                            </p>
+
+                                                                                            <p className="mt-1 text-[11px] text-slate-500">
+                                                                                                {product.productCode ||
+                                                                                                    "No product code"}
+                                                                                            </p>
+                                                                                        </td>
+
+                                                                                        <td className="px-5 py-4 text-sm text-slate-600">
+                                                                                            {product.version}
+                                                                                        </td>
+
+                                                                                        <td className="px-5 py-4 text-sm text-slate-600">
+                                                                                            {formatClientDate(
+                                                                                                product.purchaseDate
+                                                                                            )}
+                                                                                        </td>
+
+                                                                                        <td className="px-5 py-4 text-sm font-semibold text-slate-800">
+                                                                                            {product.licensedUsers}
+                                                                                        </td>
+
+                                                                                        <td className="px-5 py-4 text-sm text-slate-600">
+                                                                                            {product.supportType}
+                                                                                        </td>
+
+                                                                                        <td className="px-5 py-4">
+                                                                                            <span
+                                                                                                className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ring-inset ${getClientAmcClasses(
+                                                                                                    product.amcStatus
+                                                                                                )}`}
+                                                                                            >
+                                                                                                {product.amcStatus}
+                                                                                            </span>
+                                                                                        </td>
+
+                                                                                        <td className="px-5 py-4 text-sm text-slate-600">
+                                                                                            {formatClientDate(
+                                                                                                product.expiryDate
+                                                                                            )}
+                                                                                        </td>
+
+                                                                                        <td className="px-5 py-4">
+                                                                                            <span
+                                                                                                className={
+                                                                                                    product.installationStatus ===
+                                                                                                        "Installed"
+                                                                                                        ? "text-xs font-semibold text-emerald-700"
+                                                                                                        : "text-xs font-semibold text-amber-700"
+                                                                                                }
+                                                                                            >
+                                                                                                {
+                                                                                                    product.installationStatus
+                                                                                                }
+                                                                                            </span>
+                                                                                        </td>
+
+                                                                                        <td className="px-5 py-4">
+                                                                                            <div className="flex justify-end gap-2">
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    onClick={() =>
+                                                                                                        openProductDrawer(
+                                                                                                            product
+                                                                                                        )
+                                                                                                    }
+                                                                                                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
+                                                                                                >
+                                                                                                    <Pencil size={14} />
+                                                                                                </button>
+
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    disabled={
+                                                                                                        deletingProductId ===
+                                                                                                        product.id
+                                                                                                    }
+                                                                                                    onClick={() =>
+                                                                                                        handleDeleteProduct(
+                                                                                                            product
+                                                                                                        )
+                                                                                                    }
+                                                                                                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                                                                                                >
+                                                                                                    <Trash2 size={14} />
+                                                                                                </button>
+                                                                                            </div>
+                                                                                        </td>
+                                                                                    </tr>
+                                                                                )
+                                                                            )
+                                                                        )}
                                                                     </tbody>
                                                                 </table>
                                                             </div>
@@ -4972,7 +5891,7 @@ export default function Admin({ onLogout }) {
 
                                                                 <td className="px-5 py-4">
                                                                     <p className="text-xs font-semibold text-slate-700">
-                                                                        {client.assignedTo}
+                                                                     {client.assignedEmployeeName || "Unassigned"}  
                                                                     </p>
                                                                 </td>
 
@@ -5265,7 +6184,219 @@ export default function Admin({ onLogout }) {
                                                 className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-800 outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                                             />
                                         </div>
+                                        
                                     </div>
+                                    {/* ================= CLIENT LOGIN ACCOUNT ================= */}
+{!editingClientId && (
+    <div className="sm:col-span-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        {/* Header */}
+        <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-gradient-to-r from-violet-50 via-white to-cyan-50 px-4 py-3.5">
+            <div className="flex min-w-0 items-center gap-3">
+                <div
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                        clientForm.createLogin
+                            ? "bg-violet-600 text-white shadow-lg shadow-violet-200"
+                            : "bg-slate-100 text-slate-500"
+                    }`}
+                >
+                    <ShieldCheck size={19} />
+                </div>
+
+                <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-semibold text-slate-900">
+                            Client Portal Login
+                        </h3>
+
+                        <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                clientForm.createLogin
+                                    ? "bg-emerald-100 text-emerald-700"
+                                    : "bg-slate-100 text-slate-500"
+                            }`}
+                        >
+                            {clientForm.createLogin
+                                ? "ENABLED"
+                                : "DISABLED"}
+                        </span>
+                    </div>
+
+                    <p className="mt-0.5 text-[11px] leading-4 text-slate-500">
+                        Create portal access using the client's email address.
+                    </p>
+                </div>
+            </div>
+
+            {/* Premium Toggle */}
+            <button
+                type="button"
+                role="switch"
+                aria-checked={clientForm.createLogin}
+                onClick={() =>
+                    setClientForm((current) => ({
+                        ...current,
+                        createLogin: !current.createLogin,
+                        temporaryPassword:
+                            current.createLogin
+                                ? ""
+                                : current.temporaryPassword,
+                    }))
+                }
+                className={`relative h-7 w-12 shrink-0 rounded-full transition-all duration-200 ${
+                    clientForm.createLogin
+                        ? "bg-violet-600 shadow-inner"
+                        : "bg-slate-300"
+                }`}
+            >
+                <span
+                    className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-md transition-all duration-200 ${
+                        clientForm.createLogin
+                            ? "left-6"
+                            : "left-1"
+                    }`}
+                />
+            </button>
+        </div>
+
+        {/* Login Details */}
+        {clientForm.createLogin && (
+            <div className="space-y-4 p-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                    {/* Login Email */}
+                    <div>
+                        <label className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-700">
+                            <Mail size={14} className="text-violet-600" />
+                            Login Email
+                        </label>
+
+                        <div className="flex h-11 items-center rounded-xl border border-slate-200 bg-slate-50 px-3">
+                            <Mail
+                                size={16}
+                                className="mr-2 shrink-0 text-slate-400"
+                            />
+
+                            <span className="min-w-0 truncate text-xs font-medium text-slate-700">
+                                {clientForm.email.trim() ||
+                                    "Enter client email above"}
+                            </span>
+                        </div>
+
+                        {!clientForm.email.trim() && (
+                            <p className="mt-1.5 text-[10px] font-medium text-amber-600">
+                                Email is required to create login access.
+                            </p>
+                        )}
+                    </div>
+
+                    {/* Temporary Password */}
+                    <div>
+                        <label className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-700">
+                            <Shield size={14} className="text-violet-600" />
+                            Temporary Password
+                        </label>
+
+                        <div className="flex h-11 overflow-hidden rounded-xl border border-slate-200 bg-white transition focus-within:border-violet-400 focus-within:ring-4 focus-within:ring-violet-100">
+                            <input
+                                type="text"
+                                name="temporaryPassword"
+                                value={clientForm.temporaryPassword}
+                                onChange={handleClientInputChange}
+                                placeholder="Auto-generated if blank"
+                                autoComplete="new-password"
+                                className="min-w-0 flex-1 bg-transparent px-3 text-xs font-medium text-slate-800 outline-none placeholder:text-slate-400"
+                            />
+
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const upper =
+                                        "ABCDEFGHJKLMNPQRSTUVWXYZ";
+                                    const lower =
+                                        "abcdefghijkmnopqrstuvwxyz";
+                                    const numbers =
+                                        "23456789";
+                                    const symbols =
+                                        "@#$!";
+                                    const all =
+                                        upper +
+                                        lower +
+                                        numbers +
+                                        symbols;
+
+                                    const randomFrom = (characters) =>
+                                        characters[
+                                            crypto.getRandomValues(
+                                                new Uint32Array(1)
+                                            )[0] % characters.length
+                                        ];
+
+                                    const generatedPassword = [
+                                        randomFrom(upper),
+                                        randomFrom(lower),
+                                        randomFrom(numbers),
+                                        randomFrom(symbols),
+                                        ...Array.from(
+                                            { length: 6 },
+                                            () => randomFrom(all)
+                                        ),
+                                    ]
+                                        .sort(() => Math.random() - 0.5)
+                                        .join("");
+
+                                    setClientForm((current) => ({
+                                        ...current,
+                                        temporaryPassword:
+                                            generatedPassword,
+                                    }));
+                                }}
+                                className="flex shrink-0 items-center gap-1.5 border-l border-slate-200 bg-slate-50 px-3 text-[11px] font-semibold text-violet-700 transition hover:bg-violet-50"
+                            >
+                                <RefreshCw size={13} />
+                                Generate
+                            </button>
+                        </div>
+
+                        <p className="mt-1.5 text-[10px] text-slate-400">
+                            Leave blank to let the server generate it.
+                        </p>
+                    </div>
+                </div>
+
+                {/* Information Strip */}
+                <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/70 px-3.5 py-3">
+                    <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-700">
+                        <ShieldCheck size={15} />
+                    </div>
+
+                    <div>
+                        <p className="text-[11px] font-semibold text-blue-900">
+                            Secure first login
+                        </p>
+
+                        <p className="mt-0.5 text-[10px] leading-4 text-blue-700">
+                            The client will log in with this temporary
+                            password and will be required to change it
+                            after the first login.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {!clientForm.createLogin && (
+            <div className="flex items-center gap-3 px-4 py-3.5">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+                    <AlertCircle size={15} />
+                </div>
+
+                <p className="text-[11px] leading-4 text-slate-500">
+                    The client record will be created without portal
+                    access. Login can be enabled later.
+                </p>
+            </div>
+        )}
+    </div>
+)}
 
                                     <div>
                                         <label className="mb-2 block text-xs font-semibold text-slate-700">
@@ -5291,22 +6422,141 @@ export default function Admin({ onLogout }) {
 
                                     <div className="sm:col-span-2">
                                         <label className="mb-2 block text-xs font-semibold text-slate-700">
-                                            Products
+                                            Product
                                         </label>
 
-                                        <input
-                                            name="products"
-                                            value={clientForm.products}
-                                            onChange={handleClientInputChange}
-                                            placeholder="NexERP, StockPro, BillFlow"
-                                            required
-                                            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                        />
+                                        <select
+                                            name="productId"
+                                            value={clientForm.productId}
+                                            disabled={
+                                                productMastersLoading ||
+                                                savingClient
+                                            }
+                                            onChange={(event) => {
+                                                const selectedProduct =
+                                                    productMasters.find(
+                                                        (product) =>
+                                                            String(product.id) ===
+                                                            String(event.target.value)
+                                                    );
 
-                                        <p className="mt-1.5 text-[10px] text-slate-400">
-                                            Enter multiple products separated by commas.
-                                        </p>
+                                                setClientForm((current) => ({
+                                                    ...current,
+
+                                                    productId:
+                                                        selectedProduct?.id ||
+                                                        "",
+
+                                                    productVersion:
+                                                        selectedProduct?.currentVersion ||
+                                                        "v1.0.0",
+                                                }));
+                                            }}
+                                            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100 disabled:bg-slate-100"
+                                        >
+                                            <option value="">
+                                                {productMastersLoading
+                                                    ? "Loading products..."
+                                                    : "Select product"}
+                                            </option>
+
+                                            {productMasters.map((product) => (
+                                                <option
+                                                    key={product.id}
+                                                    value={product.id}
+                                                >
+                                                    {product.productCode
+                                                        ? `${product.productCode} — ${product.productName}`
+                                                        : product.productName}
+                                                </option>
+                                            ))}
+                                        </select>
+
+                                        {productMastersError && (
+                                            <p className="mt-2 text-xs font-medium text-rose-600">
+                                                {productMastersError}
+                                            </p>
+                                        )}
                                     </div>
+
+                                    {clientForm.productId && (
+                                        <>
+                                            <div>
+                                                <label className="mb-2 block text-xs font-semibold text-slate-700">
+                                                    Product Version
+                                                </label>
+
+                                                <input
+                                                    type="text"
+                                                    name="productVersion"
+                                                    value={clientForm.productVersion}
+                                                    onChange={handleClientInputChange}
+                                                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="mb-2 block text-xs font-semibold text-slate-700">
+                                                    Licensed Users
+                                                </label>
+
+                                                <input
+                                                    type="number"
+                                                    name="licensedUsers"
+                                                    min="1"
+                                                    value={clientForm.licensedUsers}
+                                                    onChange={handleClientInputChange}
+                                                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="mb-2 block text-xs font-semibold text-slate-700">
+                                                    Support Type
+                                                </label>
+
+                                                <select
+                                                    name="supportType"
+                                                    value={clientForm.supportType}
+                                                    onChange={handleClientInputChange}
+                                                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                >
+                                                    <option value="Basic">Basic</option>
+                                                    <option value="Standard">Standard</option>
+                                                    <option value="Premium">Premium</option>
+                                                </select>
+                                            </div>
+
+                                            <div>
+                                                <label className="mb-2 block text-xs font-semibold text-slate-700">
+                                                    Installation Status
+                                                </label>
+
+                                                <select
+                                                    name="installationStatus"
+                                                    value={clientForm.installationStatus}
+                                                    onChange={handleClientInputChange}
+                                                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                >
+                                                    <option value="Not Installed">
+                                                        Not Installed
+                                                    </option>
+
+                                                    <option value="Installation Pending">
+                                                        Installation Pending
+                                                    </option>
+
+                                                    <option value="Installed">
+                                                        Installed
+                                                    </option>
+
+                                                    <option value="Inactive">
+                                                        Inactive
+                                                    </option>
+                                                </select>
+                                            </div>
+                                        </>
+                                    )}
 
                                     <div>
                                         <label className="mb-2 block text-xs font-semibold text-slate-700">
@@ -5345,20 +6595,80 @@ export default function Admin({ onLogout }) {
                                             Assigned Employee
                                         </label>
 
-                                        <select
-                                            name="assignedTo"
-                                            value={clientForm.assignedTo}
-                                            onChange={handleClientInputChange}
-                                            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                        >
-                                            <option value="">Select employee</option>
+                                       <select
+    name="assignedEmployeeId"
+    value={
+        clientForm.assignedEmployeeId ||
+        ""
+    }
+    onChange={(event) => {
+        const selectedEmployee =
+            employees.find(
+                (employee) =>
+                    String(employee.id) ===
+                    String(event.target.value)
+            );
 
-                                            {teamMembers.map((member) => (
-                                                <option key={member.id} value={member.name}>
-                                                    {member.name}
-                                                </option>
-                                            ))}
-                                        </select>
+        setClientForm((current) => ({
+            ...current,
+
+            assignedEmployeeId:
+                event.target.value,
+
+            assignedEmployeeCode:
+                selectedEmployee?.employeeCode ||
+                "",
+
+            assignedEmployeeName:
+                selectedEmployee?.name ||
+                "",
+        }));
+    }}
+    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+>
+    <option value="">
+        Unassigned
+    </option>
+
+    {employeesLoading && (
+        <option disabled>
+            Loading employees...
+        </option>
+    )}
+
+    {employees.map((employee) => (
+        <option
+            key={
+                employee.id ||
+                employee._id
+            }
+            value={
+                employee.id ||
+                employee._id
+            }
+        >
+            {employee.employeeCode
+                ? `${employee.employeeCode} - ${employee.name}`
+                : employee.name}
+        </option>
+    ))}
+</select>
+
+                                        {employeesError && (
+                                            <div className="mt-2 flex items-center justify-between gap-3">
+                                                <p className="text-xs font-medium text-rose-600">
+                                                    {employeesError}
+                                                </p>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={loadEmployees}
+                                                    className="text-xs font-semibold text-violet-600 hover:text-violet-700"
+                                                >
+                                                    Retry
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
 
                                     <div>
@@ -5405,11 +6715,17 @@ export default function Admin({ onLogout }) {
                                         </>
                                     )}
                                 </button>
+                                
                             </div>
+                            
                         </form>
+                       
                     </aside>
+                    
                 </>
+                
             )}{/* Assign Product Drawer */}
+            
             {productDrawerOpen && selectedClient && (
                 <>
                     <button

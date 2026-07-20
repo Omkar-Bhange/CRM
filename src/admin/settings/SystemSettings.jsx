@@ -10,6 +10,7 @@ import {
     FolderKanban,
     GripVertical,
     KeyRound,
+    Loader2,
     Mail,
     Pencil,
     Plus,
@@ -22,8 +23,70 @@ import {
     Users,
     X,
 } from "lucide-react";
+const API_URL =
+    import.meta.env.VITE_API_URL ||
+    "http://localhost:5000";
 
-const SETTINGS_STORAGE_KEY = "client-connect-system-settings";
+const getAuthToken = () => {
+    return (
+        localStorage.getItem(
+            "client-connect-token"
+        ) ||
+        sessionStorage.getItem(
+            "client-connect-token"
+        ) ||
+        ""
+    );
+};
+
+const SETTINGS_API_URL =
+    `${API_URL}/api/settings`;
+
+const getSettingsHeaders = (
+    includeContentType = false
+) => {
+    const token = getAuthToken();
+
+    const headers = {
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+    };
+
+    if (includeContentType) {
+        headers["Content-Type"] =
+            "application/json";
+    }
+
+    return headers;
+};
+
+const parseApiResponse = async (
+    response,
+    fallbackMessage
+) => {
+    let result = null;
+
+    try {
+        result =
+            await response.json();
+    } catch {
+        result = null;
+    }
+
+    if (
+        !response.ok ||
+        !result?.success
+    ) {
+        throw new Error(
+            result?.message ||
+            fallbackMessage
+        );
+    }
+
+    return result;
+};
+
+
 
 const defaultSettings = {
     company: {
@@ -42,48 +105,6 @@ const defaultSettings = {
         timezone: "Asia/Kolkata",
     },
 
-    projects: [
-        {
-            id: 1,
-            code: "PRJ-001",
-            name: "NexERP",
-            category: "ERP",
-            description: "Enterprise resource planning and billing software.",
-            status: "Active",
-        },
-        {
-            id: 2,
-            code: "PRJ-002",
-            name: "BillFlow",
-            category: "Billing",
-            description: "Billing, invoicing and customer account software.",
-            status: "Active",
-        },
-        {
-            id: 3,
-            code: "PRJ-003",
-            name: "StockPro",
-            category: "Inventory",
-            description: "Stock, batch and warehouse management software.",
-            status: "Active",
-        },
-        {
-            id: 4,
-            code: "PRJ-004",
-            name: "RetailPOS",
-            category: "POS",
-            description: "Retail billing and point-of-sale software.",
-            status: "Active",
-        },
-        {
-            id: 5,
-            code: "PRJ-005",
-            name: "PayrollIX",
-            category: "Payroll",
-            description: "Employee payroll and salary management.",
-            status: "Active",
-        },
-    ],
 
     roles: [
         {
@@ -301,9 +322,15 @@ const navigationItems = [
         icon: Building2,
     },
     {
+        id: "products",
+        label: "Products",
+        description: "Software products sold and supported",
+        icon: BriefcaseBusiness,
+    },
+    {
         id: "projects",
         label: "Projects",
-        description: "Software products and projects",
+        description: "Development and implementation work",
         icon: FolderKanban,
     },
     {
@@ -344,13 +371,43 @@ const navigationItems = [
     },
 ];
 
+const emptyProduct = {
+    id: null,
+    productCode: "",
+    productName: "",
+    category: "Software",
+    description: "",
+    currentVersion: "v1.0.0",
+    platform: "Web",
+    releaseDate: "",
+    status: "Active",
+};
 const emptyProject = {
     id: null,
-    code: "",
-    name: "",
-    category: "",
+
+    projectCode: "",
+    projectName: "",
+
+    projectType:
+        "Internal Development",
+
+    productId: "",
+    productCode: "",
+    productName: "",
+
+    clientId: "",
+    clientCode: "",
+    clientName: "",
+
     description: "",
-    status: "Active",
+
+    startDate: "",
+    dueDate: "",
+
+    priority: "Medium",
+    status: "Planned",
+
+    progress: 0,
 };
 
 const emptyRole = {
@@ -411,34 +468,190 @@ function cloneDefaultSettings() {
 
 function readStoredSettings() {
     try {
-        const storedValue = localStorage.getItem(SETTINGS_STORAGE_KEY);
+        const storedValue =
+            localStorage.getItem(
+                SETTINGS_STORAGE_KEY
+            );
 
         if (!storedValue) {
             return cloneDefaultSettings();
         }
 
-        const parsedValue = JSON.parse(storedValue);
+        const parsedValue =
+            JSON.parse(
+                storedValue
+            );
 
         return {
             ...cloneDefaultSettings(),
             ...parsedValue,
             company: {
                 ...defaultSettings.company,
-                ...(parsedValue.company || {}),
+                ...(parsedValue.company ||
+                    {}),
             },
             workingHours: {
                 ...defaultSettings.workingHours,
-                ...(parsedValue.workingHours || {}),
+                ...(parsedValue.workingHours ||
+                    {}),
             },
             notifications: {
                 ...defaultSettings.notifications,
-                ...(parsedValue.notifications || {}),
+                ...(parsedValue.notifications ||
+                    {}),
             },
         };
     } catch (error) {
-        console.error("Unable to read settings:", error);
+        console.error(
+            "Unable to read settings:",
+            error
+        );
+
         return cloneDefaultSettings();
     }
+}
+
+function normalizeSettingRecord(
+    record
+) {
+    return {
+        ...record,
+
+        id:
+            record?.id ||
+            record?._id ||
+            "",
+    };
+}
+
+function normalizeSettingsFromApi(
+    apiSettings
+) {
+    const source =
+        apiSettings || {};
+
+    return {
+        ...cloneDefaultSettings(),
+
+        ...source,
+
+        company: {
+            ...defaultSettings.company,
+            ...(source.company || {}),
+        },
+
+        roles:
+            Array.isArray(
+                source.roles
+            )
+                ? source.roles.map(
+                    normalizeSettingRecord
+                )
+                : [],
+
+        taskStatuses:
+            Array.isArray(
+                source.taskStatuses
+            )
+                ? source.taskStatuses
+                    .map(
+                        normalizeSettingRecord
+                    )
+                    .sort(
+                        (a, b) =>
+                            Number(
+                                a.order || 0
+                            ) -
+                            Number(
+                                b.order || 0
+                            )
+                    )
+                : [],
+
+        priorities:
+            Array.isArray(
+                source.priorities
+            )
+                ? source.priorities.map(
+                    normalizeSettingRecord
+                )
+                : [],
+
+        workingHours: {
+            ...defaultSettings.workingHours,
+            ...(source.workingHours ||
+                {}),
+        },
+
+        leaveTypes:
+            Array.isArray(
+                source.leaveTypes
+            )
+                ? source.leaveTypes.map(
+                    normalizeSettingRecord
+                )
+                : [],
+
+        notifications: {
+            ...defaultSettings.notifications,
+            ...(source.notifications ||
+                {}),
+
+            newTicket: {
+                ...defaultSettings
+                    .notifications
+                    .newTicket,
+
+                ...(source.notifications
+                    ?.newTicket || {}),
+            },
+
+            taskAssigned: {
+                ...defaultSettings
+                    .notifications
+                    .taskAssigned,
+
+                ...(source.notifications
+                    ?.taskAssigned || {}),
+            },
+
+            taskOverdue: {
+                ...defaultSettings
+                    .notifications
+                    .taskOverdue,
+
+                ...(source.notifications
+                    ?.taskOverdue || {}),
+            },
+
+            leaveRequest: {
+                ...defaultSettings
+                    .notifications
+                    .leaveRequest,
+
+                ...(source.notifications
+                    ?.leaveRequest || {}),
+            },
+
+            amcDue: {
+                ...defaultSettings
+                    .notifications
+                    .amcDue,
+
+                ...(source.notifications
+                    ?.amcDue || {}),
+            },
+
+            employeeLate: {
+                ...defaultSettings
+                    .notifications
+                    .employeeLate,
+
+                ...(source.notifications
+                    ?.employeeLate || {}),
+            },
+        },
+    };
 }
 
 function getColorClasses(color) {
@@ -456,17 +669,36 @@ function getColorClasses(color) {
 }
 
 function StatusBadge({ status }) {
-    const active = status === "Active";
+    const styles = {
+        Active:
+            "bg-emerald-50 text-emerald-700 ring-emerald-600/10",
+
+        Inactive:
+            "bg-slate-100 text-slate-600 ring-slate-500/10",
+
+        Deprecated:
+            "bg-rose-50 text-rose-700 ring-rose-600/10",
+
+        Planned:
+            "bg-blue-50 text-blue-700 ring-blue-600/10",
+
+        "On Hold":
+            "bg-amber-50 text-amber-700 ring-amber-600/10",
+
+        Completed:
+            "bg-emerald-50 text-emerald-700 ring-emerald-600/10",
+
+        Cancelled:
+            "bg-rose-50 text-rose-700 ring-rose-600/10",
+    };
 
     return (
         <span
-            className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ring-inset ${
-                active
-                    ? "bg-emerald-50 text-emerald-700 ring-emerald-600/10"
-                    : "bg-slate-100 text-slate-500 ring-slate-500/10"
-            }`}
+            className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ring-inset ${styles[status] ||
+                styles.Inactive
+                }`}
         >
-            {status}
+            {status || "Inactive"}
         </span>
     );
 }
@@ -477,14 +709,12 @@ function Toggle({ enabled, onChange, disabled = false }) {
             type="button"
             disabled={disabled}
             onClick={() => onChange(!enabled)}
-            className={`relative h-6 w-11 rounded-full transition ${
-                enabled ? "bg-violet-600" : "bg-slate-200"
-            } ${disabled ? "cursor-not-allowed opacity-50" : ""}`}
+            className={`relative h-6 w-11 rounded-full transition ${enabled ? "bg-violet-600" : "bg-slate-200"
+                } ${disabled ? "cursor-not-allowed opacity-50" : ""}`}
         >
             <span
-                className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition ${
-                    enabled ? "left-6" : "left-1"
-                }`}
+                className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition ${enabled ? "left-6" : "left-1"
+                    }`}
             />
         </button>
     );
@@ -506,6 +736,7 @@ function SettingsDrawer({
     onClose,
     onSubmit,
     submitLabel = "Save",
+    submitting = false,
 }) {
     return (
         <>
@@ -557,10 +788,21 @@ function SettingsDrawer({
 
                         <button
                             type="submit"
-                            className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700"
+                            disabled={submitting}
+                            className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                            <Save size={15} />
-                            {submitLabel}
+                            {submitting ? (
+                                <Loader2
+                                    size={15}
+                                    className="animate-spin"
+                                />
+                            ) : (
+                                <Save size={15} />
+                            )}
+
+                            {submitting
+                                ? "Saving..."
+                                : submitLabel}
                         </button>
                     </div>
                 </form>
@@ -571,22 +813,481 @@ function SettingsDrawer({
 
 export default function SystemSettings() {
     const [activeSection, setActiveSection] = useState("company");
-    const [settings, setSettings] = useState(readStoredSettings);
-    const [savedMessage, setSavedMessage] = useState("");
+    const [settings, setSettings] =
+        useState(cloneDefaultSettings);
+    const [recordSaving, setRecordSaving] =
+        useState(false);
 
-    const [drawerType, setDrawerType] = useState("");
-    const [projectForm, setProjectForm] = useState(emptyProject);
+    const [settingsLoading, setSettingsLoading] =
+        useState(true);
+
+    const [settingsSaving, setSettingsSaving] =
+        useState(false);
+
+    const [settingsError, setSettingsError] =
+        useState("");
+
+    const [savedMessage, setSavedMessage] =
+        useState("");
+    const [drawerType, setDrawerType] =
+        useState("");
+
+    const [products, setProducts] =
+        useState([]);
+
+    const [productsLoading, setProductsLoading] =
+        useState(false);
+
+    const [productsError, setProductsError] =
+        useState("");
+
+    const [productSaving, setProductSaving] =
+        useState(false);
+
+    const [productFormError, setProductFormError] =
+        useState("");
+
+    const [productForm, setProductForm] =
+        useState(emptyProduct);
+    const [projects, setProjects] =
+        useState([]);
+
+    const [projectsLoading, setProjectsLoading] =
+        useState(false);
+
+    const [projectsError, setProjectsError] =
+        useState("");
+
+    const [projectSaving, setProjectSaving] =
+        useState(false);
+
+    const [projectFormError, setProjectFormError] =
+        useState("");
+
+    const [projectForm, setProjectForm] =
+        useState(emptyProject);
+
+    const [clients, setClients] =
+        useState([]);
+
+    const [clientsLoading, setClientsLoading] =
+        useState(false);
     const [roleForm, setRoleForm] = useState(emptyRole);
     const [statusForm, setStatusForm] = useState(emptyStatus);
     const [priorityForm, setPriorityForm] = useState(emptyPriority);
     const [leaveTypeForm, setLeaveTypeForm] = useState(emptyLeaveType);
+    const normalizeProductFromApi = (
+        product
+    ) => ({
+        id:
+            product.id ||
+            product._id ||
+            "",
 
-    useEffect(() => {
-        localStorage.setItem(
-            SETTINGS_STORAGE_KEY,
-            JSON.stringify(settings)
-        );
-    }, [settings]);
+        productCode:
+            product.productCode ||
+            "",
+
+        productName:
+            product.productName ||
+            "",
+
+        category:
+            product.category ||
+            "Software",
+
+        description:
+            product.description ||
+            "",
+
+        currentVersion:
+            product.currentVersion ||
+            "v1.0.0",
+
+        platform:
+            product.platform ||
+            "Web",
+
+        releaseDate:
+            product.releaseDate
+                ? String(
+                    product.releaseDate
+                ).slice(0, 10)
+                : "",
+
+        status:
+            product.status ||
+            "Active",
+
+        createdAt:
+            product.createdAt ||
+            null,
+
+        updatedAt:
+            product.updatedAt ||
+            null,
+    });
+
+    const normalizeProjectFromApi = (
+        project
+    ) => ({
+        id:
+            project.id ||
+            project._id ||
+            "",
+
+        projectCode:
+            project.projectCode ||
+            "",
+
+        projectName:
+            project.projectName ||
+            "",
+
+        projectType:
+            project.projectType ||
+            "Internal Development",
+
+        productId:
+            project.productId ||
+            "",
+
+        productCode:
+            project.productCode ||
+            "",
+
+        productName:
+            project.productName ||
+            "",
+
+        clientId:
+            project.clientId ||
+            "",
+
+        clientCode:
+            project.clientCode ||
+            "",
+
+        clientName:
+            project.clientName ||
+            "",
+
+        description:
+            project.description ||
+            "",
+
+        startDate:
+            project.startDate
+                ? String(
+                    project.startDate
+                ).slice(0, 10)
+                : "",
+
+        dueDate:
+            project.dueDate
+                ? String(
+                    project.dueDate
+                ).slice(0, 10)
+                : "",
+
+        completedDate:
+            project.completedDate
+                ? String(
+                    project.completedDate
+                ).slice(0, 10)
+                : "",
+
+        priority:
+            project.priority ||
+            "Medium",
+
+        status:
+            project.status ||
+            "Planned",
+
+        progress:
+            Number(
+                project.progress || 0
+            ),
+
+        createdAt:
+            project.createdAt ||
+            null,
+
+        updatedAt:
+            project.updatedAt ||
+            null,
+    });
+    const normalizeClientFromApi = (
+        client
+    ) => ({
+        id:
+            client.id ||
+            client._id ||
+            "",
+
+        clientCode:
+            client.clientCode ||
+            "",
+
+        companyName:
+            client.companyName ||
+            client.clientName ||
+            "",
+    });
+    const loadSystemSettings = async () => {
+        try {
+            setSettingsLoading(true);
+            setSettingsError("");
+
+            const token =
+                getAuthToken();
+
+            if (!token) {
+                throw new Error(
+                    "Login token was not found. Please login again."
+                );
+            }
+
+            const response = await fetch(
+                SETTINGS_API_URL,
+                {
+                    method: "GET",
+
+                    headers:
+                        getSettingsHeaders(),
+                }
+            );
+
+            const result =
+                await parseApiResponse(
+                    response,
+                    "Unable to load system settings."
+                );
+
+            const normalizedSettings =
+                normalizeSettingsFromApi(
+                    result.data
+                );
+
+            setSettings(
+                normalizedSettings
+            );
+        } catch (error) {
+            console.error(
+                "Load system settings error:",
+                error
+            );
+
+            setSettingsError(
+                error.message ||
+                "Unable to load system settings."
+            );
+        } finally {
+            setSettingsLoading(false);
+        }
+    };
+
+    const loadProducts = async () => {
+        try {
+            setProductsLoading(true);
+            setProductsError("");
+
+            const token =
+                getAuthToken();
+
+            if (!token) {
+                throw new Error(
+                    "Login token was not found. Please login again."
+                );
+            }
+
+            const response = await fetch(
+                `${API_URL}/api/admin/products`,
+                {
+                    headers: {
+                        Accept:
+                            "application/json",
+
+                        Authorization:
+                            `Bearer ${token}`,
+                    },
+                }
+            );
+
+            const result =
+                await response.json();
+
+            if (
+                !response.ok ||
+                !result.success
+            ) {
+                throw new Error(
+                    result.message ||
+                    "Unable to load products."
+                );
+            }
+
+            const rows =
+                Array.isArray(result.data)
+                    ? result.data
+                    : [];
+
+            setProducts(
+                rows.map(
+                    normalizeProductFromApi
+                )
+            );
+        } catch (error) {
+            console.error(
+                "Load products error:",
+                error
+            );
+
+            setProductsError(
+                error.message ||
+                "Unable to load products."
+            );
+
+            setProducts([]);
+        } finally {
+            setProductsLoading(false);
+        }
+    };
+    const loadProjects = async () => {
+        try {
+            setProjectsLoading(true);
+            setProjectsError("");
+
+            const token =
+                getAuthToken();
+
+            if (!token) {
+                throw new Error(
+                    "Login token was not found. Please login again."
+                );
+            }
+
+            const response = await fetch(
+                `${API_URL}/api/admin/projects`,
+                {
+                    headers: {
+                        Accept:
+                            "application/json",
+
+                        Authorization:
+                            `Bearer ${token}`,
+                    },
+                }
+            );
+
+            const result =
+                await response.json();
+
+            if (
+                !response.ok ||
+                !result.success
+            ) {
+                throw new Error(
+                    result.message ||
+                    "Unable to load projects."
+                );
+            }
+
+            const rows =
+                Array.isArray(result.data)
+                    ? result.data
+                    : [];
+
+            setProjects(
+                rows.map(
+                    normalizeProjectFromApi
+                )
+            );
+        } catch (error) {
+            console.error(
+                "Load projects error:",
+                error
+            );
+
+            setProjectsError(
+                error.message ||
+                "Unable to load projects."
+            );
+
+            setProjects([]);
+        } finally {
+            setProjectsLoading(false);
+        }
+    };
+
+    const loadClients = async () => {
+        try {
+            setClientsLoading(true);
+
+            const token =
+                getAuthToken();
+
+            if (!token) {
+                throw new Error(
+                    "Login token was not found."
+                );
+            }
+
+            const response = await fetch(
+                `${API_URL}/api/admin/clients`,
+                {
+                    headers: {
+                        Accept:
+                            "application/json",
+
+                        Authorization:
+                            `Bearer ${token}`,
+                    },
+                }
+            );
+
+            const result =
+                await response.json();
+
+            if (
+                !response.ok ||
+                !result.success
+            ) {
+                throw new Error(
+                    result.message ||
+                    "Unable to load clients."
+                );
+            }
+
+            const rows =
+                Array.isArray(result.data)
+                    ? result.data
+                    : [];
+
+            setClients(
+                rows
+                    .map(
+                        normalizeClientFromApi
+                    )
+                    .sort((a, b) =>
+                        a.companyName.localeCompare(
+                            b.companyName
+                        )
+                    )
+            );
+        } catch (error) {
+            console.error(
+                "Load clients error:",
+                error
+            );
+
+            setClients([]);
+        } finally {
+            setClientsLoading(false);
+        }
+    };
+
 
     const activeNavigation = useMemo(
         () =>
@@ -603,6 +1304,14 @@ export default function SystemSettings() {
         }, 2500);
     };
 
+
+
+    useEffect(() => {
+        loadSystemSettings();
+        loadProducts();
+        loadProjects();
+        loadClients();
+    }, []);
     const handleCompanyChange = (event) => {
         const { name, value } = event.target;
 
@@ -626,8 +1335,8 @@ export default function SystemSettings() {
                     type === "checkbox"
                         ? checked
                         : type === "number"
-                          ? Number(value)
-                          : value,
+                            ? Number(value)
+                            : value,
             },
         }));
     };
@@ -676,97 +1385,843 @@ export default function SystemSettings() {
         });
     };
 
-    const saveSection = () => {
-        localStorage.setItem(
-            SETTINGS_STORAGE_KEY,
-            JSON.stringify(settings)
-        );
+    const saveSection = async () => {
+        try {
+            setSettingsSaving(true);
+            setSettingsError("");
 
-        showSavedMessage(`${activeNavigation.label} settings saved.`);
+            let endpoint = "";
+            let payload = {};
+
+            switch (activeSection) {
+                case "company":
+                    endpoint =
+                        `${SETTINGS_API_URL}/company`;
+
+                    payload =
+                        settings.company;
+
+                    break;
+
+                case "workingHours":
+                    endpoint =
+                        `${SETTINGS_API_URL}/working-hours`;
+
+                    payload =
+                        settings.workingHours;
+
+                    break;
+
+                case "notifications":
+                    endpoint =
+                        `${SETTINGS_API_URL}/notifications`;
+
+                    payload =
+                        settings.notifications;
+
+                    break;
+
+                default:
+                    showSavedMessage(
+                        `${activeNavigation.label} uses individual save actions.`
+                    );
+
+                    return;
+            }
+
+            const response = await fetch(
+                endpoint,
+                {
+                    method: "PUT",
+
+                    headers:
+                        getSettingsHeaders(
+                            true
+                        ),
+
+                    body:
+                        JSON.stringify(
+                            payload
+                        ),
+                }
+            );
+
+            const result =
+                await parseApiResponse(
+                    response,
+                    `Unable to save ${activeNavigation.label} settings.`
+                );
+
+            setSettings(
+                (current) => ({
+                    ...current,
+
+                    [activeSection]:
+                        result.data,
+                })
+            );
+
+            showSavedMessage(
+                `${activeNavigation.label} settings saved successfully.`
+            );
+        } catch (error) {
+            console.error(
+                "Save settings error:",
+                error
+            );
+
+            setSettingsError(
+                error.message ||
+                "Unable to save settings."
+            );
+        } finally {
+            setSettingsSaving(false);
+        }
     };
+
+    // const closeDrawer = () => {
+    //     if (productSaving) {
+    //         return;
+    //     }
+
+    //     setDrawerType("");
+
+    //     setProductForm({
+    //         ...emptyProduct,
+    //     });
+
+    //     setProductFormError("");
+
+    //     setRoleForm(emptyRole);
+    //     setStatusForm(emptyStatus);
+    //     setPriorityForm(emptyPriority);
+    //     setLeaveTypeForm(emptyLeaveType);
+    // };
+
 
     const closeDrawer = () => {
+        if (
+            productSaving ||
+            projectSaving ||
+            recordSaving
+        ) {
+            return;
+        }
+
         setDrawerType("");
-        setProjectForm(emptyProject);
-        setRoleForm(emptyRole);
-        setStatusForm(emptyStatus);
-        setPriorityForm(emptyPriority);
-        setLeaveTypeForm(emptyLeaveType);
+
+        setProductForm({
+            ...emptyProduct,
+        });
+
+        setProductFormError("");
+
+        setProjectForm({
+            ...emptyProject,
+        });
+
+        setProjectFormError("");
+
+        setRoleForm({
+            ...emptyRole,
+        });
+
+        setStatusForm({
+            ...emptyStatus,
+        });
+
+        setPriorityForm({
+            ...emptyPriority,
+        });
+
+        setLeaveTypeForm({
+            ...emptyLeaveType,
+        });
     };
 
-    const openProjectDrawer = (project = null) => {
-        setProjectForm(project ? { ...project } : { ...emptyProject });
+    const openProductDrawer = (
+        product = null
+    ) => {
+        setProductFormError("");
+
+        setProductForm(
+            product
+                ? {
+                    ...normalizeProductFromApi(
+                        product
+                    ),
+                }
+                : {
+                    ...emptyProduct,
+                }
+        );
+
+        setDrawerType("product");
+    };
+
+    const openProjectDrawer = (
+        project = null
+    ) => {
+        setProjectFormError("");
+
+        setProjectForm(
+            project
+                ? {
+                    ...normalizeProjectFromApi(
+                        project
+                    ),
+                }
+                : {
+                    ...emptyProject,
+                }
+        );
+
         setDrawerType("project");
     };
 
-    const saveProject = (event) => {
+    const saveProduct = async (
+        event
+    ) => {
         event.preventDefault();
 
-        if (!projectForm.code.trim() || !projectForm.name.trim()) {
-            alert("Project code and project name are required.");
+        const productCode =
+            productForm.productCode
+                .trim()
+                .toUpperCase();
+
+        const productName =
+            productForm.productName.trim();
+
+        if (!productCode) {
+            setProductFormError(
+                "Product code is required."
+            );
             return;
         }
 
-        const duplicate = settings.projects.some(
-            (project) =>
-                project.id !== projectForm.id &&
-                (project.code.toLowerCase() ===
-                    projectForm.code.trim().toLowerCase() ||
-                    project.name.toLowerCase() ===
-                        projectForm.name.trim().toLowerCase())
-        );
-
-        if (duplicate) {
-            alert("A project with the same code or name already exists.");
+        if (!productName) {
+            setProductFormError(
+                "Product name is required."
+            );
             return;
         }
 
-        setSettings((current) => ({
-            ...current,
-            projects: projectForm.id
-                ? current.projects.map((project) =>
-                      project.id === projectForm.id
-                          ? {
-                                ...projectForm,
-                                code: projectForm.code.trim(),
-                                name: projectForm.name.trim(),
-                            }
-                          : project
-                  )
-                : [
-                      ...current.projects,
-                      {
-                          ...projectForm,
-                          id: Date.now(),
-                          code: projectForm.code.trim(),
-                          name: projectForm.name.trim(),
-                      },
-                  ],
-        }));
+        try {
+            setProductSaving(true);
+            setProductFormError("");
 
-        closeDrawer();
-        showSavedMessage("Project saved.");
+            const editing =
+                Boolean(productForm.id);
+
+            const endpoint = editing
+                ? `${API_URL}/api/admin/product/${productForm.id}`
+                : `${API_URL}/api/admin/product`;
+
+            const response = await fetch(
+                endpoint,
+                {
+                    method: editing
+                        ? "PUT"
+                        : "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json",
+
+                        Accept:
+                            "application/json",
+
+                        Authorization:
+                            `Bearer ${getAuthToken()}`,
+                    },
+
+                    body: JSON.stringify({
+                        productCode,
+                        productName,
+
+                        category:
+                            productForm.category.trim() ||
+                            "Software",
+
+                        description:
+                            productForm.description.trim(),
+
+                        currentVersion:
+                            productForm.currentVersion.trim() ||
+                            "v1.0.0",
+
+                        platform:
+                            productForm.platform ||
+                            "Web",
+
+                        releaseDate:
+                            productForm.releaseDate ||
+                            null,
+
+                        status:
+                            productForm.status ||
+                            "Active",
+                    }),
+                }
+            );
+
+            const result =
+                await response.json();
+
+            if (
+                !response.ok ||
+                !result.success
+            ) {
+                throw new Error(
+                    result.message ||
+                    "Unable to save product."
+                );
+            }
+
+            const savedProduct =
+                normalizeProductFromApi(
+                    result.data
+                );
+
+            setProducts((current) => {
+                if (editing) {
+                    return current
+                        .map((product) =>
+                            String(
+                                product.id
+                            ) ===
+                                String(
+                                    savedProduct.id
+                                )
+                                ? savedProduct
+                                : product
+                        )
+                        .sort((a, b) =>
+                            a.productName.localeCompare(
+                                b.productName
+                            )
+                        );
+                }
+
+                return [
+                    ...current,
+                    savedProduct,
+                ].sort((a, b) =>
+                    a.productName.localeCompare(
+                        b.productName
+                    )
+                );
+            });
+
+            setDrawerType("");
+
+            setProductForm({
+                ...emptyProduct,
+            });
+
+            showSavedMessage(
+                editing
+                    ? "Product updated successfully."
+                    : "Product created successfully."
+            );
+        } catch (error) {
+            console.error(
+                "Save product error:",
+                error
+            );
+
+            setProductFormError(
+                error.message ||
+                "Unable to save product."
+            );
+        } finally {
+            setProductSaving(false);
+        }
     };
 
-    const deleteProject = (projectId) => {
-        const project = settings.projects.find(
-            (item) => item.id === projectId
-        );
+    const saveProject = async (
+        event
+    ) => {
+        event.preventDefault();
 
-        if (!project) return;
+        const projectCode =
+            projectForm.projectCode
+                .trim()
+                .toUpperCase();
 
-        const confirmed = window.confirm(
-            `Delete project "${project.name}"?`
-        );
+        const projectName =
+            projectForm.projectName
+                .trim();
 
-        if (!confirmed) return;
+        if (!projectCode) {
+            setProjectFormError(
+                "Project code is required."
+            );
+            return;
+        }
 
-        setSettings((current) => ({
-            ...current,
-            projects: current.projects.filter(
-                (item) => item.id !== projectId
-            ),
-        }));
+        if (!projectName) {
+            setProjectFormError(
+                "Project name is required."
+            );
+            return;
+        }
+
+        const normalizedProgress =
+            Math.min(
+                Math.max(
+                    Number(
+                        projectForm.progress ||
+                        0
+                    ),
+                    0
+                ),
+                100
+            );
+
+        try {
+            setProjectSaving(true);
+            setProjectFormError("");
+
+            const editing =
+                Boolean(projectForm.id);
+
+            const endpoint = editing
+                ? `${API_URL}/api/admin/project/${projectForm.id}`
+                : `${API_URL}/api/admin/project`;
+
+            const response = await fetch(
+                endpoint,
+                {
+                    method: editing
+                        ? "PUT"
+                        : "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json",
+
+                        Accept:
+                            "application/json",
+
+                        Authorization:
+                            `Bearer ${getAuthToken()}`,
+                    },
+
+                    body: JSON.stringify({
+                        projectCode,
+                        projectName,
+
+                        projectType:
+                            projectForm.projectType ||
+                            "Internal Development",
+
+                        productId:
+                            projectForm.productId ||
+                            null,
+
+                        clientId:
+                            projectForm.clientId ||
+                            null,
+
+                        description:
+                            projectForm.description.trim(),
+
+                        startDate:
+                            projectForm.startDate ||
+                            null,
+
+                        dueDate:
+                            projectForm.dueDate ||
+                            null,
+
+                        priority:
+                            projectForm.priority ||
+                            "Medium",
+
+                        status:
+                            projectForm.status ||
+                            "Planned",
+
+                        progress:
+                            normalizedProgress,
+                    }),
+                }
+            );
+
+            const result =
+                await response.json();
+
+            if (
+                !response.ok ||
+                !result.success
+            ) {
+                throw new Error(
+                    result.message ||
+                    "Unable to save project."
+                );
+            }
+
+            const savedProject =
+                normalizeProjectFromApi(
+                    result.data
+                );
+
+            setProjects((current) => {
+                if (editing) {
+                    return current.map(
+                        (project) =>
+                            String(
+                                project.id
+                            ) ===
+                                String(
+                                    savedProject.id
+                                )
+                                ? savedProject
+                                : project
+                    );
+                }
+
+                return [
+                    savedProject,
+                    ...current,
+                ];
+            });
+
+            setDrawerType("");
+
+            setProjectForm({
+                ...emptyProject,
+            });
+
+            showSavedMessage(
+                editing
+                    ? "Project updated successfully."
+                    : "Project created successfully."
+            );
+        } catch (error) {
+            console.error(
+                "Save project error:",
+                error
+            );
+
+            setProjectFormError(
+                error.message ||
+                "Unable to save project."
+            );
+        } finally {
+            setProjectSaving(false);
+        }
+    };
+
+    const changeProductStatus = async (
+        product
+    ) => {
+        const nextStatus =
+            product.status === "Active"
+                ? "Inactive"
+                : "Active";
+
+        try {
+            setProductsError("");
+
+            const response = await fetch(
+                `${API_URL}/api/admin/product/${product.id}/status`,
+                {
+                    method: "PATCH",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json",
+
+                        Accept:
+                            "application/json",
+
+                        Authorization:
+                            `Bearer ${getAuthToken()}`,
+                    },
+
+                    body: JSON.stringify({
+                        status: nextStatus,
+                    }),
+                }
+            );
+
+            const result =
+                await response.json();
+
+            if (
+                !response.ok ||
+                !result.success
+            ) {
+                throw new Error(
+                    result.message ||
+                    "Unable to change product status."
+                );
+            }
+
+            const updatedProduct =
+                normalizeProductFromApi(
+                    result.data
+                );
+
+            setProducts((current) =>
+                current.map((item) =>
+                    String(item.id) ===
+                        String(updatedProduct.id)
+                        ? updatedProduct
+                        : item
+                )
+            );
+
+            showSavedMessage(
+                `Product marked ${nextStatus}.`
+            );
+        } catch (error) {
+            console.error(
+                "Change product status error:",
+                error
+            );
+
+            setProductsError(
+                error.message ||
+                "Unable to change product status."
+            );
+        }
+    };
+
+    const changeProjectStatus = async (
+        project,
+        nextStatus
+    ) => {
+        try {
+            setProjectsError("");
+
+            const response = await fetch(
+                `${API_URL}/api/admin/project/${project.id}/status`,
+                {
+                    method: "PATCH",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json",
+
+                        Accept:
+                            "application/json",
+
+                        Authorization:
+                            `Bearer ${getAuthToken()}`,
+                    },
+
+                    body: JSON.stringify({
+                        status:
+                            nextStatus,
+
+                        progress:
+                            nextStatus ===
+                                "Completed"
+                                ? 100
+                                : project.progress,
+                    }),
+                }
+            );
+
+            const result =
+                await response.json();
+
+            if (
+                !response.ok ||
+                !result.success
+            ) {
+                throw new Error(
+                    result.message ||
+                    "Unable to change project status."
+                );
+            }
+
+            const updatedProject =
+                normalizeProjectFromApi(
+                    result.data
+                );
+
+            setProjects((current) =>
+                current.map((item) =>
+                    String(item.id) ===
+                        String(
+                            updatedProject.id
+                        )
+                        ? updatedProject
+                        : item
+                )
+            );
+
+            showSavedMessage(
+                `Project marked ${nextStatus}.`
+            );
+        } catch (error) {
+            console.error(
+                "Change project status error:",
+                error
+            );
+
+            setProjectsError(
+                error.message ||
+                "Unable to change project status."
+            );
+        }
+    };
+
+    const deleteProduct = async (
+        product
+    ) => {
+        const confirmed =
+            window.confirm(
+                `Delete product "${product.productName}"?`
+            );
+
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            setProductsError("");
+
+            const response = await fetch(
+                `${API_URL}/api/admin/product/${product.id}`,
+                {
+                    method: "DELETE",
+
+                    headers: {
+                        Accept:
+                            "application/json",
+
+                        Authorization:
+                            `Bearer ${getAuthToken()}`,
+                    },
+                }
+            );
+
+            const result =
+                await response.json();
+
+            if (
+                !response.ok ||
+                !result.success
+            ) {
+                const usage =
+                    result.usage;
+
+                if (usage) {
+                    throw new Error(
+                        `${result.message} Clients: ${usage.clients || 0
+                        }, Tickets: ${usage.tickets || 0
+                        }, Tasks: ${usage.tasks || 0
+                        }.`
+                    );
+                }
+
+                throw new Error(
+                    result.message ||
+                    "Unable to delete product."
+                );
+            }
+
+            setProducts((current) =>
+                current.filter(
+                    (item) =>
+                        String(item.id) !==
+                        String(product.id)
+                )
+            );
+
+            showSavedMessage(
+                "Product deleted successfully."
+            );
+        } catch (error) {
+            console.error(
+                "Delete product error:",
+                error
+            );
+
+            setProductsError(
+                error.message ||
+                "Unable to delete product."
+            );
+        }
+    };
+    const deleteProject = async (
+        project
+    ) => {
+        const confirmed =
+            window.confirm(
+                `Delete project "${project.projectName}"?`
+            );
+
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            setProjectsError("");
+
+            const response = await fetch(
+                `${API_URL}/api/admin/project/${project.id}`,
+                {
+                    method: "DELETE",
+
+                    headers: {
+                        Accept:
+                            "application/json",
+
+                        Authorization:
+                            `Bearer ${getAuthToken()}`,
+                    },
+                }
+            );
+
+            const result =
+                await response.json();
+
+            if (
+                !response.ok ||
+                !result.success
+            ) {
+                if (result.usage) {
+                    throw new Error(
+                        `${result.message} Linked tasks: ${result.usage.tasks ||
+                        0
+                        }.`
+                    );
+                }
+
+                throw new Error(
+                    result.message ||
+                    "Unable to delete project."
+                );
+            }
+
+            setProjects((current) =>
+                current.filter(
+                    (item) =>
+                        String(item.id) !==
+                        String(project.id)
+                )
+            );
+
+            showSavedMessage(
+                "Project deleted successfully."
+            );
+        } catch (error) {
+            console.error(
+                "Delete project error:",
+                error
+            );
+
+            setProjectsError(
+                error.message ||
+                "Unable to delete project."
+            );
+        }
     };
 
     const openRoleDrawer = (role = null) => {
@@ -774,42 +2229,135 @@ export default function SystemSettings() {
         setDrawerType("role");
     };
 
-    const saveRole = (event) => {
+    const saveRole = async (
+        event
+    ) => {
         event.preventDefault();
 
-        if (!roleForm.name.trim()) {
-            alert("Role name is required.");
+        const normalizedName =
+            roleForm.name.trim();
+
+        if (!normalizedName) {
+            alert(
+                "Role name is required."
+            );
             return;
         }
 
-        if (roleForm.permissions.length === 0) {
-            alert("Select at least one permission.");
+        if (
+            roleForm.permissions.length ===
+            0
+        ) {
+            alert(
+                "Select at least one permission."
+            );
             return;
         }
 
-        setSettings((current) => ({
-            ...current,
-            roles: roleForm.id
-                ? current.roles.map((role) =>
-                      role.id === roleForm.id
-                          ? {
-                                ...roleForm,
-                                name: roleForm.name.trim(),
-                            }
-                          : role
-                  )
-                : [
-                      ...current.roles,
-                      {
-                          ...roleForm,
-                          id: Date.now(),
-                          name: roleForm.name.trim(),
-                      },
-                  ],
-        }));
+        try {
+            setRecordSaving(true);
+            setSettingsError("");
 
-        closeDrawer();
-        showSavedMessage("Role saved.");
+            const editing =
+                Boolean(roleForm.id);
+
+            const endpoint =
+                editing
+                    ? `${SETTINGS_API_URL}/roles/${roleForm.id}`
+                    : `${SETTINGS_API_URL}/roles`;
+
+            const response = await fetch(
+                endpoint,
+                {
+                    method:
+                        editing
+                            ? "PUT"
+                            : "POST",
+
+                    headers:
+                        getSettingsHeaders(
+                            true
+                        ),
+
+                    body:
+                        JSON.stringify({
+                            name:
+                                normalizedName,
+
+                            description:
+                                roleForm.description.trim(),
+
+                            users:
+                                Number(
+                                    roleForm.users ||
+                                    0
+                                ),
+
+                            permissions:
+                                roleForm.permissions,
+
+                            status:
+                                roleForm.status ||
+                                "Active",
+                        }),
+                }
+            );
+
+            const result =
+                await parseApiResponse(
+                    response,
+                    "Unable to save role."
+                );
+
+            const savedRole =
+                normalizeSettingRecord(
+                    result.data
+                );
+
+            setSettings(
+                (current) => ({
+                    ...current,
+
+                    roles:
+                        editing
+                            ? current.roles.map(
+                                (role) =>
+                                    String(
+                                        role.id
+                                    ) ===
+                                        String(
+                                            savedRole.id
+                                        )
+                                        ? savedRole
+                                        : role
+                            )
+                            : [
+                                ...current.roles,
+                                savedRole,
+                            ],
+                })
+            );
+
+            closeDrawer();
+
+            showSavedMessage(
+                editing
+                    ? "Role updated successfully."
+                    : "Role created successfully."
+            );
+        } catch (error) {
+            console.error(
+                "Save role error:",
+                error
+            );
+
+            setSettingsError(
+                error.message ||
+                "Unable to save role."
+            );
+        } finally {
+            setRecordSaving(false);
+        }
     };
 
     const togglePermission = (permission) => {
@@ -820,8 +2368,8 @@ export default function SystemSettings() {
                 ...current,
                 permissions: exists
                     ? current.permissions.filter(
-                          (item) => item !== permission
-                      )
+                        (item) => item !== permission
+                    )
                     : [...current.permissions, permission],
             };
         });
@@ -832,46 +2380,198 @@ export default function SystemSettings() {
             status
                 ? { ...status }
                 : {
-                      ...emptyStatus,
-                      order: settings.taskStatuses.length + 1,
-                  }
+                    ...emptyStatus,
+                    order: settings.taskStatuses.length + 1,
+                }
         );
         setDrawerType("status");
     };
 
-    const saveTaskStatus = (event) => {
+    const saveTaskStatus = async (
+        event
+    ) => {
         event.preventDefault();
 
-        if (!statusForm.name.trim()) {
-            alert("Status name is required.");
+        const normalizedName =
+            statusForm.name.trim();
+
+        if (!normalizedName) {
+            alert(
+                "Status name is required."
+            );
             return;
         }
 
-        setSettings((current) => ({
-            ...current,
-            taskStatuses: (
-                statusForm.id
-                    ? current.taskStatuses.map((status) =>
-                          status.id === statusForm.id
-                              ? {
-                                    ...statusForm,
-                                    name: statusForm.name.trim(),
-                                }
-                              : status
-                      )
-                    : [
-                          ...current.taskStatuses,
-                          {
-                              ...statusForm,
-                              id: Date.now(),
-                              name: statusForm.name.trim(),
-                          },
-                      ]
-            ).sort((a, b) => Number(a.order) - Number(b.order)),
-        }));
+        try {
+            setRecordSaving(true);
+            setSettingsError("");
 
-        closeDrawer();
-        showSavedMessage("Task status saved.");
+            const editing =
+                Boolean(statusForm.id);
+
+            const endpoint =
+                editing
+                    ? `${SETTINGS_API_URL}/task-statuses/${statusForm.id}`
+                    : `${SETTINGS_API_URL}/task-statuses`;
+
+            const response = await fetch(
+                endpoint,
+                {
+                    method:
+                        editing
+                            ? "PUT"
+                            : "POST",
+
+                    headers:
+                        getSettingsHeaders(
+                            true
+                        ),
+
+                    body:
+                        JSON.stringify({
+                            name:
+                                normalizedName,
+
+                            description:
+                                statusForm.description.trim(),
+
+                            color:
+                                statusForm.color ||
+                                "Slate",
+
+                            order:
+                                Number(
+                                    statusForm.order ||
+                                    1
+                                ),
+
+                            isFinal:
+                                Boolean(
+                                    statusForm.isFinal
+                                ),
+
+                            status:
+                                statusForm.status ||
+                                "Active",
+                        }),
+                }
+            );
+
+            const result =
+                await parseApiResponse(
+                    response,
+                    "Unable to save task status."
+                );
+
+            const rows =
+                Array.isArray(
+                    result.all
+                )
+                    ? result.all
+                    : null;
+
+            setSettings(
+                (current) => ({
+                    ...current,
+
+                    taskStatuses:
+                        rows
+                            ? rows
+                                .map(
+                                    normalizeSettingRecord
+                                )
+                                .sort(
+                                    (
+                                        a,
+                                        b
+                                    ) =>
+                                        Number(
+                                            a.order ||
+                                            0
+                                        ) -
+                                        Number(
+                                            b.order ||
+                                            0
+                                        )
+                                )
+                            : editing
+                                ? current.taskStatuses
+                                    .map(
+                                        (
+                                            status
+                                        ) =>
+                                            String(
+                                                status.id
+                                            ) ===
+                                                String(
+                                                    result
+                                                        .data
+                                                        ?._id ||
+                                                    result
+                                                        .data
+                                                        ?.id
+                                                )
+                                                ? normalizeSettingRecord(
+                                                    result.data
+                                                )
+                                                : status
+                                    )
+                                    .sort(
+                                        (
+                                            a,
+                                            b
+                                        ) =>
+                                            Number(
+                                                a.order ||
+                                                0
+                                            ) -
+                                            Number(
+                                                b.order ||
+                                                0
+                                            )
+                                    )
+                                : [
+                                    ...current.taskStatuses,
+                                    normalizeSettingRecord(
+                                        result.data
+                                    ),
+                                ].sort(
+                                    (
+                                        a,
+                                        b
+                                    ) =>
+                                        Number(
+                                            a.order ||
+                                            0
+                                        ) -
+                                        Number(
+                                            b.order ||
+                                            0
+                                        )
+                                ),
+                })
+            );
+
+            closeDrawer();
+
+            showSavedMessage(
+                editing
+                    ? "Task status updated successfully."
+                    : "Task status created successfully."
+            );
+        } catch (error) {
+            console.error(
+                "Save task status error:",
+                error
+            );
+
+            setSettingsError(
+                error.message ||
+                "Unable to save task status."
+            );
+        } finally {
+            setRecordSaving(false);
+        }
     };
 
     const openPriorityDrawer = (priority = null) => {
@@ -881,37 +2581,127 @@ export default function SystemSettings() {
         setDrawerType("priority");
     };
 
-    const savePriority = (event) => {
+    const savePriority = async (
+        event
+    ) => {
         event.preventDefault();
 
-        if (!priorityForm.name.trim()) {
-            alert("Priority name is required.");
+        const normalizedName =
+            priorityForm.name.trim();
+
+        if (!normalizedName) {
+            alert(
+                "Priority name is required."
+            );
             return;
         }
 
-        setSettings((current) => ({
-            ...current,
-            priorities: priorityForm.id
-                ? current.priorities.map((priority) =>
-                      priority.id === priorityForm.id
-                          ? {
-                                ...priorityForm,
-                                name: priorityForm.name.trim(),
-                            }
-                          : priority
-                  )
-                : [
-                      ...current.priorities,
-                      {
-                          ...priorityForm,
-                          id: Date.now(),
-                          name: priorityForm.name.trim(),
-                      },
-                  ],
-        }));
+        try {
+            setRecordSaving(true);
+            setSettingsError("");
 
-        closeDrawer();
-        showSavedMessage("Priority saved.");
+            const editing =
+                Boolean(
+                    priorityForm.id
+                );
+
+            const endpoint =
+                editing
+                    ? `${SETTINGS_API_URL}/priorities/${priorityForm.id}`
+                    : `${SETTINGS_API_URL}/priorities`;
+
+            const response = await fetch(
+                endpoint,
+                {
+                    method:
+                        editing
+                            ? "PUT"
+                            : "POST",
+
+                    headers:
+                        getSettingsHeaders(
+                            true
+                        ),
+
+                    body:
+                        JSON.stringify({
+                            name:
+                                normalizedName,
+
+                            responseHours:
+                                Number(
+                                    priorityForm.responseHours ||
+                                    0
+                                ),
+
+                            color:
+                                priorityForm.color ||
+                                "Slate",
+
+                            status:
+                                priorityForm.status ||
+                                "Active",
+                        }),
+                }
+            );
+
+            const result =
+                await parseApiResponse(
+                    response,
+                    "Unable to save priority."
+                );
+
+            const savedPriority =
+                normalizeSettingRecord(
+                    result.data
+                );
+
+            setSettings(
+                (current) => ({
+                    ...current,
+
+                    priorities:
+                        editing
+                            ? current.priorities.map(
+                                (
+                                    priority
+                                ) =>
+                                    String(
+                                        priority.id
+                                    ) ===
+                                        String(
+                                            savedPriority.id
+                                        )
+                                        ? savedPriority
+                                        : priority
+                            )
+                            : [
+                                ...current.priorities,
+                                savedPriority,
+                            ],
+                })
+            );
+
+            closeDrawer();
+
+            showSavedMessage(
+                editing
+                    ? "Priority updated successfully."
+                    : "Priority created successfully."
+            );
+        } catch (error) {
+            console.error(
+                "Save priority error:",
+                error
+            );
+
+            setSettingsError(
+                error.message ||
+                "Unable to save priority."
+            );
+        } finally {
+            setRecordSaving(false);
+        }
     };
 
     const openLeaveTypeDrawer = (leaveType = null) => {
@@ -921,66 +2711,539 @@ export default function SystemSettings() {
         setDrawerType("leaveType");
     };
 
-    const saveLeaveType = (event) => {
+    const saveLeaveType = async (
+        event
+    ) => {
         event.preventDefault();
 
+        const normalizedName =
+            leaveTypeForm.name.trim();
+
+        const normalizedCode =
+            leaveTypeForm.code
+                .trim()
+                .toUpperCase();
+
         if (
-            !leaveTypeForm.name.trim() ||
-            !leaveTypeForm.code.trim()
+            !normalizedName ||
+            !normalizedCode
         ) {
-            alert("Leave name and leave code are required.");
+            alert(
+                "Leave name and leave code are required."
+            );
             return;
         }
 
-        setSettings((current) => ({
-            ...current,
-            leaveTypes: leaveTypeForm.id
-                ? current.leaveTypes.map((leaveType) =>
-                      leaveType.id === leaveTypeForm.id
-                          ? {
-                                ...leaveTypeForm,
-                                name: leaveTypeForm.name.trim(),
-                                code: leaveTypeForm.code
-                                    .trim()
-                                    .toUpperCase(),
-                            }
-                          : leaveType
-                  )
-                : [
-                      ...current.leaveTypes,
-                      {
-                          ...leaveTypeForm,
-                          id: Date.now(),
-                          name: leaveTypeForm.name.trim(),
-                          code: leaveTypeForm.code
-                              .trim()
-                              .toUpperCase(),
-                      },
-                  ],
-        }));
+        try {
+            setRecordSaving(true);
+            setSettingsError("");
 
-        closeDrawer();
-        showSavedMessage("Leave type saved.");
+            const editing =
+                Boolean(
+                    leaveTypeForm.id
+                );
+
+            const endpoint =
+                editing
+                    ? `${SETTINGS_API_URL}/leave-types/${leaveTypeForm.id}`
+                    : `${SETTINGS_API_URL}/leave-types`;
+
+            const response = await fetch(
+                endpoint,
+                {
+                    method:
+                        editing
+                            ? "PUT"
+                            : "POST",
+
+                    headers:
+                        getSettingsHeaders(
+                            true
+                        ),
+
+                    body:
+                        JSON.stringify({
+                            name:
+                                normalizedName,
+
+                            code:
+                                normalizedCode,
+
+                            yearlyLimit:
+                                Number(
+                                    leaveTypeForm.yearlyLimit ||
+                                    0
+                                ),
+
+                            paid:
+                                Boolean(
+                                    leaveTypeForm.paid
+                                ),
+
+                            carryForward:
+                                Boolean(
+                                    leaveTypeForm.carryForward
+                                ),
+
+                            requiresDocument:
+                                Boolean(
+                                    leaveTypeForm.requiresDocument
+                                ),
+
+                            status:
+                                leaveTypeForm.status ||
+                                "Active",
+                        }),
+                }
+            );
+
+            const result =
+                await parseApiResponse(
+                    response,
+                    "Unable to save leave type."
+                );
+
+            const savedLeaveType =
+                normalizeSettingRecord(
+                    result.data
+                );
+
+            setSettings(
+                (current) => ({
+                    ...current,
+
+                    leaveTypes:
+                        editing
+                            ? current.leaveTypes.map(
+                                (
+                                    leaveType
+                                ) =>
+                                    String(
+                                        leaveType.id
+                                    ) ===
+                                        String(
+                                            savedLeaveType.id
+                                        )
+                                        ? savedLeaveType
+                                        : leaveType
+                            )
+                            : [
+                                ...current.leaveTypes,
+                                savedLeaveType,
+                            ],
+                })
+            );
+
+            closeDrawer();
+
+            showSavedMessage(
+                editing
+                    ? "Leave type updated successfully."
+                    : "Leave type created successfully."
+            );
+        } catch (error) {
+            console.error(
+                "Save leave type error:",
+                error
+            );
+
+            setSettingsError(
+                error.message ||
+                "Unable to save leave type."
+            );
+        } finally {
+            setRecordSaving(false);
+        }
     };
 
-    const toggleRecordStatus = (collectionName, recordId) => {
-        setSettings((current) => ({
-            ...current,
-            [collectionName]: current[collectionName].map((record) =>
-                record.id === recordId
-                    ? {
-                          ...record,
-                          status:
-                              record.status === "Active"
-                                  ? "Inactive"
-                                  : "Active",
-                      }
-                    : record
-            ),
-        }));
+    const toggleRecordStatus = async (
+        collectionName,
+        recordId
+    ) => {
+        const routeMap = {
+            roles: "roles",
+            taskStatuses:
+                "task-statuses",
+            priorities:
+                "priorities",
+            leaveTypes:
+                "leave-types",
+        };
+
+        const routeName =
+            routeMap[collectionName];
+
+        if (!routeName) {
+            return;
+        }
+
+        const record =
+            settings[
+                collectionName
+            ]?.find(
+                (item) =>
+                    String(item.id) ===
+                    String(recordId)
+            );
+
+        if (!record) {
+            return;
+        }
+
+        const nextStatus =
+            record.status ===
+                "Active"
+                ? "Inactive"
+                : "Active";
+
+        try {
+            setSettingsError("");
+
+            const response = await fetch(
+                `${SETTINGS_API_URL}/${routeName}/${recordId}/status`,
+                {
+                    method: "PATCH",
+
+                    headers:
+                        getSettingsHeaders(
+                            true
+                        ),
+
+                    body:
+                        JSON.stringify({
+                            status:
+                                nextStatus,
+                        }),
+                }
+            );
+
+            const result =
+                await parseApiResponse(
+                    response,
+                    "Unable to update status."
+                );
+
+            const updatedRecord =
+                normalizeSettingRecord(
+                    result.data
+                );
+
+            setSettings(
+                (current) => ({
+                    ...current,
+
+                    [collectionName]:
+                        current[
+                            collectionName
+                        ].map(
+                            (item) =>
+                                String(
+                                    item.id
+                                ) ===
+                                    String(
+                                        updatedRecord.id
+                                    )
+                                    ? updatedRecord
+                                    : item
+                        ),
+                })
+            );
+
+            showSavedMessage(
+                `Record marked ${nextStatus}.`
+            );
+        } catch (error) {
+            console.error(
+                "Update record status error:",
+                error
+            );
+
+            setSettingsError(
+                error.message ||
+                "Unable to update status."
+            );
+        }
     };
+
+    const deleteSettingRecord = async (
+        collectionName,
+        record
+    ) => {
+        const routeMap = {
+            roles: "roles",
+            taskStatuses:
+                "task-statuses",
+            priorities:
+                "priorities",
+            leaveTypes:
+                "leave-types",
+        };
+
+        const labelMap = {
+            roles: "role",
+            taskStatuses:
+                "task status",
+            priorities:
+                "priority",
+            leaveTypes:
+                "leave type",
+        };
+
+        const routeName =
+            routeMap[collectionName];
+
+        const recordLabel =
+            labelMap[collectionName] ||
+            "record";
+
+        if (
+            !routeName ||
+            !record?.id
+        ) {
+            return;
+        }
+
+        if (record.isSystem) {
+            setSettingsError(
+                `System ${recordLabel}s cannot be deleted. Disable the record instead.`
+            );
+
+            return;
+        }
+
+        const confirmed =
+            window.confirm(
+                `Delete ${recordLabel} "${record.name}"?`
+            );
+
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            setRecordSaving(true);
+            setSettingsError("");
+
+            const response = await fetch(
+                `${SETTINGS_API_URL}/${routeName}/${record.id}`,
+                {
+                    method: "DELETE",
+
+                    headers:
+                        getSettingsHeaders(),
+                }
+            );
+
+            const result =
+                await parseApiResponse(
+                    response,
+                    `Unable to delete ${recordLabel}.`
+                );
+
+            setSettings(
+                (current) => ({
+                    ...current,
+
+                    [collectionName]:
+                        current[
+                            collectionName
+                        ].filter(
+                            (item) =>
+                                String(
+                                    item.id
+                                ) !==
+                                String(
+                                    record.id
+                                )
+                        ),
+                })
+            );
+
+            showSavedMessage(
+                `${recordLabel
+                    .charAt(0)
+                    .toUpperCase()}${recordLabel.slice(
+                        1
+                    )} deleted successfully.`
+            );
+        } catch (error) {
+            console.error(
+                `Delete ${recordLabel} error:`,
+                error
+            );
+
+            setSettingsError(
+                error.message ||
+                `Unable to delete ${recordLabel}.`
+            );
+        } finally {
+            setRecordSaving(false);
+        }
+    };
+    const moveTaskStatus = async (
+        statusId,
+        direction
+    ) => {
+        const currentRows = [
+            ...settings.taskStatuses,
+        ].sort(
+            (a, b) =>
+                Number(a.order) -
+                Number(b.order)
+        );
+
+        const currentIndex =
+            currentRows.findIndex(
+                (item) =>
+                    String(item.id) ===
+                    String(statusId)
+            );
+
+        if (currentIndex < 0) {
+            return;
+        }
+
+        const targetIndex =
+            direction === "up"
+                ? currentIndex - 1
+                : currentIndex + 1;
+
+        if (
+            targetIndex < 0 ||
+            targetIndex >=
+            currentRows.length
+        ) {
+            return;
+        }
+
+        const reordered = [
+            ...currentRows,
+        ];
+
+        [
+            reordered[currentIndex],
+            reordered[targetIndex],
+        ] = [
+                reordered[targetIndex],
+                reordered[currentIndex],
+            ];
+
+        const optimisticRows =
+            reordered.map(
+                (item, index) => ({
+                    ...item,
+                    order:
+                        index + 1,
+                })
+            );
+
+        setSettings(
+            (current) => ({
+                ...current,
+
+                taskStatuses:
+                    optimisticRows,
+            })
+        );
+
+        try {
+            setRecordSaving(true);
+            setSettingsError("");
+
+            const response = await fetch(
+                `${SETTINGS_API_URL}/task-statuses/reorder`,
+                {
+                    method: "PUT",
+
+                    headers:
+                        getSettingsHeaders(
+                            true
+                        ),
+
+                    body:
+                        JSON.stringify({
+                            ids:
+                                optimisticRows.map(
+                                    (item) =>
+                                        item.id
+                                ),
+                        }),
+                }
+            );
+
+            const result =
+                await parseApiResponse(
+                    response,
+                    "Unable to reorder task statuses."
+                );
+
+            setSettings(
+                (current) => ({
+                    ...current,
+
+                    taskStatuses:
+                        result.data
+                            .map(
+                                normalizeSettingRecord
+                            )
+                            .sort(
+                                (a, b) =>
+                                    Number(
+                                        a.order
+                                    ) -
+                                    Number(
+                                        b.order
+                                    )
+                            ),
+                })
+            );
+
+            showSavedMessage(
+                "Task status order updated."
+            );
+        } catch (error) {
+            console.error(
+                "Reorder task status error:",
+                error
+            );
+
+            setSettingsError(
+                error.message ||
+                "Unable to reorder task statuses."
+            );
+
+            await loadSystemSettings();
+        } finally {
+            setRecordSaving(false);
+        }
+    };
+
+    if (settingsLoading) {
+        return (
+            <div className="flex min-h-[420px] flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white">
+                <Loader2
+                    size={30}
+                    className="animate-spin text-violet-600"
+                />
+
+                <p className="mt-4 text-sm font-semibold text-slate-700">
+                    Loading system settings...
+                </p>
+
+                <p className="mt-1 text-xs text-slate-500">
+                    Fetching configuration from MongoDB.
+                </p>
+            </div>
+        );
+    }
+
+
+
+
 
     return (
+
+
         <div>
             <div className="flex flex-col gap-4 border-b border-slate-200 pb-6 lg:flex-row lg:items-end lg:justify-between">
                 <div>
@@ -993,7 +3256,7 @@ export default function SystemSettings() {
                     </h2>
 
                     <p className="mt-1 text-xs text-slate-500">
-                        Configure your workspace, projects, workflow,
+                        Configure your workspace, products, workflow,
                         attendance and notification rules.
                     </p>
                 </div>
@@ -1005,18 +3268,54 @@ export default function SystemSettings() {
                             {savedMessage}
                         </div>
                     )}
+                    {[
+                        "company",
+                        "workingHours",
+                        "notifications",
+                    ].includes(activeSection) && (
+                            <button
+                                type="button"
+                                onClick={saveSection}
+                                disabled={
+                                    settingsSaving ||
+                                    settingsLoading
+                                }
+                                className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                {settingsSaving ? (
+                                    <Loader2
+                                        size={15}
+                                        className="animate-spin"
+                                    />
+                                ) : (
+                                    <Save size={15} />
+                                )}
 
-                    <button
-                        type="button"
-                        onClick={saveSection}
-                        className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700"
-                    >
-                        <Save size={15} />
-                        Save Changes
-                    </button>
+                                {settingsSaving
+                                    ? "Saving..."
+                                    : "Save Changes"}
+                            </button>
+                        )}
                 </div>
             </div>
 
+            {settingsError && (
+                <div className="mt-4 flex items-center justify-between gap-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+                    <p className="text-xs font-medium text-rose-700">
+                        {settingsError}
+                    </p>
+
+                    <button
+                        type="button"
+                        onClick={
+                            loadSystemSettings
+                        }
+                        className="shrink-0 rounded-lg border border-rose-200 bg-white px-3 py-2 text-[10px] font-semibold text-rose-700"
+                    >
+                        Retry
+                    </button>
+                </div>
+            )}
             <div className="mt-6 grid gap-5 xl:grid-cols-[280px_minmax(0,1fr)]">
                 <aside className="h-fit overflow-hidden rounded-2xl border border-slate-200 bg-white">
                     <div className="border-b border-slate-200 px-5 py-4">
@@ -1041,18 +3340,16 @@ export default function SystemSettings() {
                                     onClick={() =>
                                         setActiveSection(item.id)
                                     }
-                                    className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${
-                                        active
-                                            ? "bg-violet-50 text-violet-700"
-                                            : "text-slate-600 hover:bg-slate-50"
-                                    }`}
+                                    className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${active
+                                        ? "bg-violet-50 text-violet-700"
+                                        : "text-slate-600 hover:bg-slate-50"
+                                        }`}
                                 >
                                     <div
-                                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-                                            active
-                                                ? "bg-violet-100"
-                                                : "bg-slate-100 text-slate-500"
-                                        }`}
+                                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${active
+                                            ? "bg-violet-100"
+                                            : "bg-slate-100 text-slate-500"
+                                            }`}
                                     >
                                         <Icon size={17} />
                                     </div>
@@ -1063,11 +3360,10 @@ export default function SystemSettings() {
                                         </p>
 
                                         <p
-                                            className={`mt-1 truncate text-[9px] ${
-                                                active
-                                                    ? "text-violet-500"
-                                                    : "text-slate-400"
-                                            }`}
+                                            className={`mt-1 truncate text-[9px] ${active
+                                                ? "text-violet-500"
+                                                : "text-slate-400"
+                                                }`}
                                         >
                                             {item.description}
                                         </p>
@@ -1246,106 +3542,542 @@ export default function SystemSettings() {
                         </div>
                     )}
 
-                    {activeSection === "projects" && (
+                    {activeSection === "products" && (
                         <div>
-                            <div className="flex justify-end border-b border-slate-200 bg-slate-50/60 px-5 py-4">
-                                <button
-                                    type="button"
-                                    onClick={() =>
-                                        openProjectDrawer()
-                                    }
-                                    className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white"
-                                >
-                                    <Plus size={15} />
-                                    Add Project
-                                </button>
+                            <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/60 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-800">
+                                        Product Master
+                                    </p>
+
+                                    <p className="mt-1 text-[10px] text-slate-500">
+                                        Products used by clients,
+                                        tickets, tasks and AMC.
+                                    </p>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={loadProducts}
+                                        disabled={productsLoading}
+                                        className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
+                                    >
+                                        <Loader2
+                                            size={15}
+                                            className={
+                                                productsLoading
+                                                    ? "animate-spin"
+                                                    : ""
+                                            }
+                                        />
+
+                                        Refresh
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            openProductDrawer()
+                                        }
+                                        className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700"
+                                    >
+                                        <Plus size={15} />
+                                        Add Product
+                                    </button>
+                                </div>
                             </div>
 
-                            <div className="divide-y divide-slate-100">
-                                {settings.projects.map((project) => (
-                                    <div
-                                        key={project.id}
-                                        className="flex flex-col gap-4 px-5 py-5 transition hover:bg-slate-50/70 md:flex-row md:items-center"
+                            {productsError && (
+                                <div className="border-b border-rose-200 bg-rose-50 px-5 py-4">
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                        <p className="text-xs font-medium text-rose-700">
+                                            {productsError}
+                                        </p>
+
+                                        <button
+                                            type="button"
+                                            onClick={loadProducts}
+                                            className="h-8 rounded-lg border border-rose-200 bg-white px-3 text-[10px] font-semibold text-rose-700"
+                                        >
+                                            Try Again
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {productsLoading ? (
+                                <div className="flex min-h-[280px] flex-col items-center justify-center">
+                                    <Loader2
+                                        size={28}
+                                        className="animate-spin text-violet-600"
+                                    />
+
+                                    <p className="mt-3 text-xs font-semibold text-slate-600">
+                                        Loading products...
+                                    </p>
+                                </div>
+                            ) : products.length === 0 ? (
+                                <div className="flex min-h-[300px] flex-col items-center justify-center px-6 text-center">
+                                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-100 text-violet-700">
+                                        <BriefcaseBusiness
+                                            size={24}
+                                        />
+                                    </div>
+
+                                    <p className="mt-4 text-sm font-semibold text-slate-900">
+                                        No products found
+                                    </p>
+
+                                    <p className="mt-2 max-w-[360px] text-xs leading-5 text-slate-500">
+                                        Add your first software
+                                        product or run the backend
+                                        seed API.
+                                    </p>
+
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            openProductDrawer()
+                                        }
+                                        className="mt-5 flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white"
                                     >
-                                        <div className="flex min-w-0 flex-1 items-start gap-3">
-                                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
-                                                <BriefcaseBusiness
-                                                    size={19}
-                                                />
-                                            </div>
+                                        <Plus size={15} />
+                                        Add Product
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="divide-y divide-slate-100">
+                                    {products.map(
+                                        (product) => (
+                                            <div
+                                                key={product.id}
+                                                className="flex flex-col gap-4 px-5 py-5 transition hover:bg-slate-50/70 lg:flex-row lg:items-center"
+                                            >
+                                                <div className="flex min-w-0 flex-1 items-start gap-3">
+                                                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
+                                                        <BriefcaseBusiness
+                                                            size={19}
+                                                        />
+                                                    </div>
 
-                                            <div className="min-w-0">
-                                                <div className="flex flex-wrap items-center gap-2">
-                                                    <p className="text-sm font-semibold text-slate-900">
-                                                        {project.name}
-                                                    </p>
+                                                    <div className="min-w-0">
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <p className="text-sm font-semibold text-slate-900">
+                                                                {
+                                                                    product.productName
+                                                                }
+                                                            </p>
 
-                                                    <StatusBadge
-                                                        status={
-                                                            project.status
-                                                        }
-                                                    />
+                                                            <StatusBadge
+                                                                status={
+                                                                    product.status
+                                                                }
+                                                            />
+
+                                                            <span className="rounded-lg bg-blue-50 px-2 py-1 text-[9px] font-semibold text-blue-700">
+                                                                {
+                                                                    product.platform
+                                                                }
+                                                            </span>
+                                                        </div>
+
+                                                        <p className="mt-1 text-[10px] font-semibold text-violet-600">
+                                                            {
+                                                                product.productCode
+                                                            }
+                                                            {" · "}
+                                                            {
+                                                                product.category
+                                                            }
+                                                            {" · "}
+                                                            {
+                                                                product.currentVersion
+                                                            }
+                                                        </p>
+
+                                                        <p className="mt-2 text-xs leading-5 text-slate-500">
+                                                            {product.description ||
+                                                                "No description provided."}
+                                                        </p>
+                                                    </div>
                                                 </div>
 
-                                                <p className="mt-1 text-[10px] font-semibold text-violet-600">
-                                                    {project.code} ·{" "}
-                                                    {project.category}
-                                                </p>
+                                                <div className="flex items-center justify-end gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            changeProductStatus(
+                                                                product
+                                                            )
+                                                        }
+                                                        className="h-9 rounded-lg border border-slate-200 px-3 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-50"
+                                                    >
+                                                        {product.status ===
+                                                            "Active"
+                                                            ? "Disable"
+                                                            : "Enable"}
+                                                    </button>
 
-                                                <p className="mt-2 text-xs text-slate-500">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            openProductDrawer(
+                                                                product
+                                                            )
+                                                        }
+                                                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-violet-700"
+                                                    >
+                                                        <Pencil
+                                                            size={14}
+                                                        />
+                                                    </button>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            deleteProduct(
+                                                                product
+                                                            )
+                                                        }
+                                                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 text-rose-600 transition hover:bg-rose-50"
+                                                    >
+                                                        <Trash2
+                                                            size={14}
+                                                        />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}{activeSection === "projects" && (
+                        <div>
+                            <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/60 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-800">
+                                        Project Master
+                                    </p>
+
+                                    <p className="mt-1 text-[10px] text-slate-500">
+                                        Track product development,
+                                        client implementation and
+                                        internal work.
+                                    </p>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={loadProjects}
+                                        disabled={projectsLoading}
+                                        className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
+                                    >
+                                        <Loader2
+                                            size={15}
+                                            className={
+                                                projectsLoading
+                                                    ? "animate-spin"
+                                                    : ""
+                                            }
+                                        />
+
+                                        Refresh
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            openProjectDrawer()
+                                        }
+                                        className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700"
+                                    >
+                                        <Plus size={15} />
+                                        Add Project
+                                    </button>
+                                </div>
+                            </div>
+
+                            {projectsError && (
+                                <div className="border-b border-rose-200 bg-rose-50 px-5 py-4">
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                        <p className="text-xs font-medium text-rose-700">
+                                            {projectsError}
+                                        </p>
+
+                                        <button
+                                            type="button"
+                                            onClick={loadProjects}
+                                            className="h-8 rounded-lg border border-rose-200 bg-white px-3 text-[10px] font-semibold text-rose-700"
+                                        >
+                                            Try Again
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {projectsLoading ? (
+                                <div className="flex min-h-[280px] flex-col items-center justify-center">
+                                    <Loader2
+                                        size={28}
+                                        className="animate-spin text-violet-600"
+                                    />
+
+                                    <p className="mt-3 text-xs font-semibold text-slate-600">
+                                        Loading projects...
+                                    </p>
+                                </div>
+                            ) : projects.length === 0 ? (
+                                <div className="flex min-h-[300px] flex-col items-center justify-center px-6 text-center">
+                                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-100 text-blue-700">
+                                        <FolderKanban
+                                            size={24}
+                                        />
+                                    </div>
+
+                                    <p className="mt-4 text-sm font-semibold text-slate-900">
+                                        No projects found
+                                    </p>
+
+                                    <p className="mt-2 max-w-[360px] text-xs leading-5 text-slate-500">
+                                        Add a development,
+                                        implementation or internal
+                                        project.
+                                    </p>
+
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            openProjectDrawer()
+                                        }
+                                        className="mt-5 flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white"
+                                    >
+                                        <Plus size={15} />
+                                        Add Project
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="grid gap-4 p-5 lg:grid-cols-2">
+                                    {projects.map(
+                                        (project) => (
+                                            <div
+                                                key={project.id}
+                                                className="rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-violet-200 hover:shadow-sm"
+                                            >
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div className="flex min-w-0 items-start gap-3">
+                                                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
+                                                            <FolderKanban
+                                                                size={19}
+                                                            />
+                                                        </div>
+
+                                                        <div className="min-w-0">
+                                                            <div className="flex flex-wrap items-center gap-2">
+                                                                <p className="truncate text-sm font-semibold text-slate-900">
+                                                                    {
+                                                                        project.projectName
+                                                                    }
+                                                                </p>
+
+                                                                <StatusBadge
+                                                                    status={
+                                                                        project.status
+                                                                    }
+                                                                />
+                                                            </div>
+
+                                                            <p className="mt-1 text-[10px] font-semibold text-violet-600">
+                                                                {
+                                                                    project.projectCode
+                                                                }
+                                                                {" · "}
+                                                                {
+                                                                    project.projectType
+                                                                }
+                                                            </p>
+                                                        </div>
+                                                    </div>
+
+                                                    <span
+                                                        className={`rounded-lg px-2 py-1 text-[9px] font-semibold ${project.priority ===
+                                                            "Critical"
+                                                            ? "bg-rose-50 text-rose-700"
+                                                            : project.priority ===
+                                                                "High"
+                                                                ? "bg-orange-50 text-orange-700"
+                                                                : project.priority ===
+                                                                    "Medium"
+                                                                    ? "bg-amber-50 text-amber-700"
+                                                                    : "bg-slate-100 text-slate-600"
+                                                            }`}
+                                                    >
+                                                        {
+                                                            project.priority
+                                                        }
+                                                    </span>
+                                                </div>
+
+                                                <div className="mt-4 grid gap-3 rounded-xl bg-slate-50 p-4 sm:grid-cols-2">
+                                                    <div>
+                                                        <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                            Product
+                                                        </p>
+
+                                                        <p className="mt-1 truncate text-xs font-semibold text-slate-700">
+                                                            {project.productName ||
+                                                                "Not linked"}
+                                                        </p>
+                                                    </div>
+
+                                                    <div>
+                                                        <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                            Client
+                                                        </p>
+
+                                                        <p className="mt-1 truncate text-xs font-semibold text-slate-700">
+                                                            {project.clientName ||
+                                                                "Internal project"}
+                                                        </p>
+                                                    </div>
+
+                                                    <div>
+                                                        <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                            Start date
+                                                        </p>
+
+                                                        <p className="mt-1 text-xs font-semibold text-slate-700">
+                                                            {project.startDate ||
+                                                                "Not set"}
+                                                        </p>
+                                                    </div>
+
+                                                    <div>
+                                                        <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                            Due date
+                                                        </p>
+
+                                                        <p className="mt-1 text-xs font-semibold text-slate-700">
+                                                            {project.dueDate ||
+                                                                "Not set"}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="mt-4">
+                                                    <div className="flex items-center justify-between">
+                                                        <p className="text-[10px] font-semibold text-slate-500">
+                                                            Progress
+                                                        </p>
+
+                                                        <p className="text-[10px] font-bold text-violet-700">
+                                                            {
+                                                                project.progress
+                                                            }
+                                                            %
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                                                        <div
+                                                            className="h-full rounded-full bg-violet-600 transition-all"
+                                                            style={{
+                                                                width: `${Math.min(
+                                                                    Math.max(
+                                                                        Number(
+                                                                            project.progress ||
+                                                                            0
+                                                                        ),
+                                                                        0
+                                                                    ),
+                                                                    100
+                                                                )}%`,
+                                                            }}
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <p className="mt-4 line-clamp-2 text-xs leading-5 text-slate-500">
                                                     {project.description ||
                                                         "No description provided."}
                                                 </p>
+
+                                                <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
+                                                    {project.status !==
+                                                        "Completed" && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    changeProjectStatus(
+                                                                        project,
+                                                                        project.status ===
+                                                                            "Active"
+                                                                            ? "On Hold"
+                                                                            : "Active"
+                                                                    )
+                                                                }
+                                                                className="h-9 rounded-lg border border-slate-200 px-3 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-50"
+                                                            >
+                                                                {project.status ===
+                                                                    "Active"
+                                                                    ? "Put On Hold"
+                                                                    : "Make Active"}
+                                                            </button>
+                                                        )}
+
+                                                    {project.status !==
+                                                        "Completed" && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    changeProjectStatus(
+                                                                        project,
+                                                                        "Completed"
+                                                                    )
+                                                                }
+                                                                className="h-9 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-[10px] font-semibold text-emerald-700"
+                                                            >
+                                                                Complete
+                                                            </button>
+                                                        )}
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            openProjectDrawer(
+                                                                project
+                                                            )
+                                                        }
+                                                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500"
+                                                    >
+                                                        <Pencil
+                                                            size={14}
+                                                        />
+                                                    </button>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            deleteProject(
+                                                                project
+                                                            )
+                                                        }
+                                                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 text-rose-600"
+                                                    >
+                                                        <Trash2
+                                                            size={14}
+                                                        />
+                                                    </button>
+                                                </div>
                                             </div>
-                                        </div>
-
-                                        <div className="flex items-center justify-end gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    toggleRecordStatus(
-                                                        "projects",
-                                                        project.id
-                                                    )
-                                                }
-                                                className="h-9 rounded-lg border border-slate-200 px-3 text-[10px] font-semibold text-slate-600"
-                                            >
-                                                {project.status ===
-                                                "Active"
-                                                    ? "Disable"
-                                                    : "Enable"}
-                                            </button>
-
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    openProjectDrawer(
-                                                        project
-                                                    )
-                                                }
-                                                className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500"
-                                            >
-                                                <Pencil size={14} />
-                                            </button>
-
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    deleteProject(
-                                                        project.id
-                                                    )
-                                                }
-                                                className="flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 text-rose-600"
-                                            >
-                                                <Trash2 size={14} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
+                                        )
+                                    )}
+                                </div>
+                            )}
                         </div>
                     )}
-
                     {activeSection === "roles" && (
                         <div>
                             <div className="flex justify-end border-b border-slate-200 bg-slate-50/60 px-5 py-4">
@@ -1408,13 +4140,13 @@ export default function SystemSettings() {
 
                                             {role.permissions.length >
                                                 5 && (
-                                                <span className="rounded-lg bg-violet-50 px-2.5 py-1 text-[9px] font-semibold text-violet-700">
-                                                    +
-                                                    {role.permissions
-                                                        .length - 5}{" "}
-                                                    more
-                                                </span>
-                                            )}
+                                                    <span className="rounded-lg bg-violet-50 px-2.5 py-1 text-[9px] font-semibold text-violet-700">
+                                                        +
+                                                        {role.permissions
+                                                            .length - 5}{" "}
+                                                        more
+                                                    </span>
+                                                )}
                                         </div>
 
                                         <div className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-4">
@@ -1429,7 +4161,7 @@ export default function SystemSettings() {
                                                 className="h-9 rounded-lg border border-slate-200 px-3 text-[10px] font-semibold text-slate-600"
                                             >
                                                 {role.status ===
-                                                "Active"
+                                                    "Active"
                                                     ? "Disable"
                                                     : "Enable"}
                                             </button>
@@ -1444,6 +4176,29 @@ export default function SystemSettings() {
                                                 <Pencil size={13} />
                                                 Edit
                                             </button>
+
+                                            {!role.isSystem && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        deleteSettingRecord(
+                                                            "roles",
+                                                            role
+                                                        )
+                                                    }
+                                                    disabled={
+                                                        recordSaving
+                                                    }
+                                                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 text-rose-600 transition hover:bg-rose-50 disabled:opacity-50"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            )}
+                                            {role.isSystem && (
+                                                <span className="rounded-lg bg-slate-100 px-2 py-1 text-[9px] font-semibold text-slate-500">
+                                                    System
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
                                 ))}
@@ -1480,6 +4235,44 @@ export default function SystemSettings() {
 
                                             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-xs font-semibold text-slate-500">
                                                 {status.order}
+                                            </div>
+                                            <div className="flex flex-col gap-1">
+                                                <button
+                                                    type="button"
+                                                    disabled={
+                                                        recordSaving ||
+                                                        status.order === 1
+                                                    }
+                                                    onClick={() =>
+                                                        moveTaskStatus(
+                                                            status.id,
+                                                            "up"
+                                                        )
+                                                    }
+                                                    className="flex h-6 w-7 items-center justify-center rounded border border-slate-200 text-[10px] text-slate-500 disabled:opacity-30"
+                                                >
+                                                    ↑
+                                                </button>
+
+                                                <button
+                                                    type="button"
+                                                    disabled={
+                                                        recordSaving ||
+                                                        status.order ===
+                                                        settings
+                                                            .taskStatuses
+                                                            .length
+                                                    }
+                                                    onClick={() =>
+                                                        moveTaskStatus(
+                                                            status.id,
+                                                            "down"
+                                                        )
+                                                    }
+                                                    className="flex h-6 w-7 items-center justify-center rounded border border-slate-200 text-[10px] text-slate-500 disabled:opacity-30"
+                                                >
+                                                    ↓
+                                                </button>
                                             </div>
 
                                             <div className="min-w-0 flex-1">
@@ -1519,6 +4312,59 @@ export default function SystemSettings() {
                                             >
                                                 <Pencil size={14} />
                                             </button>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        toggleRecordStatus(
+                                                            "taskStatuses",
+                                                            status.id
+                                                        )
+                                                    }
+                                                    disabled={
+                                                        recordSaving
+                                                    }
+                                                    className="h-9 rounded-lg border border-slate-200 px-3 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+                                                >
+                                                    {status.status ===
+                                                        "Active"
+                                                        ? "Disable"
+                                                        : "Enable"}
+                                                </button>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        openStatusDrawer(
+                                                            status
+                                                        )
+                                                    }
+                                                    disabled={
+                                                        recordSaving
+                                                    }
+                                                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 disabled:opacity-50"
+                                                >
+                                                    <Pencil size={14} />
+                                                </button>
+
+                                                {!status.isSystem && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            deleteSettingRecord(
+                                                                "taskStatuses",
+                                                                status
+                                                            )
+                                                        }
+                                                        disabled={
+                                                            recordSaving
+                                                        }
+                                                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 text-rose-600 transition hover:bg-rose-50 disabled:opacity-50"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     )
                                 )}
@@ -1592,6 +4438,59 @@ export default function SystemSettings() {
                                                 <Pencil size={13} />
                                                 Edit Priority
                                             </button>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        toggleRecordStatus(
+                                                            "priorities",
+                                                            priority.id
+                                                        )
+                                                    }
+                                                    disabled={
+                                                        recordSaving
+                                                    }
+                                                    className="h-9 rounded-lg border border-slate-200 px-3 text-[10px] font-semibold text-slate-600 disabled:opacity-50"
+                                                >
+                                                    {priority.status ===
+                                                        "Active"
+                                                        ? "Disable"
+                                                        : "Enable"}
+                                                </button>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        openPriorityDrawer(
+                                                            priority
+                                                        )
+                                                    }
+                                                    disabled={
+                                                        recordSaving
+                                                    }
+                                                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 disabled:opacity-50"
+                                                >
+                                                    <Pencil size={14} />
+                                                </button>
+
+                                                {!priority.isSystem && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            deleteSettingRecord(
+                                                                "priorities",
+                                                                priority
+                                                            )
+                                                        }
+                                                        disabled={
+                                                            recordSaving
+                                                        }
+                                                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 text-rose-600 disabled:opacity-50"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     )
                                 )}
@@ -1738,11 +4637,10 @@ export default function SystemSettings() {
                                                 onClick={() =>
                                                     toggleWeeklyOff(day)
                                                 }
-                                                className={`rounded-xl border px-3 py-2 text-[10px] font-semibold transition ${
-                                                    active
-                                                        ? "border-violet-200 bg-violet-50 text-violet-700"
-                                                        : "border-slate-200 bg-white text-slate-500"
-                                                }`}
+                                                className={`rounded-xl border px-3 py-2 text-[10px] font-semibold transition ${active
+                                                    ? "border-violet-200 bg-violet-50 text-violet-700"
+                                                    : "border-slate-200 bg-white text-slate-500"
+                                                    }`}
                                             >
                                                 {day}
                                             </button>
@@ -1870,7 +4768,7 @@ export default function SystemSettings() {
                                                     <p className="mt-2 text-xs text-slate-500">
                                                         Annual limit:{" "}
                                                         {leaveType.yearlyLimit >
-                                                        0
+                                                            0
                                                             ? `${leaveType.yearlyLimit} days`
                                                             : "No fixed limit"}
                                                         {" · "}
@@ -1897,6 +4795,59 @@ export default function SystemSettings() {
                                                 <Pencil size={13} />
                                                 Edit
                                             </button>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        toggleRecordStatus(
+                                                            "leaveTypes",
+                                                            leaveType.id
+                                                        )
+                                                    }
+                                                    disabled={
+                                                        recordSaving
+                                                    }
+                                                    className="h-9 rounded-lg border border-slate-200 px-3 text-[10px] font-semibold text-slate-600 disabled:opacity-50"
+                                                >
+                                                    {leaveType.status ===
+                                                        "Active"
+                                                        ? "Disable"
+                                                        : "Enable"}
+                                                </button>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        openLeaveTypeDrawer(
+                                                            leaveType
+                                                        )
+                                                    }
+                                                    disabled={
+                                                        recordSaving
+                                                    }
+                                                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 disabled:opacity-50"
+                                                >
+                                                    <Pencil size={14} />
+                                                </button>
+
+                                                {!leaveType.isSystem && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            deleteSettingRecord(
+                                                                "leaveTypes",
+                                                                leaveType
+                                                            )
+                                                        }
+                                                        disabled={
+                                                            recordSaving
+                                                        }
+                                                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 text-rose-600 disabled:opacity-50"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     )
                                 )}
@@ -1982,7 +4933,7 @@ export default function SystemSettings() {
                                                     checked={
                                                         settings
                                                             .notifications[
-                                                            item.key
+                                                        item.key
                                                         ][channel]
                                                     }
                                                     onChange={(event) =>
@@ -2096,6 +5047,251 @@ export default function SystemSettings() {
                 </section>
             </div>
 
+            {drawerType === "product" && (
+                <SettingsDrawer
+                    title={
+                        productForm.id
+                            ? "Edit Product"
+                            : "Add Product"
+                    }
+                    description="Configure a software product sold and supported by your company."
+                    onClose={closeDrawer}
+                    onSubmit={saveProduct}
+                    submitLabel={
+                        productSaving
+                            ? "Saving..."
+                            : productForm.id
+                                ? "Update Product"
+                                : "Create Product"
+                    }
+                >
+                    {productFormError && (
+                        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+                            <p className="text-xs font-semibold text-rose-700">
+                                {productFormError}
+                            </p>
+                        </div>
+                    )}
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <div>
+                            <FieldLabel required>
+                                Product code
+                            </FieldLabel>
+
+                            <input
+                                value={
+                                    productForm.productCode
+                                }
+                                onChange={(event) =>
+                                    setProductForm(
+                                        (current) => ({
+                                            ...current,
+
+                                            productCode:
+                                                event.target.value.toUpperCase(),
+                                        })
+                                    )
+                                }
+                                placeholder="PRD-006"
+                                className="h-11 w-full rounded-xl border border-slate-200 px-3 text-xs uppercase outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                            />
+                        </div>
+
+                        <div>
+                            <FieldLabel required>
+                                Product name
+                            </FieldLabel>
+
+                            <input
+                                value={
+                                    productForm.productName
+                                }
+                                onChange={(event) =>
+                                    setProductForm(
+                                        (current) => ({
+                                            ...current,
+
+                                            productName:
+                                                event.target.value,
+                                        })
+                                    )
+                                }
+                                placeholder="Product name"
+                                className="h-11 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <div>
+                            <FieldLabel>
+                                Category
+                            </FieldLabel>
+
+                            <input
+                                value={
+                                    productForm.category
+                                }
+                                onChange={(event) =>
+                                    setProductForm(
+                                        (current) => ({
+                                            ...current,
+
+                                            category:
+                                                event.target.value,
+                                        })
+                                    )
+                                }
+                                placeholder="ERP, Billing, POS..."
+                                className="h-11 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                            />
+                        </div>
+
+                        <div>
+                            <FieldLabel>
+                                Current version
+                            </FieldLabel>
+
+                            <input
+                                value={
+                                    productForm.currentVersion
+                                }
+                                onChange={(event) =>
+                                    setProductForm(
+                                        (current) => ({
+                                            ...current,
+
+                                            currentVersion:
+                                                event.target.value,
+                                        })
+                                    )
+                                }
+                                placeholder="v1.0.0"
+                                className="h-11 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <div>
+                            <FieldLabel>
+                                Platform
+                            </FieldLabel>
+
+                            <select
+                                value={
+                                    productForm.platform
+                                }
+                                onChange={(event) =>
+                                    setProductForm(
+                                        (current) => ({
+                                            ...current,
+
+                                            platform:
+                                                event.target.value,
+                                        })
+                                    )
+                                }
+                                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                            >
+                                <option>Web</option>
+                                <option>Desktop</option>
+                                <option>Mobile</option>
+                                <option>
+                                    Web + Mobile
+                                </option>
+                                <option>
+                                    Desktop + Mobile
+                                </option>
+                                <option>
+                                    Web + Desktop
+                                </option>
+                                <option>
+                                    Web + Desktop + Mobile
+                                </option>
+                                <option>Other</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <FieldLabel>
+                                Release date
+                            </FieldLabel>
+
+                            <input
+                                type="date"
+                                value={
+                                    productForm.releaseDate
+                                }
+                                onChange={(event) =>
+                                    setProductForm(
+                                        (current) => ({
+                                            ...current,
+
+                                            releaseDate:
+                                                event.target.value,
+                                        })
+                                    )
+                                }
+                                className="h-11 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                            />
+                        </div>
+                    </div>
+
+                    <div>
+                        <FieldLabel>
+                            Description
+                        </FieldLabel>
+
+                        <textarea
+                            value={
+                                productForm.description
+                            }
+                            onChange={(event) =>
+                                setProductForm(
+                                    (current) => ({
+                                        ...current,
+
+                                        description:
+                                            event.target.value,
+                                    })
+                                )
+                            }
+                            rows={5}
+                            placeholder="Describe the product, purpose and supported modules."
+                            className="w-full resize-none rounded-xl border border-slate-200 px-3 py-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                        />
+                    </div>
+
+                    <div>
+                        <FieldLabel>
+                            Status
+                        </FieldLabel>
+
+                        <select
+                            value={
+                                productForm.status
+                            }
+                            onChange={(event) =>
+                                setProductForm(
+                                    (current) => ({
+                                        ...current,
+
+                                        status:
+                                            event.target.value,
+                                    })
+                                )
+                            }
+                            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                        >
+                            <option>Active</option>
+                            <option>Inactive</option>
+                            <option>Deprecated</option>
+                        </select>
+                    </div>
+                </SettingsDrawer>
+            )}
             {drawerType === "project" && (
                 <SettingsDrawer
                     title={
@@ -2103,10 +5299,25 @@ export default function SystemSettings() {
                             ? "Edit Project"
                             : "Add Project"
                     }
-                    description="Configure a software product or internal project."
+                    description="Configure development, client implementation or internal work."
                     onClose={closeDrawer}
                     onSubmit={saveProject}
+                    submitLabel={
+                        projectSaving
+                            ? "Saving..."
+                            : projectForm.id
+                                ? "Update Project"
+                                : "Create Project"
+                    }
                 >
+                    {projectFormError && (
+                        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+                            <p className="text-xs font-semibold text-rose-700">
+                                {projectFormError}
+                            </p>
+                        </div>
+                    )}
+
                     <div className="grid gap-4 sm:grid-cols-2">
                         <div>
                             <FieldLabel required>
@@ -2114,15 +5325,21 @@ export default function SystemSettings() {
                             </FieldLabel>
 
                             <input
-                                value={projectForm.code}
-                                onChange={(event) =>
-                                    setProjectForm((current) => ({
-                                        ...current,
-                                        code: event.target.value,
-                                    }))
+                                value={
+                                    projectForm.projectCode
                                 }
-                                placeholder="PRJ-006"
-                                className="h-11 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                onChange={(event) =>
+                                    setProjectForm(
+                                        (current) => ({
+                                            ...current,
+
+                                            projectCode:
+                                                event.target.value.toUpperCase(),
+                                        })
+                                    )
+                                }
+                                placeholder="PROJ-001"
+                                className="h-11 w-full rounded-xl border border-slate-200 px-3 text-xs uppercase outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                             />
                         </div>
 
@@ -2132,77 +5349,425 @@ export default function SystemSettings() {
                             </FieldLabel>
 
                             <input
-                                value={projectForm.name}
-                                onChange={(event) =>
-                                    setProjectForm((current) => ({
-                                        ...current,
-                                        name: event.target.value,
-                                    }))
+                                value={
+                                    projectForm.projectName
                                 }
-                                placeholder="Project name"
+                                onChange={(event) =>
+                                    setProjectForm(
+                                        (current) => ({
+                                            ...current,
+
+                                            projectName:
+                                                event.target.value,
+                                        })
+                                    )
+                                }
+                                placeholder="NexERP GST Module Upgrade"
                                 className="h-11 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                             />
                         </div>
                     </div>
 
                     <div>
-                        <FieldLabel>Category</FieldLabel>
-
-                        <input
-                            value={projectForm.category}
-                            onChange={(event) =>
-                                setProjectForm((current) => ({
-                                    ...current,
-                                    category: event.target.value,
-                                }))
-                            }
-                            placeholder="ERP, Billing, Mobile App..."
-                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                        />
-                    </div>
-
-                    <div>
-                        <FieldLabel>Description</FieldLabel>
-
-                        <textarea
-                            value={projectForm.description}
-                            onChange={(event) =>
-                                setProjectForm((current) => ({
-                                    ...current,
-                                    description: event.target.value,
-                                }))
-                            }
-                            rows={5}
-                            className="w-full resize-none rounded-xl border border-slate-200 px-3 py-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                        />
-                    </div>
-
-                    <div>
-                        <FieldLabel>Status</FieldLabel>
+                        <FieldLabel>
+                            Project type
+                        </FieldLabel>
 
                         <select
-                            value={projectForm.status}
+                            value={
+                                projectForm.projectType
+                            }
                             onChange={(event) =>
-                                setProjectForm((current) => ({
-                                    ...current,
-                                    status: event.target.value,
-                                }))
+                                setProjectForm(
+                                    (current) => ({
+                                        ...current,
+
+                                        projectType:
+                                            event.target.value,
+                                    })
+                                )
                             }
                             className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                         >
-                            <option>Active</option>
-                            <option>Inactive</option>
+                            <option>
+                                Product Development
+                            </option>
+                            <option>
+                                Client Implementation
+                            </option>
+                            <option>
+                                Internal Development
+                            </option>
+                            <option>
+                                Maintenance
+                            </option>
+                            <option>
+                                Upgrade
+                            </option>
+                            <option>
+                                Customization
+                            </option>
+                            <option>
+                                Research
+                            </option>
+                            <option>
+                                Other
+                            </option>
                         </select>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <div>
+                            <FieldLabel>
+                                Related product
+                            </FieldLabel>
+
+                            <select
+                                value={
+                                    projectForm.productId
+                                }
+                                onChange={(event) => {
+                                    const product =
+                                        products.find(
+                                            (item) =>
+                                                String(
+                                                    item.id
+                                                ) ===
+                                                String(
+                                                    event.target.value
+                                                )
+                                        );
+
+                                    setProjectForm(
+                                        (current) => ({
+                                            ...current,
+
+                                            productId:
+                                                product?.id ||
+                                                "",
+
+                                            productCode:
+                                                product?.productCode ||
+                                                "",
+
+                                            productName:
+                                                product?.productName ||
+                                                "",
+                                        })
+                                    );
+                                }}
+                                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                            >
+                                <option value="">
+                                    No related product
+                                </option>
+
+                                {products
+                                    .filter(
+                                        (product) =>
+                                            product.status ===
+                                            "Active"
+                                    )
+                                    .map(
+                                        (product) => (
+                                            <option
+                                                key={
+                                                    product.id
+                                                }
+                                                value={
+                                                    product.id
+                                                }
+                                            >
+                                                {
+                                                    product.productName
+                                                }
+                                                {" — "}
+                                                {
+                                                    product.productCode
+                                                }
+                                            </option>
+                                        )
+                                    )}
+                            </select>
+                        </div>
+
+                        <div>
+                            <FieldLabel>
+                                Related client
+                            </FieldLabel>
+
+                            <select
+                                value={
+                                    projectForm.clientId
+                                }
+                                disabled={
+                                    clientsLoading
+                                }
+                                onChange={(event) => {
+                                    const client =
+                                        clients.find(
+                                            (item) =>
+                                                String(
+                                                    item.id
+                                                ) ===
+                                                String(
+                                                    event.target.value
+                                                )
+                                        );
+
+                                    setProjectForm(
+                                        (current) => ({
+                                            ...current,
+
+                                            clientId:
+                                                client?.id ||
+                                                "",
+
+                                            clientCode:
+                                                client?.clientCode ||
+                                                "",
+
+                                            clientName:
+                                                client?.companyName ||
+                                                "",
+                                        })
+                                    );
+                                }}
+                                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100 disabled:bg-slate-50"
+                            >
+                                <option value="">
+                                    {clientsLoading
+                                        ? "Loading clients..."
+                                        : "Internal / No client"}
+                                </option>
+
+                                {clients.map(
+                                    (client) => (
+                                        <option
+                                            key={
+                                                client.id
+                                            }
+                                            value={
+                                                client.id
+                                            }
+                                        >
+                                            {
+                                                client.companyName
+                                            }
+                                            {client.clientCode
+                                                ? ` — ${client.clientCode}`
+                                                : ""}
+                                        </option>
+                                    )
+                                )}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <div>
+                            <FieldLabel>
+                                Start date
+                            </FieldLabel>
+
+                            <input
+                                type="date"
+                                value={
+                                    projectForm.startDate
+                                }
+                                onChange={(event) =>
+                                    setProjectForm(
+                                        (current) => ({
+                                            ...current,
+
+                                            startDate:
+                                                event.target.value,
+                                        })
+                                    )
+                                }
+                                className="h-11 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                            />
+                        </div>
+
+                        <div>
+                            <FieldLabel>
+                                Due date
+                            </FieldLabel>
+
+                            <input
+                                type="date"
+                                min={
+                                    projectForm.startDate ||
+                                    undefined
+                                }
+                                value={
+                                    projectForm.dueDate
+                                }
+                                onChange={(event) =>
+                                    setProjectForm(
+                                        (current) => ({
+                                            ...current,
+
+                                            dueDate:
+                                                event.target.value,
+                                        })
+                                    )
+                                }
+                                className="h-11 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <div>
+                            <FieldLabel>
+                                Priority
+                            </FieldLabel>
+
+                            <select
+                                value={
+                                    projectForm.priority
+                                }
+                                onChange={(event) =>
+                                    setProjectForm(
+                                        (current) => ({
+                                            ...current,
+
+                                            priority:
+                                                event.target.value,
+                                        })
+                                    )
+                                }
+                                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none"
+                            >
+                                <option>Low</option>
+                                <option>Medium</option>
+                                <option>High</option>
+                                <option>Critical</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <FieldLabel>
+                                Status
+                            </FieldLabel>
+
+                            <select
+                                value={
+                                    projectForm.status
+                                }
+                                onChange={(event) =>
+                                    setProjectForm(
+                                        (current) => ({
+                                            ...current,
+
+                                            status:
+                                                event.target.value,
+
+                                            progress:
+                                                event.target.value ===
+                                                    "Completed"
+                                                    ? 100
+                                                    : current.progress,
+                                        })
+                                    )
+                                }
+                                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none"
+                            >
+                                <option>Planned</option>
+                                <option>Active</option>
+                                <option>On Hold</option>
+                                <option>Completed</option>
+                                <option>Cancelled</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div className="flex items-center justify-between">
+                            <FieldLabel>
+                                Progress
+                            </FieldLabel>
+
+                            <span className="text-xs font-bold text-violet-700">
+                                {
+                                    projectForm.progress
+                                }
+                                %
+                            </span>
+                        </div>
+
+                        <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="5"
+                            disabled={
+                                projectForm.status ===
+                                "Completed"
+                            }
+                            value={
+                                projectForm.progress
+                            }
+                            onChange={(event) =>
+                                setProjectForm(
+                                    (current) => ({
+                                        ...current,
+
+                                        progress:
+                                            Number(
+                                                event.target.value
+                                            ),
+                                    })
+                                )
+                            }
+                            className="w-full accent-violet-600"
+                        />
+                    </div>
+
+                    <div>
+                        <FieldLabel>
+                            Description
+                        </FieldLabel>
+
+                        <textarea
+                            value={
+                                projectForm.description
+                            }
+                            onChange={(event) =>
+                                setProjectForm(
+                                    (current) => ({
+                                        ...current,
+
+                                        description:
+                                            event.target.value,
+                                    })
+                                )
+                            }
+                            rows={5}
+                            placeholder="Describe the project scope, objective and expected result."
+                            className="w-full resize-none rounded-xl border border-slate-200 px-3 py-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                        />
                     </div>
                 </SettingsDrawer>
             )}
 
             {drawerType === "role" && (
                 <SettingsDrawer
-                    title={roleForm.id ? "Edit Role" : "Add Role"}
-                    description="Configure module access for this role."
+                    title={
+                        roleForm.id
+                            ? "Edit Role"
+                            : "Add Role"
+                    }
+                    description="Configure role access and permissions."
                     onClose={closeDrawer}
                     onSubmit={saveRole}
+                    submitLabel={
+                        roleForm.id
+                            ? "Update Role"
+                            : "Create Role"
+                    }
+                    submitting={recordSaving}
                 >
                     <div>
                         <FieldLabel required>Role name</FieldLabel>
@@ -2242,13 +5807,12 @@ export default function SystemSettings() {
                             {permissionOptions.map((permission) => (
                                 <label
                                     key={permission}
-                                    className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 ${
-                                        roleForm.permissions.includes(
-                                            permission
-                                        )
-                                            ? "border-violet-200 bg-violet-50"
-                                            : "border-slate-200"
-                                    }`}
+                                    className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 ${roleForm.permissions.includes(
+                                        permission
+                                    )
+                                        ? "border-violet-200 bg-violet-50"
+                                        : "border-slate-200"
+                                        }`}
                                 >
                                     <input
                                         type="checkbox"

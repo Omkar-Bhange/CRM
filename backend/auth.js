@@ -39,6 +39,41 @@ const userSchema = new mongoose.Schema(
       required: true,
       lowercase: true,
     },
+    clientId: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "Client",
+  default: null,
+  index: true,
+},
+
+clientCode: {
+  type: String,
+  default: "",
+  trim: true,
+  uppercase: true,
+},
+
+companyName: {
+  type: String,
+  default: "",
+  trim: true,
+},
+
+mobile: {
+  type: String,
+  default: "",
+  trim: true,
+},
+
+mustChangePassword: {
+  type: Boolean,
+  default: false,
+},
+
+passwordChangedAt: {
+  type: Date,
+  default: null,
+},
 
     status: {
       type: String,
@@ -70,6 +105,12 @@ function generateToken(user) {
       userId: user._id,
       role: user.role,
       email: user.email,
+
+      clientId:
+        user.clientId || null,
+
+      clientCode:
+        user.clientCode || "",
     },
     process.env.JWT_SECRET,
     {
@@ -316,13 +357,32 @@ router.post("/login", async (req, res, next) => {
       message: "Login successful.",
       token,
       user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        status: user.status,
-        lastLoginAt: user.lastLoginAt,
-      },
+  id: user._id,
+  name: user.name,
+  email: user.email,
+  role: user.role,
+  status: user.status,
+
+  clientId:
+    user.clientId || null,
+
+  clientCode:
+    user.clientCode || "",
+
+  companyName:
+    user.companyName || "",
+
+  mobile:
+    user.mobile || "",
+
+  mustChangePassword:
+    Boolean(
+      user.mustChangePassword
+    ),
+
+  lastLoginAt:
+    user.lastLoginAt,
+},
     });
   } catch (error) {
     next(error);
@@ -335,21 +395,177 @@ router.post("/login", async (req, res, next) => {
    GET /api/auth/me
    ========================================================= */
 
-router.get("/me", authenticateUser, async (req, res) => {
-  return res.status(200).json({
-    success: true,
-    user: {
-      id: req.user._id,
-      name: req.user.name,
-      email: req.user.email,
-      role: req.user.role,
-      status: req.user.status,
-      lastLoginAt: req.user.lastLoginAt,
-      createdAt: req.user.createdAt,
-    },
-  });
-});
+router.get(
+  "/me",
+  authenticateUser,
+  async (req, res) => {
+    return res.status(200).json({
+      success: true,
 
+      user: {
+        id:
+          req.user._id,
+
+        name:
+          req.user.name,
+
+        email:
+          req.user.email,
+
+        role:
+          req.user.role,
+
+        status:
+          req.user.status,
+
+        clientId:
+          req.user.clientId ||
+          null,
+
+        clientCode:
+          req.user.clientCode ||
+          "",
+
+        companyName:
+          req.user.companyName ||
+          "",
+
+        mobile:
+          req.user.mobile ||
+          "",
+
+        mustChangePassword:
+          Boolean(
+            req.user
+              .mustChangePassword
+          ),
+
+        lastLoginAt:
+          req.user.lastLoginAt,
+
+        createdAt:
+          req.user.createdAt,
+      },
+    });
+  }
+);
+
+/* =========================================================
+   CHANGE PASSWORD
+   POST /api/auth/change-password
+========================================================= */
+
+router.post(
+  "/change-password",
+  authenticateUser,
+  async (req, res, next) => {
+    try {
+      const {
+        currentPassword,
+        newPassword,
+      } = req.body;
+
+      if (
+        !currentPassword ||
+        !newPassword
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Current password and new password are required.",
+          });
+      }
+
+      if (
+        String(newPassword).length <
+        6
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "New password must contain at least 6 characters.",
+          });
+      }
+
+      const user =
+        await User.findById(
+          req.user._id
+        ).select("+password");
+
+      if (!user) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message:
+              "User account was not found.",
+          });
+      }
+
+      const passwordMatches =
+        await bcrypt.compare(
+          String(
+            currentPassword
+          ),
+          user.password
+        );
+
+      if (!passwordMatches) {
+        return res
+          .status(401)
+          .json({
+            success: false,
+            message:
+              "Current password is incorrect.",
+          });
+      }
+
+      const samePassword =
+        await bcrypt.compare(
+          String(newPassword),
+          user.password
+        );
+
+      if (samePassword) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "New password must be different from the current password.",
+          });
+      }
+
+      user.password =
+        await bcrypt.hash(
+          String(newPassword),
+          12
+        );
+
+      user.mustChangePassword =
+        false;
+
+      user.passwordChangedAt =
+        new Date();
+
+      await user.save();
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+          message:
+            "Password changed successfully.",
+        });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 /* =========================================================
    TEST ROUTE
    ========================================================= */

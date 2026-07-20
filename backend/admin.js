@@ -1,10 +1,270 @@
- const express = require("express");
+const express = require("express");
 const mongoose = require("mongoose");
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
+const bcrypt =
+  require("bcryptjs");
+const crypto =
+  require("crypto");
 const {
   authenticateUser,
+  User,
 } = require("./auth");
+const {
+  SystemSettings,
+} = require("./settings");
 
+
+const SETTINGS_KEY =
+  "system";
+async function getSystemSettings() {
+  const settings =
+    await SystemSettings.findOne({
+      settingsKey:
+        SETTINGS_KEY,
+    }).lean();
+
+  if (!settings) {
+    throw new Error(
+      "System settings were not initialized."
+    );
+  }
+
+  return settings;
+}
+
+async function getActivePriorities() {
+  const settings =
+    await getSystemSettings();
+
+  return (
+    settings.priorities || []
+  )
+    .filter(
+      (item) =>
+        item.status ===
+        "Active"
+    )
+    .map((item) => ({
+      id:
+        item._id ||
+        item.id,
+
+      name:
+        String(
+          item.name || ""
+        ).trim(),
+
+      responseHours:
+        Number(
+          item.responseHours ||
+          0
+        ),
+
+      color:
+        item.color ||
+        "Slate",
+    }))
+    .filter(
+      (item) =>
+        item.name
+    );
+}
+
+async function getActiveTaskStatuses() {
+  const settings =
+    await getSystemSettings();
+
+  return (
+    settings.taskStatuses ||
+    []
+  )
+    .filter(
+      (item) =>
+        item.status ===
+        "Active"
+    )
+    .sort(
+      (a, b) =>
+        Number(a.order || 0) -
+        Number(b.order || 0)
+    )
+    .map((item) => ({
+      id:
+        item._id ||
+        item.id,
+
+      name:
+        String(
+          item.name || ""
+        ).trim(),
+
+      order:
+        Number(
+          item.order || 0
+        ),
+
+      isFinal:
+        Boolean(
+          item.isFinal
+        ),
+
+      color:
+        item.color ||
+        "Slate",
+    }))
+    .filter(
+      (item) =>
+        item.name
+    );
+}
+
+async function validatePriority(
+  value
+) {
+  const normalizedValue =
+    String(value || "").trim();
+
+  const priorities =
+    await getActivePriorities();
+
+  const matched =
+    priorities.find(
+      (item) =>
+        item.name.toLowerCase() ===
+        normalizedValue.toLowerCase()
+    );
+
+  return matched || null;
+}
+
+async function validateTaskStatus(
+  value
+) {
+  const normalizedValue =
+    String(value || "").trim();
+
+  const statuses =
+    await getActiveTaskStatuses();
+
+  const matched =
+    statuses.find(
+      (item) =>
+        item.name.toLowerCase() ===
+        normalizedValue.toLowerCase()
+    );
+
+  return matched || null;
+}
 const router = express.Router();
+/* =====================================================
+   SUPPORT TICKET FILE UPLOAD CONFIGURATION
+===================================================== */
+
+const ticketUploadDirectory = path.join(
+  __dirname,
+  "uploads",
+  "tickets"
+);
+
+if (!fs.existsSync(ticketUploadDirectory)) {
+  fs.mkdirSync(ticketUploadDirectory, {
+    recursive: true,
+  });
+}
+
+const allowedTicketFileTypes = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "text/plain",
+  "text/csv",
+  "application/zip",
+  "application/x-zip-compressed",
+];
+
+const ticketAttachmentStorage =
+  multer.diskStorage({
+    destination: (
+      req,
+      file,
+      callback
+    ) => {
+      callback(
+        null,
+        ticketUploadDirectory
+      );
+    },
+
+    filename: (
+      req,
+      file,
+      callback
+    ) => {
+      const originalExtension =
+        path.extname(
+          file.originalname
+        );
+
+      const originalBaseName =
+        path
+          .basename(
+            file.originalname,
+            originalExtension
+          )
+          .replace(
+            /[^a-zA-Z0-9-_]/g,
+            "-"
+          )
+          .slice(0, 80);
+
+      const uniqueName =
+        `${Date.now()}-${Math.round(
+          Math.random() * 1e9
+        )}-${originalBaseName}${originalExtension}`;
+
+      callback(null, uniqueName);
+    },
+  });
+
+const uploadTicketAttachment =
+  multer({
+    storage:
+      ticketAttachmentStorage,
+
+    limits: {
+      fileSize:
+        10 * 1024 * 1024,
+    },
+
+    fileFilter: (
+      req,
+      file,
+      callback
+    ) => {
+      if (
+        allowedTicketFileTypes.includes(
+          file.mimetype
+        )
+      ) {
+        callback(null, true);
+        return;
+      }
+
+      callback(
+        new Error(
+          "Unsupported file type. Upload an image, PDF, Word, Excel, text, CSV or ZIP file."
+        )
+      );
+    },
+  });
 
 router.use(authenticateUser);
 
@@ -18,48 +278,382 @@ router.use((req, res, next) => {
 
   next();
 });
+
+/* =====================================================
+   PRODUCT MASTER SCHEMA
+===================================================== */
+
+const productSchema = new mongoose.Schema(
+  {
+    productCode: {
+      type: String,
+      required: [
+        true,
+        "Product code is required.",
+      ],
+      unique: true,
+      trim: true,
+      uppercase: true,
+      index: true,
+    },
+
+    productName: {
+      type: String,
+      required: [
+        true,
+        "Product name is required.",
+      ],
+      trim: true,
+      index: true,
+    },
+
+    category: {
+      type: String,
+      default: "Software",
+      trim: true,
+      index: true,
+    },
+
+    description: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    currentVersion: {
+      type: String,
+      default: "v1.0.0",
+      trim: true,
+    },
+
+    platform: {
+      type: String,
+      enum: [
+        "Web",
+        "Desktop",
+        "Mobile",
+        "Web + Mobile",
+        "Desktop + Mobile",
+        "Web + Desktop",
+        "Web + Desktop + Mobile",
+        "Other",
+      ],
+      default: "Web",
+    },
+
+    status: {
+      type: String,
+      enum: [
+        "Active",
+        "Inactive",
+        "Deprecated",
+      ],
+      default: "Active",
+      index: true,
+    },
+
+    releaseDate: {
+      type: Date,
+      default: null,
+    },
+
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    createdByName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    updatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    updatedByName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
+
+    deletedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    deletedByName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+  },
+  {
+    timestamps: true,
+    collection: "products",
+  }
+);
+
+
+
+productSchema.index({
+  productName: "text",
+  productCode: "text",
+  category: "text",
+  description: "text",
+});
+
+const Product =
+  mongoose.models.Product ||
+  mongoose.model(
+    "Product",
+    productSchema
+  );
+
+/* =====================================================
+ PROJECT MASTER SCHEMA
+===================================================== */
+
+const projectSchema = new mongoose.Schema(
+  {
+    projectCode: {
+      type: String,
+      required: [
+        true,
+        "Project code is required.",
+      ],
+      unique: true,
+      trim: true,
+      uppercase: true,
+      index: true,
+    },
+
+    projectName: {
+      type: String,
+      required: [
+        true,
+        "Project name is required.",
+      ],
+      trim: true,
+      index: true,
+    },
+
+    projectType: {
+      type: String,
+      enum: [
+        "Product Development",
+        "Client Implementation",
+        "Internal Development",
+        "Maintenance",
+        "Upgrade",
+        "Customization",
+        "Research",
+        "Other",
+      ],
+      default: "Internal Development",
+      index: true,
+    },
+
+productId: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "Product",
+  default: null,
+  index: true,
+},
+
+    productCode: {
+      type: String,
+      default: "",
+      trim: true,
+      uppercase: true,
+    },
+
+    productName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    clientId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Client",
+      default: null,
+      index: true,
+    },
+
+    clientCode: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    clientName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    description: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    startDate: {
+      type: Date,
+      default: null,
+    },
+
+    dueDate: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+
+    completedDate: {
+      type: Date,
+      default: null,
+    },
+
+    priority: {
+      type: String,
+      default: "Medium",
+      trim: true,
+      index: true,
+    },
+
+    status: {
+      type: String,
+      enum: [
+        "Planned",
+        "Active",
+        "On Hold",
+        "Completed",
+        "Cancelled",
+      ],
+      default: "Planned",
+      index: true,
+    },
+
+    progress: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100,
+    },
+
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    createdByName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    updatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    updatedByName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
+
+    deletedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    deletedByName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+  },
+  {
+    timestamps: true,
+    collection: "projects",
+  }
+);
+
+projectSchema.index({
+  projectName: "text",
+  projectCode: "text",
+  productName: "text",
+  clientName: "text",
+  description: "text",
+});
+
+const Project =
+  mongoose.models.Project ||
+  mongoose.model(
+    "Project",
+    projectSchema
+  );
 /* ===========================
    CLIENT SCHEMA
 =========================== */
 
-const clientSchema = new mongoose.Schema(
-  {
-    clientCode: {
-      type: String,
-      required: true,
-      unique: true,
-      trim: true,
-    },
+/* =====================================================
+   CLIENT SCHEMA
+===================================================== */
 
-    companyName: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    contactPerson: {
-      type: String,
-      default: "",
-    },
-
-    email: {
-      type: String,
-      default: "",
-    },
-
-    mobile: {
-      type: String,
-      default: "",
-    },
-
-    city: {
-      type: String,
-      default: "",
-    },
-
- products: {
-  type: [
+const clientProductSchema =
+  new mongoose.Schema(
     {
+      productId: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+        ref: "Product",
+        required: [
+          true,
+          "Product ID is required.",
+        ],
+        index: true,
+      },
+
+      productCode: {
+        type: String,
+        required: true,
+        trim: true,
+        uppercase: true,
+      },
+
       productName: {
         type: String,
         required: true,
@@ -90,7 +684,11 @@ const clientSchema = new mongoose.Schema(
 
       supportType: {
         type: String,
-        enum: ["Basic", "Standard", "Premium"],
+        enum: [
+          "Basic",
+          "Standard",
+          "Premium",
+        ],
         default: "Standard",
       },
 
@@ -128,46 +726,217 @@ const clientSchema = new mongoose.Schema(
         trim: true,
       },
     },
-  ],
-  default: [],
+    {
+      _id: true,
+      timestamps: true,
+    }
+  );
+
+const clientSchema =
+  new mongoose.Schema(
+    {
+      clientCode: {
+        type: String,
+        required: [
+          true,
+          "Client code is required.",
+        ],
+        unique: true,
+        trim: true,
+        uppercase: true,
+        index: true,
+      },
+
+      companyName: {
+        type: String,
+        required: [
+          true,
+          "Company name is required.",
+        ],
+        trim: true,
+        index: true,
+      },
+
+      contactPerson: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      email: {
+        type: String,
+        default: "",
+        trim: true,
+        lowercase: true,
+      },
+      userId: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+        index: true,
+      },
+
+      loginEnabled: {
+        type: Boolean,
+        default: true,
+      },
+
+      loginCreatedAt: {
+        type: Date,
+        default: null,
+      },
+
+      mobile: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      city: {
+        type: String,
+        default: "",
+        trim: true,
+        index: true,
+      },
+
+      products: {
+        type: [clientProductSchema],
+        default: [],
+      },
+
+      amcStatus: {
+        type: String,
+        enum: [
+          "Not Started",
+          "Pending",
+          "Paid",
+          "Partially Paid",
+          "Overdue",
+        ],
+        default: "Not Started",
+        index: true,
+      },
+
+      nextRenewal: {
+        type: String,
+        default: "",
+      },
+
+      openTickets: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+assignedEmployeeId: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "Employee",
+  default: null,
+  index: true,
 },
 
-    amcStatus: {
-      type: String,
-      default: "Not Started",
-    },
+assignedEmployeeCode: {
+  type: String,
+  default: "",
+  trim: true,
+  uppercase: true,
+},
 
-    nextRenewal: {
-      type: String,
-      default: "",
-    },
+assignedEmployeeName: {
+  type: String,
+  default: "",
+  trim: true,
+},
 
-    openTickets: {
-      type: Number,
-      default: 0,
-    },
 
-    assignedTo: {
-      type: String,
-      default: "",
-    },
+      status: {
+        type: String,
+        enum: [
+          "Active",
+          "Inactive",
+          "Suspended",
+        ],
+        default: "Active",
+        index: true,
+      },
 
-    status: {
-      type: String,
-      default: "Active",
+      createdBy: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+
+      createdByName: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      updatedBy: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+
+      updatedByName: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      isDeleted: {
+        type: Boolean,
+        default: false,
+        index: true,
+      },
+
+      deletedAt: {
+        type: Date,
+        default: null,
+      },
+
+      deletedBy: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+
+      deletedByName: {
+        type: String,
+        default: "",
+        trim: true,
+      },
     },
-  },
-  {
-    timestamps: true,
-  }
-);
+    {
+      timestamps: true,
+      collection: "clients",
+    }
+  );
+clientSchema.index({
+  clientCode: "text",
+  companyName: "text",
+  contactPerson: "text",
+  email: "text",
+  mobile: "text",
+  city: "text",
+  assignedEmployeeCode: "text",
+  assignedEmployeeName: "text",
+  "products.productName": "text",
+  "products.productCode": "text",
+});
 
 const Client =
   mongoose.models.Client ||
-  mongoose.model("Client", clientSchema);
+  mongoose.model(
+    "Client",
+    clientSchema
+  );
 
-  /* =====================================================
-   TASK SCHEMA
+/* =====================================================
+ TASK SCHEMA
 ===================================================== */
 
 const taskTimelineSchema = new mongoose.Schema(
@@ -323,6 +1092,7 @@ const taskSchema = new mongoose.Schema(
       type: String,
       enum: [
         "Client Support",
+        "Internal Development",
         "Development",
         "Testing",
         "Installation",
@@ -335,6 +1105,21 @@ const taskSchema = new mongoose.Schema(
       default: "Client Support",
     },
 
+    taskFor: {
+      type: String,
+      enum: [
+        "Project",
+        "Product",
+        "General",
+      ],
+      default: "Project",
+      index: true,
+    },
+    generalTaskFor: {
+      type: String,
+      default: "",
+      trim: true,
+    },
     clientId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Client",
@@ -351,12 +1136,38 @@ const taskSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       default: null,
     },
-
-    project: {
+    productCode: {
       type: String,
-      required: [true, "Project is required."],
+      default: "",
+      trim: true,
+      uppercase: true,
+    },
+
+    productName: {
+      type: String,
+      default: "",
       trim: true,
     },
+
+projectId: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "Project",
+  default: null,
+  index: true,
+},
+
+projectCode: {
+  type: String,
+  default: "",
+  trim: true,
+  uppercase: true,
+},
+
+projectName: {
+  type: String,
+  default: "",
+  trim: true,
+},
 
     ticketId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -402,26 +1213,15 @@ const taskSchema = new mongoose.Schema(
 
     priority: {
       type: String,
-      enum: ["Low", "Medium", "High", "Critical"],
       default: "Medium",
+      trim: true,
       index: true,
     },
 
     status: {
       type: String,
-      enum: [
-        "Assigned",
-        "Accepted",
-        "In Progress",
-        "Paused",
-        "Waiting",
-        "Testing",
-        "Completed",
-        "Verified",
-        "Closed",
-        "Cancelled",
-      ],
       default: "Assigned",
+      trim: true,
       index: true,
     },
 
@@ -497,9 +1297,662 @@ const Task =
   mongoose.models.Task ||
   mongoose.model("Task", taskSchema);
 
-  /* =====================================================
-   TASK HELPERS
+/* =====================================================
+ ACTIVITY LOG SCHEMA
 ===================================================== */
+
+const activityLogSchema = new mongoose.Schema(
+  {
+    action: {
+      type: String,
+      required: true,
+      trim: true,
+      index: true,
+    },
+
+    category: {
+      type: String,
+      enum: [
+        "Client",
+        "Product",
+        "Project",
+        "Task",
+        "Ticket",
+        "Employee",
+        "Attendance",
+        "AMC",
+        "Payment",
+        "System",
+      ],
+      default: "System",
+      index: true,
+    },
+
+    description: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    entityType: {
+      type: String,
+      enum: [
+        "client",
+        "product",
+        "project",
+        "task",
+        "ticket",
+        "employee",
+        "attendance",
+        "amc",
+        "payment",
+        "system",
+      ],
+      default: "system",
+      index: true,
+    },
+
+    entityId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+      index: true,
+    },
+
+    entityCode: {
+      type: String,
+      default: "",
+      trim: true,
+      index: true,
+    },
+
+    entityName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    clientId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Client",
+      default: null,
+      index: true,
+    },
+
+    clientName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    employeeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Employee",
+      default: null,
+      index: true,
+    },
+
+    employeeName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    performedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true,
+    },
+
+    performedByName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    performedByRole: {
+      type: String,
+      enum: ["admin", "employee", "client", "system"],
+      default: "system",
+      index: true,
+    },
+
+    metadata: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+  },
+  {
+    timestamps: true,
+    collection: "activitylogs",
+  }
+);
+
+const ActivityLog =
+  mongoose.models.ActivityLog ||
+  mongoose.model(
+    "ActivityLog",
+    activityLogSchema
+  );
+
+/* =====================================================
+SUPPORT TICKET SCHEMAS
+===================================================== */
+
+const ticketTimelineSchema =
+  new mongoose.Schema(
+    {
+      type: {
+        type: String,
+        enum: [
+          "created",
+          "assigned",
+          "status",
+          "reply",
+          "attachment",
+          "resolved",
+          "closed",
+          "reopened",
+          "task",
+          "updated",
+          "deleted",
+        ],
+        default: "updated",
+      },
+
+      title: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      description: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      performedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+
+      performedByName: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      performedByRole: {
+        type: String,
+        enum: [
+          "admin",
+          "employee",
+          "client",
+          "system",
+        ],
+        default: "system",
+      },
+
+      createdAt: {
+        type: Date,
+        default: Date.now,
+      },
+    },
+    {
+      _id: true,
+    }
+  );
+
+const ticketReplySchema =
+  new mongoose.Schema(
+    {
+      message: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      replyType: {
+        type: String,
+        enum: [
+          "Public",
+          "Internal",
+        ],
+        default: "Public",
+      },
+
+      authorId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+
+      authorName: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      authorRole: {
+        type: String,
+        enum: [
+          "admin",
+          "employee",
+          "client",
+        ],
+        default: "admin",
+      },
+
+      createdAt: {
+        type: Date,
+        default: Date.now,
+      },
+    },
+    {
+      _id: true,
+    }
+  );
+
+const ticketAttachmentSchema =
+  new mongoose.Schema(
+    {
+      fileName: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      fileUrl: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      fileType: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      fileSize: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      uploadedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+
+      uploadedByName: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      uploadedByRole: {
+        type: String,
+        enum: [
+          "admin",
+          "employee",
+          "client",
+        ],
+        default: "admin",
+      },
+
+      uploadedAt: {
+        type: Date,
+        default: Date.now,
+      },
+    },
+    {
+      _id: true,
+    }
+  );
+
+const supportTicketSchema =
+  new mongoose.Schema(
+    {
+      ticketCode: {
+        type: String,
+        required: true,
+        unique: true,
+        uppercase: true,
+        trim: true,
+        index: true,
+      },
+
+      title: {
+        type: String,
+        required: [
+          true,
+          "Ticket title is required.",
+        ],
+        trim: true,
+      },
+
+      description: {
+        type: String,
+        required: [
+          true,
+          "Problem description is required.",
+        ],
+        trim: true,
+      },
+
+      clientId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Client",
+        required: true,
+        index: true,
+      },
+
+      clientCode: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      clientName: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      contactPerson: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      contactMobile: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      contactEmail: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      productId: {
+        type: mongoose.Schema.Types.ObjectId,
+        default: null,
+      },
+
+      productName: {
+        type: String,
+        required: [
+          true,
+          "Product is required.",
+        ],
+        trim: true,
+        index: true,
+      },
+
+      productVersion: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      module: {
+        type: String,
+        default: "General",
+        trim: true,
+      },
+
+      category: {
+        type: String,
+        enum: [
+          "Bug",
+          "Configuration",
+          "Data Issue",
+          "Feature Request",
+          "Installation",
+          "Training",
+          "Permission",
+          "Performance",
+          "Report",
+          "Other",
+        ],
+        default: "Other",
+      },
+
+      source: {
+        type: String,
+        enum: [
+          "Client Portal",
+          "Phone Call",
+          "WhatsApp",
+          "Email",
+          "Admin",
+        ],
+        default: "Admin",
+        index: true,
+      },
+
+      priority: {
+        type: String,
+        default: "Medium",
+        trim: true,
+        index: true,
+      },
+
+      status: {
+        type: String,
+        enum: [
+          "New",
+          "Assigned",
+          "In Progress",
+          "Waiting for Client",
+          "Testing",
+          "Resolved",
+          "Verified",
+          "Closed",
+          "Cancelled",
+        ],
+        default: "New",
+        index: true,
+      },
+
+      assignedEmployeeId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Employee",
+        default: null,
+        index: true,
+      },
+
+      assignedEmployeeName: {
+        type: String,
+        default: "Unassigned",
+        trim: true,
+      },
+
+      assignedEmployeeCode: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      assignedAt: {
+        type: Date,
+        default: null,
+      },
+
+      assignedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+
+      assignedByName: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      dueDate: {
+        type: Date,
+        default: null,
+        index: true,
+      },
+
+      firstResponseAt: {
+        type: Date,
+        default: null,
+      },
+
+      resolvedAt: {
+        type: Date,
+        default: null,
+      },
+
+      verifiedAt: {
+        type: Date,
+        default: null,
+      },
+
+      closedAt: {
+        type: Date,
+        default: null,
+      },
+
+      resolutionNote: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      rootCause: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      linkedTaskId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Task",
+        default: null,
+        index: true,
+      },
+
+      linkedTaskCode: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      spentMinutes: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      replies: {
+        type: [ticketReplySchema],
+        default: [],
+      },
+
+      attachments: {
+        type: [ticketAttachmentSchema],
+        default: [],
+      },
+
+      timeline: {
+        type: [ticketTimelineSchema],
+        default: [],
+      },
+
+      createdBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+
+      createdByName: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      createdByRole: {
+        type: String,
+        enum: [
+          "admin",
+          "employee",
+          "client",
+          "system",
+        ],
+        default: "admin",
+      },
+
+      isDeleted: {
+        type: Boolean,
+        default: false,
+        index: true,
+      },
+    },
+    {
+      timestamps: true,
+      collection: "supporttickets",
+    }
+  );
+
+supportTicketSchema.index({
+  clientId: 1,
+  status: 1,
+  createdAt: -1,
+});
+
+supportTicketSchema.index({
+  assignedEmployeeId: 1,
+  status: 1,
+});
+
+supportTicketSchema.index({
+  title: "text",
+  description: "text",
+  clientName: "text",
+  productName: "text",
+  module: "text",
+});
+
+const SupportTicket =
+  mongoose.models.SupportTicket ||
+  mongoose.model(
+    "SupportTicket",
+    supportTicketSchema
+  );
+
+/* =====================================================
+ TASK HELPERS
+===================================================== */
+function generateTicketCode() {
+  const year =
+    new Date().getFullYear();
+
+  const uniquePart =
+    `${Date.now()}${Math.floor(
+      Math.random() * 1000
+    )
+      .toString()
+      .padStart(3, "0")}`.slice(-8);
+
+  return `TKT-${year}-${uniquePart}`;
+}
 
 function generateTaskCode() {
   const year = new Date().getFullYear();
@@ -523,50 +1976,921 @@ function normalizeObjectId(value) {
     : null;
 }
 
+async function createActivityLog({
+  action,
+  category = "System",
+  description = "",
+  entityType = "system",
+  entityId = null,
+  entityCode = "",
+  entityName = "",
+  clientId = null,
+  clientName = "",
+  employeeId = null,
+  employeeName = "",
+  performedBy = null,
+  performedByName = "",
+  performedByRole = "system",
+  metadata = {},
+}) {
+  try {
+    return await ActivityLog.create({
+      action: String(action || "").trim(),
+
+      category,
+
+      description:
+        String(description || "").trim(),
+
+      entityType,
+
+      entityId: normalizeObjectId(entityId),
+
+      entityCode:
+        String(entityCode || "").trim(),
+
+      entityName:
+        String(entityName || "").trim(),
+
+      clientId: normalizeObjectId(clientId),
+
+      clientName:
+        String(clientName || "").trim(),
+
+      employeeId:
+        normalizeObjectId(employeeId),
+
+      employeeName:
+        String(employeeName || "").trim(),
+
+      performedBy:
+        normalizeObjectId(performedBy),
+
+      performedByName:
+        String(performedByName || "").trim(),
+
+      performedByRole,
+
+      metadata:
+        metadata &&
+          typeof metadata === "object"
+          ? metadata
+          : {},
+    });
+  } catch (error) {
+    /*
+     * Activity logging must never break the main API.
+     */
+    console.error(
+      "Create activity log error:",
+      error
+    );
+
+    return null;
+  }
+}
+
+function productResponse(product) {
+  return {
+    id: product._id,
+    _id: product._id,
+
+    productCode:
+      product.productCode,
+
+    productName:
+      product.productName,
+
+    category:
+      product.category,
+
+    description:
+      product.description,
+
+    currentVersion:
+      product.currentVersion,
+
+    platform:
+      product.platform,
+
+    status:
+      product.status,
+
+    releaseDate:
+      product.releaseDate,
+
+    createdBy:
+      product.createdBy,
+
+    createdByName:
+      product.createdByName,
+
+    updatedBy:
+      product.updatedBy,
+
+    updatedByName:
+      product.updatedByName,
+
+    createdAt:
+      product.createdAt,
+
+    updatedAt:
+      product.updatedAt,
+  };
+}
+
+function projectResponse(project) {
+  return {
+    id: project._id,
+    _id: project._id,
+
+    projectCode:
+      project.projectCode,
+
+    projectName:
+      project.projectName,
+
+    projectType:
+      project.projectType,
+
+    productId:
+      project.productId,
+
+    productCode:
+      project.productCode,
+
+    productName:
+      project.productName,
+
+    clientId:
+      project.clientId,
+
+    clientCode:
+      project.clientCode,
+
+    clientName:
+      project.clientName,
+
+    description:
+      project.description,
+
+    startDate:
+      project.startDate,
+
+    dueDate:
+      project.dueDate,
+
+    completedDate:
+      project.completedDate,
+
+    priority:
+      project.priority,
+
+    status:
+      project.status,
+
+    progress:
+      project.progress,
+
+    createdBy:
+      project.createdBy,
+
+    createdByName:
+      project.createdByName,
+
+    updatedBy:
+      project.updatedBy,
+
+    updatedByName:
+      project.updatedByName,
+
+    createdAt:
+      project.createdAt,
+
+    updatedAt:
+      project.updatedAt,
+  };
+}
+
+/* =====================================================
+   CLIENT HELPERS
+===================================================== */
+
+/* =====================================================
+   CLIENT LOGIN HELPERS
+===================================================== */
+
+function generateTemporaryPassword() {
+  const upper =
+    "ABCDEFGHJKLMNPQRSTUVWXYZ";
+
+  const lower =
+    "abcdefghijkmnopqrstuvwxyz";
+
+  const numbers =
+    "23456789";
+
+  const symbols =
+    "@#$!";
+
+  const randomCharacter = (
+    characters
+  ) =>
+    characters[
+    crypto.randomInt(
+      0,
+      characters.length
+    )
+    ];
+
+  const requiredCharacters = [
+    randomCharacter(upper),
+    randomCharacter(lower),
+    randomCharacter(numbers),
+    randomCharacter(symbols),
+  ];
+
+  const allCharacters =
+    upper +
+    lower +
+    numbers +
+    symbols;
+
+  while (
+    requiredCharacters.length < 10
+  ) {
+    requiredCharacters.push(
+      randomCharacter(
+        allCharacters
+      )
+    );
+  }
+
+  for (
+    let index =
+      requiredCharacters.length -
+      1;
+    index > 0;
+    index -= 1
+  ) {
+    const randomIndex =
+      crypto.randomInt(
+        0,
+        index + 1
+      );
+
+    [
+      requiredCharacters[index],
+      requiredCharacters[
+      randomIndex
+      ],
+    ] = [
+        requiredCharacters[
+        randomIndex
+        ],
+        requiredCharacters[index],
+      ];
+  }
+
+  return requiredCharacters.join(
+    ""
+  );
+}
+
+function mapClientStatusToUserStatus(
+  clientStatus
+) {
+  if (
+    clientStatus === "Active"
+  ) {
+    return "Active";
+  }
+
+  if (
+    clientStatus ===
+    "Suspended"
+  ) {
+    return "Blocked";
+  }
+
+  return "Inactive";
+}
+
+async function findClientUser(
+  client
+) {
+  if (!client) {
+    return null;
+  }
+
+  let user =
+    await User.findOne({
+      role: "client",
+      clientId: client._id,
+    });
+
+  if (
+    !user &&
+    client.email
+  ) {
+    user =
+      await User.findOne({
+        role: "client",
+        email:
+          String(
+            client.email
+          )
+            .trim()
+            .toLowerCase(),
+      });
+  }
+
+  return user;
+}
+
+async function syncClientUser(
+  client
+) {
+  const existingUser =
+    await findClientUser(
+      client
+    );
+
+  if (!existingUser) {
+    return null;
+  }
+
+  existingUser.name =
+    client.contactPerson ||
+    client.companyName;
+
+  existingUser.email =
+    String(
+      client.email || ""
+    )
+      .trim()
+      .toLowerCase();
+
+  existingUser.mobile =
+    client.mobile || "";
+
+  existingUser.clientId =
+    client._id;
+
+  existingUser.clientCode =
+    client.clientCode;
+
+  existingUser.companyName =
+    client.companyName;
+
+  existingUser.status =
+    mapClientStatusToUserStatus(
+      client.status
+    );
+
+  await existingUser.save();
+
+  return existingUser;
+}
+
+function clientProductResponse(product = {}) {
+  return {
+    id:
+      product._id ||
+      product.id ||
+      "",
+
+    _id:
+      product._id ||
+      product.id ||
+      "",
+
+    productId:
+      product.productId?._id ||
+      product.productId ||
+      null,
+
+    productCode:
+      product.productCode ||
+      product.productId?.productCode ||
+      "",
+
+    productName:
+      product.productName ||
+      product.productId?.productName ||
+      "",
+
+    version:
+      product.version ||
+      product.productId?.currentVersion ||
+      "v1.0.0",
+
+    purchaseDate:
+      product.purchaseDate ||
+      "",
+
+    installationDate:
+      product.installationDate ||
+      "",
+
+    licensedUsers:
+      Math.max(
+        Number(
+          product.licensedUsers ||
+          1
+        ),
+        1
+      ),
+
+    supportType:
+      product.supportType ||
+      "Standard",
+
+    amcStatus:
+      product.amcStatus ||
+      "Not Started",
+
+    expiryDate:
+      product.expiryDate ||
+      "",
+
+    installationStatus:
+      product.installationStatus ||
+      "Installed",
+
+    notes:
+      product.notes ||
+      "",
+
+    createdAt:
+      product.createdAt ||
+      null,
+
+    updatedAt:
+      product.updatedAt ||
+      null,
+  };
+}
+function clientResponse(client) {
+  return {
+    id: client._id,
+    _id: client._id,
+
+    clientCode:
+      client.clientCode,
+
+    companyName:
+      client.companyName,
+
+    contactPerson:
+      client.contactPerson,
+
+    email:
+      client.email,
+    userId:
+      client.userId || null,
+
+    loginEnabled:
+      client.loginEnabled !==
+      false,
+
+    loginCreatedAt:
+      client.loginCreatedAt ||
+      null,
+
+    mobile:
+      client.mobile,
+
+    city:
+      client.city,
+
+    products:
+      Array.isArray(client.products)
+        ? client.products.map(
+          clientProductResponse
+        )
+        : [],
+
+    productCount:
+      Array.isArray(client.products)
+        ? client.products.length
+        : 0,
+
+    amcStatus:
+      client.amcStatus,
+
+    nextRenewal:
+      client.nextRenewal,
+
+    openTickets:
+      Number(
+        client.openTickets || 0
+      ),
+
+
+assignedEmployeeId:
+  client.assignedEmployeeId?._id ||
+  client.assignedEmployeeId ||
+  null,
+
+assignedEmployeeCode:
+  client.assignedEmployeeCode ||
+  client.assignedEmployeeId
+    ?.employeeCode ||
+  "",
+
+assignedEmployeeName:
+  client.assignedEmployeeName ||
+  client.assignedEmployeeId
+    ?.name ||
+  "Unassigned",
+
+
+
+    status:
+      client.status,
+
+    createdBy:
+      client.createdBy,
+
+    createdByName:
+      client.createdByName,
+
+    updatedBy:
+      client.updatedBy,
+
+    updatedByName:
+      client.updatedByName,
+
+    createdAt:
+      client.createdAt,
+
+    updatedAt:
+      client.updatedAt,
+  };
+}
+
+async function resolveClientProduct(
+  productData = {}
+) {
+  const productId =
+    productData.productId;
+
+  if (!productId) {
+    throw new Error(
+      "Product ID is required."
+    );
+  }
+
+  if (
+    !mongoose.Types.ObjectId.isValid(
+      productId
+    )
+  ) {
+    throw new Error(
+      "Invalid product ID."
+    );
+  }
+
+  const product =
+    await Product.findOne({
+      _id: productId,
+      isDeleted: false,
+    });
+
+  if (!product) {
+    throw new Error(
+      "Selected product was not found."
+    );
+  }
+
+  if (
+    product.status !== "Active"
+  ) {
+    throw new Error(
+      `${product.productName} is not active.`
+    );
+  }
+
+  return {
+    productId:
+      product._id,
+
+    productCode:
+      product.productCode,
+
+    productName:
+      product.productName,
+
+    version:
+      String(
+        productData.version ||
+        product.currentVersion ||
+        "v1.0.0"
+      ).trim(),
+
+    purchaseDate:
+      productData.purchaseDate || "",
+
+    installationDate:
+      productData.installationDate ||
+      "",
+
+    licensedUsers:
+      Math.max(
+        Number(
+          productData.licensedUsers ||
+          1
+        ),
+        1
+      ),
+
+    supportType:
+      productData.supportType ||
+      "Standard",
+
+    amcStatus:
+      productData.amcStatus ||
+      "Not Started",
+
+    expiryDate:
+      productData.expiryDate || "",
+
+    installationStatus:
+      productData.installationStatus ||
+      "Installed",
+
+    notes:
+      String(
+        productData.notes || ""
+      ).trim(),
+  };
+}
+
+async function resolveClientProducts(
+  products = []
+) {
+  if (!Array.isArray(products)) {
+    return [];
+  }
+
+  const resolvedProducts = [];
+  const usedProductIds =
+    new Set();
+
+  for (const item of products) {
+    const resolved =
+      await resolveClientProduct(
+        item
+      );
+
+    const key =
+      String(
+        resolved.productId
+      );
+
+    if (
+      usedProductIds.has(key)
+    ) {
+      throw new Error(
+        `${resolved.productName} is assigned more than once.`
+      );
+    }
+
+    usedProductIds.add(key);
+    resolvedProducts.push(
+      resolved
+    );
+  }
+
+  return resolvedProducts;
+}
+
 function taskResponse(task) {
   return {
-    id: task._id,
-    _id: task._id,
-    taskCode: task.taskCode,
-    title: task.title,
-    description: task.description,
-    workType: task.workType,
+    id:
+      task._id,
 
-    clientId: task.clientId,
-    clientName: task.clientName,
+    _id:
+      task._id,
 
-    productId: task.productId,
-    project: task.project,
+    taskCode:
+      task.taskCode,
 
-    ticketId: task.ticketId,
-    ticketCode: task.ticketCode,
+    title:
+      task.title,
 
-    assignedEmployeeId: task.assignedEmployeeId,
-    assignedEmployeeName: task.assignedEmployeeName,
-    assignedEmployeeCode: task.assignedEmployeeCode,
+    description:
+      task.description,
 
-    assignedBy: task.assignedBy,
-    assignedByName: task.assignedByName,
+    workType:
+      task.workType,
+    taskFor:
+      task.taskFor,
 
-    priority: task.priority,
-    status: task.status,
-    progress: task.progress,
+    generalTaskFor:
+      task.generalTaskFor,
 
-    startDate: task.startDate,
-    dueDate: task.dueDate,
-    completedAt: task.completedAt,
+    clientId:
+      task.clientId,
 
-    estimatedMinutes: task.estimatedMinutes,
-    spentMinutes: task.spentMinutes,
+    clientName:
+      task.clientName,
 
-    resolutionNote: task.resolutionNote,
+    productId:
+      task.productId,
 
-    timeline: task.timeline,
-    comments: task.comments,
-    attachments: task.attachments,
+    productCode:
+      task.productCode,
 
-    createdAt: task.createdAt,
-    updatedAt: task.updatedAt,
+    productName:
+      task.productName,
+
+    projectId:
+      task.projectId,
+
+    projectCode:
+      task.projectCode,
+
+    projectName:
+      task.projectName,
+
+    ticketId:
+      task.ticketId,
+
+    ticketCode:
+      task.ticketCode,
+
+    assignedEmployeeId:
+      task.assignedEmployeeId,
+
+    assignedEmployeeName:
+      task.assignedEmployeeName,
+
+    assignedEmployeeCode:
+      task.assignedEmployeeCode,
+
+    assignedBy:
+      task.assignedBy,
+
+    assignedByName:
+      task.assignedByName,
+
+    priority:
+      task.priority,
+
+    status:
+      task.status,
+
+    progress:
+      task.progress,
+
+    startDate:
+      task.startDate,
+
+    dueDate:
+      task.dueDate,
+
+    completedAt:
+      task.completedAt,
+
+    estimatedMinutes:
+      task.estimatedMinutes,
+
+    spentMinutes:
+      task.spentMinutes,
+
+    resolutionNote:
+      task.resolutionNote,
+
+    timeline:
+      task.timeline,
+
+    comments:
+      task.comments,
+
+    attachments:
+      task.attachments,
+
+    createdAt:
+      task.createdAt,
+
+    updatedAt:
+      task.updatedAt,
+  };
+}
+function ticketResponse(ticket) {
+  return {
+    id: ticket._id,
+    _id: ticket._id,
+
+    ticketCode:
+      ticket.ticketCode,
+
+    title: ticket.title,
+    description:
+      ticket.description,
+
+    clientId: ticket.clientId,
+    clientCode:
+      ticket.clientCode,
+    clientName:
+      ticket.clientName,
+
+    contactPerson:
+      ticket.contactPerson,
+    contactMobile:
+      ticket.contactMobile,
+    contactEmail:
+      ticket.contactEmail,
+
+    productId:
+      ticket.productId,
+    productName:
+      ticket.productName,
+    productVersion:
+      ticket.productVersion,
+
+    module: ticket.module,
+    category: ticket.category,
+
+    source: ticket.source,
+    priority: ticket.priority,
+    status: ticket.status,
+
+    assignedEmployeeId:
+      ticket.assignedEmployeeId,
+    assignedEmployeeName:
+      ticket.assignedEmployeeName,
+    assignedEmployeeCode:
+      ticket.assignedEmployeeCode,
+
+    assignedAt:
+      ticket.assignedAt,
+    assignedBy:
+      ticket.assignedBy,
+    assignedByName:
+      ticket.assignedByName,
+
+    dueDate: ticket.dueDate,
+    firstResponseAt:
+      ticket.firstResponseAt,
+
+    resolvedAt:
+      ticket.resolvedAt,
+    verifiedAt:
+      ticket.verifiedAt,
+    closedAt:
+      ticket.closedAt,
+
+    resolutionNote:
+      ticket.resolutionNote,
+    rootCause:
+      ticket.rootCause,
+
+    linkedTaskId:
+      ticket.linkedTaskId,
+    linkedTaskCode:
+      ticket.linkedTaskCode,
+
+    spentMinutes:
+      ticket.spentMinutes,
+
+    replies:
+      ticket.replies,
+
+    attachments:
+      ticket.attachments,
+
+    timeline:
+      ticket.timeline,
+
+    replyCount:
+      Array.isArray(ticket.replies)
+        ? ticket.replies.length
+        : 0,
+
+    attachmentCount:
+      Array.isArray(
+        ticket.attachments
+      )
+        ? ticket.attachments.length
+        : 0,
+
+    createdBy:
+      ticket.createdBy,
+
+    createdByName:
+      ticket.createdByName,
+
+    createdByRole:
+      ticket.createdByRole,
+
+    createdAt:
+      ticket.createdAt,
+
+    updatedAt:
+      ticket.updatedAt,
   };
 }
 
@@ -584,6 +2908,69 @@ async function findEmployeeById(employeeId) {
       },
     });
 }
+async function resolveClientEmployee(
+  employeeId,
+  {
+    required = false,
+  } = {}
+) {
+  const normalizedEmployeeId =
+    String(employeeId || "").trim();
+
+  if (!normalizedEmployeeId) {
+    if (required) {
+      throw new Error(
+        "Please select an assigned employee."
+      );
+    }
+
+    return {
+      assignedEmployeeId: null,
+      assignedEmployeeCode: "",
+      assignedEmployeeName: "",
+    };
+  }
+
+  if (
+    !mongoose.Types.ObjectId.isValid(
+      normalizedEmployeeId
+    )
+  ) {
+    throw new Error(
+      "Invalid assigned employee ID."
+    );
+  }
+
+  const employee =
+    await findEmployeeById(
+      normalizedEmployeeId
+    );
+
+  if (!employee) {
+    throw new Error(
+      "Selected employee was not found or is inactive."
+    );
+  }
+
+  return {
+    assignedEmployeeId:
+      employee._id,
+
+    assignedEmployeeCode:
+      String(
+        employee.employeeCode || ""
+      )
+        .trim()
+        .toUpperCase(),
+
+    assignedEmployeeName:
+      String(
+        employee.name || ""
+      ).trim(),
+  };
+}
+
+
 
 async function updateEmployeeTaskSummary(
   employeeId,
@@ -603,560 +2990,5217 @@ async function updateEmployeeTaskSummary(
     );
 }
 
+async function normalizeEmployeeTaskCounts(
+  employeeId
+) {
+  if (
+    !mongoose.Types.ObjectId.isValid(
+      employeeId
+    )
+  ) {
+    return;
+  }
+
+  const objectId =
+    new mongoose.Types.ObjectId(
+      employeeId
+    );
+
+  const activeTaskCount =
+    await Task.countDocuments({
+      assignedEmployeeId: objectId,
+
+      isDeleted: false,
+
+      status: {
+        $nin: [
+          "Completed",
+          "Closed",
+          "Cancelled",
+        ],
+      },
+    });
+
+  const completedTodayStart =
+    new Date();
+
+  completedTodayStart.setHours(
+    0,
+    0,
+    0,
+    0
+  );
+
+  const completedTodayCount =
+    await Task.countDocuments({
+      assignedEmployeeId: objectId,
+
+      isDeleted: false,
+
+      status: {
+        $in: ["Completed", "Closed"],
+      },
+
+      completedAt: {
+        $gte: completedTodayStart,
+      },
+    });
+
+  await mongoose.connection
+    .collection("employees")
+    .updateOne(
+      {
+        _id: objectId,
+      },
+      {
+        $set: {
+          openTasks:
+            activeTaskCount,
+
+          completedToday:
+            completedTodayCount,
+
+          lastActivityAt:
+            new Date(),
+        },
+      }
+    );
+}
+
+async function normalizeClientOpenTicketCount(
+  clientId
+) {
+  if (
+    !mongoose.Types.ObjectId.isValid(
+      clientId
+    )
+  ) {
+    return;
+  }
+
+  const objectId =
+    new mongoose.Types.ObjectId(
+      clientId
+    );
+
+  const openTicketCount =
+    await SupportTicket.countDocuments({
+      clientId: objectId,
+
+      isDeleted: false,
+
+      status: {
+        $nin: [
+          "Resolved",
+          "Verified",
+          "Closed",
+          "Cancelled",
+        ],
+      },
+    });
+
+  await Client.updateOne(
+    {
+      _id: objectId,
+    },
+    {
+      $set: {
+        openTickets:
+          openTicketCount,
+      },
+    }
+  );
+}
+/* =====================================================
+   CREATE PRODUCT
+   POST /api/admin/product
+===================================================== */
+
+router.post(
+  "/product",
+  async (req, res) => {
+    try {
+      const {
+        productCode,
+        productName,
+        category,
+        description,
+        currentVersion,
+        platform,
+        status,
+        releaseDate,
+      } = req.body;
+
+      const normalizedCode =
+        String(
+          productCode || ""
+        )
+          .trim()
+          .toUpperCase();
+
+      const normalizedName =
+        String(
+          productName || ""
+        ).trim();
+
+      if (!normalizedCode) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Product code is required.",
+        });
+      }
+
+      if (!normalizedName) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Product name is required.",
+        });
+      }
+
+      const duplicateProduct =
+        await Product.findOne({
+          isDeleted: false,
+
+          $or: [
+            {
+              productCode:
+                normalizedCode,
+            },
+
+            {
+              productName: {
+                $regex:
+                  `^${normalizedName.replace(
+                    /[.*+?^${}()|[\]\\]/g,
+                    "\\$&"
+                  )}$`,
+
+                $options: "i",
+              },
+            },
+          ],
+        });
+
+      if (duplicateProduct) {
+        return res.status(409).json({
+          success: false,
+
+          message:
+            duplicateProduct.productCode ===
+              normalizedCode
+              ? "Product code already exists."
+              : "Product name already exists.",
+        });
+      }
+
+
+      const product =
+        await Product.create({
+          productCode:
+            normalizedCode,
+
+          productName:
+            normalizedName,
+
+          category:
+            String(
+              category || "Software"
+            ).trim(),
+
+          description:
+            String(
+              description || ""
+            ).trim(),
+
+          currentVersion:
+            String(
+              currentVersion ||
+              "v1.0.0"
+            ).trim(),
+
+          platform:
+            platform || "Web",
+
+          status:
+            status || "Active",
+
+          releaseDate:
+            releaseDate
+              ? new Date(
+                releaseDate
+              )
+              : null,
+
+          createdBy:
+            req.user._id,
+
+          createdByName:
+            req.user.name ||
+            "Admin",
+
+          updatedBy:
+            req.user._id,
+
+          updatedByName:
+            req.user.name ||
+            "Admin",
+        });
+
+      await createActivityLog({
+        action:
+          "Product Created",
+
+        category:
+          "Product",
+
+        description:
+          `${product.productName} was added to Product Master.`,
+
+        entityType:
+          "product",
+
+        entityId:
+          product._id,
+
+        entityCode:
+          product.productCode,
+
+        entityName:
+          product.productName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+
+        metadata: {
+          category:
+            product.category,
+
+          version:
+            product.currentVersion,
+
+          platform:
+            product.platform,
+
+          status:
+            product.status,
+        },
+      });
+
+      return res.status(201).json({
+        success: true,
+
+        message:
+          "Product created successfully.",
+
+        data:
+          productResponse(product),
+      });
+    } catch (error) {
+      console.error(
+        "Create product error:",
+        error
+      );
+
+      if (error.code === 11000) {
+        return res.status(409).json({
+          success: false,
+          message:
+            "Product code already exists.",
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to create product.",
+      });
+    }
+  }
+);
+
+
+/* =====================================================
+   GET ALL PRODUCTS
+   GET /api/admin/products
+===================================================== */
+
+router.get(
+  "/products",
+  async (req, res) => {
+    try {
+      const {
+        search = "",
+        status = "All",
+        category = "All",
+        platform = "All",
+      } = req.query;
+
+      const query = {
+        isDeleted: false,
+      };
+
+      if (
+        status &&
+        status !== "All"
+      ) {
+        query.status = status;
+      }
+
+      if (
+        category &&
+        category !== "All"
+      ) {
+        query.category =
+          category;
+      }
+
+      if (
+        platform &&
+        platform !== "All"
+      ) {
+        query.platform =
+          platform;
+      }
+
+      const normalizedSearch =
+        String(search || "").trim();
+
+      if (normalizedSearch) {
+        query.$or = [
+          {
+            productCode: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+
+          {
+            productName: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+
+          {
+            category: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+
+          {
+            description: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+
+          {
+            currentVersion: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+        ];
+      }
+
+      const products =
+        await Product.find(query)
+          .sort({
+            productName: 1,
+          });
+
+      const stats = {
+        totalProducts:
+          products.length,
+
+        activeProducts:
+          products.filter(
+            (product) =>
+              product.status ===
+              "Active"
+          ).length,
+
+        inactiveProducts:
+          products.filter(
+            (product) =>
+              product.status ===
+              "Inactive"
+          ).length,
+
+        deprecatedProducts:
+          products.filter(
+            (product) =>
+              product.status ===
+              "Deprecated"
+          ).length,
+      };
+
+      return res.status(200).json({
+        success: true,
+
+        count:
+          products.length,
+
+        stats,
+
+        data:
+          products.map(
+            productResponse
+          ),
+      });
+    } catch (error) {
+      console.error(
+        "Load products error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to load products.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   GET ONE PRODUCT
+   GET /api/admin/product/:id
+===================================================== */
+
+router.get(
+  "/product/:id",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid product ID.",
+        });
+      }
+
+      const product =
+        await Product.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!product) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Product not found.",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        data:
+          productResponse(product),
+      });
+    } catch (error) {
+      console.error(
+        "Get product error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to load product.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   UPDATE PRODUCT
+   PUT /api/admin/product/:id
+===================================================== */
+
+router.put(
+  "/product/:id",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid product ID.",
+        });
+      }
+
+      const product =
+        await Product.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!product) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Product not found.",
+        });
+      }
+
+      const {
+        productCode,
+        productName,
+        category,
+        description,
+        currentVersion,
+        platform,
+        status,
+        releaseDate,
+      } = req.body;
+
+      const normalizedCode =
+        String(
+          productCode ??
+          product.productCode
+        )
+          .trim()
+          .toUpperCase();
+
+      const normalizedName =
+        String(
+          productName ??
+          product.productName
+        ).trim();
+
+      if (!normalizedCode) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Product code is required.",
+        });
+      }
+
+      if (!normalizedName) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Product name is required.",
+        });
+      }
+
+      const duplicateProduct =
+        await Product.findOne({
+          _id: {
+            $ne: id,
+          },
+
+          isDeleted: false,
+
+          $or: [
+            {
+              productCode:
+                normalizedCode,
+            },
+
+            {
+              productName: {
+                $regex:
+                  `^${normalizedName.replace(
+                    /[.*+?^${}()|[\]\\]/g,
+                    "\\$&"
+                  )}$`,
+
+                $options: "i",
+              },
+            },
+          ],
+        });
+
+      if (duplicateProduct) {
+        return res.status(409).json({
+          success: false,
+
+          message:
+            duplicateProduct.productCode ===
+              normalizedCode
+              ? "Another product already uses this product code."
+              : "Another product already uses this product name.",
+        });
+      }
+
+      const previousData = {
+        productCode:
+          product.productCode,
+
+        productName:
+          product.productName,
+
+        category:
+          product.category,
+
+        currentVersion:
+          product.currentVersion,
+
+        platform:
+          product.platform,
+
+        status:
+          product.status,
+      };
+
+      product.productCode =
+        normalizedCode;
+
+      product.productName =
+        normalizedName;
+
+      product.category =
+        String(
+          category ??
+          product.category ??
+          "Software"
+        ).trim();
+
+      product.description =
+        String(
+          description ??
+          product.description ??
+          ""
+        ).trim();
+
+      product.currentVersion =
+        String(
+          currentVersion ??
+          product.currentVersion ??
+          "v1.0.0"
+        ).trim();
+
+      if (
+        platform !== undefined
+      ) {
+        product.platform =
+          platform;
+      }
+
+      if (
+        status !== undefined
+      ) {
+        product.status =
+          status;
+      }
+
+      if (
+        releaseDate !== undefined
+      ) {
+        product.releaseDate =
+          releaseDate
+            ? new Date(
+              releaseDate
+            )
+            : null;
+      }
+
+      product.updatedBy =
+        req.user._id;
+
+      product.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      await product.save();
+
+      await createActivityLog({
+        action:
+          "Product Updated",
+
+        category:
+          "Product",
+
+        description:
+          `${product.productName} information was updated.`,
+
+        entityType:
+          "product",
+
+        entityId:
+          product._id,
+
+        entityCode:
+          product.productCode,
+
+        entityName:
+          product.productName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+
+        metadata: {
+          previous:
+            previousData,
+
+          current: {
+            productCode:
+              product.productCode,
+
+            productName:
+              product.productName,
+
+            category:
+              product.category,
+
+            currentVersion:
+              product.currentVersion,
+
+            platform:
+              product.platform,
+
+            status:
+              product.status,
+          },
+        },
+      });
+
+      return res.status(200).json({
+        success: true,
+
+        message:
+          "Product updated successfully.",
+
+        data:
+          productResponse(product),
+      });
+    } catch (error) {
+      console.error(
+        "Update product error:",
+        error
+      );
+
+      if (error.code === 11000) {
+        return res.status(409).json({
+          success: false,
+          message:
+            "Product code already exists.",
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to update product.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   CHANGE PRODUCT STATUS
+   PATCH /api/admin/product/:id/status
+===================================================== */
+
+router.patch(
+  "/product/:id/status",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      const { status } =
+        req.body;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid product ID.",
+        });
+      }
+
+      const allowedStatuses = [
+        "Active",
+        "Inactive",
+        "Deprecated",
+      ];
+
+      if (
+        !allowedStatuses.includes(
+          status
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid product status.",
+        });
+      }
+
+      const product =
+        await Product.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!product) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Product not found.",
+        });
+      }
+
+      const previousStatus =
+        product.status;
+
+      if (
+        previousStatus === status
+      ) {
+        return res.status(200).json({
+          success: true,
+
+          message:
+            "Product already has this status.",
+
+          data:
+            productResponse(product),
+        });
+      }
+
+      product.status =
+        status;
+
+      product.updatedBy =
+        req.user._id;
+
+      product.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      await product.save();
+
+      await createActivityLog({
+        action:
+          "Product Status Changed",
+
+        category:
+          "Product",
+
+        description:
+          `${product.productName} changed from ${previousStatus} to ${status}.`,
+
+        entityType:
+          "product",
+
+        entityId:
+          product._id,
+
+        entityCode:
+          product.productCode,
+
+        entityName:
+          product.productName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+
+        metadata: {
+          previousStatus,
+          currentStatus:
+            status,
+        },
+      });
+
+      return res.status(200).json({
+        success: true,
+
+        message:
+          "Product status updated successfully.",
+
+        data:
+          productResponse(product),
+      });
+    } catch (error) {
+      console.error(
+        "Change product status error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to change product status.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   SOFT DELETE PRODUCT
+   DELETE /api/admin/product/:id
+===================================================== */
+
+router.delete(
+  "/product/:id",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid product ID.",
+        });
+      }
+
+      const product =
+        await Product.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!product) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Product not found.",
+        });
+      }
+
+      const linkedClientCount =
+        await Client.countDocuments({
+          "products.productId":
+            product._id,
+        });
+
+      const linkedTicketCount =
+        await SupportTicket.countDocuments({
+          productId:
+            product._id,
+
+          isDeleted: false,
+        });
+
+      const linkedTaskCount =
+        await Task.countDocuments({
+          productId:
+            product._id,
+
+          isDeleted: false,
+        });
+
+      if (
+        linkedClientCount > 0 ||
+        linkedTicketCount > 0 ||
+        linkedTaskCount > 0
+      ) {
+        return res.status(409).json({
+          success: false,
+
+          message:
+            "This product is already used by clients, tickets or tasks. Mark it Inactive instead of deleting it.",
+
+          usage: {
+            clients:
+              linkedClientCount,
+
+            tickets:
+              linkedTicketCount,
+
+            tasks:
+              linkedTaskCount,
+          },
+        });
+      }
+
+      product.isDeleted =
+        true;
+
+      product.deletedAt =
+        new Date();
+
+      product.deletedBy =
+        req.user._id;
+
+      product.deletedByName =
+        req.user.name ||
+        "Admin";
+
+      product.status =
+        "Inactive";
+
+      await product.save();
+
+      await createActivityLog({
+        action:
+          "Product Deleted",
+
+        category:
+          "Product",
+
+        description:
+          `${product.productName} was removed from Product Master.`,
+
+        entityType:
+          "product",
+
+        entityId:
+          product._id,
+
+        entityCode:
+          product.productCode,
+
+        entityName:
+          product.productName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+
+        metadata: {
+          previousStatus:
+            product.status,
+
+          deletedAt:
+            product.deletedAt,
+        },
+      });
+
+      return res.status(200).json({
+        success: true,
+
+        message:
+          "Product deleted successfully.",
+
+        data: {
+          id:
+            product._id,
+
+          productCode:
+            product.productCode,
+
+          productName:
+            product.productName,
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Delete product error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to delete product.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   SEED DEFAULT PRODUCTS
+   POST /api/admin/products/seed
+===================================================== */
+
+router.post(
+  "/products/seed",
+  async (req, res) => {
+    try {
+      const defaultProducts = [
+        {
+          productCode:
+            "PRD-001",
+
+          productName:
+            "NexERP",
+
+          category:
+            "ERP",
+
+          description:
+            "Enterprise resource planning and billing software.",
+
+          currentVersion:
+            "v1.0.0",
+
+          platform:
+            "Web + Desktop",
+
+          status:
+            "Active",
+        },
+
+        {
+          productCode:
+            "PRD-002",
+
+          productName:
+            "BillFlow",
+
+          category:
+            "Billing",
+
+          description:
+            "Billing, invoicing and customer account software.",
+
+          currentVersion:
+            "v1.0.0",
+
+          platform:
+            "Web + Desktop",
+
+          status:
+            "Active",
+        },
+
+        {
+          productCode:
+            "PRD-003",
+
+          productName:
+            "StockPro",
+
+          category:
+            "Inventory",
+
+          description:
+            "Stock, batch and warehouse management software.",
+
+          currentVersion:
+            "v1.0.0",
+
+          platform:
+            "Web + Desktop",
+
+          status:
+            "Active",
+        },
+
+        {
+          productCode:
+            "PRD-004",
+
+          productName:
+            "RetailPOS",
+
+          category:
+            "POS",
+
+          description:
+            "Retail billing and point-of-sale software.",
+
+          currentVersion:
+            "v1.0.0",
+
+          platform:
+            "Desktop",
+
+          status:
+            "Active",
+        },
+
+        {
+          productCode:
+            "PRD-005",
+
+          productName:
+            "PayrollIX",
+
+          category:
+            "Payroll",
+
+          description:
+            "Employee payroll and salary management.",
+
+          currentVersion:
+            "v1.0.0",
+
+          platform:
+            "Web + Desktop",
+
+          status:
+            "Active",
+        },
+      ];
+
+      const results = [];
+
+      for (
+        const productData
+        of defaultProducts
+      ) {
+        const existingProduct =
+          await Product.findOne({
+            $or: [
+              {
+                productCode:
+                  productData.productCode,
+              },
+
+              {
+                productName: {
+                  $regex:
+                    `^${productData.productName}$`,
+
+                  $options: "i",
+                },
+              },
+            ],
+          });
+
+        if (existingProduct) {
+          results.push({
+            productCode:
+              existingProduct.productCode,
+
+            productName:
+              existingProduct.productName,
+
+            action:
+              "Skipped",
+
+            reason:
+              "Product already exists.",
+          });
+
+          continue;
+        }
+
+        const product =
+          await Product.create({
+            ...productData,
+
+            createdBy:
+              req.user._id,
+
+            createdByName:
+              req.user.name ||
+              "Admin",
+
+            updatedBy:
+              req.user._id,
+
+            updatedByName:
+              req.user.name ||
+              "Admin",
+          });
+
+        results.push({
+          productCode:
+            product.productCode,
+
+          productName:
+            product.productName,
+
+          action:
+            "Created",
+        });
+      }
+
+      const products =
+        await Product.find({
+          isDeleted: false,
+        }).sort({
+          productName: 1,
+        });
+
+      return res.status(200).json({
+        success: true,
+
+        message:
+          "Default product seed completed.",
+
+        results,
+
+        data:
+          products.map(
+            productResponse
+          ),
+      });
+    } catch (error) {
+      console.error(
+        "Seed products error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to seed products.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   CREATE PROJECT
+   POST /api/admin/project
+===================================================== */
+
+router.post(
+  "/project",
+  async (req, res) => {
+    try {
+      const {
+        projectCode,
+        projectName,
+        projectType,
+        productId,
+        clientId,
+        description,
+        startDate,
+        dueDate,
+        priority,
+        status,
+        progress,
+      } = req.body;
+
+      const normalizedCode =
+        String(projectCode || "")
+          .trim()
+          .toUpperCase();
+
+      const normalizedName =
+        String(projectName || "")
+          .trim();
+
+      if (!normalizedCode) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Project code is required.",
+        });
+      }
+
+      if (!normalizedName) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Project name is required.",
+        });
+      }
+
+      const duplicate =
+        await Project.findOne({
+          isDeleted: false,
+
+          $or: [
+            {
+              projectCode:
+                normalizedCode,
+            },
+
+            {
+              projectName: {
+                $regex:
+                  `^${normalizedName.replace(
+                    /[.*+?^${}()|[\]\\]/g,
+                    "\\$&"
+                  )}$`,
+
+                $options: "i",
+              },
+            },
+          ],
+        });
+
+      if (duplicate) {
+        return res.status(409).json({
+          success: false,
+
+          message:
+            duplicate.projectCode ===
+              normalizedCode
+              ? "Project code already exists."
+              : "Project name already exists.",
+        });
+      }
+
+      let resolvedProduct = null;
+
+      if (productId) {
+        if (
+          !mongoose.Types.ObjectId.isValid(
+            productId
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Invalid product ID.",
+          });
+        }
+
+        resolvedProduct =
+          await Product.findOne({
+            _id: productId,
+            isDeleted: false,
+          });
+
+        if (!resolvedProduct) {
+          return res.status(404).json({
+            success: false,
+            message:
+              "Selected product was not found.",
+          });
+        }
+      }
+
+      let resolvedClient = null;
+
+      if (clientId) {
+        if (
+          !mongoose.Types.ObjectId.isValid(
+            clientId
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Invalid client ID.",
+          });
+        }
+
+        resolvedClient =
+          await Client.findById(
+            clientId
+          );
+
+        if (!resolvedClient) {
+          return res.status(404).json({
+            success: false,
+            message:
+              "Selected client was not found.",
+          });
+        }
+      }
+
+      const normalizedProgress =
+        Math.min(
+          Math.max(
+            Number(progress || 0),
+            0
+          ),
+          100
+        );
+
+      const normalizedStatus =
+        status || "Planned";
+
+      /*
+       * Validate selected priority using
+       * System Settings.
+       */
+      const selectedPriority =
+        await validatePriority(
+          priority || "Medium"
+        );
+
+      if (!selectedPriority) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Selected priority is invalid or inactive.",
+        });
+      }
+
+      const project =
+        await Project.create({
+          projectCode:
+            normalizedCode,
+
+          projectName:
+            normalizedName,
+
+          projectType:
+            projectType ||
+            "Internal Development",
+
+          productId:
+            resolvedProduct?._id ||
+            null,
+
+          productCode:
+            resolvedProduct?.productCode ||
+            "",
+
+          productName:
+            resolvedProduct?.productName ||
+            "",
+
+          clientId:
+            resolvedClient?._id ||
+            null,
+
+          clientCode:
+            resolvedClient?.clientCode ||
+            "",
+
+          clientName:
+            resolvedClient?.companyName ||
+            "",
+
+          description:
+            String(
+              description || ""
+            ).trim(),
+
+          startDate:
+            startDate
+              ? new Date(startDate)
+              : null,
+
+          dueDate:
+            dueDate
+              ? new Date(dueDate)
+              : null,
+
+          completedDate:
+            normalizedStatus ===
+              "Completed"
+              ? new Date()
+              : null,
+
+          priority:
+            selectedPriority.name,
+
+          status:
+            normalizedStatus,
+
+          progress:
+            normalizedStatus ===
+              "Completed"
+              ? 100
+              : normalizedProgress,
+
+          createdBy:
+            req.user._id,
+
+          createdByName:
+            req.user.name ||
+            "Admin",
+
+          updatedBy:
+            req.user._id,
+
+          updatedByName:
+            req.user.name ||
+            "Admin",
+        });
+
+      await createActivityLog({
+        action:
+          "Project Created",
+
+        category:
+          "Project",
+
+        description:
+          `${project.projectName} was added to Project Master.`,
+
+        entityType:
+          "project",
+
+        entityId:
+          project._id,
+
+        entityCode:
+          project.projectCode,
+
+        entityName:
+          project.projectName,
+
+        clientId:
+          project.clientId,
+
+        clientName:
+          project.clientName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+
+        metadata: {
+          projectType:
+            project.projectType,
+
+          productId:
+            project.productId,
+
+          productName:
+            project.productName,
+
+          priority:
+            project.priority,
+
+          status:
+            project.status,
+
+          progress:
+            project.progress,
+        },
+      });
+
+      return res.status(201).json({
+        success: true,
+
+        message:
+          "Project created successfully.",
+
+        data:
+          projectResponse(project),
+      });
+    } catch (error) {
+      console.error(
+        "Create project error:",
+        error
+      );
+
+      if (error.code === 11000) {
+        return res.status(409).json({
+          success: false,
+          message:
+            "Project code already exists.",
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to create project.",
+      });
+    }
+  }
+);
+
+
+
+/* =====================================================
+   GET ALL PROJECTS
+   GET /api/admin/projects
+===================================================== */
+
+router.get(
+  "/projects",
+  async (req, res) => {
+    try {
+      const {
+        search = "",
+        status = "All",
+        projectType = "All",
+        priority = "All",
+        productId = "",
+        clientId = "",
+      } = req.query;
+
+      const query = {
+        isDeleted: false,
+      };
+
+      if (
+        status &&
+        status !== "All"
+      ) {
+        query.status = status;
+      }
+
+      if (
+        projectType &&
+        projectType !== "All"
+      ) {
+        query.projectType =
+          projectType;
+      }
+
+      if (
+        priority &&
+        priority !== "All"
+      ) {
+        query.priority =
+          priority;
+      }
+
+      if (productId) {
+        if (
+          !mongoose.Types.ObjectId.isValid(
+            productId
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Invalid product ID.",
+          });
+        }
+
+        query.productId =
+          productId;
+      }
+
+      if (clientId) {
+        if (
+          !mongoose.Types.ObjectId.isValid(
+            clientId
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Invalid client ID.",
+          });
+        }
+
+        query.clientId =
+          clientId;
+      }
+
+      const normalizedSearch =
+        String(search || "").trim();
+
+      if (normalizedSearch) {
+        query.$or = [
+          {
+            projectCode: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+
+          {
+            projectName: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+
+          {
+            productName: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+
+          {
+            clientName: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+
+          {
+            description: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+        ];
+      }
+
+      const projects =
+        await Project.find(query)
+          .sort({
+            createdAt: -1,
+          });
+
+      const stats = {
+        totalProjects:
+          projects.length,
+
+        plannedProjects:
+          projects.filter(
+            (project) =>
+              project.status ===
+              "Planned"
+          ).length,
+
+        activeProjects:
+          projects.filter(
+            (project) =>
+              project.status ===
+              "Active"
+          ).length,
+
+        onHoldProjects:
+          projects.filter(
+            (project) =>
+              project.status ===
+              "On Hold"
+          ).length,
+
+        completedProjects:
+          projects.filter(
+            (project) =>
+              project.status ===
+              "Completed"
+          ).length,
+      };
+
+      return res.status(200).json({
+        success: true,
+
+        count:
+          projects.length,
+
+        stats,
+
+        data:
+          projects.map(
+            projectResponse
+          ),
+      });
+    } catch (error) {
+      console.error(
+        "Load projects error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to load projects.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   GET ONE PROJECT
+   GET /api/admin/project/:id
+===================================================== */
+
+router.get(
+  "/project/:id",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid project ID.",
+        });
+      }
+
+      const project =
+        await Project.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Project not found.",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+
+        data:
+          projectResponse(project),
+      });
+    } catch (error) {
+      console.error(
+        "Get project error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to load project.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   UPDATE PROJECT
+   PUT /api/admin/project/:id
+===================================================== */
+
+router.put(
+  "/project/:id",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid project ID.",
+        });
+      }
+
+      const project =
+        await Project.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Project not found.",
+        });
+      }
+
+      const {
+        projectCode,
+        projectName,
+        projectType,
+        productId,
+        clientId,
+        description,
+        startDate,
+        dueDate,
+        priority,
+        status,
+        progress,
+      } = req.body;
+
+      const normalizedCode =
+        String(
+          projectCode ??
+          project.projectCode
+        )
+          .trim()
+          .toUpperCase();
+
+      const normalizedName =
+        String(
+          projectName ??
+          project.projectName
+        ).trim();
+
+      if (!normalizedCode) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Project code is required.",
+        });
+      }
+
+      if (!normalizedName) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Project name is required.",
+        });
+      }
+
+      const duplicate =
+        await Project.findOne({
+          _id: {
+            $ne: id,
+          },
+
+          isDeleted: false,
+
+          $or: [
+            {
+              projectCode:
+                normalizedCode,
+            },
+
+            {
+              projectName: {
+                $regex:
+                  `^${normalizedName.replace(
+                    /[.*+?^${}()|[\]\\]/g,
+                    "\\$&"
+                  )}$`,
+
+                $options: "i",
+              },
+            },
+          ],
+        });
+
+      if (duplicate) {
+        return res.status(409).json({
+          success: false,
+
+          message:
+            duplicate.projectCode ===
+              normalizedCode
+              ? "Another project already uses this project code."
+              : "Another project already uses this project name.",
+        });
+      }
+
+      let resolvedProduct = null;
+
+      if (productId) {
+        if (
+          !mongoose.Types.ObjectId.isValid(
+            productId
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Invalid product ID.",
+          });
+        }
+
+        resolvedProduct =
+          await Product.findOne({
+            _id: productId,
+            isDeleted: false,
+          });
+
+        if (!resolvedProduct) {
+          return res.status(404).json({
+            success: false,
+            message:
+              "Selected product was not found.",
+          });
+        }
+      }
+
+      let resolvedClient = null;
+
+      if (clientId) {
+        if (
+          !mongoose.Types.ObjectId.isValid(
+            clientId
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Invalid client ID.",
+          });
+        }
+
+        resolvedClient =
+          await Client.findById(
+            clientId
+          );
+
+        if (!resolvedClient) {
+          return res.status(404).json({
+            success: false,
+            message:
+              "Selected client was not found.",
+          });
+        }
+      }
+
+      const previousData = {
+        projectCode:
+          project.projectCode,
+
+        projectName:
+          project.projectName,
+
+        projectType:
+          project.projectType,
+
+        productId:
+          project.productId,
+
+        productName:
+          project.productName,
+
+        clientId:
+          project.clientId,
+
+        clientName:
+          project.clientName,
+
+        status:
+          project.status,
+
+        priority:
+          project.priority,
+
+        progress:
+          project.progress,
+      };
+
+      project.projectCode =
+        normalizedCode;
+
+      project.projectName =
+        normalizedName;
+
+      project.projectType =
+        projectType ??
+        project.projectType;
+
+      project.productId =
+        resolvedProduct?._id ||
+        null;
+
+      project.productCode =
+        resolvedProduct?.productCode ||
+        "";
+
+      project.productName =
+        resolvedProduct?.productName ||
+        "";
+
+      project.clientId =
+        resolvedClient?._id ||
+        null;
+
+      project.clientCode =
+        resolvedClient?.clientCode ||
+        "";
+
+      project.clientName =
+        resolvedClient?.companyName ||
+        "";
+
+      project.description =
+        String(
+          description ??
+          project.description ??
+          ""
+        ).trim();
+
+      if (startDate !== undefined) {
+        project.startDate =
+          startDate
+            ? new Date(startDate)
+            : null;
+      }
+
+      if (dueDate !== undefined) {
+        project.dueDate =
+          dueDate
+            ? new Date(dueDate)
+            : null;
+      }
+
+      if (priority !== undefined) {
+        const selectedPriority =
+          await validatePriority(
+            priority
+          );
+
+        if (!selectedPriority) {
+          return res.status(400).json({
+            success: false,
+
+            message:
+              "Selected priority is invalid or inactive.",
+          });
+        }
+
+        project.priority =
+          selectedPriority.name;
+      }
+
+      if (status !== undefined) {
+        project.status =
+          status;
+      }
+
+      if (progress !== undefined) {
+        project.progress =
+          Math.min(
+            Math.max(
+              Number(progress || 0),
+              0
+            ),
+            100
+          );
+      }
+
+      if (
+        project.status ===
+        "Completed"
+      ) {
+        project.progress = 100;
+
+        project.completedDate =
+          project.completedDate ||
+          new Date();
+      } else {
+        project.completedDate =
+          null;
+      }
+
+      project.updatedBy =
+        req.user._id;
+
+      project.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      await project.save();
+
+      await createActivityLog({
+        action:
+          "Project Updated",
+
+        category:
+          "Project",
+
+        description:
+          `${project.projectName} information was updated.`,
+
+        entityType:
+          "project",
+
+        entityId:
+          project._id,
+
+        entityCode:
+          project.projectCode,
+
+        entityName:
+          project.projectName,
+
+        clientId:
+          project.clientId,
+
+        clientName:
+          project.clientName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+
+        metadata: {
+          previous:
+            previousData,
+
+          current: {
+            projectCode:
+              project.projectCode,
+
+            projectName:
+              project.projectName,
+
+            projectType:
+              project.projectType,
+
+            productId:
+              project.productId,
+
+            productName:
+              project.productName,
+
+            clientId:
+              project.clientId,
+
+            clientName:
+              project.clientName,
+
+            status:
+              project.status,
+
+            priority:
+              project.priority,
+
+            progress:
+              project.progress,
+          },
+        },
+      });
+
+      return res.status(200).json({
+        success: true,
+
+        message:
+          "Project updated successfully.",
+
+        data:
+          projectResponse(project),
+      });
+    } catch (error) {
+      console.error(
+        "Update project error:",
+        error
+      );
+
+      if (error.code === 11000) {
+        return res.status(409).json({
+          success: false,
+          message:
+            "Project code already exists.",
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to update project.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   CHANGE PROJECT STATUS
+   PATCH /api/admin/project/:id/status
+===================================================== */
+
+router.patch(
+  "/project/:id/status",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      const {
+        status,
+        progress,
+      } = req.body;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid project ID.",
+        });
+      }
+
+      const allowedStatuses = [
+        "Planned",
+        "Active",
+        "On Hold",
+        "Completed",
+        "Cancelled",
+      ];
+
+      if (
+        !allowedStatuses.includes(
+          status
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid project status.",
+        });
+      }
+
+      const project =
+        await Project.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Project not found.",
+        });
+      }
+
+      const previousStatus =
+        project.status;
+
+      project.status =
+        status;
+
+      if (
+        progress !== undefined
+      ) {
+        project.progress =
+          Math.min(
+            Math.max(
+              Number(progress || 0),
+              0
+            ),
+            100
+          );
+      }
+
+      if (status === "Completed") {
+        project.progress = 100;
+        project.completedDate =
+          project.completedDate ||
+          new Date();
+      } else {
+        project.completedDate =
+          null;
+      }
+
+      project.updatedBy =
+        req.user._id;
+
+      project.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      await project.save();
+
+      await createActivityLog({
+        action:
+          "Project Status Changed",
+
+        category:
+          "Project",
+
+        description:
+          `${project.projectName} changed from ${previousStatus} to ${status}.`,
+
+        entityType:
+          "project",
+
+        entityId:
+          project._id,
+
+        entityCode:
+          project.projectCode,
+
+        entityName:
+          project.projectName,
+
+        clientId:
+          project.clientId,
+
+        clientName:
+          project.clientName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+
+        metadata: {
+          previousStatus,
+
+          currentStatus:
+            project.status,
+
+          progress:
+            project.progress,
+        },
+      });
+
+      return res.status(200).json({
+        success: true,
+
+        message:
+          "Project status updated successfully.",
+
+        data:
+          projectResponse(project),
+      });
+    } catch (error) {
+      console.error(
+        "Change project status error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to change project status.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   SOFT DELETE PROJECT
+   DELETE /api/admin/project/:id
+===================================================== */
+
+router.delete(
+  "/project/:id",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid project ID.",
+        });
+      }
+
+      const project =
+        await Project.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Project not found.",
+        });
+      }
+
+      const linkedTaskCount =
+        await Task.countDocuments({
+          projectId:
+            project._id,
+
+          isDeleted: false,
+        });
+
+      if (linkedTaskCount > 0) {
+        return res.status(409).json({
+          success: false,
+
+          message:
+            "This project is already used by tasks. Mark it Cancelled instead of deleting it.",
+
+          usage: {
+            tasks:
+              linkedTaskCount,
+          },
+        });
+      }
+
+      const previousStatus =
+        project.status;
+
+      project.isDeleted =
+        true;
+
+      project.deletedAt =
+        new Date();
+
+      project.deletedBy =
+        req.user._id;
+
+      project.deletedByName =
+        req.user.name ||
+        "Admin";
+
+      project.status =
+        "Cancelled";
+
+      await project.save();
+
+      await createActivityLog({
+        action:
+          "Project Deleted",
+
+        category:
+          "Project",
+
+        description:
+          `${project.projectName} was removed from Project Master.`,
+
+        entityType:
+          "project",
+
+        entityId:
+          project._id,
+
+        entityCode:
+          project.projectCode,
+
+        entityName:
+          project.projectName,
+
+        clientId:
+          project.clientId,
+
+        clientName:
+          project.clientName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+
+        metadata: {
+          previousStatus,
+
+          deletedAt:
+            project.deletedAt,
+        },
+      });
+
+      return res.status(200).json({
+        success: true,
+
+        message:
+          "Project deleted successfully.",
+
+        data: {
+          id:
+            project._id,
+
+          projectCode:
+            project.projectCode,
+
+          projectName:
+            project.projectName,
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Delete project error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to delete project.",
+      });
+    }
+  }
+);
+
 /* =====================================================
    ADD CLIENT
 ===================================================== */
+/* =====================================================
+   CREATE CLIENT
+   POST /api/admin/client
+===================================================== */
 
-router.post("/client", async (req, res) => {
-  try {
-    const {
-      clientCode,
-      companyName,
-      contactPerson,
-      email,
-      mobile,
-      city,
-      products,
-      amcStatus,
-      nextRenewal,
-      openTickets,
-      assignedTo,
-      status,
-    } = req.body;
+/* =====================================================
+   CREATE CLIENT AND LOGIN ACCOUNT
+   POST /api/admin/client
+===================================================== */
 
-    if (!clientCode || !companyName) {
-      return res.status(400).json({
-        success: false,
-        message: "Client Code and Company Name are required.",
-      });
-    }
+router.post(
+  "/client",
+  async (req, res) => {
+    let createdClient = null;
+    let createdUser = null;
 
-    const existing = await Client.findOne({
-      clientCode,
+    try {
+      const {
+        clientCode,
+        companyName,
+        contactPerson,
+        email,
+        mobile,
+        city,
+        products,
+        amcStatus,
+        nextRenewal,
+        assignedEmployeeId,
+status,
+
+        createLogin = true,
+        temporaryPassword = "",
+      } = req.body;
+
+      const normalizedCode =
+        String(
+          clientCode || ""
+        )
+          .trim()
+          .toUpperCase();
+
+      const normalizedCompanyName =
+        String(
+          companyName || ""
+        ).trim();
+
+      const normalizedContactPerson =
+        String(
+          contactPerson || ""
+        ).trim();
+
+      const normalizedEmail =
+        String(
+          email || ""
+        )
+          .trim()
+          .toLowerCase();
+
+      if (!normalizedCode) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Client code is required.",
+          });
+      }
+
+      if (
+        !normalizedCompanyName
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Company name is required.",
+          });
+      }
+
+      if (
+        createLogin &&
+        !normalizedEmail
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Email is required when creating a client login account.",
+          });
+      }
+
+      const escapedCompanyName =
+        normalizedCompanyName.replace(
+          /[.*+?^${}()|[\]\\]/g,
+          "\\$&"
+        );
+
+      const duplicateClient =
+        await Client.findOne({
+          isDeleted: false,
+
+          $or: [
+            {
+              clientCode:
+                normalizedCode,
+            },
+            {
+              companyName: {
+                $regex:
+                  `^${escapedCompanyName}$`,
+                $options: "i",
+              },
+            },
+          ],
+        });
+
+      if (duplicateClient) {
+        return res
+          .status(409)
+          .json({
+            success: false,
+
+            message:
+              duplicateClient.clientCode ===
+                normalizedCode
+                ? "Client code already exists."
+                : "Company name already exists.",
+          });
+      }
+
+      if (createLogin) {
+        const existingUser =
+          await User.findOne({
+            email:
+              normalizedEmail,
+          });
+
+        if (existingUser) {
+          return res
+            .status(409)
+            .json({
+              success: false,
+              message:
+                "A login account with this email already exists.",
+            });
+        }
+      }
+
+      let resolvedProducts = [];
+
+      try {
+        resolvedProducts =
+          await resolveClientProducts(
+            products || []
+          );
+      } catch (error) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              error.message,
+          });
+      }
+      let resolvedEmployee;
+
+try {
+  resolvedEmployee =
+    await resolveClientEmployee(
+      assignedEmployeeId,
+      {
+        required: false,
+      }
+    );
+} catch (error) {
+  return res
+    .status(400)
+    .json({
+      success: false,
+
+      message:
+        error.message ||
+        "Unable to validate the assigned employee.",
     });
+}
 
-    if (existing) {
-      return res.status(400).json({
-        success: false,
-        message: "Client Code already exists.",
-      });
-    }
+      createdClient =
+        await Client.create({
+          clientCode:
+            normalizedCode,
 
-   const client = await Client.create({
-  clientCode,
-  companyName,
-  contactPerson,
-  email,
-  mobile,
-  city,
+          companyName:
+            normalizedCompanyName,
 
-  products: Array.isArray(products)
-    ? products.map((product) => {
-        if (typeof product === "string") {
-          return {
-            productName: product.trim(),
-            version: "v1.0.0",
-            purchaseDate: "",
-            installationDate: "",
-            licensedUsers: 1,
-            supportType: "Standard",
-            amcStatus: amcStatus || "Not Started",
-            expiryDate: nextRenewal || "",
-            installationStatus: "Installed",
-            notes: "",
-          };
+          contactPerson:
+            normalizedContactPerson,
+
+          email:
+            normalizedEmail,
+
+          mobile:
+            String(
+              mobile || ""
+            ).trim(),
+
+          city:
+            String(
+              city || ""
+            ).trim(),
+
+          products:
+            resolvedProducts,
+
+          amcStatus:
+            amcStatus ||
+            "Not Started",
+
+          nextRenewal:
+            nextRenewal || "",
+
+          openTickets: 0,
+
+        assignedEmployeeId:
+  resolvedEmployee
+    .assignedEmployeeId,
+
+assignedEmployeeCode:
+  resolvedEmployee
+    .assignedEmployeeCode,
+
+assignedEmployeeName:
+  resolvedEmployee
+    .assignedEmployeeName,
+
+          status:
+            status || "Active",
+
+          loginEnabled:
+            Boolean(
+              createLogin
+            ),
+
+          createdBy:
+            req.user._id,
+
+          createdByName:
+            req.user.name ||
+            "Admin",
+
+          updatedBy:
+            req.user._id,
+
+          updatedByName:
+            req.user.name ||
+            "Admin",
+        });
+
+      let plainTemporaryPassword =
+        "";
+
+      if (createLogin) {
+        plainTemporaryPassword =
+          String(
+            temporaryPassword || ""
+          ).trim() ||
+          generateTemporaryPassword();
+
+        if (
+          plainTemporaryPassword.length <
+          6
+        ) {
+          await Client.deleteOne({
+            _id:
+              createdClient._id,
+          });
+
+          return res
+            .status(400)
+            .json({
+              success: false,
+              message:
+                "Temporary password must contain at least 6 characters.",
+            });
         }
 
-        return product;
-      })
-    : [],
+        const hashedPassword =
+          await bcrypt.hash(
+            plainTemporaryPassword,
+            12
+          );
 
-  amcStatus,
-  nextRenewal,
-  openTickets,
-  assignedTo,
-  status,
-});
+        createdUser =
+          await User.create({
+            name:
+              normalizedContactPerson ||
+              normalizedCompanyName,
 
-    res.status(201).json({
-      success: true,
-      message: "Client added successfully.",
-      data: client,
-    });
-  } catch (error) {
-    console.error(error);
+            email:
+              normalizedEmail,
 
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+            mobile:
+              String(
+                mobile || ""
+              ).trim(),
+
+            password:
+              hashedPassword,
+
+            role:
+              "client",
+
+            status:
+              mapClientStatusToUserStatus(
+                createdClient.status
+              ),
+
+            clientId:
+              createdClient._id,
+
+            clientCode:
+              createdClient.clientCode,
+
+            companyName:
+              createdClient.companyName,
+
+            mustChangePassword:
+              true,
+          });
+
+        createdClient.userId =
+          createdUser._id;
+
+        createdClient.loginCreatedAt =
+          new Date();
+
+        await createdClient.save();
+      }
+
+      await createActivityLog({
+        action:
+          "Client Created",
+
+        category:
+          "Client",
+
+        description:
+          `${createdClient.companyName} was added to Client Master.`,
+
+        entityType:
+          "client",
+
+        entityId:
+          createdClient._id,
+
+        entityCode:
+          createdClient.clientCode,
+
+        entityName:
+          createdClient.companyName,
+
+        clientId:
+          createdClient._id,
+
+        clientName:
+          createdClient.companyName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+
+       metadata: {
+  city:
+    createdClient.city,
+
+  status:
+    createdClient.status,
+
+  productCount:
+    createdClient.products.length,
+
+  assignedEmployeeId:
+    createdClient
+      .assignedEmployeeId,
+
+  assignedEmployeeCode:
+    createdClient
+      .assignedEmployeeCode,
+
+  assignedEmployeeName:
+    createdClient
+      .assignedEmployeeName,
+
+  loginCreated:
+    Boolean(
+      createdUser
+    ),
+
+  userId:
+    createdUser?._id ||
+    null,
+},
+      });
+
+      return res
+        .status(201)
+        .json({
+          success: true,
+
+          message:
+            createdUser
+              ? "Client and login account created successfully."
+              : "Client created successfully.",
+
+          data:
+            clientResponse(
+              createdClient
+            ),
+
+          login: createdUser
+            ? {
+              userId:
+                createdUser._id,
+
+              email:
+                createdUser.email,
+
+              temporaryPassword:
+                plainTemporaryPassword,
+
+              mustChangePassword:
+                true,
+            }
+            : null,
+        });
+    } catch (error) {
+      console.error(
+        "Create client error:",
+        error
+      );
+
+      /*
+       * Manual rollback if creating the
+       * user fails after client creation.
+       */
+      if (
+        createdUser?._id
+      ) {
+        await User.deleteOne({
+          _id:
+            createdUser._id,
+        }).catch(() => { });
+      }
+
+      if (
+        createdClient?._id
+      ) {
+        await Client.deleteOne({
+          _id:
+            createdClient._id,
+        }).catch(() => { });
+      }
+
+      if (
+        error.code === 11000
+      ) {
+        return res
+          .status(409)
+          .json({
+            success: false,
+            message:
+              "Client code or login email already exists.",
+          });
+      }
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+          message:
+            error.message ||
+            "Unable to create client and login account.",
+        });
+    }
   }
-});
+);
 
 /* =====================================================
    GET ALL CLIENTS
+   GET /api/admin/clients
 ===================================================== */
 
-router.get("/clients", async (req, res) => {
-  try {
-    const clients = await Client.find().sort({
-      companyName: 1,
-    });
+router.get(
+  "/clients",
+  async (req, res) => {
+    try {
+     const {
+  search = "",
+  status = "All",
+  amcStatus = "All",
+  productId = "",
+  assignedEmployeeId = "",
+} = req.query;
 
-    res.json({
-      success: true,
-      data: clients,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+      const query = {
+        isDeleted: false,
+      };
+
+      if (
+        status &&
+        status !== "All"
+      ) {
+        query.status =
+          status;
+      }
+
+      if (
+        amcStatus &&
+        amcStatus !== "All"
+      ) {
+        query.amcStatus =
+          amcStatus;
+      }
+
+      if (productId) {
+        if (
+          !mongoose.Types.ObjectId.isValid(
+            productId
+          )
+        ) {
+          return res
+            .status(400)
+            .json({
+              success: false,
+              message:
+                "Invalid product ID.",
+            });
+        }
+
+        query[
+          "products.productId"
+        ] =
+          new mongoose.Types.ObjectId(
+            productId
+          );
+      }
+
+        if (assignedEmployeeId) {
+  if (
+    !mongoose.Types.ObjectId.isValid(
+      assignedEmployeeId
+    )
+  ) {
+    return res
+      .status(400)
+      .json({
+        success: false,
+        message:
+          "Invalid assigned employee ID.",
+      });
   }
-});
+
+  query.assignedEmployeeId =
+    new mongoose.Types.ObjectId(
+      assignedEmployeeId
+    );
+}
+      const normalizedSearch =
+        String(
+          search || ""
+        ).trim();
+
+      if (
+        normalizedSearch
+      ) {
+        query.$or = [
+          {
+            clientCode: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+          {
+            companyName: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+          {
+            contactPerson: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+          {
+            email: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+          {
+            mobile: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+         {
+  city: {
+    $regex: normalizedSearch,
+    $options: "i",
+  },
+},
+{
+  assignedEmployeeName: {
+    $regex: normalizedSearch,
+    $options: "i",
+  },
+},
+{
+  assignedEmployeeCode: {
+    $regex: normalizedSearch,
+    $options: "i",
+  },
+},
+{
+  "products.productName": {
+    $regex: normalizedSearch,
+    $options: "i",
+  },
+},
+        ];
+      }
+
+      const clients =
+        await Client.find(
+          query
+        ).sort({
+          companyName: 1,
+        });
+
+      const stats = {
+        totalClients:
+          clients.length,
+
+        activeClients:
+          clients.filter(
+            (client) =>
+              client.status ===
+              "Active"
+          ).length,
+
+        inactiveClients:
+          clients.filter(
+            (client) =>
+              client.status ===
+              "Inactive"
+          ).length,
+
+        clientsWithAMC:
+          clients.filter(
+            (client) =>
+              client.amcStatus ===
+              "Paid" ||
+              client.amcStatus ===
+              "Partially Paid"
+          ).length,
+
+        totalProducts:
+          clients.reduce(
+            (
+              total,
+              client
+            ) =>
+              total +
+              (
+                client.products ||
+                []
+              ).length,
+            0
+          ),
+
+        openTickets:
+          clients.reduce(
+            (
+              total,
+              client
+            ) =>
+              total +
+              Number(
+                client.openTickets ||
+                0
+              ),
+            0
+          ),
+      };
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          count:
+            clients.length,
+
+          stats,
+
+          data:
+            clients.map(
+              clientResponse
+            ),
+        });
+    } catch (error) {
+      console.error(
+        "Load clients error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message ||
+            "Unable to load clients.",
+        });
+    }
+  }
+);
+
+/* =====================================================
+   GET ONE CLIENT
+   GET /api/admin/client/:id
+===================================================== */
+
+router.get(
+  "/client/:id",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Invalid client ID.",
+          });
+      }
+
+      const client =
+        await Client.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!client) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message:
+              "Client not found.",
+          });
+      }
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          data:
+            clientResponse(client),
+        });
+    } catch (error) {
+      console.error(
+        "Get client error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message ||
+            "Unable to load client.",
+        });
+    }
+  }
+);
+
 /* =====================================================
    UPDATE CLIENT
+   PUT /api/admin/client/:id
 ===================================================== */
 
-router.put("/client/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
+router.put(
+  "/client/:id",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid client ID.",
-      });
-    }
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Invalid client ID.",
+          });
+      }
 
-    const {
-      clientCode,
-      companyName,
-      contactPerson,
-      email,
-      mobile,
-      city,
-      products,
-      amcStatus,
-      nextRenewal,
-      openTickets,
-      assignedTo,
-      status,
-    } = req.body;
-
-    if (!clientCode || !companyName) {
-      return res.status(400).json({
-        success: false,
-        message: "Client code and company name are required.",
-      });
-    }
-
-    const duplicateCode = await Client.findOne({
-      clientCode: String(clientCode).trim(),
-      _id: { $ne: id },
-    });
-
-    if (duplicateCode) {
-      return res.status(409).json({
-        success: false,
-        message: "Another client already uses this client code.",
-      });
-    }
-
-    if (mobile) {
-      const duplicateMobile = await Client.findOne({
-        mobile: String(mobile).trim(),
-        _id: { $ne: id },
-      });
-
-      if (duplicateMobile) {
-        return res.status(409).json({
-          success: false,
-          message: "Another client already uses this mobile number.",
+      const client =
+        await Client.findOne({
+          _id: id,
+          isDeleted: false,
         });
+
+      if (!client) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message:
+              "Client not found.",
+          });
       }
-    }
 
-    const updatedClient = await Client.findByIdAndUpdate(
-      id,
-      {
-        clientCode: String(clientCode).trim(),
-        companyName: String(companyName).trim(),
-        contactPerson: String(contactPerson || "").trim(),
-        email: String(email || "").trim().toLowerCase(),
-        mobile: String(mobile || "").trim(),
-        city: String(city || "").trim(),
-        products: Array.isArray(products) ? products : [],
-        amcStatus: amcStatus || "Not Started",
-        nextRenewal: nextRenewal || "",
-        openTickets: Number(openTickets || 0),
-        assignedTo: String(assignedTo || "").trim() || "Unassigned",
-        status: status || "Active",
-      },
-      {
-        new: true,
-        runValidators: true,
+      const {
+        clientCode,
+        companyName,
+        contactPerson,
+        email,
+        mobile,
+        city,
+        products,
+        amcStatus,
+        nextRenewal,
+       assignedEmployeeId,
+status,
+      } = req.body;
+
+      const normalizedCode =
+        String(
+          clientCode ??
+          client.clientCode
+        )
+          .trim()
+          .toUpperCase();
+
+      const normalizedCompanyName =
+        String(
+          companyName ??
+          client.companyName
+        ).trim();
+
+      if (!normalizedCode) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Client code is required.",
+          });
       }
-    );
 
-    if (!updatedClient) {
-      return res.status(404).json({
-        success: false,
-        message: "Client not found.",
-      });
-    }
+      if (
+        !normalizedCompanyName
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Company name is required.",
+          });
+      }
 
-    return res.status(200).json({
-      success: true,
-      message: "Client updated successfully.",
-      data: updatedClient,
-    });
-  } catch (error) {
-    console.error("Update client error:", error);
+      const escapedCompanyName =
+        normalizedCompanyName.replace(
+          /[.*+?^${}()|[\]\\]/g,
+          "\\$&"
+        );
 
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Unable to update client.",
-    });
-  }
-});
-/* =====================================================
-   DELETE CLIENT
-===================================================== */
+      const duplicateClient =
+        await Client.findOne({
+          _id: {
+            $ne: id,
+          },
 
-router.delete("/client/:id", async (req, res) => {
+          isDeleted: false,
+
+          $or: [
+            {
+              clientCode:
+                normalizedCode,
+            },
+            {
+              companyName: {
+                $regex:
+                  `^${escapedCompanyName}$`,
+                $options: "i",
+              },
+            },
+          ],
+        });
+
+      if (duplicateClient) {
+        return res
+          .status(409)
+          .json({
+            success: false,
+
+            message:
+              duplicateClient.clientCode ===
+                normalizedCode
+                ? "Another client already uses this client code."
+                : "Another client already uses this company name.",
+          });
+      }
+
+      if (
+        products !== undefined
+      ) {
+        try {
+          client.products =
+            await resolveClientProducts(
+              products
+            );
+        } catch (error) {
+          return res
+            .status(400)
+            .json({
+              success: false,
+              message:
+                error.message,
+            });
+        }
+      }
+
+      client.clientCode =
+        normalizedCode;
+
+      client.companyName =
+        normalizedCompanyName;
+
+      client.contactPerson =
+        String(
+          contactPerson ??
+          client.contactPerson ??
+          ""
+        ).trim();
+
+      const nextEmail =
+        String(
+          email ??
+          client.email ??
+          ""
+        )
+          .trim()
+          .toLowerCase();
+
+      /*
+       * Check whether another User account
+       * already uses the new email.
+       */
+      if (
+        nextEmail &&
+        nextEmail !== client.email
+      ) {
+        const duplicateLogin =
+          await User.findOne({
+            email: nextEmail,
+
+            _id: {
+              $ne:
+                client.userId ||
+                undefined,
+            },
+          });
+
+        if (duplicateLogin) {
+          return res
+            .status(409)
+            .json({
+              success: false,
+              message:
+                "Another login account already uses this email.",
+            });
+        }
+      }
+
+      client.email =
+        nextEmail;
+      client.mobile =
+        String(
+          mobile ??
+          client.mobile ??
+          ""
+        ).trim();
+
+      client.city =
+        String(
+          city ??
+          client.city ??
+          ""
+        ).trim();
+
+      if (
+        amcStatus !== undefined
+      ) {
+        client.amcStatus =
+          amcStatus;
+      }
+
+      if (
+        nextRenewal !==
+        undefined
+      ) {
+        client.nextRenewal =
+          nextRenewal || "";
+      }
+
+    
+if (
+  assignedEmployeeId !==
+  undefined
+) {
+  let resolvedEmployee;
+
   try {
-    const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid client ID.",
-      });
-    }
-
-    const deletedClient = await Client.findByIdAndDelete(id);
-
-    if (!deletedClient) {
-      return res.status(404).json({
-        success: false,
-        message: "Client not found.",
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: "Client deleted successfully.",
-      data: {
-        id: deletedClient._id,
-        clientCode: deletedClient.clientCode,
-        companyName: deletedClient.companyName,
-      },
-    });
+    resolvedEmployee =
+      await resolveClientEmployee(
+        assignedEmployeeId,
+        {
+          required: false,
+        }
+      );
   } catch (error) {
-    console.error("Delete client error:", error);
+    return res
+      .status(400)
+      .json({
+        success: false,
 
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Unable to delete client.",
-    });
+        message:
+          error.message ||
+          "Unable to validate the assigned employee.",
+      });
   }
-});
+
+  client.assignedEmployeeId =
+    resolvedEmployee
+      .assignedEmployeeId;
+
+  client.assignedEmployeeCode =
+    resolvedEmployee
+      .assignedEmployeeCode;
+
+  client.assignedEmployeeName =
+    resolvedEmployee
+      .assignedEmployeeName;
+}
+
+
+
+      if (
+        status !== undefined
+      ) {
+        client.status =
+          status;
+      }
+
+      client.updatedBy =
+        req.user._id;
+
+      client.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      await client.save();
+
+      await createActivityLog({
+        action:
+          "Client Updated",
+
+        category:
+          "Client",
+
+        description:
+          `${client.companyName} information was updated.`,
+
+        entityType:
+          "client",
+
+        entityId:
+          client._id,
+
+        entityCode:
+          client.clientCode,
+
+        entityName:
+          client.companyName,
+
+        clientId:
+          client._id,
+
+        clientName:
+          client.companyName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+
+      metadata: {
+  status:
+    client.status,
+
+  amcStatus:
+    client.amcStatus,
+
+  productCount:
+    client.products.length,
+
+  assignedEmployeeId:
+    client.assignedEmployeeId,
+
+  assignedEmployeeCode:
+    client.assignedEmployeeCode,
+
+  assignedEmployeeName:
+    client.assignedEmployeeName,
+},
+      });
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          message:
+            "Client updated successfully.",
+
+          data:
+            clientResponse(client),
+        });
+    } catch (error) {
+      console.error(
+        "Update client error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message ||
+            "Unable to update client.",
+        });
+    }
+  }
+);
+
 /* =====================================================
    ASSIGN PRODUCT TO CLIENT
    POST /api/admin/client/:id/product
 ===================================================== */
 
-router.post("/client/:id/product", async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid client ID.",
-      });
-    }
-
-    const {
-      productName,
-      version,
-      purchaseDate,
-      installationDate,
-      licensedUsers,
-      supportType,
-      amcStatus,
-      expiryDate,
-      installationStatus,
-      notes,
-    } = req.body;
-
-    if (!productName || !String(productName).trim()) {
-      return res.status(400).json({
-        success: false,
-        message: "Product name is required.",
-      });
-    }
-
-    const client = await Client.findById(id);
-
-    if (!client) {
-      return res.status(404).json({
-        success: false,
-        message: "Client not found.",
-      });
-    }
-
-    /*
-      Convert any old string products into proper product objects.
-      This protects clients saved before this schema change.
-    */
-    client.products = (client.products || []).map((product) => {
-      if (typeof product === "string") {
-        return {
-          productName: product,
-          version: "v1.0.0",
-          purchaseDate: "",
-          installationDate: "",
-          licensedUsers: 1,
-          supportType: "Standard",
-          amcStatus: client.amcStatus || "Not Started",
-          expiryDate: client.nextRenewal || "",
-          installationStatus: "Installed",
-          notes: "",
-        };
-      }
-
-      return product;
-    });
-
-    const normalizedProductName = String(productName)
-      .trim()
-      .toLowerCase();
-
-    const duplicateProduct = client.products.some(
-      (product) =>
-        String(product.productName || "")
-          .trim()
-          .toLowerCase() === normalizedProductName
-    );
-
-    if (duplicateProduct) {
-      return res.status(409).json({
-        success: false,
-        message: "This product is already assigned to the client.",
-      });
-    }
-
-    client.products.push({
-      productName: String(productName).trim(),
-      version: String(version || "v1.0.0").trim(),
-      purchaseDate: purchaseDate || "",
-      installationDate: installationDate || "",
-      licensedUsers: Math.max(Number(licensedUsers || 1), 1),
-      supportType: supportType || "Standard",
-      amcStatus: amcStatus || "Not Started",
-      expiryDate: expiryDate || "",
-      installationStatus: installationStatus || "Installed",
-      notes: String(notes || "").trim(),
-    });
-
-    await client.save();
-
-    return res.status(201).json({
-      success: true,
-      message: "Product assigned successfully.",
-      data: client,
-    });
-  } catch (error) {
-    console.error("Assign client product error:", error);
-
-    return res.status(500).json({
-      success: false,
-      message:
-        error.message || "Unable to assign product to client.",
-    });
-  }
-});
-/* =====================================================
-   UPDATE CLIENT PRODUCT
-   PUT /api/admin/client/:clientId/product/:productId
-===================================================== */
-
-router.put(
-  "/client/:clientId/product/:productId",
+router.post(
+  "/client/:id/product",
   async (req, res) => {
     try {
-      const { clientId, productId } = req.params;
+      const { id } =
+        req.params;
 
-      if (!mongoose.Types.ObjectId.isValid(clientId)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid client ID.",
-        });
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Invalid client ID.",
+          });
       }
 
-      if (!mongoose.Types.ObjectId.isValid(productId)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid product ID.",
+      const client =
+        await Client.findOne({
+          _id: id,
+          isDeleted: false,
         });
-      }
-
-      const {
-        productName,
-        version,
-        purchaseDate,
-        installationDate,
-        licensedUsers,
-        supportType,
-        amcStatus,
-        expiryDate,
-        installationStatus,
-        notes,
-      } = req.body;
-
-      if (!productName || !String(productName).trim()) {
-        return res.status(400).json({
-          success: false,
-          message: "Product name is required.",
-        });
-      }
-
-      const client = await Client.findById(clientId);
 
       if (!client) {
-        return res.status(404).json({
-          success: false,
-          message: "Client not found.",
-        });
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message:
+              "Client not found.",
+          });
       }
 
-      const product = client.products.id(productId);
+      let resolvedProduct;
 
-      if (!product) {
-        return res.status(404).json({
-          success: false,
-          message: "Product not found.",
-        });
+      try {
+        resolvedProduct =
+          await resolveClientProduct(
+            req.body
+          );
+      } catch (error) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              error.message,
+          });
       }
 
-      const normalizedProductName = String(productName)
-        .trim()
-        .toLowerCase();
+      const alreadyAssigned =
+        client.products.some(
+          (product) =>
+            String(
+              product.productId
+            ) ===
+            String(
+              resolvedProduct.productId
+            )
+        );
 
-      const duplicateProduct = client.products.some(
-        (currentProduct) =>
-          String(currentProduct._id) !== String(productId) &&
-          String(currentProduct.productName || "")
-            .trim()
-            .toLowerCase() === normalizedProductName
+      if (alreadyAssigned) {
+        return res
+          .status(409)
+          .json({
+            success: false,
+            message:
+              "This product is already assigned to the client.",
+          });
+      }
+
+      client.products.push(
+        resolvedProduct
       );
 
-      if (duplicateProduct) {
-        return res.status(409).json({
-          success: false,
-          message:
-            "Another assigned product already uses this product name.",
-        });
-      }
+      client.updatedBy =
+        req.user._id;
 
-      product.productName = String(productName).trim();
-      product.version = String(version || "v1.0.0").trim();
-      product.purchaseDate = purchaseDate || "";
-      product.installationDate = installationDate || "";
-      product.licensedUsers = Math.max(
-        Number(licensedUsers || 1),
-        1
-      );
-      product.supportType = supportType || "Standard";
-      product.amcStatus = amcStatus || "Not Started";
-      product.expiryDate = expiryDate || "";
-      product.installationStatus =
-        installationStatus || "Installed";
-      product.notes = String(notes || "").trim();
+      client.updatedByName =
+        req.user.name ||
+        "Admin";
 
       await client.save();
 
-      return res.status(200).json({
-        success: true,
-        message: "Product updated successfully.",
-        data: client,
-      });
-    } catch (error) {
-      console.error("Update client product error:", error);
+      const assignedProduct =
+        client.products[
+        client.products.length -
+        1
+        ];
 
-      return res.status(500).json({
-        success: false,
-        message:
-          error.message || "Unable to update product.",
+      await createActivityLog({
+        action:
+          "Product Assigned",
+
+        category:
+          "Product",
+
+        description:
+          `${assignedProduct.productName} was assigned to ${client.companyName}.`,
+
+        entityType:
+          "product",
+
+        entityId:
+          assignedProduct.productId,
+
+        entityCode:
+          assignedProduct.productCode,
+
+        entityName:
+          assignedProduct.productName,
+
+        clientId:
+          client._id,
+
+        clientName:
+          client.companyName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+
+        metadata: {
+          clientProductId:
+            assignedProduct._id,
+
+          version:
+            assignedProduct.version,
+
+          supportType:
+            assignedProduct.supportType,
+
+          amcStatus:
+            assignedProduct.amcStatus,
+        },
       });
+
+      return res
+        .status(201)
+        .json({
+          success: true,
+
+          message:
+            "Product assigned successfully.",
+
+          data:
+            clientResponse(client),
+        });
+    } catch (error) {
+      console.error(
+        "Assign client product error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message ||
+            "Unable to assign product.",
+        });
+    }
+  }
+);
+
+/* =====================================================
+   UPDATE CLIENT PRODUCT
+   PUT /api/admin/client/:clientId/product/:assignmentId
+===================================================== */
+
+router.put(
+  "/client/:clientId/product/:assignmentId",
+  async (req, res) => {
+    try {
+      const {
+        clientId,
+        assignmentId,
+      } = req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          clientId
+        ) ||
+        !mongoose.Types.ObjectId.isValid(
+          assignmentId
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Invalid client or assignment ID.",
+          });
+      }
+
+      const client =
+        await Client.findOne({
+          _id: clientId,
+          isDeleted: false,
+        });
+
+      if (!client) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message:
+              "Client not found.",
+          });
+      }
+
+      const assignment =
+        client.products.id(
+          assignmentId
+        );
+
+      if (!assignment) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message:
+              "Assigned product was not found.",
+          });
+      }
+
+     let resolvedProduct;
+
+try {
+  resolvedProduct =
+    await resolveClientProduct({
+      ...req.body,
+
+      productId:
+        req.body.productId ||
+        assignment.productId,
+    });
+} catch (error) {
+  return res
+    .status(400)
+    .json({
+      success: false,
+
+      message:
+        error.message ||
+        "Unable to validate the selected product.",
+    });
+}
+
+      const duplicate =
+        client.products.some(
+          (product) =>
+            String(product._id) !==
+            String(
+              assignmentId
+            ) &&
+            String(
+              product.productId
+            ) ===
+            String(
+              resolvedProduct.productId
+            )
+        );
+
+      if (duplicate) {
+        return res
+          .status(409)
+          .json({
+            success: false,
+            message:
+              "This product is already assigned to the client.",
+          });
+      }
+
+      assignment.productId =
+        resolvedProduct.productId;
+
+      assignment.productCode =
+        resolvedProduct.productCode;
+
+      assignment.productName =
+        resolvedProduct.productName;
+
+      assignment.version =
+        resolvedProduct.version;
+
+      assignment.purchaseDate =
+        resolvedProduct.purchaseDate;
+
+      assignment.installationDate =
+        resolvedProduct.installationDate;
+
+      assignment.licensedUsers =
+        resolvedProduct.licensedUsers;
+
+      assignment.supportType =
+        resolvedProduct.supportType;
+
+      assignment.amcStatus =
+        resolvedProduct.amcStatus;
+
+      assignment.expiryDate =
+        resolvedProduct.expiryDate;
+
+      assignment.installationStatus =
+        resolvedProduct.installationStatus;
+
+      assignment.notes =
+        resolvedProduct.notes;
+
+      client.updatedBy =
+        req.user._id;
+
+      client.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      await client.save();
+
+      await createActivityLog({
+        action:
+          "Client Product Updated",
+
+        category:
+          "Product",
+
+        description:
+          `${assignment.productName} assignment was updated for ${client.companyName}.`,
+
+        entityType:
+          "product",
+
+        entityId:
+          assignment.productId,
+
+        entityCode:
+          assignment.productCode,
+
+        entityName:
+          assignment.productName,
+
+        clientId:
+          client._id,
+
+        clientName:
+          client.companyName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+      });
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          message:
+            "Client product updated successfully.",
+
+          data:
+            clientResponse(client),
+        });
+    } catch (error) {
+      console.error(
+        "Update client product error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message ||
+            "Unable to update client product.",
+        });
+    }
+  }
+);
+
+/* =====================================================
+   REMOVE CLIENT PRODUCT
+   DELETE /api/admin/client/:clientId/product/:assignmentId
+===================================================== */
+
+router.delete(
+  "/client/:clientId/product/:assignmentId",
+  async (req, res) => {
+    try {
+      const {
+        clientId,
+        assignmentId,
+      } = req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          clientId
+        ) ||
+        !mongoose.Types.ObjectId.isValid(
+          assignmentId
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Invalid client or assignment ID.",
+          });
+      }
+
+      const client =
+        await Client.findOne({
+          _id: clientId,
+          isDeleted: false,
+        });
+
+      if (!client) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message:
+              "Client not found.",
+          });
+      }
+
+      const assignment =
+        client.products.id(
+          assignmentId
+        );
+
+      if (!assignment) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message:
+              "Assigned product was not found.",
+          });
+      }
+
+      const removedProduct = {
+        productId:
+          assignment.productId,
+
+        productCode:
+          assignment.productCode,
+
+        productName:
+          assignment.productName,
+      };
+
+      client.products.pull(
+        assignmentId
+      );
+
+      client.updatedBy =
+        req.user._id;
+
+      client.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      await client.save();
+
+      await createActivityLog({
+        action:
+          "Product Removed",
+
+        category:
+          "Product",
+
+        description:
+          `${removedProduct.productName} was removed from ${client.companyName}.`,
+
+        entityType:
+          "product",
+
+        entityId:
+          removedProduct.productId,
+
+        entityCode:
+          removedProduct.productCode,
+
+        entityName:
+          removedProduct.productName,
+
+        clientId:
+          client._id,
+
+        clientName:
+          client.companyName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+      });
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          message:
+            "Product removed successfully.",
+
+          data:
+            clientResponse(client),
+        });
+    } catch (error) {
+      console.error(
+        "Remove client product error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message ||
+            "Unable to remove client product.",
+        });
+    }
+  }
+);
+
+/* =====================================================
+   CHANGE CLIENT STATUS
+   PATCH /api/admin/client/:id/status
+===================================================== */
+
+router.patch(
+  "/client/:id/status",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      const { status } =
+        req.body;
+
+      const allowedStatuses = [
+        "Active",
+        "Inactive",
+        "Suspended",
+      ];
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Invalid client ID.",
+          });
+      }
+
+      if (
+        !allowedStatuses.includes(
+          status
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Invalid client status.",
+          });
+      }
+
+      const client =
+        await Client.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!client) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message:
+              "Client not found.",
+          });
+      }
+
+      client.status =
+        status;
+
+      client.updatedBy =
+        req.user._id;
+
+      client.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      await client.save();
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          message:
+            "Client status updated successfully.",
+
+          data:
+            clientResponse(client),
+        });
+    } catch (error) {
+      console.error(
+        "Change client status error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message ||
+            "Unable to change client status.",
+        });
+    }
+  }
+);
+
+/* =====================================================
+   SOFT DELETE CLIENT
+   DELETE /api/admin/client/:id
+===================================================== */
+
+router.delete(
+  "/client/:id",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Invalid client ID.",
+          });
+      }
+
+      const client =
+        await Client.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!client) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message:
+              "Client not found.",
+          });
+      }
+
+      const [
+        projectCount,
+        taskCount,
+        ticketCount,
+      ] = await Promise.all([
+        Project.countDocuments({
+          clientId:
+            client._id,
+
+          isDeleted: false,
+        }),
+
+        Task.countDocuments({
+          clientId:
+            client._id,
+
+          isDeleted: false,
+        }),
+
+        SupportTicket.countDocuments(
+          {
+            clientId:
+              client._id,
+
+            isDeleted: false,
+          }
+        ),
+      ]);
+
+      if (
+        projectCount > 0 ||
+        taskCount > 0 ||
+        ticketCount > 0
+      ) {
+        return res
+          .status(409)
+          .json({
+            success: false,
+
+            message:
+              "This client is already used by projects, tasks or tickets. Mark the client Inactive instead of deleting it.",
+
+            usage: {
+              projects:
+                projectCount,
+
+              tasks:
+                taskCount,
+
+              tickets:
+                ticketCount,
+            },
+          });
+      }
+
+      client.isDeleted =
+        true;
+
+      client.deletedAt =
+        new Date();
+
+      client.deletedBy =
+        req.user._id;
+
+      client.deletedByName =
+        req.user.name ||
+        "Admin";
+
+      client.status =
+        "Inactive";
+
+      await client.save();
+
+      await createActivityLog({
+        action:
+          "Client Deleted",
+
+        category:
+          "Client",
+
+        description:
+          `${client.companyName} was removed from Client Master.`,
+
+        entityType:
+          "client",
+
+        entityId:
+          client._id,
+
+        entityCode:
+          client.clientCode,
+
+        entityName:
+          client.companyName,
+
+        clientId:
+          client._id,
+
+        clientName:
+          client.companyName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+      });
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          message:
+            "Client deleted successfully.",
+
+          data: {
+            id:
+              client._id,
+
+            clientCode:
+              client.clientCode,
+
+            companyName:
+              client.companyName,
+          },
+        });
+    } catch (error) {
+      console.error(
+        "Delete client error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message ||
+            "Unable to delete client.",
+        });
     }
   }
 );
 /* =====================================================
-   DELETE CLIENT PRODUCT
-   DELETE /api/admin/client/:clientId/product/:productId
+   MIGRATE OLD CLIENT PRODUCTS TO PRODUCT MASTER
+   POST /api/admin/clients/migrate-products
 ===================================================== */
 
-router.delete(
-  "/client/:clientId/product/:productId",
+router.post(
+  "/clients/migrate-products",
   async (req, res) => {
     try {
-      const { clientId, productId } = req.params;
-
-      if (!mongoose.Types.ObjectId.isValid(clientId)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid client ID.",
+      const clients =
+        await Client.find({
+          isDeleted: {
+            $ne: true,
+          },
         });
+
+      const products =
+        await Product.find({
+          isDeleted: false,
+        });
+
+      const productByName =
+        new Map();
+
+      for (const product of products) {
+        productByName.set(
+          String(
+            product.productName
+          )
+            .trim()
+            .toLowerCase(),
+          product
+        );
       }
 
-      if (!mongoose.Types.ObjectId.isValid(productId)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid product ID.",
-        });
+      let migratedClients = 0;
+      let migratedProducts = 0;
+      const unmatchedProducts = [];
+
+      for (const client of clients) {
+        const rawProducts =
+          Array.isArray(
+            client.products
+          )
+            ? client.products
+            : [];
+
+        const migrated = [];
+        const usedIds =
+          new Set();
+
+        for (
+          const rawProduct
+          of rawProducts
+        ) {
+          const rawObject =
+            typeof rawProduct ===
+              "string"
+              ? {
+                productName:
+                  rawProduct,
+              }
+              : rawProduct.toObject
+                ? rawProduct.toObject()
+                : rawProduct;
+
+          let masterProduct = null;
+
+          if (
+            rawObject.productId &&
+            mongoose.Types.ObjectId.isValid(
+              rawObject.productId
+            )
+          ) {
+            masterProduct =
+              products.find(
+                (product) =>
+                  String(
+                    product._id
+                  ) ===
+                  String(
+                    rawObject.productId
+                  )
+              );
+          }
+
+          if (!masterProduct) {
+            const normalizedName =
+              String(
+                rawObject.productName ||
+                ""
+              )
+                .trim()
+                .toLowerCase();
+
+            masterProduct =
+              productByName.get(
+                normalizedName
+              );
+          }
+
+          if (!masterProduct) {
+            unmatchedProducts.push({
+              clientId:
+                client._id,
+
+              clientCode:
+                client.clientCode,
+
+              companyName:
+                client.companyName,
+
+              productName:
+                rawObject.productName ||
+                "",
+            });
+
+            continue;
+          }
+
+          const key =
+            String(
+              masterProduct._id
+            );
+
+          if (
+            usedIds.has(key)
+          ) {
+            continue;
+          }
+
+          usedIds.add(key);
+
+          migrated.push({
+            productId:
+              masterProduct._id,
+
+            productCode:
+              masterProduct.productCode,
+
+            productName:
+              masterProduct.productName,
+
+            version:
+              String(
+                rawObject.version ||
+                masterProduct.currentVersion ||
+                "v1.0.0"
+              ).trim(),
+
+            purchaseDate:
+              rawObject.purchaseDate ||
+              "",
+
+            installationDate:
+              rawObject.installationDate ||
+              "",
+
+            licensedUsers:
+              Math.max(
+                Number(
+                  rawObject.licensedUsers ||
+                  1
+                ),
+                1
+              ),
+
+            supportType:
+              rawObject.supportType ||
+              "Standard",
+
+            amcStatus:
+              rawObject.amcStatus ||
+              client.amcStatus ||
+              "Not Started",
+
+            expiryDate:
+              rawObject.expiryDate ||
+              client.nextRenewal ||
+              "",
+
+            installationStatus:
+              rawObject.installationStatus ||
+              "Installed",
+
+            notes:
+              String(
+                rawObject.notes ||
+                ""
+              ).trim(),
+          });
+
+          migratedProducts += 1;
+        }
+
+        const oldSnapshot =
+          JSON.stringify(
+            rawProducts.map(
+              (item) => ({
+                productId:
+                  item.productId ||
+                  null,
+
+                productCode:
+                  item.productCode ||
+                  "",
+
+                productName:
+                  item.productName ||
+                  String(item || ""),
+              })
+            )
+          );
+
+        const newSnapshot =
+          JSON.stringify(
+            migrated.map(
+              (item) => ({
+                productId:
+                  String(
+                    item.productId
+                  ),
+
+                productCode:
+                  item.productCode,
+
+                productName:
+                  item.productName,
+              })
+            )
+          );
+
+        if (
+          oldSnapshot !==
+          newSnapshot
+        ) {
+          client.products =
+            migrated;
+
+          client.updatedBy =
+            req.user._id;
+
+          client.updatedByName =
+            req.user.name ||
+            "Admin";
+
+          await client.save();
+          try {
+            await syncClientUser(
+              client
+            );
+          } catch (userSyncError) {
+            console.error(
+              "Client user sync error:",
+              userSyncError
+            );
+
+            return res
+              .status(409)
+              .json({
+                success: false,
+
+                message:
+                  userSyncError.code ===
+                    11000
+                    ? "The updated email is already used by another login account."
+                    : userSyncError.message ||
+                    "Client was saved, but the login account could not be synchronized.",
+              });
+          }
+
+          migratedClients += 1;
+        }
       }
 
-      const client = await Client.findById(clientId);
+      return res
+        .status(200)
+        .json({
+          success: true,
 
-      if (!client) {
-        return res.status(404).json({
-          success: false,
-          message: "Client not found.",
+          message:
+            "Client product migration completed.",
+
+          summary: {
+            totalClients:
+              clients.length,
+
+            migratedClients,
+
+            migratedProducts,
+
+            unmatchedCount:
+              unmatchedProducts.length,
+          },
+
+          unmatchedProducts,
         });
-      }
-
-      const product = client.products.id(productId);
-
-      if (!product) {
-        return res.status(404).json({
-          success: false,
-          message: "Product not found.",
-        });
-      }
-
-      client.products.pull(productId);
-
-      await client.save();
-
-      return res.status(200).json({
-        success: true,
-        message: "Product deleted successfully.",
-        data: client,
-      });
     } catch (error) {
-      console.error("Delete client product error:", error);
+      console.error(
+        "Migrate client products error:",
+        error
+      );
 
-      return res.status(500).json({
-        success: false,
-        message:
-          error.message || "Unable to delete product.",
-      });
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message ||
+            "Unable to migrate client products.",
+        });
     }
   }
-);  
+);
+async function resolveTaskProject(projectId) {
+  if (!projectId) {
+    throw new Error(
+      "Project is required."
+    );
+  }
+
+  if (
+    !mongoose.Types.ObjectId.isValid(
+      projectId
+    )
+  ) {
+    throw new Error(
+      "Invalid project ID."
+    );
+  }
+
+  const project =
+    await Project.findOne({
+      _id: projectId,
+      isDeleted: false,
+    });
+
+  if (!project) {
+    throw new Error(
+      "Selected project was not found."
+    );
+  }
+
+  if (
+    ["Completed", "Cancelled"].includes(
+      project.status
+    )
+  ) {
+    throw new Error(
+      `Tasks cannot be created for a ${project.status.toLowerCase()} project.`
+    );
+  }
+
+  return {
+    projectId: project._id,
+    projectCode:
+      project.projectCode,
+    projectName:
+      project.projectName,
+    project,
+  };
+}
 /* =====================================================
    CREATE TASK
    POST /api/admin/task
@@ -1168,43 +8212,213 @@ router.post("/task", async (req, res) => {
       title,
       description,
       workType,
+
+      taskFor,
+      generalTaskFor,
+
       clientId,
       clientName,
+
       productId,
-      project,
+      projectId,
+
       ticketId,
       ticketCode,
+
       assignedEmployeeId,
+
       priority,
+      status,
+
       dueDate,
       estimatedMinutes,
     } = req.body;
 
-    if (!String(title || "").trim()) {
-      return res.status(400).json({
-        success: false,
-        message: "Task title is required.",
-      });
+    const normalizedTaskFor =
+      ["Project", "Product", "General"].includes(
+        String(taskFor || "").trim()
+      )
+        ? String(taskFor).trim()
+        : "General";
+
+    let resolvedProject = {
+      projectId: null,
+      projectCode: "",
+      projectName: "",
+      project: null,
+    };
+
+    let resolvedProductId = null;
+    let resolvedProductCode = "";
+    let resolvedProductName = "";
+
+    let resolvedClientId = null;
+    let resolvedClientName =
+      "Internal Development";
+
+    /* =========================================
+       PROJECT TASK
+    ========================================= */
+
+    if (
+      normalizedTaskFor ===
+      "Project"
+    ) {
+      if (!projectId) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Please select a project.",
+        });
+      }
+
+      resolvedProject =
+        await resolveTaskProject(
+          projectId
+        );
+
+      const project =
+        resolvedProject.project;
+
+      resolvedClientId =
+        project.clientId ||
+        null;
+
+      resolvedClientName =
+        project.clientName ||
+        "Internal Development";
+
+      resolvedProductId =
+        project.productId ||
+        null;
+
+      resolvedProductCode =
+        project.productCode ||
+        "";
+
+      resolvedProductName =
+        project.productName ||
+        "";
     }
 
-    if (!String(project || "").trim()) {
-      return res.status(400).json({
-        success: false,
-        message: "Project is required.",
-      });
+    /* =========================================
+       PRODUCT TASK
+    ========================================= */
+
+    if (
+      normalizedTaskFor ===
+      "Product"
+    ) {
+      if (!productId) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Please select a product.",
+        });
+      }
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          productId
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid product ID.",
+        });
+      }
+
+      const product =
+        await Product.findOne({
+          _id: productId,
+          isDeleted: false,
+          status: "Active",
+        });
+
+      if (!product) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Selected product was not found or is inactive.",
+        });
+      }
+
+      resolvedProductId =
+        product._id;
+
+      resolvedProductCode =
+        product.productCode;
+
+      resolvedProductName =
+        product.productName;
+
+      if (clientId) {
+        if (
+          !mongoose.Types.ObjectId.isValid(
+            clientId
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Invalid client ID.",
+          });
+        }
+
+        const client =
+          await Client.findOne({
+            _id: clientId,
+            isDeleted: false,
+          });
+
+        if (!client) {
+          return res.status(404).json({
+            success: false,
+            message:
+              "Selected client was not found.",
+          });
+        }
+
+        resolvedClientId =
+          client._id;
+
+        resolvedClientName =
+          client.companyName;
+      }
     }
+
+    /* =========================================
+       GENERAL TASK
+    ========================================= */
+
+    if (
+      normalizedTaskFor ===
+      "General"
+    ) {
+      resolvedProject = {
+        projectId: null,
+        projectCode: "",
+        projectName: "",
+        project: null,
+      };
+
+      resolvedProductId = null;
+      resolvedProductCode = "";
+      resolvedProductName = "";
+
+      resolvedClientId = null;
+      resolvedClientName =
+        "Internal Development";
+    }
+    /* =========================================
+       EMPLOYEE VALIDATION
+    ========================================= */
 
     if (!assignedEmployeeId) {
       return res.status(400).json({
         success: false,
         message: "Please select an employee.",
-      });
-    }
-
-    if (!dueDate) {
-      return res.status(400).json({
-        success: false,
-        message: "Task due date is required.",
       });
     }
 
@@ -1220,86 +8434,189 @@ router.post("/task", async (req, res) => {
       });
     }
 
-    if (
-      employee.status === "Leave" ||
-      employee.status === "Inactive"
-    ) {
+    /* =========================================
+       DUE DATE VALIDATION
+    ========================================= */
+
+    if (!dueDate) {
       return res.status(400).json({
         success: false,
-        message: `Task cannot be assigned because ${employee.name} is ${employee.status.toLowerCase()}.`,
+        message: "Due date is required.",
       });
     }
 
-    let resolvedClientName =
-      String(clientName || "").trim() ||
-      "Internal Development";
+    /* =========================================
+       PRIORITY VALIDATION
+    ========================================= */
 
-    let resolvedClientId = null;
+    const selectedPriority =
+      await validatePriority(
+        priority || "Medium"
+      );
 
-    if (clientId) {
-      if (!mongoose.Types.ObjectId.isValid(clientId)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid client ID.",
-        });
-      }
-
-      const client = await Client.findById(clientId);
-
-      if (!client) {
-        return res.status(404).json({
-          success: false,
-          message: "Selected client was not found.",
-        });
-      }
-
-      resolvedClientId = client._id;
-      resolvedClientName = client.companyName;
+    if (!selectedPriority) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Selected priority is invalid or inactive.",
+      });
     }
 
+    /* =========================================
+       STATUS VALIDATION
+    ========================================= */
+
+    const selectedStatus =
+      await validateTaskStatus(
+        status || "Assigned"
+      );
+
+    if (!selectedStatus) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Selected task status is invalid or inactive.",
+      });
+    }
     const task = await Task.create({
-      taskCode: generateTaskCode(),
+      taskCode:
+        generateTaskCode(),
 
-      title: String(title).trim(),
-      description: String(description || "").trim(),
+      title:
+        String(title || "").trim(),
 
-      workType: workType || "Client Support",
+      description:
+        String(
+          description || ""
+        ).trim(),
 
-      clientId: resolvedClientId,
-      clientName: resolvedClientName,
+      workType:
+        workType ||
+        "Client Support",
 
-      productId: normalizeObjectId(productId),
-      project: String(project).trim(),
+      taskFor:
+        normalizedTaskFor,
+      generalTaskFor:
+        normalizedTaskFor ===
+          "General"
+          ? String(
+            generalTaskFor || ""
+          ).trim()
+          : "",
 
-      ticketId: normalizeObjectId(ticketId),
-      ticketCode: String(ticketCode || "").trim(),
+      clientId:
+        resolvedClientId,
 
-      assignedEmployeeId: employee._id,
-      assignedEmployeeName: employee.name,
+      clientName:
+        resolvedClientName,
+
+      productId:
+        resolvedProductId,
+
+      productCode:
+        resolvedProductCode,
+
+      productName:
+        resolvedProductName,
+
+      projectId:
+        resolvedProject.projectId,
+
+      projectCode:
+        resolvedProject.projectCode,
+
+      projectName:
+        resolvedProject.projectName,
+
+      ticketId:
+        normalizeObjectId(
+          ticketId
+        ),
+
+      ticketCode:
+        String(
+          ticketCode || ""
+        ).trim(),
+
+      assignedEmployeeId:
+        employee._id,
+
+      assignedEmployeeName:
+        employee.name,
+
       assignedEmployeeCode:
-        employee.employeeCode || "",
+        employee.employeeCode ||
+        "",
 
-      assignedBy: req.user._id,
-      assignedByName: req.user.name || "",
+      assignedBy:
+        req.user._id,
 
-      priority: priority || "Medium",
-      status: "Assigned",
-      progress: 0,
+      assignedByName:
+        req.user.name ||
+        "Admin",
 
-      dueDate: new Date(dueDate),
+      priority:
+        selectedPriority.name,
 
-      estimatedMinutes: Math.max(
-        Number(estimatedMinutes || 0),
-        0
-      ),
+      status:
+        selectedStatus.name,
+
+      progress:
+        selectedStatus.isFinal
+          ? 100
+          : 0,
+
+      startDate:
+        selectedStatus.name ===
+          "In Progress"
+          ? new Date()
+          : null,
+
+      dueDate:
+        new Date(dueDate),
+
+      completedAt:
+        selectedStatus.isFinal
+          ? new Date()
+          : null,
+
+      estimatedMinutes:
+        Math.max(
+          Number(
+            estimatedMinutes || 0
+          ),
+          0
+        ),
+
+      spentMinutes:
+        0,
 
       timeline: [
         {
-          action: "Task Created",
-          description: `Task created and assigned to ${employee.name}.`,
-          performedBy: req.user._id,
-          performedByName: req.user.name || "Admin",
-          performedByRole: "admin",
+          action:
+            "Task Created",
+
+          description:
+            normalizedTaskFor ===
+              "Project"
+              ? `Task created under project ${resolvedProject.projectName} and assigned to ${employee.name}.`
+              : normalizedTaskFor ===
+                "Product"
+                ? `Task created for product ${resolvedProductName} and assigned to ${employee.name}.`
+                : `General internal task created and assigned to ${employee.name}.`,
+
+          performedBy:
+            req.user._id,
+
+          performedByName:
+            req.user.name ||
+            "Admin",
+
+          performedByRole:
+            "admin",
+
+          createdAt:
+            new Date(),
         },
       ],
     });
@@ -1313,8 +8630,50 @@ router.post("/task", async (req, res) => {
         status: "Working",
         currentTask: task.title,
         currentClient: task.clientName,
-        currentProject: task.project,
+        currentProject:
+          task.projectName,
         lastActivityAt: new Date(),
+      },
+    });
+
+    await createActivityLog({
+      action: "Task Created",
+
+      category: "Task",
+
+      description:
+        `${task.taskCode} was created and assigned to ${employee.name}.`,
+
+      entityType: "task",
+
+      entityId: task._id,
+
+      entityCode: task.taskCode,
+
+      entityName: task.title,
+
+      clientId: task.clientId,
+
+      clientName: task.clientName,
+
+      employeeId: employee._id,
+
+      employeeName: employee.name,
+
+      performedBy: req.user._id,
+
+      performedByName:
+        req.user.name || "Admin",
+
+      performedByRole: "admin",
+
+      metadata: {
+        projectId: task.projectId,
+        projectCode: task.projectCode,
+        projectName: task.projectName,
+        priority: task.priority,
+        status: task.status,
+        dueDate: task.dueDate,
       },
     });
 
@@ -1355,7 +8714,7 @@ router.get("/tasks", async (req, res) => {
       priority = "All",
       employeeId = "",
       clientId = "",
-      project = "",
+      projectId = "",
     } = req.query;
 
     const query = {
@@ -1386,11 +8745,16 @@ router.get("/tasks", async (req, res) => {
         new mongoose.Types.ObjectId(clientId);
     }
 
-    if (String(project).trim()) {
-      query.project = {
-        $regex: String(project).trim(),
-        $options: "i",
-      };
+    if (
+      projectId &&
+      mongoose.Types.ObjectId.isValid(
+        projectId
+      )
+    ) {
+      query.projectId =
+        new mongoose.Types.ObjectId(
+          projectId
+        );
     }
 
     const normalizedSearch = String(search).trim();
@@ -1422,8 +8786,19 @@ router.get("/tasks", async (req, res) => {
           },
         },
         {
-          project: {
-            $regex: normalizedSearch,
+          projectCode: {
+            $regex:
+              normalizedSearch,
+
+            $options: "i",
+          },
+        },
+
+        {
+          projectName: {
+            $regex:
+              normalizedSearch,
+
             $options: "i",
           },
         },
@@ -1530,7 +8905,34 @@ router.put("/task/:id", async (req, res) => {
     const previousEmployeeId = String(
       task.assignedEmployeeId
     );
+    const previousEmployeeName =
+      task.assignedEmployeeName;
 
+    const previousTaskData = {
+      title:
+        task.title,
+
+      clientName:
+        task.clientName,
+
+      projectId:
+        task.projectId,
+
+      projectCode:
+        task.projectCode,
+
+      projectName:
+        task.projectName,
+
+      priority:
+        task.priority,
+
+      dueDate:
+        task.dueDate,
+
+      estimatedMinutes:
+        task.estimatedMinutes,
+    };
     const {
       title,
       description,
@@ -1538,7 +8940,7 @@ router.put("/task/:id", async (req, res) => {
       clientId,
       clientName,
       productId,
-      project,
+      projectId,
       ticketId,
       ticketCode,
       assignedEmployeeId,
@@ -1570,15 +8972,35 @@ router.put("/task/:id", async (req, res) => {
       task.workType = workType;
     }
 
-    if (project !== undefined) {
-      if (!String(project).trim()) {
-        return res.status(400).json({
-          success: false,
-          message: "Project cannot be empty.",
-        });
-      }
+    if (projectId !== undefined) {
+      const resolvedProject =
+        await resolveTaskProject(
+          projectId
+        );
 
-      task.project = String(project).trim();
+      task.projectId =
+        resolvedProject.projectId;
+
+      task.projectCode =
+        resolvedProject.projectCode;
+
+      task.projectName =
+        resolvedProject.projectName;
+
+      task.clientId =
+        resolvedProject.project
+          .clientId ||
+        null;
+
+      task.clientName =
+        resolvedProject.project
+          .clientName ||
+        "Internal Development";
+
+      task.productId =
+        resolvedProject.project
+          .productId ||
+        null;
     }
 
     if (clientId !== undefined) {
@@ -1629,7 +9051,19 @@ router.put("/task/:id", async (req, res) => {
     }
 
     if (priority !== undefined) {
-      task.priority = priority;
+      const selectedPriority =
+        await validatePriority(priority);
+
+      if (!selectedPriority) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Selected priority is invalid or inactive.",
+        });
+      }
+
+      task.priority =
+        selectedPriority.name;
     }
 
     if (dueDate !== undefined) {
@@ -1656,31 +9090,40 @@ router.put("/task/:id", async (req, res) => {
     }
 
     if (status !== undefined) {
-      task.status = status;
+      const selectedTaskStatus =
+        await validateTaskStatus(
+          status
+        );
 
-      if (
-        status === "In Progress" &&
-        !task.startDate
-      ) {
-        task.startDate = new Date();
+      if (!selectedTaskStatus) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Selected task status is invalid or inactive.",
+        });
       }
 
+      task.status =
+        selectedTaskStatus.name;
+
       if (
-        status === "Completed" ||
-        status === "Closed"
+        selectedTaskStatus.isFinal
       ) {
         task.progress = 100;
+
         task.completedAt =
-          task.completedAt || new Date();
+          task.completedAt ||
+          new Date();
       } else {
-        task.completedAt = null;
+        task.completedAt =
+          null;
       }
     }
 
     if (
       assignedEmployeeId &&
       String(assignedEmployeeId) !==
-        previousEmployeeId
+      previousEmployeeId
     ) {
       const newEmployee = await findEmployeeById(
         assignedEmployeeId
@@ -1730,7 +9173,8 @@ router.put("/task/:id", async (req, res) => {
             status: "Working",
             currentTask: task.title,
             currentClient: task.clientName,
-            currentProject: task.project,
+            currentProject:
+              task.projectName,
             lastActivityAt: new Date(),
           },
         }
@@ -1746,8 +9190,108 @@ router.put("/task/:id", async (req, res) => {
         performedByRole: "admin",
       });
     }
+    const employeeWasChanged =
+      String(task.assignedEmployeeId) !==
+      String(previousEmployeeId);
 
     await task.save();
+
+
+    if (employeeWasChanged) {
+      await createActivityLog({
+        action: "Task Reassigned",
+
+        category: "Task",
+
+        description:
+          `${task.taskCode} was reassigned from ${previousEmployeeName || "Unassigned"
+          } to ${task.assignedEmployeeName}.`,
+
+        entityType: "task",
+
+        entityId: task._id,
+
+        entityCode: task.taskCode,
+
+        entityName: task.title,
+
+        clientId: task.clientId,
+
+        clientName: task.clientName,
+
+        employeeId:
+          task.assignedEmployeeId,
+
+        employeeName:
+          task.assignedEmployeeName,
+
+        performedBy: req.user._id,
+
+        performedByName:
+          req.user.name || "Admin",
+
+        performedByRole: "admin",
+
+        metadata: {
+          previousEmployeeId,
+          previousEmployeeName,
+          currentEmployeeId:
+            task.assignedEmployeeId,
+          currentEmployeeName:
+            task.assignedEmployeeName,
+          project: task.project,
+          priority: task.priority,
+        },
+      });
+    } else {
+      await createActivityLog({
+        action: "Task Updated",
+
+        category: "Task",
+
+        description:
+          `${task.taskCode} task information was updated.`,
+
+        entityType: "task",
+
+        entityId: task._id,
+
+        entityCode: task.taskCode,
+
+        entityName: task.title,
+
+        clientId: task.clientId,
+
+        clientName: task.clientName,
+
+        employeeId:
+          task.assignedEmployeeId,
+
+        employeeName:
+          task.assignedEmployeeName,
+
+        performedBy: req.user._id,
+
+        performedByName:
+          req.user.name || "Admin",
+
+        performedByRole: "admin",
+
+        metadata: {
+          previous: previousTaskData,
+
+          current: {
+            title: task.title,
+            clientName: task.clientName,
+            project: task.project,
+            priority: task.priority,
+            dueDate: task.dueDate,
+            estimatedMinutes:
+              task.estimatedMinutes,
+          },
+        },
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -1796,6 +9340,40 @@ router.patch("/task/:id/status", async (req, res) => {
     }
 
     const previousStatus = task.status;
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        message: "Task status is required.",
+      });
+    }
+    const allowedTaskStatuses = [
+      "Assigned",
+      "Accepted",
+      "In Progress",
+      "Paused",
+      "Waiting",
+      "Testing",
+      "Completed",
+      "Verified",
+      "Closed",
+      "Cancelled",
+    ];
+
+    if (!allowedTaskStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid task status.",
+      });
+    }
+
+    if (previousStatus === status) {
+      return res.status(200).json({
+        success: true,
+        message:
+          "Task already has this status.",
+        data: taskResponse(task),
+      });
+    }
 
     task.status = status;
 
@@ -1844,6 +9422,47 @@ router.patch("/task/:id/status", async (req, res) => {
     });
 
     await task.save();
+    if (previousStatus !== status) {
+      await createActivityLog({
+        action: "Task Status Changed",
+
+        category: "Task",
+
+        description:
+          `${task.taskCode} changed from ${previousStatus} to ${status}.`,
+
+        entityType: "task",
+
+        entityId: task._id,
+
+        entityCode: task.taskCode,
+
+        entityName: task.title,
+
+        clientId: task.clientId,
+
+        clientName: task.clientName,
+
+        employeeId:
+          task.assignedEmployeeId,
+
+        employeeName:
+          task.assignedEmployeeName,
+
+        performedBy: req.user._id,
+
+        performedByName:
+          req.user.name || "Admin",
+
+        performedByRole: "admin",
+
+        metadata: {
+          previousStatus,
+          currentStatus: status,
+          progress: task.progress,
+        },
+      });
+    }
 
     if (isCompleted && !wasCompleted) {
       await updateEmployeeTaskSummary(
@@ -1879,7 +9498,8 @@ router.patch("/task/:id/status", async (req, res) => {
             status: "Working",
             currentTask: task.title,
             currentClient: task.clientName,
-            currentProject: task.project,
+            currentProject:
+              task.projectName,
             lastActivityAt: new Date(),
           },
         }
@@ -1956,6 +9576,44 @@ router.post("/task/:id/comment", async (req, res) => {
     });
 
     await task.save();
+    await createActivityLog({
+      action: "Task Comment Added",
+
+      category: "Task",
+
+      description:
+        `A comment was added to ${task.taskCode}.`,
+
+      entityType: "task",
+
+      entityId: task._id,
+
+      entityCode: task.taskCode,
+
+      entityName: task.title,
+
+      clientId: task.clientId,
+
+      clientName: task.clientName,
+
+      employeeId:
+        task.assignedEmployeeId,
+
+      employeeName:
+        task.assignedEmployeeName,
+
+      performedBy: req.user._id,
+
+      performedByName:
+        req.user.name || "Admin",
+
+      performedByRole: "admin",
+
+      metadata: {
+        comment:
+          String(message).trim(),
+      },
+    });
 
     return res.status(201).json({
       success: true,
@@ -2020,6 +9678,46 @@ router.delete("/task/:id", async (req, res) => {
     });
 
     await task.save();
+    await createActivityLog({
+      action: "Task Deleted",
+
+      category: "Task",
+
+      description:
+        `${task.taskCode} was deleted by Admin.`,
+
+      entityType: "task",
+
+      entityId: task._id,
+
+      entityCode: task.taskCode,
+
+      entityName: task.title,
+
+      clientId: task.clientId,
+
+      clientName: task.clientName,
+
+      employeeId:
+        task.assignedEmployeeId,
+
+      employeeName:
+        task.assignedEmployeeName,
+
+      performedBy: req.user._id,
+
+      performedByName:
+        req.user.name || "Admin",
+
+      performedByRole: "admin",
+
+      metadata: {
+        status: task.status,
+        priority: task.priority,
+        project: task.project,
+        wasOpen,
+      },
+    });
 
     if (wasOpen) {
       await updateEmployeeTaskSummary(
@@ -2034,6 +9732,9 @@ router.delete("/task/:id", async (req, res) => {
         }
       );
     }
+    await normalizeEmployeeTaskCounts(
+      task.assignedEmployeeId
+    );
 
     return res.status(200).json({
       success: true,
@@ -2054,4 +9755,2436 @@ router.delete("/task/:id", async (req, res) => {
     });
   }
 });
+/* =====================================================
+   GET ACTIVITY LOGS
+   GET /api/admin/activities
+===================================================== */
+
+router.get("/activities", async (req, res) => {
+  try {
+    const {
+      search = "",
+      category = "All",
+      entityType = "All",
+      clientId = "",
+      employeeId = "",
+      limit = 50,
+      page = 1,
+    } = req.query;
+
+    const query = {
+      isDeleted: false,
+    };
+
+    if (category !== "All") {
+      query.category = category;
+    }
+
+    if (entityType !== "All") {
+      query.entityType = entityType;
+    }
+
+    if (
+      clientId &&
+      mongoose.Types.ObjectId.isValid(clientId)
+    ) {
+      query.clientId =
+        new mongoose.Types.ObjectId(clientId);
+    }
+
+    if (
+      employeeId &&
+      mongoose.Types.ObjectId.isValid(
+        employeeId
+      )
+    ) {
+      query.employeeId =
+        new mongoose.Types.ObjectId(
+          employeeId
+        );
+    }
+
+    const normalizedSearch =
+      String(search || "").trim();
+
+    if (normalizedSearch) {
+      query.$or = [
+        {
+          action: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        {
+          description: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        {
+          entityCode: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        {
+          entityName: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        {
+          clientName: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        {
+          employeeName: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        {
+          performedByName: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+      ];
+    }
+
+    const safeLimit = Math.min(
+      Math.max(Number(limit || 50), 1),
+      200
+    );
+
+    const safePage = Math.max(
+      Number(page || 1),
+      1
+    );
+
+    const skip =
+      (safePage - 1) * safeLimit;
+
+    const [activities, total] =
+      await Promise.all([
+        ActivityLog.find(query)
+          .sort({
+            createdAt: -1,
+          })
+          .skip(skip)
+          .limit(safeLimit),
+
+        ActivityLog.countDocuments(query),
+      ]);
+
+    return res.status(200).json({
+      success: true,
+
+      count: activities.length,
+
+      total,
+
+      page: safePage,
+
+      totalPages: Math.max(
+        Math.ceil(total / safeLimit),
+        1
+      ),
+
+      data: activities,
+    });
+  } catch (error) {
+    console.error(
+      "Load activity logs error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Unable to load activity logs.",
+    });
+  }
+});
+
+/* =====================================================
+   GET ONE ENTITY'S ACTIVITY
+   GET /api/admin/activities/:entityType/:entityId
+===================================================== */
+
+router.get(
+  "/activities/:entityType/:entityId",
+  async (req, res) => {
+    try {
+      const {
+        entityType,
+        entityId,
+      } = req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          entityId
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid entity ID.",
+        });
+      }
+
+      const activities =
+        await ActivityLog.find({
+          entityType,
+          entityId:
+            new mongoose.Types.ObjectId(
+              entityId
+            ),
+          isDeleted: false,
+        }).sort({
+          createdAt: -1,
+        });
+
+      return res.status(200).json({
+        success: true,
+        count: activities.length,
+        data: activities,
+      });
+    } catch (error) {
+      console.error(
+        "Load entity activity error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          error.message ||
+          "Unable to load activity.",
+      });
+    }
+  }
+);
+/* =====================================================
+   CREATE SUPPORT TICKET
+   POST /api/admin/ticket
+===================================================== */
+
+router.post("/ticket", async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+
+      clientId,
+      productId,
+      productName,
+
+      module,
+      category,
+      source,
+      priority,
+
+      assignedEmployeeId,
+      dueDate,
+
+      contactPerson,
+      contactMobile,
+      contactEmail,
+    } = req.body;
+
+    const normalizedTitle =
+      String(title || "").trim();
+
+    const normalizedDescription =
+      String(description || "").trim();
+
+    if (!normalizedTitle) {
+      return res.status(400).json({
+        success: false,
+        message: "Ticket title is required.",
+      });
+    }
+
+    if (!normalizedDescription) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Problem description is required.",
+      });
+    }
+
+    if (
+      !clientId ||
+      !mongoose.Types.ObjectId.isValid(
+        clientId
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Please select a valid client.",
+      });
+    }
+
+    const client = await Client.findById(
+      clientId
+    );
+
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        message:
+          "Selected client was not found.",
+      });
+    }
+
+    let resolvedProduct = null;
+
+    if (
+      productId &&
+      mongoose.Types.ObjectId.isValid(
+        productId
+      )
+    ) {
+      resolvedProduct =
+        client.products.id(productId);
+    }
+
+    if (
+      !resolvedProduct &&
+      String(productName || "").trim()
+    ) {
+      const normalizedProductName =
+        String(productName)
+          .trim()
+          .toLowerCase();
+
+      resolvedProduct = (
+        client.products || []
+      ).find(
+        (product) =>
+          String(
+            product.productName || ""
+          )
+            .trim()
+            .toLowerCase() ===
+          normalizedProductName
+      );
+    }
+
+    if (!resolvedProduct) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Please select a product assigned to this client.",
+      });
+    }
+
+    let employee = null;
+
+    if (assignedEmployeeId) {
+      employee = await findEmployeeById(
+        assignedEmployeeId
+      );
+
+      if (!employee) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Selected employee was not found or is inactive.",
+        });
+      }
+
+      if (
+        employee.status === "Leave" ||
+        employee.status === "Inactive"
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            `Ticket cannot be assigned because ${employee.name} is ${employee.status.toLowerCase()}.`,
+        });
+      }
+    }
+
+    const initialStatus = employee
+      ? "Assigned"
+      : "New";
+
+    const ticket = await SupportTicket.create({
+      ticketCode: generateTicketCode(),
+
+      title: normalizedTitle,
+
+      description:
+        normalizedDescription,
+
+      clientId: client._id,
+
+      clientCode:
+        client.clientCode || "",
+
+      clientName:
+        client.companyName,
+
+      contactPerson:
+        String(
+          contactPerson ||
+          client.contactPerson ||
+          ""
+        ).trim(),
+
+      contactMobile:
+        String(
+          contactMobile ||
+          client.mobile ||
+          ""
+        ).trim(),
+
+      contactEmail:
+        String(
+          contactEmail ||
+          client.email ||
+          ""
+        )
+          .trim()
+          .toLowerCase(),
+
+      productId:
+        resolvedProduct._id,
+
+      productName:
+        resolvedProduct.productName,
+
+      productVersion:
+        resolvedProduct.version || "",
+
+      module:
+        String(module || "General").trim(),
+
+      category:
+        category || "Other",
+
+      source:
+        source || "Admin",
+
+      priority:
+        priority || "Medium",
+
+      status: initialStatus,
+
+      assignedEmployeeId:
+        employee ? employee._id : null,
+
+      assignedEmployeeName:
+        employee
+          ? employee.name
+          : "Unassigned",
+
+      assignedEmployeeCode:
+        employee
+          ? employee.employeeCode || ""
+          : "",
+
+      assignedAt:
+        employee ? new Date() : null,
+
+      assignedBy:
+        employee ? req.user._id : null,
+
+      assignedByName:
+        employee
+          ? req.user.name || "Admin"
+          : "",
+
+      dueDate:
+        dueDate
+          ? new Date(dueDate)
+          : null,
+
+      createdBy:
+        req.user._id,
+
+      createdByName:
+        req.user.name || "Admin",
+
+      createdByRole: "admin",
+
+      timeline: [
+        {
+          type: "created",
+
+          title:
+            "Ticket Created",
+
+          description:
+            "Support ticket was created by Admin.",
+
+          performedBy:
+            req.user._id,
+
+          performedByName:
+            req.user.name || "Admin",
+
+
+
+
+
+          performedByRole:
+            "admin",
+        },
+
+        ...(employee
+          ? [
+            {
+              type: "assigned",
+
+              title:
+                "Ticket Assigned",
+
+              description:
+                `Ticket assigned to ${employee.name}.`,
+
+              performedBy:
+                req.user._id,
+
+              performedByName:
+                req.user.name || "Admin",
+
+              performedByRole:
+                "admin",
+            },
+          ]
+          : []),
+      ],
+    });
+
+    await normalizeClientOpenTicketCount(
+      client._id
+    );
+
+    await createActivityLog({
+      action: "Ticket Created",
+
+      category: "Ticket",
+
+      description:
+        `${ticket.ticketCode} was created for ${client.companyName}.`,
+
+      entityType: "ticket",
+
+      entityId: ticket._id,
+
+      entityCode:
+        ticket.ticketCode,
+
+      entityName:
+        ticket.title,
+
+      clientId:
+        ticket.clientId,
+
+      clientName:
+        ticket.clientName,
+
+      employeeId:
+        ticket.assignedEmployeeId,
+
+      employeeName:
+        ticket.assignedEmployeeName,
+
+      performedBy:
+        req.user._id,
+
+      performedByName:
+        req.user.name || "Admin",
+
+      performedByRole:
+        "admin",
+
+      metadata: {
+        productName:
+          ticket.productName,
+
+        module:
+          ticket.module,
+
+        category:
+          ticket.category,
+
+        source:
+          ticket.source,
+
+        priority:
+          ticket.priority,
+
+        status:
+          ticket.status,
+
+        dueDate:
+          ticket.dueDate,
+      },
+    });
+
+    if (employee) {
+      await createActivityLog({
+        action:
+          "Ticket Assigned",
+
+        category:
+          "Ticket",
+
+        description:
+          `${ticket.ticketCode} was assigned to ${employee.name}.`,
+
+        entityType:
+          "ticket",
+
+        entityId:
+          ticket._id,
+
+        entityCode:
+          ticket.ticketCode,
+
+        entityName:
+          ticket.title,
+
+        clientId:
+          ticket.clientId,
+
+        clientName:
+          ticket.clientName,
+
+        employeeId:
+          employee._id,
+
+        employeeName:
+          employee.name,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name || "Admin",
+
+        performedByRole:
+          "admin",
+
+        metadata: {
+          status:
+            ticket.status,
+        },
+      });
+    }
+
+    return res.status(201).json({
+      success: true,
+
+      message: employee
+        ? "Ticket created and assigned successfully."
+        : "Ticket created successfully.",
+
+      data:
+        ticketResponse(ticket),
+    });
+  } catch (error) {
+    console.error(
+      "Create support ticket error:",
+      error
+    );
+
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+
+        message:
+          "Ticket code conflict occurred. Please try again.",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+
+      message:
+        error.message ||
+        "Unable to create support ticket.",
+    });
+  }
+});
+/* =====================================================
+   GET ALL SUPPORT TICKETS
+   GET /api/admin/tickets
+===================================================== */
+
+router.get("/tickets", async (req, res) => {
+  try {
+    const {
+      search = "",
+      status = "All",
+      priority = "All",
+      source = "All",
+      clientId = "",
+      employeeId = "",
+      productName = "",
+      page = 1,
+      limit = 100,
+    } = req.query;
+
+    const query = {
+      isDeleted: false,
+    };
+
+    if (status !== "All") {
+      query.status = status;
+    }
+
+    if (priority !== "All") {
+      query.priority = priority;
+    }
+
+    if (source !== "All") {
+      query.source = source;
+    }
+
+    if (
+      clientId &&
+      mongoose.Types.ObjectId.isValid(clientId)
+    ) {
+      query.clientId =
+        new mongoose.Types.ObjectId(clientId);
+    }
+
+    if (
+      employeeId &&
+      mongoose.Types.ObjectId.isValid(employeeId)
+    ) {
+      query.assignedEmployeeId =
+        new mongoose.Types.ObjectId(employeeId);
+    }
+
+    if (String(productName || "").trim()) {
+      query.productName = {
+        $regex: String(productName).trim(),
+        $options: "i",
+      };
+    }
+
+    const normalizedSearch =
+      String(search || "").trim();
+
+    if (normalizedSearch) {
+      query.$or = [
+        {
+          ticketCode: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        {
+          title: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        {
+          description: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        {
+          clientName: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        {
+          productName: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        {
+          module: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        {
+          assignedEmployeeName: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+      ];
+    }
+
+    const safeLimit = Math.min(
+      Math.max(Number(limit || 100), 1),
+      200
+    );
+
+    const safePage = Math.max(
+      Number(page || 1),
+      1
+    );
+
+    const skip =
+      (safePage - 1) * safeLimit;
+
+    const [tickets, total] =
+      await Promise.all([
+        SupportTicket.find(query)
+          .sort({
+            createdAt: -1,
+          })
+          .skip(skip)
+          .limit(safeLimit),
+
+        SupportTicket.countDocuments(query),
+      ]);
+
+    const statsQuery = {
+      isDeleted: false,
+    };
+
+    const [
+      openTickets,
+      criticalTickets,
+      waitingTickets,
+      resolvedTickets,
+    ] = await Promise.all([
+      SupportTicket.countDocuments({
+        ...statsQuery,
+        status: {
+          $nin: [
+            "Resolved",
+            "Verified",
+            "Closed",
+            "Cancelled",
+          ],
+        },
+      }),
+
+      SupportTicket.countDocuments({
+        ...statsQuery,
+        priority: "Critical",
+        status: {
+          $nin: [
+            "Resolved",
+            "Verified",
+            "Closed",
+            "Cancelled",
+          ],
+        },
+      }),
+
+      SupportTicket.countDocuments({
+        ...statsQuery,
+        status: "Waiting for Client",
+      }),
+
+      SupportTicket.countDocuments({
+        ...statsQuery,
+        status: {
+          $in: [
+            "Resolved",
+            "Verified",
+            "Closed",
+          ],
+        },
+      }),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+
+      count: tickets.length,
+      total,
+      page: safePage,
+
+      totalPages: Math.max(
+        Math.ceil(total / safeLimit),
+        1
+      ),
+
+      stats: {
+        openTickets,
+        criticalTickets,
+        waitingTickets,
+        resolvedTickets,
+      },
+
+      data: tickets.map(ticketResponse),
+    });
+  } catch (error) {
+    console.error(
+      "Load support tickets error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Unable to load support tickets.",
+    });
+  }
+});
+/* =====================================================
+   GET ONE SUPPORT TICKET
+   GET /api/admin/ticket/:id
+===================================================== */
+
+router.get("/ticket/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid ticket ID.",
+      });
+    }
+
+    const ticket =
+      await SupportTicket.findOne({
+        _id: id,
+        isDeleted: false,
+      });
+
+    if (!ticket) {
+      return res.status(404).json({
+        success: false,
+        message: "Support ticket not found.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: ticketResponse(ticket),
+    });
+  } catch (error) {
+    console.error(
+      "Load support ticket error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Unable to load support ticket.",
+    });
+  }
+});
+/* =====================================================
+   UPDATE SUPPORT TICKET
+   PUT /api/admin/ticket/:id
+===================================================== */
+
+router.put("/ticket/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid ticket ID.",
+      });
+    }
+
+    const ticket =
+      await SupportTicket.findOne({
+        _id: id,
+        isDeleted: false,
+      });
+
+    if (!ticket) {
+      return res.status(404).json({
+        success: false,
+        message: "Support ticket not found.",
+      });
+    }
+
+    const previousData = {
+      title: ticket.title,
+      description: ticket.description,
+      clientId: ticket.clientId,
+      clientName: ticket.clientName,
+      productId: ticket.productId,
+      productName: ticket.productName,
+      module: ticket.module,
+      category: ticket.category,
+      source: ticket.source,
+      priority: ticket.priority,
+      assignedEmployeeId:
+        ticket.assignedEmployeeId,
+      assignedEmployeeName:
+        ticket.assignedEmployeeName,
+      dueDate: ticket.dueDate,
+    };
+
+    const {
+      title,
+      description,
+
+      clientId,
+      productId,
+      productName,
+
+      module,
+      category,
+      source,
+      priority,
+
+      contactPerson,
+      contactMobile,
+      contactEmail,
+
+      assignedEmployeeId,
+      dueDate,
+    } = req.body;
+
+    if (title !== undefined) {
+      if (!String(title || "").trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "Ticket title cannot be empty.",
+        });
+      }
+
+      ticket.title =
+        String(title).trim();
+    }
+
+    if (description !== undefined) {
+      if (!String(description || "").trim()) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Problem description cannot be empty.",
+        });
+      }
+
+      ticket.description =
+        String(description).trim();
+    }
+
+    if (clientId !== undefined) {
+      if (
+        !clientId ||
+        !mongoose.Types.ObjectId.isValid(clientId)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Please select a valid client.",
+        });
+      }
+
+      const client =
+        await Client.findById(clientId);
+
+      if (!client) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Selected client was not found.",
+        });
+      }
+
+      let resolvedProduct = null;
+
+      if (
+        productId &&
+        mongoose.Types.ObjectId.isValid(productId)
+      ) {
+        resolvedProduct =
+          client.products.id(productId);
+      }
+
+      if (
+        !resolvedProduct &&
+        String(productName || "").trim()
+      ) {
+        const normalizedProductName =
+          String(productName)
+            .trim()
+            .toLowerCase();
+
+        resolvedProduct =
+          (client.products || []).find(
+            (product) =>
+              String(
+                product.productName || ""
+              )
+                .trim()
+                .toLowerCase() ===
+              normalizedProductName
+          );
+      }
+
+      if (!resolvedProduct) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Please select a product assigned to this client.",
+        });
+      }
+
+      ticket.clientId = client._id;
+      ticket.clientCode =
+        client.clientCode || "";
+      ticket.clientName =
+        client.companyName;
+
+      ticket.productId =
+        resolvedProduct._id;
+      ticket.productName =
+        resolvedProduct.productName;
+      ticket.productVersion =
+        resolvedProduct.version || "";
+
+      ticket.contactPerson =
+        String(
+          contactPerson ??
+          client.contactPerson ??
+          ""
+        ).trim();
+
+      ticket.contactMobile =
+        String(
+          contactMobile ??
+          client.mobile ??
+          ""
+        ).trim();
+
+      ticket.contactEmail =
+        String(
+          contactEmail ??
+          client.email ??
+          ""
+        )
+          .trim()
+          .toLowerCase();
+    } else {
+      if (contactPerson !== undefined) {
+        ticket.contactPerson =
+          String(contactPerson || "").trim();
+      }
+
+      if (contactMobile !== undefined) {
+        ticket.contactMobile =
+          String(contactMobile || "").trim();
+      }
+
+      if (contactEmail !== undefined) {
+        ticket.contactEmail =
+          String(contactEmail || "")
+            .trim()
+            .toLowerCase();
+      }
+    }
+
+    if (module !== undefined) {
+      ticket.module =
+        String(module || "General").trim();
+    }
+
+    if (category !== undefined) {
+      ticket.category = category;
+    }
+
+    if (source !== undefined) {
+      ticket.source = source;
+    }
+
+    if (priority !== undefined) {
+      ticket.priority = priority;
+    }
+
+    if (dueDate !== undefined) {
+      ticket.dueDate = dueDate
+        ? new Date(dueDate)
+        : null;
+    }
+
+    const oldEmployeeId =
+      ticket.assignedEmployeeId
+        ? String(ticket.assignedEmployeeId)
+        : "";
+
+    const oldEmployeeName =
+      ticket.assignedEmployeeName ||
+      "Unassigned";
+
+    let employeeWasChanged = false;
+
+    if (assignedEmployeeId !== undefined) {
+      if (!assignedEmployeeId) {
+        employeeWasChanged =
+          Boolean(ticket.assignedEmployeeId);
+
+        ticket.assignedEmployeeId = null;
+        ticket.assignedEmployeeName =
+          "Unassigned";
+        ticket.assignedEmployeeCode = "";
+        ticket.assignedAt = null;
+        ticket.assignedBy = null;
+        ticket.assignedByName = "";
+
+        if (ticket.status === "Assigned") {
+          ticket.status = "New";
+        }
+      } else {
+        const employee =
+          await findEmployeeById(
+            assignedEmployeeId
+          );
+
+
+
+        if (!employee) {
+          return res.status(404).json({
+            success: false,
+            message:
+              "Selected employee was not found or is inactive.",
+          });
+        }
+
+        if (
+          employee.status === "Leave" ||
+          employee.status === "Inactive"
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              `${employee.name} is currently ${employee.status}.`,
+          });
+        }
+
+        employeeWasChanged =
+          String(employee._id) !==
+          oldEmployeeId;
+
+        ticket.assignedEmployeeId =
+          employee._id;
+
+        ticket.assignedEmployeeName =
+          employee.name;
+
+        ticket.assignedEmployeeCode =
+          employee.employeeCode || "";
+
+        ticket.assignedAt =
+          new Date();
+
+        ticket.assignedBy =
+          req.user._id;
+
+        ticket.assignedByName =
+          req.user.name || "Admin";
+
+        if (ticket.status === "New") {
+          ticket.status = "Assigned";
+        }
+      }
+    }
+
+    ticket.timeline.push({
+      type: employeeWasChanged
+        ? "assigned"
+        : "updated",
+
+      title: employeeWasChanged
+        ? "Ticket Assignment Updated"
+        : "Ticket Updated",
+
+      description: employeeWasChanged
+        ? `Assignment changed from ${oldEmployeeName} to ${ticket.assignedEmployeeName}.`
+        : "Ticket details were updated by Admin.",
+
+      performedBy:
+        req.user._id,
+
+      performedByName:
+        req.user.name || "Admin",
+
+      performedByRole:
+        "admin",
+    });
+
+    await ticket.save();
+
+    if (
+      String(previousData.clientId || "") !==
+      String(ticket.clientId || "")
+    ) {
+      await normalizeClientOpenTicketCount(
+        previousData.clientId
+      );
+    }
+
+    await normalizeClientOpenTicketCount(
+      ticket.clientId
+    );
+
+    await createActivityLog({
+      action: employeeWasChanged
+        ? "Ticket Assigned"
+        : "Ticket Updated",
+
+      category: "Ticket",
+
+      description: employeeWasChanged
+        ? `${ticket.ticketCode} assignment changed from ${oldEmployeeName} to ${ticket.assignedEmployeeName}.`
+        : `${ticket.ticketCode} information was updated.`,
+
+      entityType: "ticket",
+
+      entityId: ticket._id,
+
+      entityCode:
+        ticket.ticketCode,
+
+      entityName:
+        ticket.title,
+
+      clientId:
+        ticket.clientId,
+
+      clientName:
+        ticket.clientName,
+
+      employeeId:
+        ticket.assignedEmployeeId,
+
+      employeeName:
+        ticket.assignedEmployeeName,
+
+      performedBy:
+        req.user._id,
+
+      performedByName:
+        req.user.name || "Admin",
+
+      performedByRole:
+        "admin",
+
+      metadata: {
+        previous: previousData,
+
+        current: {
+          title: ticket.title,
+          clientName:
+            ticket.clientName,
+          productName:
+            ticket.productName,
+          module: ticket.module,
+          category:
+            ticket.category,
+          source: ticket.source,
+          priority:
+            ticket.priority,
+          assignedEmployeeName:
+            ticket.assignedEmployeeName,
+          dueDate:
+            ticket.dueDate,
+        },
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: employeeWasChanged
+        ? "Ticket assignment updated successfully."
+        : "Ticket updated successfully.",
+      data: ticketResponse(ticket),
+    });
+  } catch (error) {
+    console.error(
+      "Update support ticket error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Unable to update support ticket.",
+    });
+  }
+});
+/* =====================================================
+   SOFT DELETE SUPPORT TICKET
+   DELETE /api/admin/ticket/:id
+===================================================== */
+
+router.delete("/ticket/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid ticket ID.",
+      });
+    }
+
+    const ticket =
+      await SupportTicket.findOne({
+        _id: id,
+        isDeleted: false,
+      });
+
+    if (!ticket) {
+      return res.status(404).json({
+        success: false,
+        message: "Support ticket not found.",
+      });
+    }
+
+    ticket.isDeleted = true;
+
+    ticket.timeline.push({
+      type: "deleted",
+      title: "Ticket Deleted",
+      description:
+        "Ticket was removed by Admin.",
+
+      performedBy:
+        req.user._id,
+
+      performedByName:
+        req.user.name || "Admin",
+
+      performedByRole:
+        "admin",
+    });
+
+    await ticket.save();
+
+    await normalizeClientOpenTicketCount(
+      ticket.clientId
+    );
+
+    await createActivityLog({
+      action: "Ticket Deleted",
+      category: "Ticket",
+
+      description:
+        `${ticket.ticketCode} was deleted by Admin.`,
+
+      entityType: "ticket",
+      entityId: ticket._id,
+
+      entityCode:
+        ticket.ticketCode,
+
+      entityName:
+        ticket.title,
+
+      clientId:
+        ticket.clientId,
+
+      clientName:
+        ticket.clientName,
+
+      employeeId:
+        ticket.assignedEmployeeId,
+
+      employeeName:
+        ticket.assignedEmployeeName,
+
+      performedBy:
+        req.user._id,
+
+      performedByName:
+        req.user.name || "Admin",
+
+      performedByRole:
+        "admin",
+
+      metadata: {
+        status: ticket.status,
+        priority: ticket.priority,
+        productName:
+          ticket.productName,
+        linkedTaskId:
+          ticket.linkedTaskId,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Support ticket deleted successfully.",
+
+      data: {
+        id: ticket._id,
+        ticketCode:
+          ticket.ticketCode,
+        title: ticket.title,
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Delete support ticket error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Unable to delete support ticket.",
+    });
+  }
+});
+/* =====================================================
+   UPDATE SUPPORT TICKET STATUS
+   PATCH /api/admin/ticket/:id/status
+===================================================== */
+
+router.patch("/ticket/:id/status", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid ticket ID.",
+      });
+    }
+
+
+
+    if (status === "Resolved") {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Use the resolve ticket action and provide a resolution note.",
+      });
+    }
+
+    const ticket = await SupportTicket.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!ticket) {
+      return res.status(404).json({
+        success: false,
+        message: "Support ticket not found.",
+      });
+    }
+
+    const previousStatus = ticket.status;
+
+    if (previousStatus === status) {
+      return res.status(200).json({
+        success: true,
+        message: "Ticket already has this status.",
+        data: ticketResponse(ticket),
+      });
+    }
+
+    if (
+      status === "Assigned" &&
+      !ticket.assignedEmployeeId
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Assign an employee before changing the ticket to Assigned.",
+      });
+    }
+
+    const completedStatuses = [
+      "Resolved",
+      "Verified",
+      "Closed",
+    ];
+
+    const activeStatuses = [
+      "New",
+      "Assigned",
+      "In Progress",
+      "Waiting for Client",
+      "Testing",
+    ];
+
+    const isReopening =
+      completedStatuses.includes(
+        previousStatus
+      ) &&
+      activeStatuses.includes(status);
+
+    const isClosing =
+      status === "Closed";
+
+    ticket.status = status;
+
+    /*
+     * Reopened tickets are active again.
+     * Remove all completion timestamps.
+     */
+    if (isReopening) {
+      ticket.resolvedAt = null;
+      ticket.verifiedAt = null;
+      ticket.closedAt = null;
+    }
+
+    /*
+     * Normal active-status changes should also clear
+     * completion timestamps.
+     */
+    if (
+      activeStatuses.includes(status) &&
+      !isReopening
+    ) {
+      ticket.resolvedAt = null;
+      ticket.verifiedAt = null;
+      ticket.closedAt = null;
+    }
+
+    if (status === "Verified") {
+      ticket.verifiedAt =
+        new Date();
+
+      ticket.closedAt = null;
+    }
+
+    if (isClosing) {
+      if (
+        !["Resolved", "Verified"].includes(
+          previousStatus
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Only a resolved or verified ticket can be closed.",
+        });
+      }
+
+      ticket.closedAt =
+        new Date();
+    }
+
+    if (status === "Cancelled") {
+      ticket.closedAt =
+        new Date();
+    }
+
+    ticket.timeline.push({
+      type: isClosing
+        ? "closed"
+        : isReopening
+          ? "reopened"
+          : "status",
+
+      title: isClosing
+        ? "Ticket Closed"
+        : isReopening
+          ? "Ticket Reopened"
+          : "Ticket Status Changed",
+
+      description: isClosing
+        ? `Ticket was closed after resolution. Previous status: ${previousStatus}.`
+        : isReopening
+          ? `Ticket was reopened from ${previousStatus} and moved to ${status}.`
+          : `Status changed from ${previousStatus} to ${status}.`,
+
+      performedBy:
+        req.user._id,
+
+      performedByName:
+        req.user.name || "Admin",
+
+      performedByRole:
+        "admin",
+    });
+    await ticket.save();
+
+    await normalizeClientOpenTicketCount(
+      ticket.clientId
+    );
+
+    await createActivityLog({
+      action: isClosing
+        ? "Ticket Closed"
+        : isReopening
+          ? "Ticket Reopened"
+          : "Ticket Status Changed",
+
+      category: "Ticket",
+
+      description: isClosing
+        ? `${ticket.ticketCode} was closed by Admin.`
+        : isReopening
+          ? `${ticket.ticketCode} was reopened from ${previousStatus} and moved to ${status}.`
+          : `${ticket.ticketCode} changed from ${previousStatus} to ${status}.`,
+
+      entityType: "ticket",
+      entityId: ticket._id,
+      entityCode: ticket.ticketCode,
+      entityName: ticket.title,
+
+      clientId: ticket.clientId,
+      clientName: ticket.clientName,
+
+      employeeId: ticket.assignedEmployeeId,
+      employeeName: ticket.assignedEmployeeName,
+
+      performedBy: req.user._id,
+      performedByName: req.user.name || "Admin",
+      performedByRole: "admin",
+
+      metadata: {
+        previousStatus,
+        currentStatus: status,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Ticket status updated successfully.",
+      data: ticketResponse(ticket),
+    });
+  } catch (error) {
+    console.error(
+      "Update ticket status error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Unable to update ticket status.",
+    });
+  }
+});
+
+/* =====================================================
+   ASSIGN SUPPORT TICKET
+   PATCH /api/admin/ticket/:id/assign
+===================================================== */
+
+router.patch("/ticket/:id/assign", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { assignedEmployeeId } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid ticket ID.",
+      });
+    }
+
+    if (
+      !assignedEmployeeId ||
+      !mongoose.Types.ObjectId.isValid(
+        assignedEmployeeId
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Please select a valid employee.",
+      });
+    }
+
+    const ticket = await SupportTicket.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!ticket) {
+      return res.status(404).json({
+        success: false,
+        message: "Support ticket not found.",
+      });
+    }
+
+    const employee = await findEmployeeById(
+      assignedEmployeeId
+    );
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message:
+          "Selected employee was not found or is inactive.",
+      });
+    }
+
+    if (
+      employee.status === "Leave" ||
+      employee.status === "Inactive"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          `${employee.name} is currently ${employee.status}.`,
+      });
+    }
+
+    const previousEmployeeId =
+      ticket.assignedEmployeeId
+        ? String(ticket.assignedEmployeeId)
+        : "";
+
+    const previousEmployeeName =
+      ticket.assignedEmployeeName ||
+      "Unassigned";
+
+    if (
+      previousEmployeeId ===
+      String(employee._id)
+    ) {
+      return res.status(200).json({
+        success: true,
+        message:
+          "Ticket is already assigned to this employee.",
+        data: ticketResponse(ticket),
+      });
+    }
+
+    ticket.assignedEmployeeId =
+      employee._id;
+
+    ticket.assignedEmployeeName =
+      employee.name;
+
+    ticket.assignedEmployeeCode =
+      employee.employeeCode || "";
+
+    ticket.assignedAt = new Date();
+
+    ticket.assignedBy =
+      req.user._id;
+
+    ticket.assignedByName =
+      req.user.name || "Admin";
+
+    if (ticket.status === "New") {
+      ticket.status = "Assigned";
+    }
+
+    ticket.timeline.push({
+      type: "assigned",
+      title: "Ticket Assigned",
+      description:
+        `Assignment changed from ${previousEmployeeName} to ${employee.name}.`,
+      performedBy: req.user._id,
+      performedByName:
+        req.user.name || "Admin",
+      performedByRole: "admin",
+    });
+
+    await ticket.save();
+
+    await createActivityLog({
+      action: "Ticket Assigned",
+      category: "Ticket",
+
+      description:
+        `${ticket.ticketCode} was assigned from ${previousEmployeeName} to ${employee.name}.`,
+
+      entityType: "ticket",
+      entityId: ticket._id,
+      entityCode: ticket.ticketCode,
+      entityName: ticket.title,
+
+      clientId: ticket.clientId,
+      clientName: ticket.clientName,
+
+      employeeId: employee._id,
+      employeeName: employee.name,
+
+      performedBy: req.user._id,
+      performedByName:
+        req.user.name || "Admin",
+      performedByRole: "admin",
+
+      metadata: {
+        previousEmployeeId,
+        previousEmployeeName,
+        assignedEmployeeId:
+          employee._id,
+        assignedEmployeeName:
+          employee.name,
+        status: ticket.status,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Ticket assigned successfully.",
+      data: ticketResponse(ticket),
+    });
+  } catch (error) {
+    console.error(
+      "Assign support ticket error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Unable to assign support ticket.",
+    });
+  }
+});
+/* =====================================================
+   ADD SUPPORT TICKET REPLY
+   POST /api/admin/ticket/:id/reply
+===================================================== */
+
+router.post("/ticket/:id/reply", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const {
+      message,
+      replyType = "Public",
+    } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid ticket ID.",
+      });
+    }
+
+    const normalizedMessage =
+      String(message || "").trim();
+
+    if (!normalizedMessage) {
+      return res.status(400).json({
+        success: false,
+        message: "Reply message is required.",
+      });
+    }
+
+    if (
+      !["Public", "Internal"].includes(
+        replyType
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid reply type.",
+      });
+    }
+
+    const ticket = await SupportTicket.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!ticket) {
+      return res.status(404).json({
+        success: false,
+        message: "Support ticket not found.",
+      });
+    }
+
+    ticket.replies.push({
+      message: normalizedMessage,
+      replyType,
+
+      authorId: req.user._id,
+      authorName:
+        req.user.name || "Admin",
+      authorRole: "admin",
+    });
+
+    if (!ticket.firstResponseAt) {
+      ticket.firstResponseAt =
+        new Date();
+    }
+
+    ticket.timeline.push({
+      type: "reply",
+
+      title:
+        replyType === "Internal"
+          ? "Internal Note Added"
+          : "Reply Added",
+
+      description:
+        replyType === "Internal"
+          ? "Admin added an internal note."
+          : "Admin replied to the ticket.",
+
+      performedBy: req.user._id,
+      performedByName:
+        req.user.name || "Admin",
+      performedByRole: "admin",
+    });
+
+    await ticket.save();
+
+    await createActivityLog({
+      action:
+        replyType === "Internal"
+          ? "Ticket Internal Note Added"
+          : "Ticket Reply Added",
+
+      category: "Ticket",
+
+      description:
+        replyType === "Internal"
+          ? `An internal note was added to ${ticket.ticketCode}.`
+          : `A reply was added to ${ticket.ticketCode}.`,
+
+      entityType: "ticket",
+      entityId: ticket._id,
+      entityCode: ticket.ticketCode,
+      entityName: ticket.title,
+
+      clientId: ticket.clientId,
+      clientName: ticket.clientName,
+
+      employeeId:
+        ticket.assignedEmployeeId,
+
+      employeeName:
+        ticket.assignedEmployeeName,
+
+      performedBy: req.user._id,
+      performedByName:
+        req.user.name || "Admin",
+      performedByRole: "admin",
+
+      metadata: {
+        replyType,
+        message: normalizedMessage,
+      },
+    });
+
+    return res.status(201).json({
+      success: true,
+      message:
+        replyType === "Internal"
+          ? "Internal note added successfully."
+          : "Reply added successfully.",
+      data: ticketResponse(ticket),
+    });
+  } catch (error) {
+    console.error(
+      "Add ticket reply error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Unable to add ticket reply.",
+    });
+  }
+});
+
+/* =====================================================
+   RESOLVE SUPPORT TICKET
+   PATCH /api/admin/ticket/:id/resolve
+===================================================== */
+
+router.patch("/ticket/:id/resolve", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const {
+      resolutionNote,
+      rootCause = "",
+    } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid ticket ID.",
+      });
+    }
+
+    const normalizedResolution =
+      String(resolutionNote || "").trim();
+
+    if (!normalizedResolution) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Resolution note is required.",
+      });
+    }
+
+    const ticket = await SupportTicket.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!ticket) {
+      return res.status(404).json({
+        success: false,
+        message: "Support ticket not found.",
+      });
+    }
+
+    if (ticket.status === "Resolved") {
+      return res.status(200).json({
+        success: true,
+        message:
+          "Ticket is already resolved.",
+        data: ticketResponse(ticket),
+      });
+    }
+
+    const previousStatus =
+      ticket.status;
+
+    ticket.status = "Resolved";
+
+    ticket.resolutionNote =
+      normalizedResolution;
+
+    ticket.rootCause =
+      String(rootCause || "").trim();
+
+    ticket.resolvedAt =
+      new Date();
+
+    ticket.verifiedAt = null;
+    ticket.closedAt = null;
+
+    ticket.timeline.push({
+      type: "resolved",
+      title: "Ticket Resolved",
+      description:
+        normalizedResolution,
+
+      performedBy: req.user._id,
+      performedByName:
+        req.user.name || "Admin",
+      performedByRole: "admin",
+    });
+
+    await ticket.save();
+
+    await normalizeClientOpenTicketCount(
+      ticket.clientId
+    );
+
+    await createActivityLog({
+      action: "Ticket Resolved",
+      category: "Ticket",
+
+      description:
+        `${ticket.ticketCode} was resolved by Admin.`,
+
+      entityType: "ticket",
+      entityId: ticket._id,
+      entityCode: ticket.ticketCode,
+      entityName: ticket.title,
+
+      clientId: ticket.clientId,
+      clientName: ticket.clientName,
+
+      employeeId:
+        ticket.assignedEmployeeId,
+
+      employeeName:
+        ticket.assignedEmployeeName,
+
+      performedBy: req.user._id,
+      performedByName:
+        req.user.name || "Admin",
+      performedByRole: "admin",
+
+      metadata: {
+        previousStatus,
+        resolutionNote:
+          normalizedResolution,
+        rootCause:
+          ticket.rootCause,
+        resolvedAt:
+          ticket.resolvedAt,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Support ticket resolved successfully.",
+      data: ticketResponse(ticket),
+    });
+  } catch (error) {
+    console.error(
+      "Resolve support ticket error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Unable to resolve support ticket.",
+    });
+  }
+});
+
+/* =====================================================
+   UPLOAD SUPPORT TICKET ATTACHMENT
+   POST /api/admin/ticket/:id/attachment
+===================================================== */
+
+router.post(
+  "/ticket/:id/attachment",
+
+  uploadTicketAttachment.single(
+    "attachment"
+  ),
+
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        if (req.file?.path) {
+          fs.unlink(
+            req.file.path,
+            () => { }
+          );
+        }
+
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid ticket ID.",
+        });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Please select a file.",
+        });
+      }
+
+      const ticket =
+        await SupportTicket.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!ticket) {
+        fs.unlink(
+          req.file.path,
+          () => { }
+        );
+
+        return res.status(404).json({
+          success: false,
+          message:
+            "Support ticket not found.",
+        });
+      }
+
+      const fileUrl =
+        `/uploads/tickets/${req.file.filename}`;
+
+      ticket.attachments.push({
+        fileName:
+          req.file.originalname,
+
+        fileUrl,
+
+        fileType:
+          req.file.mimetype,
+
+        fileSize:
+          req.file.size,
+
+        uploadedBy:
+          req.user._id,
+
+        uploadedByName:
+          req.user.name ||
+          "Admin",
+
+        uploadedByRole:
+          "admin",
+      });
+
+      ticket.timeline.push({
+        type: "attachment",
+
+        title:
+          "Attachment Uploaded",
+
+        description:
+          `${req.file.originalname} was uploaded to the ticket.`,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+      });
+
+      await ticket.save();
+
+      await createActivityLog({
+        action:
+          "Ticket Attachment Uploaded",
+
+        category: "Ticket",
+
+        description:
+          `${req.file.originalname} was uploaded to ${ticket.ticketCode}.`,
+
+        entityType:
+          "ticket",
+
+        entityId:
+          ticket._id,
+
+        entityCode:
+          ticket.ticketCode,
+
+        entityName:
+          ticket.title,
+
+        clientId:
+          ticket.clientId,
+
+        clientName:
+          ticket.clientName,
+
+        employeeId:
+          ticket.assignedEmployeeId,
+
+        employeeName:
+          ticket.assignedEmployeeName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+
+        metadata: {
+          fileName:
+            req.file.originalname,
+
+          storedName:
+            req.file.filename,
+
+          fileUrl,
+
+          fileType:
+            req.file.mimetype,
+
+          fileSize:
+            req.file.size,
+        },
+      });
+
+      return res.status(201).json({
+        success: true,
+
+        message:
+          "Attachment uploaded successfully.",
+
+        data:
+          ticketResponse(ticket),
+      });
+    } catch (error) {
+      if (req.file?.path) {
+        fs.unlink(
+          req.file.path,
+          () => { }
+        );
+      }
+
+      console.error(
+        "Upload ticket attachment error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to upload attachment.",
+      });
+    }
+  }
+);
+router.use(
+  (
+    error,
+    req,
+    res,
+    next
+  ) => {
+    if (
+      error instanceof
+      multer.MulterError
+    ) {
+      if (
+        error.code ===
+        "LIMIT_FILE_SIZE"
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "File size must not exceed 10 MB.",
+        });
+      }
+
+      return res.status(400).json({
+        success: false,
+        message:
+          error.message ||
+          "File upload failed.",
+      });
+    }
+
+    if (
+      error?.message?.includes(
+        "Unsupported file type"
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    next(error);
+  }
+);
 module.exports = router;
