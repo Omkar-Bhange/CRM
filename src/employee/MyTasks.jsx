@@ -448,8 +448,37 @@ function SummaryCard({
 
 export default function MyTasks() {
     const fileInputRef = useRef(null);
+    const API_URL = "http://localhost:5000";
+    const getAuthToken = () => localStorage.getItem("client-connect-token") || sessionStorage.getItem("client-connect-token") || "";
+    const [summary, setSummary] = useState({ active: 0, inProgress: 0, dueToday: 0, overdue: 0, completed: 0 });
+    const loadTasksDashboard = async () => {
+        const response = await fetch(`${API_URL}/api/employee/tasks/dashboard`, { headers: { Authorization: `Bearer ${getAuthToken()}` } });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message || "Unable to load tasks.");
+        const mapped = (result.data.tasks || []).map((task) => ({ ...task, id: task._id, taskNo: task.taskCode, ticketNo: task.ticketCode, client: task.clientName, project: task.projectName, module: task.productName, assignedBy: task.assignedByName, spentSeconds: Number(task.elapsedSeconds || 0) }));
+        setTasks(mapped);
+        setSummary(result.data.summary);
+        setActiveTaskId(result.data.activeTimer?._id || null);
+        setTimerRunning(result.data.activeTimer?.status === "In Progress");
+    };
+    const updateTimer = async (taskId, action) => {
+        const response = await fetch(`${API_URL}/api/employee/tasks/${taskId}/timer`, { method: "PATCH", headers: { Authorization: `Bearer ${getAuthToken()}`, "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message || "Unable to update task timer.");
+        await loadTasksDashboard();
+    };
+    const updateTaskStatus = async (taskId, status, progress) => {
+        const response = await fetch(`${API_URL}/api/admin/task/${taskId}/status`, {
+            method: "PATCH",
+            headers: { Authorization: `Bearer ${getAuthToken()}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ status, progress }),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message || "Unable to update task.");
+        await loadTasksDashboard();
+    };
 
-    const [tasks, setTasks] = useState(initialTasks);
+    const [tasks, setTasks] = useState([]);
     const [selectedTaskId, setSelectedTaskId] = useState(null);
     const [detailsTab, setDetailsTab] = useState("overview");
 
@@ -459,7 +488,7 @@ export default function MyTasks() {
     const [dueFilter, setDueFilter] = useState("All");
     const [filtersOpen, setFiltersOpen] = useState(false);
 
-    const [activeTaskId, setActiveTaskId] = useState(1);
+    const [activeTaskId, setActiveTaskId] = useState(null);
     const [timerRunning, setTimerRunning] = useState(true);
 
     const [checklists, setChecklists] = useState(initialChecklists);
@@ -489,26 +518,13 @@ export default function MyTasks() {
         tasks.find((task) => task.id === activeTaskId) || null;
 
     useEffect(() => {
-        if (!timerRunning || !activeTaskId) {
-            return undefined;
-        }
-
-        const intervalId = window.setInterval(() => {
-            setTasks((current) =>
-                current.map((task) =>
-                    task.id === activeTaskId
-                        ? {
-                              ...task,
-                              spentSeconds:
-                                  Number(task.spentSeconds || 0) + 1,
-                          }
-                        : task
-                )
-            );
-        }, 1000);
-
+        loadTasksDashboard().catch((error) => console.error("Tasks:", error));
+        const intervalId = window.setInterval(
+            () => loadTasksDashboard().catch((error) => console.error("Tasks:", error)),
+            5000
+        );
         return () => window.clearInterval(intervalId);
-    }, [activeTaskId, timerRunning]);
+    }, []);
 
     const filteredTasks = useMemo(() => {
         return tasks.filter((task) => {
@@ -570,22 +586,11 @@ export default function MyTasks() {
         dueFilter,
     ]);
 
-    const activeCount = tasks.filter(
-        (task) =>
-            !["Completed", "Resolved"].includes(task.status)
-    ).length;
-
-    const inProgressCount = tasks.filter(
-        (task) => task.status === "In Progress"
-    ).length;
-
-    const dueTodayCount = tasks.filter(isTaskDueToday).length;
-
-    const overdueCount = tasks.filter(isTaskOverdue).length;
-
-    const completedCount = tasks.filter(
-        (task) => task.status === "Completed"
-    ).length;
+    const activeCount = summary.active;
+    const inProgressCount = summary.inProgress;
+    const dueTodayCount = summary.dueToday;
+    const overdueCount = summary.overdue;
+    const completedCount = summary.completed;
 
     const selectedTaskChecklists = selectedTask
         ? checklists.filter(
@@ -625,12 +630,22 @@ export default function MyTasks() {
           )
         : 0;
 
-    const openTaskDetails = (task) => {
-        setSelectedTaskId(task.id);
-        setDetailsTab("overview");
-        setChecklistText("");
-        setCommentText("");
-        setSelectedFile(null);
+    const openTaskDetails = async (task) => {
+        try {
+            const response = await fetch(`${API_URL}/api/employee/tasks/${task.id}`, {
+                headers: { Authorization: `Bearer ${getAuthToken()}` },
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) throw new Error(result.message || "Unable to load task details.");
+            const detail = { ...result.data, id: result.data._id, taskNo: result.data.taskCode, ticketNo: result.data.ticketCode, client: result.data.clientName, project: result.data.projectName, module: result.data.productName, spentSeconds: Number(result.data.elapsedSeconds || result.data.elapsedMinutes * 60 || 0) };
+            setTasks((current) => current.map((item) => item.id === detail.id ? { ...item, ...detail } : item));
+            setComments((detail.comments || []).map((item) => ({ id: item._id, taskId: detail.id, user: item.authorName, initials: String(item.authorName || "").split(" ").map((name) => name[0]).join(""), message: item.message, createdAt: item.createdAt })));
+            setFiles((detail.attachments || []).map((item) => ({ id: item._id, taskId: detail.id, name: item.fileName, type: item.fileType || "File", size: item.fileSize ? `${Math.max(1, Math.round(item.fileSize / 1024))} KB` : "—", uploadedBy: item.uploadedByName, uploadedAt: item.uploadedAt, fileUrl: item.fileUrl })));
+            setTimeline((detail.timeline || []).map((item) => ({ id: item._id, taskId: detail.id, type: item.action === "Attachment Uploaded" ? "file" : "started", title: item.action, description: item.description, createdAt: item.createdAt })));
+            setSelectedTaskId(detail.id);
+            setDetailsTab("overview");
+            setChecklistText(""); setCommentText(""); setSelectedFile(null);
+        } catch (error) { alert(error.message); }
     };
 
     const closeTaskDetails = () => {
@@ -666,7 +681,7 @@ export default function MyTasks() {
         ]);
     };
 
-    const startTask = (task) => {
+    const startTask = async (task) => {
         if (
             ["Completed", "Resolved"].includes(task.status)
         ) {
@@ -685,58 +700,16 @@ export default function MyTasks() {
             if (!confirmed) return;
         }
 
-        setTasks((current) =>
-            current.map((item) =>
-                item.id === task.id
-                    ? {
-                          ...item,
-                          status:
-                              item.status === "Assigned"
-                                  ? "In Progress"
-                                  : item.status,
-                          progress: Math.max(
-                              Number(item.progress || 0),
-                              10
-                          ),
-                          startedAt:
-                              item.startedAt ||
-                              new Date().toISOString(),
-                      }
-                    : item
-            )
-        );
-
-        setActiveTaskId(task.id);
-        setTimerRunning(true);
-
-        addTimelineEntry(
-            task.id,
-            "started",
-            "Task started",
-            `Work started on ${task.taskNo}.`
-        );
+        try { await updateTimer(task.id, task.status === "Paused" ? "resume" : "start"); } catch (error) { alert(error.message); }
     };
 
-    const pauseResumeTask = () => {
+    const pauseResumeTask = async () => {
         if (!activeTask) return;
 
-        setTimerRunning((current) => {
-            const nextValue = !current;
-
-            addTimelineEntry(
-                activeTask.id,
-                "started",
-                nextValue ? "Task resumed" : "Task paused",
-                nextValue
-                    ? "Task timer resumed."
-                    : "Task timer paused."
-            );
-
-            return nextValue;
-        });
+        try { await updateTimer(activeTask.id, timerRunning ? "pause" : "resume"); } catch (error) { alert(error.message); }
     };
 
-    const completeTask = (task) => {
+    const completeTask = async (task) => {
         if (task.status === "Completed") return;
 
         const confirmed = window.confirm(
@@ -745,30 +718,7 @@ export default function MyTasks() {
 
         if (!confirmed) return;
 
-        setTasks((current) =>
-            current.map((item) =>
-                item.id === task.id
-                    ? {
-                          ...item,
-                          status: "Completed",
-                          progress: 100,
-                          completedAt: new Date().toISOString(),
-                      }
-                    : item
-            )
-        );
-
-        if (activeTaskId === task.id) {
-            setActiveTaskId(null);
-            setTimerRunning(false);
-        }
-
-        addTimelineEntry(
-            task.id,
-            "completed",
-            "Task completed",
-            "Task was marked as successfully completed."
-        );
+        try { await updateTimer(task.id, "complete"); } catch (error) { alert(error.message); }
     };
 
     const updateSelectedTask = (updates) => {
@@ -786,38 +736,15 @@ export default function MyTasks() {
         );
     };
 
-    const handleStatusChange = (event) => {
+    const handleStatusChange = async (event) => {
         if (!selectedTask) return;
 
         const nextStatus = event.target.value;
 
-        updateSelectedTask({
-            status: nextStatus,
-            progress:
-                nextStatus === "Completed"
-                    ? 100
-                    : selectedTask.progress,
-        });
-
-        if (
-            nextStatus === "Completed" &&
-            activeTaskId === selectedTask.id
-        ) {
-            setActiveTaskId(null);
-            setTimerRunning(false);
-        }
-
-        addTimelineEntry(
-            selectedTask.id,
-            nextStatus === "Completed"
-                ? "completed"
-                : "started",
-            "Status updated",
-            `Task status changed to ${nextStatus}.`
-        );
+        try { await updateTaskStatus(selectedTask.id, nextStatus, nextStatus === "Completed" ? 100 : selectedTask.progress); } catch (error) { alert(error.message); }
     };
 
-    const handleProgressChange = (event) => {
+    const handleProgressChange = async (event) => {
         if (!selectedTask) return;
 
         const progress = Math.min(
@@ -825,13 +752,7 @@ export default function MyTasks() {
             100
         );
 
-        updateSelectedTask({
-            progress,
-            status:
-                progress === 100
-                    ? "Completed"
-                    : selectedTask.status,
-        });
+        try { await updateTaskStatus(selectedTask.id, progress === 100 ? "Completed" : selectedTask.status, progress); } catch (error) { alert(error.message); }
     };
 
     const toggleChecklistItem = (itemId) => {

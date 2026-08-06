@@ -178,6 +178,8 @@ function DashboardCard({
     iconClass,
     descriptionClass = "text-slate-500",
 }) {
+
+
     return (
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.04)]">
             <div className="flex items-start justify-between gap-4">
@@ -205,10 +207,94 @@ function DashboardCard({
     );
 }
 
-export default function EmployeeDashboard() {
-    const [tasks, setTasks] = useState(initialTasks);
-    const [workLogs, setWorkLogs] = useState(initialWorkLogs);
-    const [activeTaskId, setActiveTaskId] = useState(1);
+export default function EmployeeDashboard({ onNavigate }) {
+    const API_URL = "http://localhost:5000";
+
+const [employee, setEmployee] = useState(null);
+
+const [loading, setLoading] = useState(true);
+
+const [error, setError] = useState("");
+const [todayAttendance, setTodayAttendance] = useState(null);
+const [dashboardSummary, setDashboardSummary] = useState({ activeTaskCount: 0, dueTodayCount: 0, ticketCount: 0, solvedThisWeek: 0 });
+const getAuthToken = () => {
+    return (
+        localStorage.getItem("client-connect-token") ||
+        sessionStorage.getItem("client-connect-token") ||
+        ""
+    );
+};
+const loadEmployeeProfile = async () => {
+    try {
+        const response = await fetch(
+            `${API_URL}/api/employee/me`,
+            {
+                headers: {
+                    Authorization: `Bearer ${getAuthToken()}`,
+                    "Content-Type": "application/json",
+                },
+            }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            throw new Error(
+                result.message || "Unable to load employee profile."
+            );
+        }
+
+        setEmployee(result.data);
+    } catch (err) {
+        console.error("Employee Profile:", err);
+        setError(err.message);
+    } finally {
+        setLoading(false);
+    }
+};
+
+const loadTodayAttendance = async () => {
+    const response = await fetch(`${API_URL}/api/admin/attendance/today`, {
+        headers: { Authorization: `Bearer ${getAuthToken()}` },
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+        throw new Error(result.message || "Unable to load today's attendance.");
+    }
+    setTodayAttendance(result.data || null);
+    setAttendanceStatus(result.data?.workStatus || "Absent");
+    setLoginTime(result.data?.loginTime ? new Date(result.data.loginTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—");
+};
+
+const loadDashboard = async () => {
+    const response = await fetch(`${API_URL}/api/employee/dashboard`, {
+        headers: { Authorization: `Bearer ${getAuthToken()}` },
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) throw new Error(result.message || "Unable to load dashboard.");
+    const data = result.data;
+    const formatDate = (value) => value ? new Date(value).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "—";
+    const mappedTasks = (data.tasks || []).map((task) => ({
+        id: task._id, taskNo: task.taskCode, ticketNo: task.ticketCode, title: task.title,
+        client: task.clientName, project: task.projectName, priority: task.priority, status: task.status,
+        dueDate: formatDate(task.dueDate), estimatedMinutes: task.estimatedMinutes, spentSeconds: Number(task.spentMinutes || 0) * 60, progress: task.progress,
+    }));
+    setEmployee(data.employee);
+    setTodayAttendance(data.attendance);
+    setAttendanceStatus(data.attendance?.workStatus || "Absent");
+    setLoginTime(data.attendance?.loginTime ? new Date(data.attendance.loginTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—");
+    setDashboardSummary(data.summary);
+    setTasks(mappedTasks);
+    setActiveTaskId(data.activeTask?._id || null);
+    setTimerRunning(data.activeTask?.status === "In Progress");
+    setAssignedTickets((data.tickets || []).map((ticket) => ({ id: ticket._id, ticketNo: ticket.ticketCode, title: ticket.title, client: ticket.clientName, project: ticket.productName, priority: ticket.priority, status: ticket.status, dueDate: formatDate(ticket.createdAt) })));
+    setWorkLogs((data.workLog || []).map((log) => ({ ...log, time: new Date(log.time).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) })));
+};
+
+    const [tasks, setTasks] = useState([]);
+    const [assignedTickets, setAssignedTickets] = useState([]);
+    const [workLogs, setWorkLogs] = useState([]);
+    const [activeTaskId, setActiveTaskId] = useState(null);
     const [timerRunning, setTimerRunning] = useState(true);
     const [attendanceStatus, setAttendanceStatus] =
         useState("Logged In");
@@ -216,49 +302,27 @@ export default function EmployeeDashboard() {
 
     const activeTask =
         tasks.find((task) => task.id === activeTaskId) || null;
+    const hour = new Date().getHours();
+    const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
     useEffect(() => {
-        if (!timerRunning || !activeTaskId) {
-            return undefined;
-        }
+    loadDashboard()
+        .catch((err) => {
+            console.error("Dashboard:", err);
+            setError(err.message);
+        })
+        .finally(() => setLoading(false));
+}, []);
 
-        const intervalId = window.setInterval(() => {
-            setTasks((current) =>
-                current.map((task) =>
-                    task.id === activeTaskId
-                        ? {
-                              ...task,
-                              spentSeconds:
-                                  Number(task.spentSeconds || 0) + 1,
-                          }
-                        : task
-                )
-            );
-        }, 1000);
 
-        return () => window.clearInterval(intervalId);
-    }, [activeTaskId, timerRunning]);
+    const activeTaskCount = dashboardSummary.activeTaskCount;
 
-    const activeTaskCount = tasks.filter(
-        (task) =>
-            !["Completed", "Resolved"].includes(task.status)
-    ).length;
-
-    const dueTodayCount = tasks.filter(
-        (task) =>
-            task.dueDate === "Today" &&
-            !["Completed", "Resolved"].includes(task.status)
-    ).length;
+    const dueTodayCount = dashboardSummary.dueTodayCount;
 
     const hoursToday = useMemo(() => {
-        const totalSeconds = tasks.reduce(
-            (total, task) =>
-                total + Number(task.spentSeconds || 0),
-            0
-        );
-
-        return formatDuration(totalSeconds);
-    }, [tasks]);
+        const minutes = Number(dashboardSummary.hoursToday || 0);
+        return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+    }, [todayAttendance]);
 
     const addWorkLog = (title, description, type = "task") => {
         setWorkLogs((current) => [
@@ -276,113 +340,66 @@ export default function EmployeeDashboard() {
         ]);
     };
 
-    const handlePauseResume = () => {
-        if (!activeTask) return;
-
-        setTimerRunning((current) => {
-            const nextValue = !current;
-
-            addWorkLog(
-                `${nextValue ? "Resumed" : "Paused"} ${
-                    activeTask.ticketNo || activeTask.taskNo
-                }`,
-                activeTask.title,
-                "task"
-            );
-
-            return nextValue;
+    const updateTaskStatus = async (taskId, status, progress) => {
+        const response = await fetch(`${API_URL}/api/admin/task/${taskId}/status`, {
+            method: "PATCH",
+            headers: { Authorization: `Bearer ${getAuthToken()}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ status, progress }),
         });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message || "Unable to update task.");
+        await loadDashboard();
     };
 
-    const handleStartTask = (taskId) => {
+    const handlePauseResume = async () => {
+        if (!activeTask) return;
+        try { await updateTaskStatus(activeTask.id, timerRunning ? "Paused" : "In Progress", activeTask.progress); setTimerRunning(!timerRunning); } catch (error) { alert(error.message); }
+    };
+
+    const handleStartTask = async (taskId) => {
         const task = tasks.find((item) => item.id === taskId);
 
         if (!task) return;
 
-        setTasks((current) =>
-            current.map((item) =>
-                item.id === taskId
-                    ? {
-                          ...item,
-                          status:
-                              item.status === "Assigned"
-                                  ? "In Progress"
-                                  : item.status,
-                          progress: Math.max(
-                              Number(item.progress || 0),
-                              10
-                          ),
-                      }
-                    : item
-            )
-        );
-
-        setActiveTaskId(taskId);
-        setTimerRunning(true);
-
-        addWorkLog(
-            `Started ${task.ticketNo || task.taskNo}`,
-            task.title,
-            "task"
-        );
+        try { await updateTaskStatus(taskId, "In Progress", Math.max(Number(task.progress || 0), 10)); setTimerRunning(true); } catch (error) { alert(error.message); }
     };
 
-    const handleCompleteTask = () => {
+    const handleCompleteTask = async () => {
         if (!activeTask) return;
 
-        const completedTask = activeTask;
-
-        setTasks((current) =>
-            current.map((task) =>
-                task.id === activeTask.id
-                    ? {
-                          ...task,
-                          status: "Completed",
-                          progress: 100,
-                      }
-                    : task
-            )
-        );
-
-        setTimerRunning(false);
-        setActiveTaskId(null);
-
-        addWorkLog(
-            `Completed ${
-                completedTask.ticketNo || completedTask.taskNo
-            }`,
-            completedTask.title,
-            "completed"
-        );
+        try { await updateTaskStatus(activeTask.id, "Completed", 100); setTimerRunning(false); } catch (error) { alert(error.message); }
     };
 
-    const handleAttendanceToggle = () => {
-        if (attendanceStatus === "Logged In") {
-            setAttendanceStatus("Logged Out");
-
-            addWorkLog(
-                "Logged out",
-                "Attendance logout recorded",
-                "logout"
-            );
-
-            return;
+    const handleAttendanceToggle = async () => {
+        const isWorking = todayAttendance?.workStatus === "Working";
+        try {
+            const response = await fetch(`${API_URL}/api/admin/attendance/${isWorking ? "check-out" : "check-in"}`, {
+                method: isWorking ? "PUT" : "POST",
+                headers: { Authorization: `Bearer ${getAuthToken()}`, "Content-Type": "application/json" },
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) throw new Error(result.message || "Attendance update failed.");
+            await loadTodayAttendance();
+            addWorkLog(isWorking ? "Logged out" : "Logged in", `Attendance ${isWorking ? "logout" : "login"} recorded`, isWorking ? "logout" : "login");
+        } catch (err) {
+            alert(err.message);
         }
-
-        const currentTime = new Date().toLocaleTimeString("en-IN", {
-            hour: "2-digit",
-            minute: "2-digit",
-        });
-
-        setLoginTime(currentTime);
-        setAttendanceStatus("Logged In");
-
-        addWorkLog(
-            "Logged in",
-            "Attendance login recorded",
-            "login"
-        );
     };
+    if (loading) {
+    return (
+        <div className="flex items-center justify-center h-96">
+            Loading employee dashboard...
+        </div>
+    );
+}
+
+if (error) {
+    return (
+        <div className="p-6 text-red-600">
+            {error}
+        </div>
+    );
+}
 
     return (
         <div>
@@ -391,10 +408,9 @@ export default function EmployeeDashboard() {
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-violet-600">
                         Employee Workspace
                     </p>
-
-                    <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-950">
-                        Good afternoon, Akash
-                    </h2>
+<h1 className="text-4xl font-bold text-slate-900">
+    {greeting}, {employee?.name || "Employee"}
+</h1>
 
                     <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                         <span>
@@ -410,13 +426,13 @@ export default function EmployeeDashboard() {
 
                         <span
                             className={
-                                attendanceStatus === "Logged In"
+                                attendanceStatus === "Working"
                                     ? "font-medium text-emerald-600"
                                     : "font-medium text-rose-600"
                             }
                         >
                             {attendanceStatus}
-                            {attendanceStatus === "Logged In"
+                            {attendanceStatus === "Working"
                                 ? ` at ${loginTime}`
                                 : ""}
                         </span>
@@ -426,21 +442,24 @@ export default function EmployeeDashboard() {
                 <button
                     type="button"
                     onClick={handleAttendanceToggle}
+                    disabled={attendanceStatus === "Logged Out"}
                     className={`flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-semibold transition ${
-                        attendanceStatus === "Logged In"
+                        attendanceStatus === "Working"
                             ? "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-                            : "bg-violet-600 text-white hover:bg-violet-700"
+                            : "bg-violet-600 text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
                     }`}
                 >
-                    {attendanceStatus === "Logged In" ? (
+                    {attendanceStatus === "Working" ? (
                         <LogOut size={15} />
                     ) : (
                         <LogIn size={15} />
                     )}
 
-                    {attendanceStatus === "Logged In"
-                        ? "Logout"
-                        : "Login"}
+                    {attendanceStatus === "Working"
+                        ? "End Workday"
+                        : attendanceStatus === "Logged Out"
+                          ? "Workday Completed"
+                          : "Start Workday"}
                 </button>
             </div>
 
@@ -469,8 +488,8 @@ export default function EmployeeDashboard() {
 
                 <DashboardCard
                     label="Tickets Assigned"
-                    value={assignedTickets.length}
-                    description="1 ticket currently in progress"
+                    value={dashboardSummary.ticketCount}
+                    description={`${dashboardSummary.ticketCount} open assignment${dashboardSummary.ticketCount === 1 ? "" : "s"}`}
                     icon={Headphones}
                     iconClass="bg-blue-100 text-blue-700"
                     descriptionClass="text-blue-600"
@@ -478,8 +497,8 @@ export default function EmployeeDashboard() {
 
                 <DashboardCard
                     label="Solved This Week"
-                    value="7"
-                    description="+2 compared with last week"
+                    value={dashboardSummary.solvedThisWeek}
+                    description="Resolved in the current week"
                     icon={CheckCircle2}
                     iconClass="bg-emerald-100 text-emerald-700"
                     descriptionClass="text-emerald-600"
@@ -610,6 +629,7 @@ export default function EmployeeDashboard() {
 
                         <button
                             type="button"
+                            onClick={() => onNavigate?.("tasks")}
                             className="flex items-center gap-1.5 text-[10px] font-semibold text-violet-600"
                         >
                             View all

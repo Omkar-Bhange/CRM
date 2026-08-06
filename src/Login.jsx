@@ -121,11 +121,11 @@ export default function Login({ onLogin }) {
       );
 
       storage.setItem(
-        "client-connect-user",
-        JSON.stringify(result.user)
-      );
+  "client-connect-user",
+  JSON.stringify(result.user)
+);
 
-      onLogin(result.user.role, result.user);
+onLogin(result.user.role, result.user);
     } catch (error) {
       console.error("Login error:", error);
 

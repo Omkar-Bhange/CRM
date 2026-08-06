@@ -406,6 +406,165 @@ router.get("/me", async (req, res, next) => {
 });
 
 /* =========================================================
+   EMPLOYEE DASHBOARD
+   GET /api/employee/dashboard
+========================================================= */
+router.get("/dashboard", async (req, res, next) => {
+  try {
+    if (req.user.role !== "employee") {
+      return res.status(403).json({ success: false, message: "Employee account is required." });
+    }
+
+    const employee = await Employee.findOne({ userId: req.user._id });
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee profile is not connected to this login account." });
+    }
+
+    const Task = mongoose.models.Task;
+    const SupportTicket = mongoose.models.SupportTicket;
+    const Attendance = mongoose.models.Attendance;
+    const ActivityLog = mongoose.models.ActivityLog;
+    const today = new Date().toISOString().slice(0, 10);
+    const weekStart = new Date();
+    weekStart.setHours(0, 0, 0, 0);
+    weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
+    const assignmentQuery = { assignedEmployeeId: employee._id, isDeleted: false };
+
+    const todayStart = new Date(`${today}T00:00:00`);
+    const tomorrowStart = new Date(todayStart);
+    tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+    const [attendance, tasks, tickets, activeTask, activeTaskCount, dueTodayCount, ticketCount, solvedThisWeek, workActivity] = await Promise.all([
+      Attendance ? Attendance.findOne({ employeeId: employee._id, date: today }).lean() : null,
+      Task ? Task.find(assignmentQuery).sort({ dueDate: 1, createdAt: -1 }).limit(6).lean() : [],
+      SupportTicket ? SupportTicket.find({ ...assignmentQuery, status: { $in: ["Assigned", "In Progress", "New"] } }).sort({ createdAt: -1 }).limit(6).lean() : [],
+      Task ? Task.findOne({ ...assignmentQuery, status: { $in: ["In Progress", "Paused"] } }).sort({ updatedAt: -1 }).lean() : null,
+      Task ? Task.countDocuments({ ...assignmentQuery, status: { $nin: ["Completed", "Closed", "Cancelled"] } }) : 0,
+      Task ? Task.countDocuments({ ...assignmentQuery, status: { $nin: ["Completed", "Closed", "Cancelled"] }, dueDate: { $gte: todayStart, $lt: tomorrowStart } }) : 0,
+      SupportTicket ? SupportTicket.countDocuments({ ...assignmentQuery, status: { $in: ["Assigned", "In Progress", "New"] } }) : 0,
+      SupportTicket ? SupportTicket.countDocuments({ ...assignmentQuery, status: "Resolved", resolvedAt: { $gte: weekStart } }) : 0,
+      ActivityLog ? ActivityLog.find({ employeeId: employee._id, createdAt: { $gte: new Date(`${today}T00:00:00`) }, isDeleted: false }).sort({ createdAt: -1 }).limit(8).lean() : [],
+    ]);
+
+    const workLog = [
+      attendance?.loginTime && { id: `login-${attendance._id}`, type: "login", title: "Checked in", description: "Attendance login recorded", time: attendance.loginTime },
+      ...workActivity.map((item) => ({ id: item._id, type: item.category === "Task" ? "task" : "activity", title: item.action, description: item.description, time: item.createdAt })),
+      attendance?.logoutTime && { id: `logout-${attendance._id}`, type: "logout", title: "Checked out", description: "Attendance logout recorded", time: attendance.logoutTime },
+    ].filter(Boolean).sort((a, b) => new Date(a.time) - new Date(b.time));
+
+    return res.json({
+      success: true,
+      data: {
+        employee: employeeResponse(employee),
+        attendance: attendance || null,
+        summary: { hoursToday: attendance?.workingMinutes || 0, activeTaskCount, dueTodayCount, ticketCount, solvedThisWeek },
+        activeTask,
+        tasks,
+        tickets,
+        notifications: [],
+        workLog,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/* =========================================================
+   MY TASKS DASHBOARD AND TIMER
+========================================================= */
+router.get("/tasks/dashboard", async (req, res, next) => {
+  try {
+    if (req.user.role !== "employee") return res.status(403).json({ success: false, message: "Employee account is required." });
+    const employee = await Employee.findOne({ userId: req.user._id });
+    const Task = mongoose.models.Task;
+    if (!employee || !Task) return res.status(404).json({ success: false, message: "Employee task data is unavailable." });
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+    const assigned = { assignedEmployeeId: employee._id, isDeleted: false };
+    const [tasks, summary, activeTimer] = await Promise.all([
+      Task.find(assigned).sort({ dueDate: 1, createdAt: -1 }).lean(),
+      Task.aggregate([
+        { $match: assigned },
+        { $group: { _id: null,
+          active: { $sum: { $cond: [{ $in: ["$status", ["Assigned", "In Progress", "Testing"]] }, 1, 0] } },
+          inProgress: { $sum: { $cond: [{ $eq: ["$status", "In Progress"] }, 1, 0] } },
+          dueToday: { $sum: { $cond: [{ $and: [{ $gte: ["$dueDate", today] }, { $lt: ["$dueDate", tomorrow] }, { $ne: ["$status", "Completed"] }] }, 1, 0] } },
+          overdue: { $sum: { $cond: [{ $and: [{ $lt: ["$dueDate", today] }, { $not: [{ $in: ["$status", ["Completed", "Cancelled"]] }] }] }, 1, 0] } },
+          completed: { $sum: { $cond: [{ $eq: ["$status", "Completed"] }, 1, 0] } },
+        } },
+      ]),
+      Task.findOne({ ...assigned, status: { $in: ["In Progress", "Paused"] } }).sort({ lastUpdated: -1 }).lean(),
+    ]);
+    const now = Date.now();
+    const withCurrentElapsed = (task) => {
+      if (!task) return null;
+      const runningSeconds = task.status === "In Progress" && task.startedAt
+        ? Math.max(0, Math.floor((now - new Date(task.startedAt).getTime()) / 1000))
+        : 0;
+      const savedSeconds = Number(task.elapsedSeconds || 0) || Number(task.elapsedMinutes || task.spentMinutes || 0) * 60;
+      return { ...task, elapsedSeconds: savedSeconds + runningSeconds, elapsedMinutes: Math.floor((savedSeconds + runningSeconds) / 60) };
+    };
+    return res.json({ success: true, data: { summary: summary[0] || { active: 0, inProgress: 0, dueToday: 0, overdue: 0, completed: 0 }, activeTimer: withCurrentElapsed(activeTimer), tasks: tasks.map(withCurrentElapsed) } });
+  } catch (error) { next(error); }
+});
+
+router.get("/tasks/:id", async (req, res, next) => {
+  try {
+    if (req.user.role !== "employee") return res.status(403).json({ success: false, message: "Employee account is required." });
+    const employee = await Employee.findOne({ userId: req.user._id });
+    const Task = mongoose.models.Task;
+    const task = await Task.findOne({ _id: req.params.id, assignedEmployeeId: employee?._id, isDeleted: false }).lean();
+    if (!task) return res.status(404).json({ success: false, message: "Task not found." });
+    return res.json({ success: true, data: task });
+  } catch (error) { next(error); }
+});
+
+router.patch("/tasks/:id/timer", async (req, res, next) => {
+  try {
+    if (req.user.role !== "employee") return res.status(403).json({ success: false, message: "Employee account is required." });
+    const employee = await Employee.findOne({ userId: req.user._id });
+    const Task = mongoose.models.Task;
+    const task = await Task.findOne({ _id: req.params.id, assignedEmployeeId: employee?._id, isDeleted: false });
+    if (!task) return res.status(404).json({ success: false, message: "Task not found." });
+    const action = req.body.action;
+    const now = new Date();
+    const addElapsed = (item) => {
+      if (!item.startedAt) return;
+      item.elapsedSeconds = (Number(item.elapsedSeconds || 0) || Number(item.elapsedMinutes || item.spentMinutes || 0) * 60) + Math.max(0, Math.floor((now - item.startedAt) / 1000));
+      item.elapsedMinutes = Math.floor(item.elapsedSeconds / 60);
+    };
+    if (action === "start" || action === "resume") {
+      const running = await Task.findOne({ assignedEmployeeId: employee._id, _id: { $ne: task._id }, status: "In Progress", isDeleted: false });
+      if (running) { addElapsed(running); running.status = "Paused"; running.pausedAt = now; running.startedAt = null; running.lastUpdated = now; await running.save(); }
+      if (task.pausedAt) task.totalPausedMinutes = Number(task.totalPausedMinutes || 0) + Math.floor((now - task.pausedAt) / 60000);
+      task.status = "In Progress"; task.startedAt = now; task.pausedAt = null; task.progress = Math.max(Number(task.progress || 0), 10);
+    } else if (action === "pause" || action === "stop") {
+      addElapsed(task); task.status = "Paused"; task.pausedAt = now; task.startedAt = null;
+    } else if (action === "complete") {
+      addElapsed(task); task.status = "Completed"; task.progress = 100; task.completedAt = now; task.startedAt = null; task.pausedAt = null;
+    } else return res.status(400).json({ success: false, message: "Invalid timer action." });
+    task.spentMinutes = task.elapsedMinutes; task.lastUpdated = now; await task.save();
+    if (action === "start" || action === "resume") {
+      employee.status = "Working";
+      employee.currentTask = task.title;
+      employee.currentClient = task.clientName || "—";
+    } else if (action === "pause" || action === "stop") {
+      employee.status = "Break";
+    } else if (action === "complete") {
+      const remaining = await Task.exists({ assignedEmployeeId: employee._id, status: "In Progress", isDeleted: false });
+      if (!remaining) {
+        employee.status = "Free";
+        employee.currentTask = "Available for assignment";
+        employee.currentClient = "—";
+      }
+    }
+    employee.lastActivityAt = now;
+    await employee.save();
+    return res.json({ success: true, data: task });
+  } catch (error) { next(error); }
+});
+
+/* =========================================================
    CREATE EMPLOYEE AND LOGIN ACCOUNT
    Admin only
 

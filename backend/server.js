@@ -15,6 +15,7 @@ const adminRoutes = require("./admin");
 const employeeRoutes = require("./employee");
 const clientRoutes = require("./client");
 const settingsRoutes = require("./settings");
+const attendanceRoutes = require("./attendance");
 console.log("========================================");
 console.log("SERVER FILE:", __filename);
 console.log("SERVER FOLDER:", __dirname);
@@ -96,6 +97,7 @@ app.use(
   "/api/auth",
   authRoutes
 );
+app.use("/api/admin", attendanceRoutes);
 
 app.use(
   "/api/admin",

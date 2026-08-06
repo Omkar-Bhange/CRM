@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
     AlertCircle,
     CalendarDays,
@@ -307,48 +307,53 @@ function SummaryCard({
 }
 
 export default function MyAttendance() {
+    const API_URL = "http://localhost:5000";
+    const getAuthToken = () =>
+        localStorage.getItem("client-connect-token") ||
+        sessionStorage.getItem("client-connect-token") ||
+        "";
+    const toTimeInput = (value) => {
+        if (!value) return "";
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? String(value).slice(0, 5) : date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
+    };
+    const normalizeAttendance = (record) => ({
+        ...record,
+        id: record._id,
+        loginTime: toTimeInput(record.loginTime),
+        logoutTime: toTimeInput(record.logoutTime),
+        workedMinutes: Number(record.workingMinutes || 0),
+    });
     const [activeTab, setActiveTab] = useState("today");
-    const [attendanceHistory, setAttendanceHistory] = useState(
-        initialAttendanceHistory
-    );
-    const [leaveRequests, setLeaveRequests] = useState(
-        initialLeaveRequests
-    );
+    const [attendanceHistory, setAttendanceHistory] = useState([]);
+    const [leaveRequests, setLeaveRequests] = useState([]);
 
     const [attendanceStatus, setAttendanceStatus] =
-        useState("Logged In");
-    const [loginTime, setLoginTime] = useState("09:02");
+        useState("Absent");
+    const [loginTime, setLoginTime] = useState("");
     const [logoutTime, setLogoutTime] = useState("");
     const [breakActive, setBreakActive] = useState(false);
-    const [breakMinutes, setBreakMinutes] = useState(35);
+    const [breakMinutes, setBreakMinutes] = useState(0);
 
     const [calendarDate, setCalendarDate] = useState(
-        new Date("2026-07-01T00:00:00")
+        new Date()
     );
 
     const [leaveDrawerOpen, setLeaveDrawerOpen] = useState(false);
     const [leaveForm, setLeaveForm] = useState(emptyLeaveForm);
 
     const workedMinutes = useMemo(() => {
-        if (!loginTime) return 0;
-
-        const loginParts = loginTime.split(":").map(Number);
-        const logoutParts = logoutTime
-            ? logoutTime.split(":").map(Number)
-            : [17, 4];
-
-        const loginMinutes = loginParts[0] * 60 + loginParts[1];
-        const currentMinutes =
-            logoutParts[0] * 60 + logoutParts[1];
-
-        return Math.max(
-            currentMinutes - loginMinutes - breakMinutes,
-            0
+        const today = attendanceHistory.find(
+            (record) => record.date === new Date().toISOString().slice(0, 10)
         );
-    }, [loginTime, logoutTime, breakMinutes]);
+        return Number(today?.workedMinutes || 0);
+    }, [attendanceHistory]);
 
     const monthlySummary = useMemo(() => {
-        const statuses = Object.values(monthlyAttendance);
+        const monthKey = `${calendarDate.getFullYear()}-${String(calendarDate.getMonth() + 1).padStart(2, "0")}`;
+        const statuses = attendanceHistory
+            .filter((record) => record.date?.startsWith(monthKey))
+            .map((record) => record.status);
 
         return {
             present: statuses.filter(
@@ -366,7 +371,7 @@ export default function MyAttendance() {
                 (status) => status === "On Leave"
             ).length,
         };
-    }, []);
+    }, [attendanceHistory, calendarDate]);
 
     const averageHours = useMemo(() => {
         const completedRecords = attendanceHistory.filter(
@@ -395,53 +400,47 @@ export default function MyAttendance() {
         leaveForm.toDate
     );
 
-    const handleAttendanceToggle = () => {
-        if (attendanceStatus === "Logged In") {
-            const currentTime = new Date().toLocaleTimeString(
-                "en-GB",
-                {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    hour12: false,
-                }
-            );
-
-            setLogoutTime(currentTime);
-            setAttendanceStatus("Logged Out");
-            setBreakActive(false);
-
-            setAttendanceHistory((current) =>
-                current.map((record) =>
-                    record.date === "2026-07-14"
-                        ? {
-                              ...record,
-                              logoutTime: currentTime,
-                              breakMinutes,
-                              workedMinutes,
-                          }
-                        : record
-                )
-            );
-
-            return;
+    const loadData = async () => {
+        const headers = { Authorization: `Bearer ${getAuthToken()}` };
+        const [todayResponse, historyResponse, leaveResponse] = await Promise.all([
+            fetch(`${API_URL}/api/admin/attendance/today`, { headers }),
+            fetch(`${API_URL}/api/admin/attendance/me`, { headers }),
+            fetch(`${API_URL}/api/admin/leave/my`, { headers }),
+        ]);
+        const [today, history, leaves] = await Promise.all([todayResponse.json(), historyResponse.json(), leaveResponse.json()]);
+        if (!todayResponse.ok || !historyResponse.ok || !leaveResponse.ok) {
+            throw new Error(today.message || history.message || leaves.message || "Unable to load attendance.");
         }
+        const current = today.data ? normalizeAttendance(today.data) : null;
+        setAttendanceHistory((history.data || []).map(normalizeAttendance));
+        setLeaveRequests((leaves.data || []).map((leave) => ({ ...leave, id: leave._id, appliedOn: leave.appliedAt?.slice(0, 10) })));
+        setAttendanceStatus(current?.workStatus || "Absent");
+        setLoginTime(current?.loginTime || "");
+        setLogoutTime(current?.logoutTime || "");
+        setBreakMinutes(Number(current?.breakMinutes || 0));
+    };
 
-        const currentTime = new Date().toLocaleTimeString(
-            "en-GB",
-            {
-                hour: "2-digit",
-                minute: "2-digit",
-                hour12: false,
-            }
-        );
+    useEffect(() => {
+        loadData().catch((error) => console.error("Attendance:", error));
+    }, []);
 
-        setLoginTime(currentTime);
-        setLogoutTime("");
-        setAttendanceStatus("Logged In");
+    const handleAttendanceToggle = async () => {
+        const endpoint = attendanceStatus === "Working" ? "check-out" : "check-in";
+        try {
+            const response = await fetch(`${API_URL}/api/admin/attendance/${endpoint}`, {
+                method: endpoint === "check-in" ? "POST" : "PUT",
+                headers: { Authorization: `Bearer ${getAuthToken()}`, "Content-Type": "application/json" },
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) throw new Error(result.message || "Attendance update failed.");
+            await loadData();
+        } catch (error) {
+            alert(error.message);
+        }
     };
 
     const handleBreakToggle = () => {
-        if (attendanceStatus !== "Logged In") return;
+        if (attendanceStatus !== "Working") return;
 
         setBreakActive((current) => !current);
     };
@@ -471,7 +470,7 @@ export default function MyAttendance() {
         setLeaveForm(emptyLeaveForm);
     };
 
-    const submitLeaveRequest = (event) => {
+    const submitLeaveRequest = async (event) => {
         event.preventDefault();
 
         if (!leaveForm.fromDate || !leaveForm.toDate) {
@@ -507,27 +506,20 @@ export default function MyAttendance() {
             return;
         }
 
-        const newRequest = {
-            id: Date.now(),
-            leaveType: leaveForm.leaveType,
-            fromDate: leaveForm.fromDate,
-            toDate: leaveForm.toDate,
-            days: requestedLeaveDays,
-            reason: leaveForm.reason.trim(),
-            contactDuringLeave:
-                leaveForm.contactDuringLeave.trim(),
-            appliedOn: "2026-07-14",
-            status: "Pending",
-            reviewNote: "",
-        };
-
-        setLeaveRequests((current) => [
-            newRequest,
-            ...current,
-        ]);
-
-        closeLeaveDrawer();
-        setActiveTab("leave");
+        try {
+            const response = await fetch(`${API_URL}/api/admin/leave`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${getAuthToken()}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ leaveType: leaveForm.leaveType, fromDate: leaveForm.fromDate, toDate: leaveForm.toDate, days: requestedLeaveDays, reason: leaveForm.reason.trim() }),
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) throw new Error(result.message || "Unable to submit leave request.");
+            await loadData();
+            closeLeaveDrawer();
+            setActiveTab("leave");
+        } catch (error) {
+            alert(error.message);
+        }
     };
 
     return (
@@ -646,7 +638,7 @@ export default function MyAttendance() {
 
                     <span
                         className={`inline-flex w-fit rounded-full px-3 py-1.5 text-[10px] font-bold ring-1 ring-inset ${
-                            attendanceStatus === "Logged In"
+                            attendanceStatus === "Working"
                                 ? "bg-emerald-50 text-emerald-700 ring-emerald-600/10"
                                 : "bg-slate-100 text-slate-600 ring-slate-500/10"
                         }`}
@@ -780,7 +772,7 @@ export default function MyAttendance() {
                                         onClick={handleBreakToggle}
                                         disabled={
                                             attendanceStatus !==
-                                            "Logged In"
+                                            "Working"
                                         }
                                         className={`flex h-11 items-center justify-center gap-2 rounded-xl border text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
                                             breakActive
@@ -799,24 +791,31 @@ export default function MyAttendance() {
                                         onClick={
                                             handleAttendanceToggle
                                         }
+                                        disabled={
+                                            attendanceStatus ===
+                                            "Logged Out"
+                                        }
                                         className={`flex h-11 items-center justify-center gap-2 rounded-xl text-xs font-semibold transition ${
                                             attendanceStatus ===
-                                            "Logged In"
+                                            "Working"
                                                 ? "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-                                                : "bg-violet-600 text-white hover:bg-violet-700"
+                                                : "bg-violet-600 text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
                                         }`}
                                     >
                                         {attendanceStatus ===
-                                        "Logged In" ? (
+                                        "Working" ? (
                                             <LogOut size={15} />
                                         ) : (
                                             <LogIn size={15} />
                                         )}
 
                                         {attendanceStatus ===
-                                        "Logged In"
+                                        "Working"
                                             ? "End Workday"
-                                            : "Start Workday"}
+                                            : attendanceStatus ===
+                                                "Logged Out"
+                                              ? "Workday Completed"
+                                              : "Start Workday"}
                                     </button>
                                 </div>
                             </section>
@@ -1170,8 +1169,9 @@ export default function MyAttendance() {
                                             ).padStart(2, "0"),
                                         ].join("-");
 
-                                        const status =
-                                            monthlyAttendance[dateKey];
+                                        const status = attendanceHistory.find(
+                                            (record) => record.date === dateKey
+                                        )?.status;
 
                                         return (
                                             <div

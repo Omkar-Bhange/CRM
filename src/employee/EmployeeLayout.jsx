@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import TimeLog from "./TimeLog";
 import MyAttendance from "./MyAttendance";
 import MyTasks from "./MyTasks";
@@ -83,7 +83,38 @@ export default function EmployeeLayout({ onLogout }) {
     const [activeMenu, setActiveMenu] = useState("dashboard");
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [profileOpen, setProfileOpen] = useState(false);
+    const API_URL = "http://localhost:5000";
 
+const [employee, setEmployee] = useState(null);
+
+const getAuthToken = () => {
+    return (
+        localStorage.getItem("client-connect-token") ||
+        sessionStorage.getItem("client-connect-token") ||
+        ""
+    );
+};
+useEffect(() => {
+    const loadEmployee = async () => {
+        try {
+            const response = await fetch(`${API_URL}/api/employee/me`, {
+                headers: {
+                    Authorization: `Bearer ${getAuthToken()}`,
+                },
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                setEmployee(result.data);
+            }
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
+    loadEmployee();
+}, []);
     const activeMenuData =
         employeeMenu.find((item) => item.id === activeMenu) ||
         employeeMenu[0];
@@ -96,7 +127,7 @@ export default function EmployeeLayout({ onLogout }) {
 
     const renderPage = () => {
         if (activeMenu === "dashboard") {
-            return <EmployeeDashboard />;
+            return <EmployeeDashboard onNavigate={openMenu} />;
         }
 
        if (activeMenu === "tasks") {
@@ -115,7 +146,7 @@ export default function EmployeeLayout({ onLogout }) {
     return <TimeLog />;
 }
 
-return <EmployeeDashboard />;
+return <EmployeeDashboard onNavigate={openMenu} />;
     };
 
     return (
@@ -256,16 +287,22 @@ return <EmployeeDashboard />;
                 <div className="border-t border-white/10 p-3">
                     <div className="flex items-center gap-3 rounded-xl px-2 py-2">
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-[10px] font-bold text-white">
-                            AP
+                           {employee?.name
+    ? employee.name
+          .split(" ")
+          .map((word) => word[0])
+          .join("")
+          .toUpperCase()
+    : "E"}
                         </div>
 
                         <div className="min-w-0 flex-1">
                             <p className="truncate text-xs font-semibold text-white">
-                                Akash Pawar
+                                {employee?.name || "Employee"}
                             </p>
 
                             <p className="mt-1 truncate text-[9px] text-slate-400">
-                                ERP Support Engineer
+                               {employee?.designation || "Employee"}
                             </p>
                         </div>
 
@@ -335,11 +372,17 @@ return <EmployeeDashboard />;
                                 className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
                             >
                                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-100 text-[9px] font-bold text-violet-700">
-                                    AP
+                                   {employee?.name
+    ? employee.name
+          .split(" ")
+          .map((word) => word[0])
+          .join("")
+          .toUpperCase()
+    : "E"}
                                 </div>
 
                                 <span className="hidden sm:block">
-                                    Akash
+                                   {employee?.name || "Employee"}
                                 </span>
 
                                 <ChevronDown
@@ -364,11 +407,11 @@ return <EmployeeDashboard />;
                                     <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-60 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.16)]">
                                         <div className="border-b border-slate-100 px-4 py-4">
                                             <p className="text-xs font-semibold text-slate-900">
-                                                Akash Pawar
+                                              {employee?.name || "Employee"}
                                             </p>
 
                                             <p className="mt-1 text-[10px] text-slate-500">
-                                                ERP Support Engineer
+                                               {employee?.designation || "Employee"}
                                             </p>
                                         </div>
 

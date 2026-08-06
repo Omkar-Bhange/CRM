@@ -40,13 +40,6 @@ const reminderChannels = [
     },
 ];
 
-const employeeOptions = [
-    "Akash Pawar",
-    "Sneha Kale",
-    "Rohit More",
-    "Pooja Shinde",
-    "Nilesh Jadhav",
-];
 
 function formatCurrency(amount) {
     return new Intl.NumberFormat("en-IN", {
@@ -67,17 +60,23 @@ function getDefaultMessage(record) {
 
 export default function AmcReminderModal({
     record,
+    employees = [],
     onClose,
     onSubmit,
+    saving = false,
 }) {
     const [channel, setChannel] = useState("WhatsApp");
     const [message, setMessage] = useState(() =>
         getDefaultMessage(record)
     );
     const [followUpDate, setFollowUpDate] = useState("");
-    const [assignedTo, setAssignedTo] = useState(
-        record?.assignedTo || ""
-    );
+   const [
+    assignedEmployeeId,
+    setAssignedEmployeeId,
+] = useState(
+    record?.assignedEmployeeId || ""
+);
+
     const [notes, setNotes] = useState("");
     const [error, setError] = useState("");
 
@@ -103,23 +102,20 @@ export default function AmcReminderModal({
             return;
         }
 
-        onSubmit({
-            id: `${Date.now()}-${Math.random()}`,
-            channel,
-            message: message.trim(),
-            followUpDate,
-            assignedTo: assignedTo || "Unassigned",
-            notes: notes.trim(),
-            sentAt: new Date().toLocaleString("en-IN", {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-            }),
-            sentBy: "Mangesh Kondhare",
-            status: channel === "Phone Call" ? "Call Logged" : "Sent",
-        });
+       onSubmit({
+    channel,
+
+    message:
+        message.trim(),
+
+    followUpDate,
+
+    assignedEmployeeId:
+        assignedEmployeeId || "",
+
+    notes:
+        notes.trim(),
+});
     };
 
     return (
@@ -324,19 +320,35 @@ export default function AmcReminderModal({
                                     className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
                                 />
 
-                                <select
-                                    value={assignedTo}
-                                    onChange={(event) =>
-                                        setAssignedTo(event.target.value)
-                                    }
-                                    className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-9 pr-9 text-sm text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                >
-                                    <option value="">Keep unassigned</option>
+                               <select
+    value={assignedEmployeeId}
+    onChange={(event) =>
+        setAssignedEmployeeId(
+            event.target.value
+        )
+    }
+    disabled={saving}
+    className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-9 pr-9 text-sm text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100 disabled:cursor-not-allowed disabled:opacity-60"
+>
+    <option value="">
+        Keep current assignment
+    </option>
 
-                                    {employeeOptions.map((employee) => (
-                                        <option key={employee}>{employee}</option>
-                                    ))}
-                                </select>
+    {employees.map(
+        (employee) => (
+            <option
+                key={employee.id}
+                value={employee.id}
+            >
+                {employee.name}
+
+                {employee.employeeCode
+                    ? ` (${employee.employeeCode})`
+                    : ""}
+            </option>
+        )
+    )}
+</select>
 
                                 <ChevronDown
                                     size={15}
@@ -376,20 +388,19 @@ export default function AmcReminderModal({
                         Cancel
                     </button>
 
-                    <button
-                        type="submit"
-                        className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-5 text-xs font-semibold text-white transition hover:bg-violet-700"
-                    >
-                        {channel === "Phone Call" ? (
-                            <Phone size={15} />
-                        ) : (
-                            <Send size={15} />
-                        )}
+                   <button
+    type="submit"
+    disabled={saving}
+    className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-5 text-xs font-semibold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
+>
+    <Send size={15} />
 
-                        {channel === "Phone Call"
-                            ? "Log Follow-up Call"
-                            : "Send Reminder"}
-                    </button>
+    {saving
+        ? "Saving..."
+        : channel === "Phone Call"
+            ? "Save Call"
+            : "Send Reminder"}
+</button>
                 </div>
             </form>
         </div>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
     AlertCircle,
     ArrowLeft,
@@ -23,148 +23,9 @@ import {
     XCircle,
 } from "lucide-react";
 
-const employees = [
-    {
-        id: 1,
-        employeeCode: "EMP-001",
-        name: "Akash Pawar",
-        initials: "AP",
-        role: "ERP Support",
-        department: "Support",
-    },
-    {
-        id: 2,
-        employeeCode: "EMP-002",
-        name: "Sneha Kale",
-        initials: "SK",
-        role: "Software Support",
-        department: "Support",
-    },
-    {
-        id: 3,
-        employeeCode: "EMP-003",
-        name: "Rohit More",
-        initials: "RM",
-        role: "Client Support",
-        department: "Support",
-    },
-    {
-        id: 4,
-        employeeCode: "EMP-004",
-        name: "Pooja Shinde",
-        initials: "PS",
-        role: "Documentation",
-        department: "Operations",
-    },
-    {
-        id: 5,
-        employeeCode: "EMP-005",
-        name: "Nilesh Jadhav",
-        initials: "NJ",
-        role: "Developer",
-        department: "Development",
-    },
-];
 
-const initialAttendance = [
-    {
-        id: 1,
-        employeeId: 1,
-        date: "2026-07-14",
-        loginTime: "09:02",
-        logoutTime: "",
-        breakMinutes: 35,
-        status: "Present",
-        workStatus: "Working",
-        note: "",
-    },
-    {
-        id: 2,
-        employeeId: 2,
-        date: "2026-07-14",
-        loginTime: "09:15",
-        logoutTime: "",
-        breakMinutes: 40,
-        status: "Late",
-        workStatus: "Working",
-        note: "Logged in after office start time.",
-    },
-    {
-        id: 3,
-        employeeId: 3,
-        date: "2026-07-14",
-        loginTime: "08:55",
-        logoutTime: "",
-        breakMinutes: 30,
-        status: "Present",
-        workStatus: "Free",
-        note: "",
-    },
-    {
-        id: 4,
-        employeeId: 4,
-        date: "2026-07-14",
-        loginTime: "09:30",
-        logoutTime: "",
-        breakMinutes: 45,
-        status: "Late",
-        workStatus: "Break",
-        note: "",
-    },
-    {
-        id: 5,
-        employeeId: 5,
-        date: "2026-07-14",
-        loginTime: "",
-        logoutTime: "",
-        breakMinutes: 0,
-        status: "On Leave",
-        workStatus: "On Leave",
-        note: "Approved personal leave.",
-    },
-];
 
-const initialLeaveRequests = [
-    {
-        id: 1,
-        employeeId: 5,
-        leaveType: "Casual Leave",
-        fromDate: "2026-07-14",
-        toDate: "2026-07-14",
-        days: 1,
-        reason: "Personal work",
-        appliedOn: "2026-07-12",
-        status: "Approved",
-        reviewedBy: "Mangesh Kondhare",
-        reviewNote: "Approved.",
-    },
-    {
-        id: 2,
-        employeeId: 2,
-        leaveType: "Sick Leave",
-        fromDate: "2026-07-18",
-        toDate: "2026-07-18",
-        days: 1,
-        reason: "Medical appointment",
-        appliedOn: "2026-07-14",
-        status: "Pending",
-        reviewedBy: "",
-        reviewNote: "",
-    },
-    {
-        id: 3,
-        employeeId: 4,
-        leaveType: "Casual Leave",
-        fromDate: "2026-07-21",
-        toDate: "2026-07-22",
-        days: 2,
-        reason: "Family function",
-        appliedOn: "2026-07-13",
-        status: "Pending",
-        reviewedBy: "",
-        reviewNote: "",
-    },
-];
+
 
 const monthlyAttendance = {
     1: {
@@ -248,6 +109,12 @@ const officeSettings = {
 };
 
 function formatTime(time) {
+    if (time && String(time).includes("T")) {
+        const date = new Date(time);
+        return Number.isNaN(date.getTime())
+            ? "—"
+            : date.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+    }
     if (!time) return "—";
 
     const [hours, minutes] = time.split(":").map(Number);
@@ -259,6 +126,12 @@ function formatTime(time) {
         hour: "2-digit",
         minute: "2-digit",
     });
+}
+
+function toTimeInput(time) {
+    if (!time) return "";
+    const date = new Date(time);
+    return Number.isNaN(date.getTime()) ? String(time).slice(0, 5) : date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 function getMinutesFromTime(time) {
@@ -341,9 +214,7 @@ function getLeaveStatusClasses(status) {
     );
 }
 
-function getEmployee(employeeId) {
-    return employees.find((employee) => employee.id === employeeId);
-}
+
 
 function getCalendarDays(year, month) {
     const firstDay = new Date(year, month, 1);
@@ -397,9 +268,211 @@ function SummaryCard({
 }
 
 export default function Attendance() {
+    const API_URL = "http://localhost:5000";
+
+const [employees, setEmployees] = useState([]);
+
+
+
+const [attendanceSummary, setAttendanceSummary] = useState({
+  total: 0,
+  present: 0,
+  absent: 0,
+  late: 0,
+  halfDay: 0,
+  leave: 0,
+  working: 0,
+  break: 0,
+  free: 0,
+  loggedOut: 0,
+});
+
+const [loading, setLoading] = useState(true);
+
+const [error, setError] = useState("");
+
+const getAuthToken = () => {
+    return (
+        localStorage.getItem("client-connect-token") ||
+        sessionStorage.getItem("client-connect-token") ||
+        ""
+    );
+};
+const getEmployee = (employeeId) => {
+    return employees.find(
+        (employee) =>
+            employee._id === employeeId ||
+            employee.id === employeeId
+    );
+};
+
+const normalizeEmployee = (employee = {}) => ({
+    _id: employee._id,
+    id: employee._id,
+
+    employeeCode: employee.employeeCode || "",
+
+    name: employee.name || "",
+
+    department: employee.department || "",
+
+    role: employee.role || "",
+
+    initials:
+        employee.initials ||
+        employee.name
+            ?.split(" ")
+            .map((x) => x[0])
+            .join("")
+            .substring(0, 2)
+            .toUpperCase(),
+
+    status: employee.status || "Free",
+});
+
+const loadEmployees = async () => {
+    try {
+        const response = await fetch(
+            `${API_URL}/api/employee/employees`,
+            {
+                headers: {
+                    Authorization: `Bearer ${getAuthToken()}`,
+                    "Content-Type": "application/json",
+                },
+            }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            throw new Error(
+                result.message || "Failed to load employees."
+            );
+        }
+
+        const employeeData = (result.data || []).map(normalizeEmployee);
+
+        setEmployees(employeeData);
+    } catch (err) {
+        console.error("Load Employees:", err);
+        setError(err.message);
+    }
+};
+
+const loadAttendance = async () => {
+    try {
+        const response = await fetch(
+            `${API_URL}/api/admin/attendance`,
+            {
+                headers: {
+                    Authorization: `Bearer ${getAuthToken()}`,
+                    "Content-Type": "application/json",
+                },
+            }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            throw new Error(
+                result.message || "Failed to load attendance."
+            );
+        }
+
+        setAttendance(result.data || []);
+    } catch (err) {
+        console.error("Load Attendance:", err);
+        setError(err.message);
+    }
+};
+
+
+const loadSummary = async () => {
+    try {
+        const response = await fetch(
+            `${API_URL}/api/admin/attendance-summary`,
+            {
+                headers: {
+                    Authorization: `Bearer ${getAuthToken()}`,
+                    "Content-Type": "application/json",
+                },
+            }
+        );
+
+        const result = await response.json();
+
+        if (response.ok && result.success) {
+            setAttendanceSummary(result.data);
+        }
+    } catch (err) {
+        console.error("Load Summary:", err);
+    }
+};
+const loadTodayAttendance = async () => {
+    try {
+        const response = await fetch(
+            `${API_URL}/api/admin/attendance/today/all`,
+            {
+                headers: {
+                    Authorization: `Bearer ${getAuthToken()}`,
+                    "Content-Type": "application/json",
+                },
+            }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            throw new Error(
+                result.message || "Failed to load attendance."
+            );
+        }
+
+        setAttendance(result.data || []);
+
+        setAttendanceSummary(result.summary || {
+            total: 0,
+            present: 0,
+            absent: 0,
+            late: 0,
+            halfDay: 0,
+            leave: 0,
+            working: 0,
+            break: 0,
+            free: 0,
+            loggedOut: 0,
+        });
+
+    } catch (err) {
+        console.error(err);
+        setError(err.message);
+    }
+};
+
+const loadLeaveRequests = async () => {
+    try {
+        const response = await fetch(`${API_URL}/api/admin/leave`, {
+            headers: { Authorization: `Bearer ${getAuthToken()}` },
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.message || "Failed to load leave requests.");
+        }
+        setLeaveRequests((result.data || []).map((leave) => ({
+            ...leave,
+            id: leave._id,
+            employeeId: String(leave.employeeId),
+        })));
+    } catch (err) {
+        setError(err.message);
+    }
+};
+
+
     const [activeTab, setActiveTab] = useState("today");
-    const [attendance, setAttendance] = useState(initialAttendance);
-    const [leaveRequests, setLeaveRequests] = useState(initialLeaveRequests);
+    const [attendance, setAttendance] = useState([]);
+
+const [leaveRequests, setLeaveRequests] = useState([]);
 
     const [searchValue, setSearchValue] = useState("");
     const [statusFilter, setStatusFilter] = useState("All");
@@ -423,42 +496,47 @@ export default function Attendance() {
         new Date("2026-07-01T00:00:00")
     );
 
-    const attendanceRows = useMemo(() => {
-        return attendance
-            .map((record) => ({
-                ...record,
-                employee: getEmployee(record.employeeId),
-                workingMinutes: calculateWorkingMinutes(record),
-            }))
-            .filter((record) => {
-                const search = searchValue.trim().toLowerCase();
+    useEffect(() => {
+    const init = async () => {
+        setLoading(true);
 
-                const matchesSearch =
-                    !search ||
-                    [
-                        record.employee?.name,
-                        record.employee?.employeeCode,
-                        record.employee?.role,
-                        record.employee?.department,
-                        record.status,
-                        record.workStatus,
-                    ].some((value) =>
-                        String(value || "")
-                            .toLowerCase()
-                            .includes(search)
-                    );
+        await Promise.all([loadEmployees(), loadTodayAttendance(), loadLeaveRequests()]);
 
-                const matchesStatus =
-                    statusFilter === "All" ||
-                    record.status === statusFilter;
+        setLoading(false);
+    };
 
-                return matchesSearch && matchesStatus;
-            });
-    }, [attendance, searchValue, statusFilter]);
+    init();
+}, []);
+   const attendanceRows = useMemo(() => {
+    return attendance.filter((record) => {
+        const search = searchValue.trim().toLowerCase();
+
+        const matchesSearch =
+            !search ||
+            [
+                record.employeeName,
+               record.employeeCode,
+                record.role,
+                record.department,
+                record.attendanceStatus,
+                record.workStatus,
+            ].some((value) =>
+                String(value || "")
+                    .toLowerCase()
+                    .includes(search)
+            );
+
+        const matchesStatus =
+            statusFilter === "All" ||
+            record.attendanceStatus === statusFilter;
+
+        return matchesSearch && matchesStatus;
+    });
+}, [attendance, searchValue, statusFilter]);
 
     const summary = useMemo(() => {
         const present = attendance.filter((record) =>
-            ["Present", "Late", "Half Day"].includes(record.status)
+            ["Present", "Late", "Half Day"].includes(record.attendanceStatus)
         ).length;
 
         const working = attendance.filter(
@@ -466,15 +544,15 @@ export default function Attendance() {
         ).length;
 
         const late = attendance.filter(
-            (record) => record.status === "Late"
+            (record) => record.attendanceStatus === "Late"
         ).length;
 
         const leave = attendance.filter(
-            (record) => record.status === "On Leave"
+            (record) => record.attendanceStatus === "On Leave"
         ).length;
 
         const absent = attendance.filter(
-            (record) => record.status === "Absent"
+            (record) => record.attendanceStatus === "Absent"
         ).length;
 
         return {
@@ -516,10 +594,10 @@ export default function Attendance() {
         setSelectedAttendance(record);
 
         setAttendanceForm({
-            loginTime: record.loginTime || "",
-            logoutTime: record.logoutTime || "",
+            loginTime: toTimeInput(record.loginTime),
+            logoutTime: toTimeInput(record.logoutTime),
             breakMinutes: record.breakMinutes || 0,
-            status: record.status || "Present",
+            status: record.attendanceStatus || "Present",
             workStatus: record.workStatus || "Working",
             note: record.note || "",
         });
@@ -550,7 +628,7 @@ export default function Attendance() {
         }));
     };
 
-    const handleSaveAttendance = (event) => {
+    const handleSaveAttendance = async (event) => {
         event.preventDefault();
 
         if (!selectedAttendance) return;
@@ -563,89 +641,45 @@ export default function Attendance() {
             return;
         }
 
-        const updatedRecord = {
-            ...selectedAttendance,
-            loginTime:
-                ["Absent", "On Leave"].includes(attendanceForm.status)
-                    ? ""
-                    : attendanceForm.loginTime,
-            logoutTime:
-                ["Absent", "On Leave"].includes(attendanceForm.status)
-                    ? ""
-                    : attendanceForm.logoutTime,
-            breakMinutes:
-                ["Absent", "On Leave"].includes(attendanceForm.status)
-                    ? 0
-                    : Number(attendanceForm.breakMinutes || 0),
-            status: attendanceForm.status,
-            workStatus:
-                attendanceForm.status === "On Leave"
-                    ? "On Leave"
-                    : attendanceForm.status === "Absent"
-                      ? "Logged Out"
-                      : attendanceForm.workStatus,
-            note: attendanceForm.note.trim(),
-        };
-
-        setAttendance((current) =>
-            current.map((record) =>
-                record.id === selectedAttendance.id
-                    ? updatedRecord
-                    : record
-            )
-        );
-
-        closeAttendanceEditor();
+        if (!selectedAttendance.attendanceId) {
+            alert("Absent and leave rows do not have an attendance record to edit.");
+            return;
+        }
+        try {
+            const response = await fetch(`${API_URL}/api/admin/attendance/${selectedAttendance.attendanceId}`, {
+                method: "PUT",
+                headers: { Authorization: `Bearer ${getAuthToken()}`, "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    loginTime: ["Absent", "On Leave"].includes(attendanceForm.status) ? null : attendanceForm.loginTime,
+                    logoutTime: ["Absent", "On Leave"].includes(attendanceForm.status) ? null : attendanceForm.logoutTime,
+                    breakMinutes: ["Absent", "On Leave"].includes(attendanceForm.status) ? 0 : Number(attendanceForm.breakMinutes || 0),
+                    status: attendanceForm.status,
+                    workStatus: attendanceForm.status === "On Leave" ? "On Leave" : attendanceForm.status === "Absent" ? "Logged Out" : attendanceForm.workStatus,
+                    note: attendanceForm.note.trim(),
+                }),
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) throw new Error(result.message || "Unable to save attendance.");
+            await loadTodayAttendance();
+            closeAttendanceEditor();
+        } catch (error) { alert(error.message); }
     };
 
-    const handleLeaveDecision = (status) => {
+    const handleLeaveDecision = async (status) => {
         if (!selectedLeave) return;
 
-        setLeaveRequests((current) =>
-            current.map((request) =>
-                request.id === selectedLeave.id
-                    ? {
-                          ...request,
-                          status,
-                          reviewedBy: "Mangesh Kondhare",
-                          reviewNote:
-                              reviewNote.trim() ||
-                              (status === "Approved"
-                                  ? "Leave approved."
-                                  : "Leave rejected."),
-                      }
-                    : request
-            )
-        );
-
-        if (status === "Approved") {
-            const existingRecord = attendance.find(
-                (record) =>
-                    record.employeeId === selectedLeave.employeeId &&
-                    record.date === selectedLeave.fromDate
-            );
-
-            if (existingRecord) {
-                setAttendance((current) =>
-                    current.map((record) =>
-                        record.id === existingRecord.id
-                            ? {
-                                  ...record,
-                                  loginTime: "",
-                                  logoutTime: "",
-                                  breakMinutes: 0,
-                                  status: "On Leave",
-                                  workStatus: "On Leave",
-                                  note: selectedLeave.reason,
-                              }
-                            : record
-                    )
-                );
-            }
-        }
-
-        setSelectedLeave(null);
-        setReviewNote("");
+        try {
+            const response = await fetch(`${API_URL}/api/admin/leave/${selectedLeave.id}/review`, {
+                method: "PUT",
+                headers: { Authorization: `Bearer ${getAuthToken()}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ status, reviewNote }),
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) throw new Error(result.message || "Unable to review leave request.");
+            await Promise.all([loadLeaveRequests(), loadTodayAttendance()]);
+            setSelectedLeave(null);
+            setReviewNote("");
+        } catch (error) { alert(error.message); }
     };
 
     const changeCalendarMonth = (direction) => {
@@ -659,6 +693,21 @@ export default function Attendance() {
         );
     };
 
+    if (loading) {
+    return (
+        <div className="flex items-center justify-center h-64">
+            Loading attendance...
+        </div>
+    );
+}
+
+if (error) {
+    return (
+        <div className="p-6 text-red-600">
+            {error}
+        </div>
+    );
+}
     return (
         <div>
             <div className="flex flex-col gap-4 border-b border-slate-200 pb-6 lg:flex-row lg:items-end lg:justify-between">
@@ -706,7 +755,7 @@ export default function Attendance() {
             <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
                 <SummaryCard
                     label="Present"
-                    value={summary.present}
+                    value={attendanceSummary.present}
                     description="Employees checked in today"
                     icon={UserCheck}
                     iconClass="bg-emerald-100 text-emerald-700"
@@ -715,7 +764,7 @@ export default function Attendance() {
 
                 <SummaryCard
                     label="Working"
-                    value={summary.working}
+                    value={attendanceSummary.working}
                     description="Currently active on work"
                     icon={Timer}
                     iconClass="bg-violet-100 text-violet-700"
@@ -724,7 +773,7 @@ export default function Attendance() {
 
                 <SummaryCard
                     label="Late"
-                    value={summary.late}
+                   value={attendanceSummary.late}
                     description={`After ${formatTime(officeSettings.lateAfter)}`}
                     icon={Clock3}
                     iconClass="bg-amber-100 text-amber-700"
@@ -733,7 +782,7 @@ export default function Attendance() {
 
                 <SummaryCard
                     label="On Leave"
-                    value={summary.leave}
+                   value={attendanceSummary.leave}
                     description="Approved leave today"
                     icon={CalendarDays}
                     iconClass="bg-blue-100 text-blue-700"
@@ -742,7 +791,7 @@ export default function Attendance() {
 
                 <SummaryCard
                     label="Absent"
-                    value={summary.absent}
+                    value={attendanceSummary.absent}
                     description="No attendance recorded"
                     icon={UserMinus}
                     iconClass="bg-rose-100 text-rose-700"
@@ -905,24 +954,24 @@ export default function Attendance() {
                                             <td className="px-5 py-4">
                                                 <div className="flex items-center gap-3">
                                                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-xs font-bold text-white">
-                                                        {
-                                                            record.employee
-                                                                ?.initials
-                                                        }
+                                                {record.employeeName
+    ?.split(" ")
+    .map(x => x[0])
+    .join("")
+    .substring(0,2)
+    .toUpperCase()}
                                                     </div>
 
                                                     <div>
                                                         <p className="text-xs font-semibold text-slate-900">
                                                             {
-                                                                record.employee
-                                                                    ?.name
+                                                                record.employeeName
                                                             }
                                                         </p>
 
                                                         <p className="mt-1 text-[10px] text-slate-500">
                                                             {
-                                                                record.employee
-                                                                    ?.employeeCode
+                                                               record.employeeCode
                                                             }{" "}
                                                             ·{" "}
                                                             {
@@ -937,10 +986,10 @@ export default function Attendance() {
                                             <td className="px-4 py-4">
                                                 <span
                                                     className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ring-inset ${getStatusClasses(
-                                                        record.status
+                                                        record.attendanceStatus
                                                     )}`}
                                                 >
-                                                    {record.status}
+                                                    {record.attendanceStatus}
                                                 </span>
                                             </td>
 

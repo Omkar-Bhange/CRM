@@ -266,6 +266,19 @@ const uploadTicketAttachment =
     },
   });
 
+const taskUploadDirectory = path.join(__dirname, "uploads", "tasks");
+if (!fs.existsSync(taskUploadDirectory)) fs.mkdirSync(taskUploadDirectory, { recursive: true });
+const uploadTaskAttachment = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, callback) => callback(null, taskUploadDirectory),
+    filename: (req, file, callback) => callback(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(file.originalname)}`),
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, callback) => allowedTicketFileTypes.includes(file.mimetype)
+    ? callback(null, true)
+    : callback(new Error("Unsupported file type. Upload an image, PDF, Word, Excel, text, CSV or ZIP file.")),
+});
+
 router.use(authenticateUser);
 
 router.use((req, res, next) => {
@@ -1260,6 +1273,13 @@ projectName: {
       min: 0,
     },
 
+    startedAt: { type: Date, default: null },
+    pausedAt: { type: Date, default: null },
+    totalPausedMinutes: { type: Number, default: 0, min: 0 },
+    elapsedMinutes: { type: Number, default: 0, min: 0 },
+    elapsedSeconds: { type: Number, default: 0, min: 0 },
+    lastUpdated: { type: Date, default: null },
+
     resolutionNote: {
       type: String,
       default: "",
@@ -2159,6 +2179,26 @@ const amcContractSchema =
         uppercase: true,
         index: true,
       },
+            /*
+       * Current active invoice for this AMC contract.
+       *
+       * Historical invoices remain permanently stored
+       * inside the amcinvoices collection.
+       */
+      currentInvoiceId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "AmcInvoice",
+        default: null,
+        index: true,
+      },
+
+      currentInvoiceCode: {
+        type: String,
+        default: "",
+        trim: true,
+        uppercase: true,
+        index: true,
+      },
 
       invoiceCode: {
         type: String,
@@ -2522,7 +2562,400 @@ const AmcContract =
   mongoose.models.AmcContract ||
   mongoose.model(
     "AmcContract",
+
     amcContractSchema
+  );
+
+  /* =====================================================
+   AMC INVOICE SCHEMA
+
+   This is the permanent financial invoice collection.
+
+   Client Master can be archived or soft-deleted without
+   affecting AMC invoices or payments.
+===================================================== */
+
+const amcInvoiceSchema =
+  new mongoose.Schema(
+    {
+      invoiceCode: {
+        type: String,
+        required: [
+          true,
+          "AMC invoice code is required.",
+        ],
+        unique: true,
+        trim: true,
+        uppercase: true,
+        index: true,
+      },
+
+      invoiceNumber: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      invoiceDate: {
+        type: Date,
+        required: [
+          true,
+          "Invoice date is required.",
+        ],
+        default: Date.now,
+        index: true,
+      },
+
+      invoiceType: {
+        type: String,
+        enum: [
+          "Initial",
+          "Renewal",
+          "Adjustment",
+        ],
+        default: "Initial",
+        index: true,
+      },
+
+      /*
+       * Contract reference.
+       */
+      amcContractId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "AmcContract",
+        required: [
+          true,
+          "AMC contract is required.",
+        ],
+        index: true,
+      },
+
+      contractCode: {
+        type: String,
+        required: true,
+        trim: true,
+        uppercase: true,
+        index: true,
+      },
+
+      /*
+       * Contract period represented by this invoice.
+       */
+      contractStartDate: {
+        type: Date,
+        required: true,
+      },
+
+      contractExpiryDate: {
+        type: Date,
+        required: true,
+      },
+
+      dueDate: {
+        type: Date,
+        required: [
+          true,
+          "Invoice due date is required.",
+        ],
+        index: true,
+      },
+
+      /*
+       * Client reference plus permanent snapshot.
+       *
+       * Even when Client Master is later archived,
+       * these values remain inside the invoice.
+       */
+      clientId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Client",
+        default: null,
+        index: true,
+      },
+
+      clientCode: {
+        type: String,
+        required: true,
+        trim: true,
+        uppercase: true,
+        index: true,
+      },
+
+      clientName: {
+        type: String,
+        required: true,
+        trim: true,
+        index: true,
+      },
+
+      contactPerson: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      contactMobile: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      contactEmail: {
+        type: String,
+        default: "",
+        trim: true,
+        lowercase: true,
+      },
+
+      /*
+       * Product reference plus permanent snapshot.
+       */
+      clientProductId: {
+        type: mongoose.Schema.Types.ObjectId,
+        default: null,
+        index: true,
+      },
+
+      productId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Product",
+        default: null,
+        index: true,
+      },
+
+      productCode: {
+        type: String,
+        required: true,
+        trim: true,
+        uppercase: true,
+        index: true,
+      },
+
+      productName: {
+        type: String,
+        required: true,
+        trim: true,
+        index: true,
+      },
+
+      productVersion: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      plan: {
+        type: String,
+        enum: [
+          "Basic",
+          "Standard",
+          "Premium",
+          "Custom",
+        ],
+        default: "Standard",
+      },
+
+      licensedUsers: {
+        type: Number,
+        default: 1,
+        min: 1,
+      },
+
+      description: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      /*
+       * GST and invoice totals.
+       */
+      taxableAmount: {
+        type: Number,
+        required: true,
+        min: 0,
+      },
+
+      cgstRate: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      cgstAmount: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      sgstRate: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      sgstAmount: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      igstRate: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      igstAmount: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      totalTaxAmount: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      totalAmount: {
+        type: Number,
+        required: true,
+        min: 0,
+      },
+
+      /*
+       * Payment summary is maintained from
+       * permanent amcpayments records.
+       */
+      paidAmount: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      pendingAmount: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      paymentStatus: {
+        type: String,
+        enum: [
+          "Pending",
+          "Partially Paid",
+          "Paid",
+          "Overdue",
+          "Cancelled",
+        ],
+        default: "Pending",
+        index: true,
+      },
+
+      status: {
+        type: String,
+        enum: [
+          "Draft",
+          "Issued",
+          "Cancelled",
+        ],
+        default: "Issued",
+        index: true,
+      },
+
+      notes: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      createdBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+
+      createdByName: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      updatedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+
+      updatedByName: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      /*
+       * Financial records should normally be cancelled,
+       * not physically removed.
+       */
+      isDeleted: {
+        type: Boolean,
+        default: false,
+        index: true,
+      },
+
+      deletedAt: {
+        type: Date,
+        default: null,
+      },
+
+      deletedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+
+      deletedByName: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+    },
+    {
+      timestamps: true,
+      collection: "amcinvoices",
+    }
+  );
+
+amcInvoiceSchema.index({
+  amcContractId: 1,
+  invoiceDate: -1,
+});
+
+amcInvoiceSchema.index({
+  clientId: 1,
+  invoiceDate: -1,
+});
+
+amcInvoiceSchema.index({
+  productId: 1,
+  invoiceDate: -1,
+});
+
+amcInvoiceSchema.index({
+  invoiceCode: "text",
+  contractCode: "text",
+  clientCode: "text",
+  clientName: "text",
+  productCode: "text",
+  productName: "text",
+});
+
+const AmcInvoice =
+  mongoose.models.AmcInvoice ||
+  mongoose.model(
+    "AmcInvoice",
+    amcInvoiceSchema
   );
 
 /* =====================================================
@@ -2545,6 +2978,18 @@ const amcPaymentSchema =
         type: mongoose.Schema.Types.ObjectId,
         ref: "AmcContract",
         required: true,
+        index: true,
+      },
+            /*
+       * Every payment belongs to one permanent invoice.
+       */
+      amcInvoiceId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "AmcInvoice",
+        required: [
+          true,
+          "AMC invoice is required.",
+        ],
         index: true,
       },
 
@@ -3162,6 +3607,286 @@ async function resolveAmcEmployee(
       "Unassigned",
   };
 }
+function amcInvoiceResponse(
+  invoice
+) {
+  if (!invoice) {
+    return null;
+  }
+
+  return {
+    id:
+      invoice._id,
+
+    _id:
+      invoice._id,
+
+    invoiceCode:
+      invoice.invoiceCode,
+
+    invoiceNumber:
+      invoice.invoiceNumber,
+
+    invoiceDate:
+      invoice.invoiceDate,
+
+    invoiceType:
+      invoice.invoiceType,
+
+    amcContractId:
+      invoice.amcContractId,
+
+    contractCode:
+      invoice.contractCode,
+
+    contractStartDate:
+      invoice.contractStartDate,
+
+    contractExpiryDate:
+      invoice.contractExpiryDate,
+
+    dueDate:
+      invoice.dueDate,
+
+    clientId:
+      invoice.clientId,
+
+    clientCode:
+      invoice.clientCode,
+
+    clientName:
+      invoice.clientName,
+
+    contactPerson:
+      invoice.contactPerson,
+
+    contactMobile:
+      invoice.contactMobile,
+
+    contactEmail:
+      invoice.contactEmail,
+
+    clientProductId:
+      invoice.clientProductId,
+
+    productId:
+      invoice.productId,
+
+    productCode:
+      invoice.productCode,
+
+    productName:
+      invoice.productName,
+
+    productVersion:
+      invoice.productVersion,
+
+    plan:
+      invoice.plan,
+
+    licensedUsers:
+      invoice.licensedUsers,
+
+    description:
+      invoice.description,
+
+    taxableAmount:
+      invoice.taxableAmount,
+
+    cgstRate:
+      invoice.cgstRate,
+
+    cgstAmount:
+      invoice.cgstAmount,
+
+    sgstRate:
+      invoice.sgstRate,
+
+    sgstAmount:
+      invoice.sgstAmount,
+
+    igstRate:
+      invoice.igstRate,
+
+    igstAmount:
+      invoice.igstAmount,
+
+    totalTaxAmount:
+      invoice.totalTaxAmount,
+
+    totalAmount:
+      invoice.totalAmount,
+
+    paidAmount:
+      invoice.paidAmount,
+
+    pendingAmount:
+      invoice.pendingAmount,
+
+    paymentStatus:
+      invoice.paymentStatus,
+
+    status:
+      invoice.status,
+
+    notes:
+      invoice.notes,
+
+    createdAt:
+      invoice.createdAt,
+
+    updatedAt:
+      invoice.updatedAt,
+  };
+}
+function mergeAmcContractWithInvoice(
+  contract,
+  invoice
+) {
+  const contractData =
+    amcContractResponse(
+      contract
+    );
+
+  if (!invoice) {
+    /*
+     * Compatibility for old contracts created before
+     * the amcinvoices collection was introduced.
+     */
+    return {
+      ...contractData,
+
+      currentInvoice:
+        null,
+
+      invoice:
+        null,
+    };
+  }
+
+  const invoiceData =
+    amcInvoiceResponse(
+      invoice
+    );
+
+  return {
+    ...contractData,
+
+    currentInvoiceId:
+      invoice._id,
+
+    currentInvoiceCode:
+      invoice.invoiceCode,
+
+    /*
+     * Keep these top-level values so the current
+     * AmcBilling frontend continues working.
+     *
+     * Their source is now the permanent invoice.
+     */
+    invoiceCode:
+      invoice.invoiceCode,
+
+    invoiceDate:
+      invoice.invoiceDate,
+
+    startDate:
+      invoice.contractStartDate,
+
+    expiryDate:
+      invoice.contractExpiryDate,
+
+    dueDate:
+      invoice.dueDate,
+
+    clientId:
+      invoice.clientId,
+
+    clientCode:
+      invoice.clientCode,
+
+    clientName:
+      invoice.clientName,
+
+    contactPerson:
+      invoice.contactPerson,
+
+    contactMobile:
+      invoice.contactMobile,
+
+    contactEmail:
+      invoice.contactEmail,
+
+    clientProductId:
+      invoice.clientProductId,
+
+    productId:
+      invoice.productId,
+
+    productCode:
+      invoice.productCode,
+
+    productName:
+      invoice.productName,
+
+    productVersion:
+      invoice.productVersion,
+
+    plan:
+      invoice.plan,
+
+    licensedUsers:
+      invoice.licensedUsers,
+
+    taxableAmount:
+      invoice.taxableAmount,
+
+    cgstRate:
+      invoice.cgstRate,
+
+    cgstAmount:
+      invoice.cgstAmount,
+
+    sgstRate:
+      invoice.sgstRate,
+
+    sgstAmount:
+      invoice.sgstAmount,
+
+    igstRate:
+      invoice.igstRate,
+
+    igstAmount:
+      invoice.igstAmount,
+
+    totalTaxAmount:
+      invoice.totalTaxAmount,
+
+    totalAmount:
+      invoice.totalAmount,
+
+    paidAmount:
+      invoice.paidAmount,
+
+    pendingAmount:
+      invoice.pendingAmount,
+
+    /*
+     * Contract status remains the overall AMC status.
+     */
+    status:
+      contract.status,
+
+    invoicePaymentStatus:
+      invoice.paymentStatus,
+
+    currentInvoice:
+      invoiceData,
+
+    invoice:
+      invoiceData,
+  };
+}
 
 function amcContractResponse(
   contract
@@ -3175,6 +3900,11 @@ function amcContractResponse(
 
     contractCode:
       contract.contractCode,
+          currentInvoiceId:
+      contract.currentInvoiceId,
+
+    currentInvoiceCode:
+      contract.currentInvoiceCode,
 
     invoiceCode:
       contract.invoiceCode,
@@ -3328,6 +4058,8 @@ function amcPaymentResponse(
 
     amcContractId:
       payment.amcContractId,
+            amcInvoiceId:
+      payment.amcInvoiceId,
 
     contractCode:
       payment.contractCode,
@@ -4269,6 +5001,13 @@ function taskResponse(task) {
 
     spentMinutes:
       task.spentMinutes,
+
+    startedAt: task.startedAt,
+    pausedAt: task.pausedAt,
+    totalPausedMinutes: task.totalPausedMinutes,
+    elapsedMinutes: task.elapsedMinutes,
+    elapsedSeconds: task.elapsedSeconds,
+    lastUpdated: task.lastUpdated,
 
     resolutionNote:
       task.resolutionNote,
@@ -10369,6 +11108,13 @@ router.get("/task/:id", async (req, res) => {
       });
     }
 
+    if (req.user.role === "employee") {
+      const employee = await Employee.findOne({ userId: req.user._id });
+      if (!employee || String(task.assignedEmployeeId) !== String(employee._id)) {
+        return res.status(403).json({ success: false, message: "You can view only your assigned tasks." });
+      }
+    }
+
     return res.status(200).json({
       success: true,
       data: taskResponse(task),
@@ -10849,6 +11595,16 @@ router.patch("/task/:id/status", async (req, res) => {
       });
     }
 
+    if (req.user.role === "employee") {
+      const employee = await Employee.findOne({ userId: req.user._id });
+      if (!employee || String(task.assignedEmployeeId) !== String(employee._id)) {
+        return res.status(403).json({
+          success: false,
+          message: "You can update only your assigned tasks.",
+        });
+      }
+    }
+
     const previousStatus = task.status;
     if (!status) {
       return res.status(400).json({
@@ -10876,7 +11632,11 @@ router.patch("/task/:id/status", async (req, res) => {
       });
     }
 
-    if (previousStatus === status) {
+    if (
+      previousStatus === status &&
+      progress === undefined &&
+      resolutionNote === undefined
+    ) {
       return res.status(200).json({
         success: true,
         message:
@@ -10928,7 +11688,7 @@ router.patch("/task/:id/status", async (req, res) => {
       performedBy: req.user._id,
       performedByName:
         req.user.name || "Admin",
-      performedByRole: "admin",
+      performedByRole: req.user.role,
     });
 
     await task.save();
@@ -10964,7 +11724,7 @@ router.patch("/task/:id/status", async (req, res) => {
         performedByName:
           req.user.name || "Admin",
 
-        performedByRole: "admin",
+        performedByRole: req.user.role,
 
         metadata: {
           previousStatus,
@@ -11069,11 +11829,18 @@ router.post("/task/:id/comment", async (req, res) => {
       });
     }
 
+    if (req.user.role === "employee") {
+      const employee = await Employee.findOne({ userId: req.user._id });
+      if (!employee || String(task.assignedEmployeeId) !== String(employee._id)) {
+        return res.status(403).json({ success: false, message: "You can comment only on your assigned tasks." });
+      }
+    }
+
     task.comments.push({
       message: String(message).trim(),
       authorId: req.user._id,
-      authorName: req.user.name || "Admin",
-      authorRole: "admin",
+      authorName: req.user.name || "Employee",
+      authorRole: req.user.role,
     });
 
     task.timeline.push({
@@ -11138,6 +11905,31 @@ router.post("/task/:id/comment", async (req, res) => {
       message:
         error.message || "Unable to add comment.",
     });
+  }
+});
+
+/* =====================================================
+   UPLOAD TASK ATTACHMENT
+===================================================== */
+router.post("/task/:id/attachment", uploadTaskAttachment.single("attachment"), async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ success: false, message: "Invalid task ID." });
+    if (!req.file) return res.status(400).json({ success: false, message: "Please select a file." });
+    const task = await Task.findOne({ _id: req.params.id, isDeleted: false });
+    if (!task) return res.status(404).json({ success: false, message: "Task not found." });
+    task.attachments.push({
+      fileName: req.file.originalname,
+      fileUrl: `/uploads/tasks/${req.file.filename}`,
+      fileType: req.file.mimetype,
+      fileSize: req.file.size,
+      uploadedBy: req.user._id,
+      uploadedByName: req.user.name || "Administrator",
+    });
+    task.timeline.push({ action: "Attachment Uploaded", description: `${req.file.originalname} was attached to the task.`, performedBy: req.user._id, performedByName: req.user.name || "Administrator", performedByRole: req.user.role });
+    await task.save();
+    return res.status(201).json({ success: true, message: "Task attachment uploaded successfully.", data: taskResponse(task) });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message || "Unable to upload task attachment." });
   }
 });
 
@@ -13698,13 +14490,19 @@ router.use(
   }
 );
 /* =====================================================
-   CREATE AMC CONTRACT
+   CREATE AMC CONTRACT + FIRST PERMANENT INVOICE
    POST /api/admin/amc/contract
 ===================================================== */
 
 router.post(
   "/amc/contract",
   async (req, res) => {
+    let createdContract =
+      null;
+
+    let createdInvoice =
+      null;
+
     try {
       const {
         clientId,
@@ -13825,10 +14623,15 @@ router.post(
       }
 
       const normalizedTaxableAmount =
-        Number(taxableAmount || 0);
+        Number(
+          taxableAmount ||
+          0
+        );
 
       if (
-        !normalizedTaxableAmount ||
+        !Number.isFinite(
+          normalizedTaxableAmount
+        ) ||
         normalizedTaxableAmount <= 0
       ) {
         return res.status(400).json({
@@ -13840,7 +14643,10 @@ router.post(
 
       const normalizedUsers =
         Math.max(
-          Number(licensedUsers || 1),
+          Number(
+            licensedUsers ||
+            1
+          ),
           1
         );
 
@@ -13852,32 +14658,34 @@ router.post(
       ];
 
       const normalizedPlan =
-        allowedPlans.includes(plan)
+        allowedPlans.includes(
+          plan
+        )
           ? plan
           : "Standard";
 
+      const normalizedNotes =
+        String(
+          notes ||
+          ""
+        ).trim();
+
       /*
-       * Resolve Client Master.
+       * Read current Client Master only while creating
+       * snapshots. Future invoice reads do not depend
+       * on the client still existing.
        */
       const client =
         await resolveAmcClient(
           clientId
         );
 
-      /*
-       * Resolve product only from
-       * the selected client's products.
-       */
       const clientProduct =
         resolveAmcClientProduct(
           client,
           clientProductId
         );
 
-      /*
-       * Resolve Employee Master.
-       * Employee assignment is optional.
-       */
       const resolvedEmployee =
         await resolveAmcEmployee(
           assignedEmployeeId
@@ -13901,19 +14709,15 @@ router.post(
             ],
           },
 
-          $or: [
-            {
-              startDate: {
-                $lte:
-                  parsedExpiryDate,
-              },
+          startDate: {
+            $lte:
+              parsedExpiryDate,
+          },
 
-              expiryDate: {
-                $gte:
-                  parsedStartDate,
-              },
-            },
-          ],
+          expiryDate: {
+            $gte:
+              parsedStartDate,
+          },
         });
 
       if (duplicateContract) {
@@ -13943,21 +14747,24 @@ router.post(
 
           cgstRate:
             Number(
-              cgstRate ?? 9
+              cgstRate ??
+              9
             ),
 
           sgstRate:
             Number(
-              sgstRate ?? 9
+              sgstRate ??
+              9
             ),
 
           igstRate:
             Number(
-              igstRate ?? 0
+              igstRate ??
+              0
             ),
         });
 
-      const status =
+      const contractStatus =
         calculateAmcStatus({
           startDate:
             parsedStartDate,
@@ -13973,11 +14780,20 @@ router.post(
             0,
         });
 
+      const invoicePaymentStatus =
+        contractStatus ===
+        "Overdue"
+          ? "Overdue"
+          : "Pending";
+
       const contractCode =
         generateAmcContractCode();
 
       const invoiceCode =
         generateAmcInvoiceCode();
+
+      const now =
+        new Date();
 
       const timeline = [
         {
@@ -14052,14 +14868,24 @@ router.post(
         });
       }
 
-      const contract =
+      /*
+       * First create the agreement.
+       *
+       * Legacy invoice amount fields are temporarily kept
+       * for frontend compatibility. Financial truth is now
+       * stored inside AmcInvoice.
+       */
+      createdContract =
         await AmcContract.create({
           contractCode,
+
+          currentInvoiceCode:
+            invoiceCode,
 
           invoiceCode,
 
           invoiceDate:
-            new Date(),
+            now,
 
           clientId:
             client._id,
@@ -14122,7 +14948,8 @@ router.post(
             calculatedAmounts
               .totalAmount,
 
-          status,
+          status:
+            contractStatus,
 
           assignedEmployeeId:
             resolvedEmployee
@@ -14137,13 +14964,13 @@ router.post(
               .assignedEmployeeName,
 
           reminderStatus:
-            status === "Paid"
+            contractStatus ===
+            "Paid"
               ? "Not Required"
               : "Not Sent",
 
           notes:
-            String(notes || "")
-              .trim(),
+            normalizedNotes,
 
           timeline,
 
@@ -14163,33 +14990,162 @@ router.post(
         });
 
       /*
-       * Update AMC values inside
-       * Client Master product entry.
+       * Create the first permanent invoice using snapshots.
+       */
+      createdInvoice =
+        await AmcInvoice.create({
+          invoiceCode,
+
+          invoiceDate:
+            now,
+
+          invoiceType:
+            "Initial",
+
+          amcContractId:
+            createdContract._id,
+
+          contractCode:
+            createdContract
+              .contractCode,
+
+          contractStartDate:
+            parsedStartDate,
+
+          contractExpiryDate:
+            parsedExpiryDate,
+
+          dueDate:
+            parsedDueDate,
+
+          clientId:
+            client._id,
+
+          clientCode:
+            client.clientCode,
+
+          clientName:
+            client.companyName,
+
+          contactPerson:
+            client.contactPerson ||
+            "",
+
+          contactMobile:
+            client.mobile ||
+            "",
+
+          contactEmail:
+            client.email ||
+            "",
+
+          clientProductId:
+            clientProduct._id,
+
+          productId:
+            clientProduct.productId,
+
+          productCode:
+            clientProduct.productCode,
+
+          productName:
+            clientProduct.productName,
+
+          productVersion:
+            clientProduct.version ||
+            "",
+
+          plan:
+            normalizedPlan,
+
+          licensedUsers:
+            normalizedUsers,
+
+          description:
+            `${normalizedPlan} Annual Maintenance Contract for ${clientProduct.productName}.`,
+
+          ...calculatedAmounts,
+
+          paidAmount:
+            0,
+
+          pendingAmount:
+            calculatedAmounts
+              .totalAmount,
+
+          paymentStatus:
+            invoicePaymentStatus,
+
+          status:
+            "Issued",
+
+          notes:
+            normalizedNotes,
+
+          createdBy:
+            req.user._id,
+
+          createdByName:
+            req.user.name ||
+            "Admin",
+
+          updatedBy:
+            req.user._id,
+
+          updatedByName:
+            req.user.name ||
+            "Admin",
+        });
+
+      /*
+       * Link contract to the permanent current invoice.
+       */
+      createdContract.currentInvoiceId =
+        createdInvoice._id;
+
+      createdContract.currentInvoiceCode =
+        createdInvoice.invoiceCode;
+
+      await createdContract.save();
+
+      /*
+       * Client Master receives only current status values.
+       * No invoice or payment history is saved in Client.
        */
       clientProduct.supportType =
-        normalizedPlan === "Custom"
-          ? clientProduct.supportType
+        normalizedPlan ===
+        "Custom"
+          ? clientProduct
+              .supportType
           : normalizedPlan;
 
       clientProduct.amcStatus =
-        status === "Upcoming"
+        contractStatus ===
+        "Upcoming"
           ? "Not Started"
-          : status;
+          : contractStatus;
 
       clientProduct.expiryDate =
         parsedExpiryDate
           .toISOString()
-          .slice(0, 10);
+          .slice(
+            0,
+            10
+          );
 
       client.amcStatus =
-        status === "Upcoming"
+        contractStatus ===
+        "Upcoming"
           ? "Not Started"
-          : status;
+          : contractStatus;
 
       client.nextRenewal =
         parsedExpiryDate
           .toISOString()
-          .slice(0, 10);
+          .slice(
+            0,
+            10
+          );
 
       await client.save();
 
@@ -14201,16 +15157,16 @@ router.post(
           "AMC",
 
         description:
-          `${contract.contractCode} was created for ${client.companyName} - ${clientProduct.productName}.`,
+          `${createdContract.contractCode} was created for ${client.companyName} - ${clientProduct.productName}.`,
 
         entityType:
           "amc",
 
         entityId:
-          contract._id,
+          createdContract._id,
 
         entityCode:
-          contract.contractCode,
+          createdContract.contractCode,
 
         entityName:
           `${client.companyName} - ${clientProduct.productName}`,
@@ -14241,23 +15197,34 @@ router.post(
           "admin",
 
         metadata: {
+          invoiceId:
+            createdInvoice._id,
+
           invoiceCode:
-            contract.invoiceCode,
+            createdInvoice
+              .invoiceCode,
 
           productCode:
-            contract.productCode,
+            createdInvoice
+              .productCode,
 
           productName:
-            contract.productName,
+            createdInvoice
+              .productName,
 
           plan:
-            contract.plan,
+            createdInvoice.plan,
+
+          taxableAmount:
+            createdInvoice
+              .taxableAmount,
 
           totalAmount:
-            contract.totalAmount,
+            createdInvoice
+              .totalAmount,
 
           status:
-            contract.status,
+            createdContract.status,
         },
       });
 
@@ -14265,20 +15232,56 @@ router.post(
         success: true,
 
         message:
-          "AMC contract created successfully.",
+          "AMC contract and invoice created successfully.",
 
-        data:
-          amcContractResponse(
-            contract
+        data: {
+          ...amcContractResponse(
+            createdContract
           ),
+
+          currentInvoice:
+            amcInvoiceResponse(
+              createdInvoice
+            ),
+
+          invoice:
+            amcInvoiceResponse(
+              createdInvoice
+            ),
+        },
       });
     } catch (error) {
       console.error(
-        "Create AMC contract error:",
+        "Create AMC contract and invoice error:",
         error
       );
 
-      if (error.code === 11000) {
+      /*
+       * Manual rollback protects against half-created data
+       * when MongoDB transactions are unavailable.
+       */
+      if (
+        createdInvoice?._id
+      ) {
+        await AmcInvoice.deleteOne({
+          _id:
+            createdInvoice._id,
+        }).catch(() => {});
+      }
+
+      if (
+        createdContract?._id
+      ) {
+        await AmcContract.deleteOne({
+          _id:
+            createdContract._id,
+        }).catch(() => {});
+      }
+
+      if (
+        error.code ===
+        11000
+      ) {
         return res.status(409).json({
           success: false,
 
@@ -14292,13 +15295,18 @@ router.post(
 
         message:
           error.message ||
-          "Unable to create AMC contract.",
+          "Unable to create AMC contract and invoice.",
       });
     }
   }
 );
 /* =====================================================
    GET ALL AMC CONTRACTS
+   GET /api/admin/amc/contracts
+===================================================== */
+
+/* =====================================================
+   GET ALL AMC CONTRACTS WITH CURRENT INVOICE
    GET /api/admin/amc/contracts
 ===================================================== */
 
@@ -14316,10 +15324,6 @@ router.get(
         limit = 200,
       } = req.query;
 
-      /*
-       * Automatically mark expired,
-       * unpaid contracts as Overdue.
-       */
       const today =
         new Date();
 
@@ -14330,20 +15334,27 @@ router.get(
         0
       );
 
-      await AmcContract.updateMany(
+      /*
+       * Financial overdue status belongs to invoices.
+       */
+      await AmcInvoice.updateMany(
         {
           isDeleted:
             false,
 
           status: {
-            $nin: [
-              "Paid",
+            $ne:
               "Cancelled",
-              "Overdue",
+          },
+
+          paymentStatus: {
+            $in: [
+              "Pending",
+              "Partially Paid",
             ],
           },
 
-          expiryDate: {
+          dueDate: {
             $lt:
               today,
           },
@@ -14355,7 +15366,7 @@ router.get(
         },
         {
           $set: {
-            status:
+            paymentStatus:
               "Overdue",
 
             updatedAt:
@@ -14363,6 +15374,74 @@ router.get(
           },
         }
       );
+
+      /*
+       * Synchronize current contract status using its
+       * current permanent invoice.
+       */
+      const overdueInvoices =
+        await AmcInvoice.find({
+          isDeleted:
+            false,
+
+          status: {
+            $ne:
+              "Cancelled",
+          },
+
+          paymentStatus:
+            "Overdue",
+
+          pendingAmount: {
+            $gt:
+              0,
+          },
+        })
+          .select(
+            "amcContractId"
+          )
+          .lean();
+
+      const overdueContractIds =
+        overdueInvoices
+          .map(
+            (invoice) =>
+              invoice.amcContractId
+          )
+          .filter(Boolean);
+
+      if (
+        overdueContractIds.length >
+        0
+      ) {
+        await AmcContract.updateMany(
+          {
+            _id: {
+              $in:
+                overdueContractIds,
+            },
+
+            isDeleted:
+              false,
+
+            status: {
+              $nin: [
+                "Paid",
+                "Cancelled",
+              ],
+            },
+          },
+          {
+            $set: {
+              status:
+                "Overdue",
+
+              updatedAt:
+                new Date(),
+            },
+          }
+        );
+      }
 
       const query = {
         isDeleted:
@@ -14422,13 +15501,24 @@ router.get(
       }
 
       const normalizedSearch =
-        String(search || "")
-          .trim();
+        String(
+          search || ""
+        ).trim();
 
       if (normalizedSearch) {
         query.$or = [
           {
             contractCode: {
+              $regex:
+                normalizedSearch,
+
+              $options:
+                "i",
+            },
+          },
+
+          {
+            currentInvoiceCode: {
               $regex:
                 normalizedSearch,
 
@@ -14532,7 +15622,10 @@ router.get(
       const normalizedLimit =
         Math.min(
           Math.max(
-            Number(limit || 200),
+            Number(
+              limit ||
+              200
+            ),
             1
           ),
           1000
@@ -14543,9 +15636,6 @@ router.get(
           query
         )
           .sort({
-            expiryDate:
-              1,
-
             createdAt:
               -1,
           })
@@ -14553,121 +15643,223 @@ router.get(
             normalizedLimit
           );
 
-      const allContracts =
-        await AmcContract.find({
-          isDeleted:
-            false,
-        })
-          .select({
+      /*
+       * Load all current invoices in one query.
+       * This avoids running one query per contract.
+       */
+      const currentInvoiceIds =
+        contracts
+          .map(
+            (contract) =>
+              contract.currentInvoiceId
+          )
+          .filter(Boolean);
+
+      const currentInvoiceCodes =
+        contracts
+          .filter(
+            (contract) =>
+              !contract.currentInvoiceId &&
+              (
+                contract.currentInvoiceCode ||
+                contract.invoiceCode
+              )
+          )
+          .map(
+            (contract) =>
+              contract.currentInvoiceCode ||
+              contract.invoiceCode
+          );
+
+      const invoiceOrConditions =
+        [];
+
+      if (
+        currentInvoiceIds.length >
+        0
+      ) {
+        invoiceOrConditions.push({
+          _id: {
+            $in:
+              currentInvoiceIds,
+          },
+        });
+      }
+
+      if (
+        currentInvoiceCodes.length >
+        0
+      ) {
+        invoiceOrConditions.push({
+          invoiceCode: {
+            $in:
+              currentInvoiceCodes,
+          },
+        });
+      }
+
+      const invoices =
+        invoiceOrConditions.length >
+        0
+          ? await AmcInvoice.find({
+              isDeleted:
+                false,
+
+              $or:
+                invoiceOrConditions,
+            })
+          : [];
+
+      const invoiceById =
+        new Map();
+
+      const invoiceByCode =
+        new Map();
+
+      invoices.forEach(
+        (invoice) => {
+          invoiceById.set(
+            String(
+              invoice._id
+            ),
+            invoice
+          );
+
+          invoiceByCode.set(
+            String(
+              invoice.invoiceCode
+            ),
+            invoice
+          );
+        }
+      );
+
+      const data =
+        contracts.map(
+          (contract) => {
+            const invoice =
+              invoiceById.get(
+                String(
+                  contract.currentInvoiceId ||
+                  ""
+                )
+              ) ||
+              invoiceByCode.get(
+                String(
+                  contract.currentInvoiceCode ||
+                  contract.invoiceCode ||
+                  ""
+                )
+              ) ||
+              null;
+
+            return mergeAmcContractWithInvoice(
+              contract,
+              invoice
+            );
+          }
+        );
+
+      /*
+       * Dashboard totals now come from permanent invoices,
+       * not Client Master or copied contract totals.
+       */
+      const invoiceStats =
+        await AmcInvoice.aggregate([
+          {
+            $match: {
+              isDeleted:
+                false,
+
+              status: {
+                $ne:
+                  "Cancelled",
+              },
+            },
+          },
+
+          {
+            $group: {
+              _id:
+                null,
+
+              totalCollected: {
+                $sum:
+                  "$paidAmount",
+              },
+
+              totalPending: {
+                $sum:
+                  "$pendingAmount",
+              },
+            },
+          },
+        ]);
+
+      const [
+        overdueCount,
+        upcomingCount,
+      ] =
+        await Promise.all([
+          AmcInvoice.countDocuments({
+            isDeleted:
+              false,
+
+            status: {
+              $ne:
+                "Cancelled",
+            },
+
+            paymentStatus:
+              "Overdue",
+
+            pendingAmount: {
+              $gt:
+                0,
+            },
+          }),
+
+          AmcContract.countDocuments({
+            isDeleted:
+              false,
+
             status:
-              1,
-
-            totalAmount:
-              1,
-
-            paidAmount:
-              1,
-
-            pendingAmount:
-              1,
-
-            expiryDate:
-              1,
-          })
-          .lean();
-
-      const stats = {
-        totalContracts:
-          allContracts.length,
-
-        totalCollected:
-          roundAmcAmount(
-            allContracts.reduce(
-              (
-                total,
-                contract
-              ) =>
-                total +
-                Number(
-                  contract.paidAmount ||
-                  0
-                ),
-              0
-            )
-          ),
-
-        totalPending:
-          roundAmcAmount(
-            allContracts.reduce(
-              (
-                total,
-                contract
-              ) =>
-                total +
-                Number(
-                  contract.pendingAmount ||
-                  0
-                ),
-              0
-            )
-          ),
-
-        overdueCount:
-          allContracts.filter(
-            (contract) =>
-              contract.status ===
-              "Overdue"
-          ).length,
-
-        upcomingCount:
-          allContracts.filter(
-            (contract) =>
-              [
-                "Upcoming",
-                "Pending",
-                "Partially Paid",
-              ].includes(
-                contract.status
-              )
-          ).length,
-
-        paidCount:
-          allContracts.filter(
-            (contract) =>
-              contract.status ===
-              "Paid"
-          ).length,
-
-        pendingCount:
-          allContracts.filter(
-            (contract) =>
-              [
-                "Pending",
-                "Partially Paid",
-                "Overdue",
-              ].includes(
-                contract.status
-              )
-          ).length,
-      };
+              "Upcoming",
+          }),
+        ]);
 
       return res.status(200).json({
         success:
           true,
 
+        data,
+
         count:
-          contracts.length,
+          data.length,
 
-        stats,
+        stats: {
+          totalCollected:
+            roundAmcAmount(
+              invoiceStats[0]
+                ?.totalCollected ||
+              0
+            ),
 
-        data:
-          contracts.map(
-            amcContractResponse
-          ),
+          totalPending:
+            roundAmcAmount(
+              invoiceStats[0]
+                ?.totalPending ||
+              0
+            ),
+
+          overdueCount,
+
+          upcomingCount,
+        },
       });
     } catch (error) {
       console.error(
-        "Load AMC contracts error:",
+        "Load AMC contracts with invoices error:",
         error
       );
 
@@ -14682,8 +15874,14 @@ router.get(
     }
   }
 );
+
 /* =====================================================
    GET ONE AMC CONTRACT
+   GET /api/admin/amc/contract/:id
+===================================================== */
+
+/* =====================================================
+   GET ONE AMC CONTRACT WITH INVOICE HISTORY
    GET /api/admin/amc/contract/:id
 ===================================================== */
 
@@ -14728,84 +15926,425 @@ router.get(
         });
       }
 
-      const calculatedStatus =
-        calculateAmcStatus({
-          startDate:
-            contract.startDate,
+      /*
+       * Load every permanent invoice belonging
+       * to this AMC contract.
+       */
+      const invoices =
+        await AmcInvoice.find({
+          amcContractId:
+            contract._id,
 
-          expiryDate:
-            contract.expiryDate,
+          isDeleted:
+            false,
+        }).sort({
+          invoiceDate:
+            -1,
 
-          totalAmount:
-            contract.totalAmount,
-
-          paidAmount:
-            contract.paidAmount,
-
-          currentStatus:
-            contract.status,
+          createdAt:
+            -1,
         });
 
-      if (
-        calculatedStatus !==
-        contract.status
-      ) {
-        contract.status =
-          calculatedStatus;
+      /*
+       * Resolve the current invoice using the linked ID.
+       * For older data, fall back to invoice code or the
+       * newest invoice.
+       */
+      let currentInvoice =
+        invoices.find(
+          (invoice) =>
+            String(
+              invoice._id
+            ) ===
+            String(
+              contract.currentInvoiceId ||
+              ""
+            )
+        ) ||
+        invoices.find(
+          (invoice) =>
+            invoice.invoiceCode ===
+            (
+              contract.currentInvoiceCode ||
+              contract.invoiceCode
+            )
+        ) ||
+        invoices[0] ||
+        null;
 
-        contract.pendingAmount =
-          Math.max(
-            roundAmcAmount(
-              contract.totalAmount -
-              contract.paidAmount
-            ),
+      /*
+       * Update overdue status using invoice due date,
+       * not the AMC expiry date.
+       */
+      if (
+        currentInvoice &&
+        currentInvoice.status !==
+          "Cancelled"
+      ) {
+        const today =
+          new Date();
+
+        today.setHours(
+          0,
+          0,
+          0,
+          0
+        );
+
+        const invoiceDueDate =
+          currentInvoice.dueDate
+            ? new Date(
+                currentInvoice.dueDate
+              )
+            : null;
+
+        if (invoiceDueDate) {
+          invoiceDueDate.setHours(
+            0,
+            0,
+            0,
             0
           );
+        }
 
-        await contract.save();
+        let calculatedPaymentStatus =
+          currentInvoice.paymentStatus;
+
+        if (
+          Number(
+            currentInvoice.pendingAmount ||
+            0
+          ) <= 0
+        ) {
+          calculatedPaymentStatus =
+            "Paid";
+        } else if (
+          Number(
+            currentInvoice.paidAmount ||
+            0
+          ) > 0
+        ) {
+          calculatedPaymentStatus =
+            "Partially Paid";
+        } else if (
+          invoiceDueDate &&
+          !Number.isNaN(
+            invoiceDueDate.getTime()
+          ) &&
+          invoiceDueDate < today
+        ) {
+          calculatedPaymentStatus =
+            "Overdue";
+        } else {
+          calculatedPaymentStatus =
+            "Pending";
+        }
+
+        if (
+          calculatedPaymentStatus !==
+          currentInvoice.paymentStatus
+        ) {
+          currentInvoice.paymentStatus =
+            calculatedPaymentStatus;
+
+          currentInvoice.updatedBy =
+            req.user._id;
+
+          currentInvoice.updatedByName =
+            req.user.name ||
+            "Admin";
+
+          await currentInvoice.save();
+        }
+
+        /*
+         * Keep the overall contract status synchronized
+         * with the current invoice payment status.
+         */
+        let calculatedContractStatus =
+          contract.status;
+
+        if (
+          contract.status !==
+          "Cancelled"
+        ) {
+          if (
+            calculatedPaymentStatus ===
+            "Paid"
+          ) {
+            calculatedContractStatus =
+              "Paid";
+          } else if (
+            calculatedPaymentStatus ===
+            "Partially Paid"
+          ) {
+            calculatedContractStatus =
+              "Partially Paid";
+          } else if (
+            calculatedPaymentStatus ===
+            "Overdue"
+          ) {
+            calculatedContractStatus =
+              "Overdue";
+          } else {
+            const startDate =
+              contract.startDate
+                ? new Date(
+                    contract.startDate
+                  )
+                : null;
+
+            if (startDate) {
+              startDate.setHours(
+                0,
+                0,
+                0,
+                0
+              );
+            }
+
+            calculatedContractStatus =
+              startDate &&
+              !Number.isNaN(
+                startDate.getTime()
+              ) &&
+              startDate > today
+                ? "Upcoming"
+                : "Pending";
+          }
+        }
+
+        const contractNeedsUpdate =
+          calculatedContractStatus !==
+            contract.status ||
+          String(
+            contract.currentInvoiceId ||
+            ""
+          ) !==
+            String(
+              currentInvoice._id
+            ) ||
+          contract.currentInvoiceCode !==
+            currentInvoice.invoiceCode;
+
+        if (contractNeedsUpdate) {
+          contract.status =
+            calculatedContractStatus;
+
+          contract.currentInvoiceId =
+            currentInvoice._id;
+
+          contract.currentInvoiceCode =
+            currentInvoice.invoiceCode;
+
+          /*
+           * Compatibility copies only.
+           * Invoice remains the financial source of truth.
+           */
+          contract.invoiceCode =
+            currentInvoice.invoiceCode;
+
+          contract.invoiceDate =
+            currentInvoice.invoiceDate;
+
+          contract.taxableAmount =
+            currentInvoice.taxableAmount;
+
+          contract.cgstRate =
+            currentInvoice.cgstRate;
+
+          contract.cgstAmount =
+            currentInvoice.cgstAmount;
+
+          contract.sgstRate =
+            currentInvoice.sgstRate;
+
+          contract.sgstAmount =
+            currentInvoice.sgstAmount;
+
+          contract.igstRate =
+            currentInvoice.igstRate;
+
+          contract.igstAmount =
+            currentInvoice.igstAmount;
+
+          contract.totalTaxAmount =
+            currentInvoice.totalTaxAmount;
+
+          contract.totalAmount =
+            currentInvoice.totalAmount;
+
+          contract.paidAmount =
+            currentInvoice.paidAmount;
+
+          contract.pendingAmount =
+            currentInvoice.pendingAmount;
+
+          contract.dueDate =
+            currentInvoice.dueDate;
+
+          contract.updatedBy =
+            req.user._id;
+
+          contract.updatedByName =
+            req.user.name ||
+            "Admin";
+
+          await contract.save();
+        }
       }
 
       const [
         payments,
         reminders,
-      ] = await Promise.all([
-        AmcPayment.find({
-          amcContractId:
-            contract._id,
+      ] =
+        await Promise.all([
+          AmcPayment.find({
+            amcContractId:
+              contract._id,
 
-          isDeleted:
-            false,
-        }).sort({
-          paymentDate:
-            -1,
+            isDeleted:
+              false,
+          }).sort({
+            paymentDate:
+              -1,
 
-          createdAt:
-            -1,
-        }),
+            createdAt:
+              -1,
+          }),
 
-        AmcReminder.find({
-          amcContractId:
-            contract._id,
+          AmcReminder.find({
+            amcContractId:
+              contract._id,
 
-          isDeleted:
-            false,
-        }).sort({
-          sentAt:
-            -1,
+            isDeleted:
+              false,
+          }).sort({
+            sentAt:
+              -1,
 
-          createdAt:
-            -1,
-        }),
-      ]);
+            createdAt:
+              -1,
+          }),
+        ]);
+
+      /*
+       * Group payments by permanent invoice.
+       */
+      const paymentsByInvoice =
+        new Map();
+
+      payments.forEach(
+        (payment) => {
+          const invoiceId =
+            String(
+              payment.amcInvoiceId ||
+              ""
+            );
+
+          if (
+            !paymentsByInvoice.has(
+              invoiceId
+            )
+          ) {
+            paymentsByInvoice.set(
+              invoiceId,
+              []
+            );
+          }
+
+          paymentsByInvoice
+            .get(
+              invoiceId
+            )
+            .push(
+              amcPaymentResponse(
+                payment
+              )
+            );
+        }
+      );
+
+      const invoiceHistory =
+        invoices.map(
+          (invoice) => ({
+            ...amcInvoiceResponse(
+              invoice
+            ),
+
+            isCurrent:
+              String(
+                invoice._id
+              ) ===
+              String(
+                currentInvoice?._id ||
+                ""
+              ),
+
+            payments:
+              paymentsByInvoice.get(
+                String(
+                  invoice._id
+                )
+              ) ||
+              [],
+
+            paymentCount:
+              (
+                paymentsByInvoice.get(
+                  String(
+                    invoice._id
+                  )
+                ) ||
+                []
+              ).length,
+          })
+        );
+
+      const contractData =
+        mergeAmcContractWithInvoice(
+          contract,
+          currentInvoice
+        );
 
       return res.status(200).json({
         success:
           true,
 
         data: {
-          ...amcContractResponse(
-            contract
-          ),
+          ...contractData,
+
+          currentInvoice:
+            currentInvoice
+              ? {
+                  ...amcInvoiceResponse(
+                    currentInvoice
+                  ),
+
+                  payments:
+                    paymentsByInvoice.get(
+                      String(
+                        currentInvoice._id
+                      )
+                    ) ||
+                    [],
+                }
+              : null,
+
+          invoice:
+            currentInvoice
+              ? amcInvoiceResponse(
+                  currentInvoice
+                )
+              : null,
+
+          invoices:
+            invoiceHistory,
+
+          invoiceHistory,
+
+          invoiceCount:
+            invoices.length,
 
           payments:
             payments.map(
@@ -14826,7 +16365,7 @@ router.get(
       });
     } catch (error) {
       console.error(
-        "Load AMC contract error:",
+        "Load AMC contract with invoice history error:",
         error
       );
 
@@ -14837,6 +16376,1333 @@ router.get(
         message:
           error.message ||
           "Unable to load AMC contract.",
+      });
+    }
+  }
+);
+/* =====================================================
+   RECORD AMC INVOICE PAYMENT
+   POST /api/admin/amc/payment
+
+   Financial source of truth:
+   AmcInvoice -> AmcPayment
+
+   Accepted body:
+   {
+     amcInvoiceId,
+     amcContractId, // optional fallback
+     amount,
+     paymentDate,
+     mode,
+     referenceNo,
+     notes
+   }
+===================================================== */
+
+router.post(
+  "/amc/payment",
+  async (req, res) => {
+    const session =
+      await mongoose.startSession();
+
+    let savedPayment =
+      null;
+
+    let savedInvoice =
+      null;
+
+    let savedContract =
+      null;
+
+    try {
+      const {
+        amcInvoiceId,
+        amcContractId,
+
+        amount,
+        paymentDate,
+
+        mode =
+          "Bank Transfer",
+
+        referenceNo =
+          "",
+
+        notes =
+          "",
+      } = req.body;
+
+      const normalizedAmount =
+        roundAmcAmount(
+          amount
+        );
+
+      if (
+        !Number.isFinite(
+          normalizedAmount
+        ) ||
+        normalizedAmount <= 0
+      ) {
+        return res.status(400).json({
+          success:
+            false,
+
+          message:
+            "Enter a valid payment amount.",
+        });
+      }
+
+      if (!paymentDate) {
+        return res.status(400).json({
+          success:
+            false,
+
+          message:
+            "Payment date is required.",
+        });
+      }
+
+      const parsedPaymentDate =
+        new Date(
+          `${paymentDate}T00:00:00`
+        );
+
+      if (
+        Number.isNaN(
+          parsedPaymentDate.getTime()
+        )
+      ) {
+        return res.status(400).json({
+          success:
+            false,
+
+          message:
+            "Invalid payment date.",
+        });
+      }
+
+      const allowedModes = [
+        "Cash",
+        "Bank Transfer",
+        "UPI",
+        "Cheque",
+        "Card",
+        "Other",
+      ];
+
+      const normalizedMode =
+        allowedModes.includes(
+          mode
+        )
+          ? mode
+          : "Other";
+
+      /*
+       * Bank/UPI/Cheque/Card payments should preferably
+       * contain a reference number.
+       */
+      const normalizedReferenceNo =
+        String(
+          referenceNo ||
+          ""
+        ).trim();
+
+      const normalizedNotes =
+        String(
+          notes ||
+          ""
+        ).trim();
+
+      if (
+        [
+          "Bank Transfer",
+          "UPI",
+          "Cheque",
+          "Card",
+        ].includes(
+          normalizedMode
+        ) &&
+        !normalizedReferenceNo
+      ) {
+        return res.status(400).json({
+          success:
+            false,
+
+          message:
+            `Reference number is required for ${normalizedMode}.`,
+        });
+      }
+
+      /*
+       * At least invoice ID or contract ID is required.
+       */
+      const validInvoiceId =
+        amcInvoiceId &&
+        mongoose.Types.ObjectId.isValid(
+          amcInvoiceId
+        );
+
+      const validContractId =
+        amcContractId &&
+        mongoose.Types.ObjectId.isValid(
+          amcContractId
+        );
+
+      if (
+        !validInvoiceId &&
+        !validContractId
+      ) {
+        return res.status(400).json({
+          success:
+            false,
+
+          message:
+            "A valid AMC invoice ID is required.",
+        });
+      }
+
+      await session.withTransaction(
+        async () => {
+          let invoice =
+            null;
+
+          /*
+           * Preferred method:
+           * direct permanent invoice selection.
+           */
+          if (validInvoiceId) {
+            invoice =
+              await AmcInvoice.findOne({
+                _id:
+                  amcInvoiceId,
+
+                isDeleted:
+                  false,
+              }).session(
+                session
+              );
+          }
+
+          /*
+           * Compatibility fallback:
+           * resolve current invoice through contract.
+           */
+          if (
+            !invoice &&
+            validContractId
+          ) {
+            const fallbackContract =
+              await AmcContract.findOne({
+                _id:
+                  amcContractId,
+
+                isDeleted:
+                  false,
+              }).session(
+                session
+              );
+
+            if (
+              fallbackContract
+                ?.currentInvoiceId
+            ) {
+              invoice =
+                await AmcInvoice.findOne({
+                  _id:
+                    fallbackContract
+                      .currentInvoiceId,
+
+                  isDeleted:
+                    false,
+                }).session(
+                  session
+                );
+            }
+
+            if (
+              !invoice &&
+              (
+                fallbackContract
+                  ?.currentInvoiceCode ||
+                fallbackContract
+                  ?.invoiceCode
+              )
+            ) {
+              invoice =
+                await AmcInvoice.findOne({
+                  invoiceCode:
+                    fallbackContract
+                      .currentInvoiceCode ||
+                    fallbackContract
+                      .invoiceCode,
+
+                  isDeleted:
+                    false,
+                }).session(
+                  session
+                );
+            }
+          }
+
+          if (!invoice) {
+            const error =
+              new Error(
+                "AMC invoice was not found."
+              );
+
+            error.statusCode =
+              404;
+
+            throw error;
+          }
+
+          if (
+            invoice.status ===
+            "Cancelled"
+          ) {
+            const error =
+              new Error(
+                "Payment cannot be recorded against a cancelled invoice."
+              );
+
+            error.statusCode =
+              400;
+
+            throw error;
+          }
+
+          const contract =
+            await AmcContract.findOne({
+              _id:
+                invoice.amcContractId,
+
+              isDeleted:
+                false,
+            }).session(
+              session
+            );
+
+          if (!contract) {
+            const error =
+              new Error(
+                "The AMC contract linked to this invoice was not found."
+              );
+
+            error.statusCode =
+              404;
+
+            throw error;
+          }
+
+          if (
+            contract.status ===
+            "Cancelled"
+          ) {
+            const error =
+              new Error(
+                "Payment cannot be recorded against a cancelled AMC contract."
+              );
+
+            error.statusCode =
+              400;
+
+            throw error;
+          }
+
+          const invoiceTotal =
+            roundAmcAmount(
+              invoice.totalAmount
+            );
+
+          /*
+           * Recalculate paid amount from permanent payment
+           * records instead of trusting copied totals.
+           */
+          const existingPaymentTotals =
+            await AmcPayment.aggregate([
+              {
+                $match: {
+                  amcInvoiceId:
+                    invoice._id,
+
+                  isDeleted:
+                    false,
+                },
+              },
+
+              {
+                $group: {
+                  _id:
+                    null,
+
+                  paidAmount: {
+                    $sum:
+                      "$amount",
+                  },
+                },
+              },
+            ]).session(
+              session
+            );
+
+          const existingPaidAmount =
+            roundAmcAmount(
+              existingPaymentTotals[0]
+                ?.paidAmount ||
+              0
+            );
+
+          const actualPendingAmount =
+            Math.max(
+              roundAmcAmount(
+                invoiceTotal -
+                existingPaidAmount
+              ),
+              0
+            );
+
+          if (
+            actualPendingAmount <= 0
+          ) {
+            const error =
+              new Error(
+                "This invoice is already fully paid."
+              );
+
+            error.statusCode =
+              400;
+
+            throw error;
+          }
+
+          if (
+            normalizedAmount >
+            actualPendingAmount
+          ) {
+            const error =
+              new Error(
+                `Payment cannot exceed the pending amount of ₹${actualPendingAmount.toLocaleString(
+                  "en-IN",
+                  {
+                    minimumFractionDigits:
+                      2,
+
+                    maximumFractionDigits:
+                      2,
+                  }
+                )}.`
+              );
+
+            error.statusCode =
+              400;
+
+            throw error;
+          }
+
+          const paymentCode =
+            generateAmcPaymentCode();
+
+          const createdPayments =
+            await AmcPayment.create(
+              [
+                {
+                  paymentCode,
+
+                  amcContractId:
+                    contract._id,
+
+                  amcInvoiceId:
+                    invoice._id,
+
+                  contractCode:
+                    contract.contractCode,
+
+                  invoiceCode:
+                    invoice.invoiceCode,
+
+                  /*
+                   * Snapshot fields make payment history
+                   * independent of Client Master.
+                   */
+                  clientId:
+                    invoice.clientId,
+
+                  clientCode:
+                    invoice.clientCode,
+
+                  clientName:
+                    invoice.clientName,
+
+                  productId:
+                    invoice.productId,
+
+                  productCode:
+                    invoice.productCode,
+
+                  productName:
+                    invoice.productName,
+
+                  amount:
+                    normalizedAmount,
+
+                  paymentDate:
+                    parsedPaymentDate,
+
+                  mode:
+                    normalizedMode,
+
+                  referenceNo:
+                    normalizedReferenceNo,
+
+                  notes:
+                    normalizedNotes,
+
+                  receivedBy:
+                    req.user._id,
+
+                  receivedByName:
+                    req.user.name ||
+                    "Admin",
+
+                  isDeleted:
+                    false,
+                },
+              ],
+              {
+                session,
+              }
+            );
+
+          const payment =
+            createdPayments[0];
+
+          const updatedPaidAmount =
+            roundAmcAmount(
+              existingPaidAmount +
+              normalizedAmount
+            );
+
+          const updatedPendingAmount =
+            Math.max(
+              roundAmcAmount(
+                invoiceTotal -
+                updatedPaidAmount
+              ),
+              0
+            );
+
+          const paymentStatus =
+            updatedPendingAmount <= 0
+              ? "Paid"
+              : "Partially Paid";
+
+          /*
+           * Update permanent invoice balance.
+           */
+          invoice.paidAmount =
+            updatedPaidAmount;
+
+          invoice.pendingAmount =
+            updatedPendingAmount;
+
+          invoice.paymentStatus =
+            paymentStatus;
+
+          invoice.updatedBy =
+            req.user._id;
+
+          invoice.updatedByName =
+            req.user.name ||
+            "Admin";
+
+          await invoice.save({
+            session,
+          });
+
+          /*
+           * Keep compatibility values in the contract.
+           * Invoice remains the source of truth.
+           */
+          contract.currentInvoiceId =
+            invoice._id;
+
+          contract.currentInvoiceCode =
+            invoice.invoiceCode;
+
+          contract.invoiceCode =
+            invoice.invoiceCode;
+
+          contract.invoiceDate =
+            invoice.invoiceDate;
+
+          contract.taxableAmount =
+            invoice.taxableAmount;
+
+          contract.cgstRate =
+            invoice.cgstRate;
+
+          contract.cgstAmount =
+            invoice.cgstAmount;
+
+          contract.sgstRate =
+            invoice.sgstRate;
+
+          contract.sgstAmount =
+            invoice.sgstAmount;
+
+          contract.igstRate =
+            invoice.igstRate;
+
+          contract.igstAmount =
+            invoice.igstAmount;
+
+          contract.totalTaxAmount =
+            invoice.totalTaxAmount;
+
+          contract.totalAmount =
+            invoice.totalAmount;
+
+          contract.paidAmount =
+            updatedPaidAmount;
+
+          contract.pendingAmount =
+            updatedPendingAmount;
+
+          contract.status =
+            paymentStatus;
+
+          contract.reminderStatus =
+            paymentStatus ===
+            "Paid"
+              ? "Not Required"
+              : contract.reminderStatus;
+
+          if (
+            paymentStatus ===
+            "Paid"
+          ) {
+            contract.nextFollowUpDate =
+              null;
+          }
+
+          contract.timeline.push({
+            type:
+              "payment",
+
+            title:
+              paymentStatus ===
+              "Paid"
+                ? "AMC invoice fully paid"
+                : "AMC payment received",
+
+            description:
+              `₹${normalizedAmount.toLocaleString(
+                "en-IN",
+                {
+                  minimumFractionDigits:
+                    2,
+
+                  maximumFractionDigits:
+                    2,
+                }
+              )} received through ${normalizedMode} against invoice ${invoice.invoiceCode}${
+                normalizedReferenceNo
+                  ? ` · Reference ${normalizedReferenceNo}`
+                  : ""
+              }. Pending amount: ₹${updatedPendingAmount.toLocaleString(
+                "en-IN",
+                {
+                  minimumFractionDigits:
+                    2,
+
+                  maximumFractionDigits:
+                    2,
+                }
+              )}.`,
+
+            performedBy:
+              req.user._id,
+
+            performedByName:
+              req.user.name ||
+              "Admin",
+
+            performedByRole:
+              req.user.role ||
+              "admin",
+          });
+
+          contract.updatedBy =
+            req.user._id;
+
+          contract.updatedByName =
+            req.user.name ||
+            "Admin";
+
+          await contract.save({
+            session,
+          });
+
+          savedPayment =
+            payment;
+
+          savedInvoice =
+            invoice;
+
+          savedContract =
+            contract;
+        }
+      );
+
+      /*
+       * Update Client Master only when it still exists.
+       *
+       * Payment records remain safe even when the Client
+       * Master was archived or deleted.
+       */
+      if (
+        savedInvoice?.clientId
+      ) {
+        const client =
+          await Client.findOne({
+            _id:
+              savedInvoice.clientId,
+
+            isDeleted:
+              false,
+          });
+
+        if (client) {
+          const clientProduct =
+            client.products.id(
+              savedInvoice.clientProductId
+            );
+
+          const masterAmcStatus =
+            savedInvoice.paymentStatus ===
+            "Paid"
+              ? "Paid"
+              : "Partially Paid";
+
+          if (clientProduct) {
+            clientProduct.amcStatus =
+              masterAmcStatus;
+          }
+
+          client.amcStatus =
+            masterAmcStatus;
+
+          client.updatedBy =
+            req.user._id;
+
+          client.updatedByName =
+            req.user.name ||
+            "Admin";
+
+          await client.save();
+        }
+      }
+
+      await createActivityLog({
+        action:
+          "AMC Payment Received",
+
+        category:
+          "Payment",
+
+        description:
+          `Payment ${savedPayment.paymentCode} of ₹${savedPayment.amount.toLocaleString(
+            "en-IN",
+            {
+              minimumFractionDigits:
+                2,
+
+              maximumFractionDigits:
+                2,
+            }
+          )} was received against invoice ${savedInvoice.invoiceCode}.`,
+
+        entityType:
+          "payment",
+
+        entityId:
+          savedPayment._id,
+
+        entityCode:
+          savedPayment.paymentCode,
+
+        entityName:
+          savedInvoice.invoiceCode,
+
+        clientId:
+          savedInvoice.clientId,
+
+        clientName:
+          savedInvoice.clientName,
+
+        employeeId:
+          savedContract
+            .assignedEmployeeId,
+
+        employeeName:
+          savedContract
+            .assignedEmployeeName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          req.user.role ||
+          "admin",
+
+        metadata: {
+          amcContractId:
+            savedContract._id,
+
+          contractCode:
+            savedContract
+              .contractCode,
+
+          amcInvoiceId:
+            savedInvoice._id,
+
+          invoiceCode:
+            savedInvoice
+              .invoiceCode,
+
+          paymentCode:
+            savedPayment
+              .paymentCode,
+
+          paymentDate:
+            savedPayment
+              .paymentDate,
+
+          amount:
+            savedPayment.amount,
+
+          mode:
+            savedPayment.mode,
+
+          referenceNo:
+            savedPayment
+              .referenceNo,
+
+          paidAmount:
+            savedInvoice
+              .paidAmount,
+
+          pendingAmount:
+            savedInvoice
+              .pendingAmount,
+
+          paymentStatus:
+            savedInvoice
+              .paymentStatus,
+        },
+      });
+
+      const contractData =
+        mergeAmcContractWithInvoice(
+          savedContract,
+          savedInvoice
+        );
+
+      return res.status(201).json({
+        success:
+          true,
+
+        message:
+          savedInvoice.paymentStatus ===
+          "Paid"
+            ? "Payment recorded successfully. The invoice is now fully paid."
+            : "Payment recorded successfully.",
+
+        data: {
+          payment:
+            amcPaymentResponse(
+              savedPayment
+            ),
+
+          invoice:
+            amcInvoiceResponse(
+              savedInvoice
+            ),
+
+          contract:
+            contractData,
+        },
+
+        payment:
+          amcPaymentResponse(
+            savedPayment
+          ),
+
+        invoice:
+          amcInvoiceResponse(
+            savedInvoice
+          ),
+
+        contract:
+          contractData,
+      });
+    } catch (error) {
+      console.error(
+        "Record AMC invoice payment error:",
+        error
+      );
+
+      return res
+        .status(
+          error.statusCode ||
+          500
+        )
+        .json({
+          success:
+            false,
+
+          message:
+            error.message ||
+            "Unable to record AMC payment.",
+        });
+    } finally {
+      await session.endSession();
+    }
+  }
+);
+
+/* =====================================================
+   CREATE AMC REMINDER
+   POST /api/admin/amc/contract/:id/reminder
+===================================================== */
+
+router.post(
+  "/amc/contract/:id/reminder",
+  async (req, res) => {
+    try {
+      const {
+        id,
+      } = req.params;
+
+      const {
+        channel,
+        message,
+        followUpDate,
+        assignedEmployeeId,
+        notes,
+      } = req.body;
+
+      /* -----------------------------------------------
+         Validate AMC contract ID
+      ------------------------------------------------ */
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid AMC contract ID.",
+        });
+      }
+
+      /* -----------------------------------------------
+         Validate reminder channel
+      ------------------------------------------------ */
+
+      const allowedChannels = [
+        "WhatsApp",
+        "Email",
+        "SMS",
+        "Phone Call",
+      ];
+
+      if (
+        !allowedChannels.includes(
+          channel
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Please select a valid reminder channel.",
+        });
+      }
+
+      const normalizedMessage =
+        String(
+          message || ""
+        ).trim();
+
+      if (!normalizedMessage) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Reminder message is required.",
+        });
+      }
+
+      /* -----------------------------------------------
+         Validate follow-up date
+      ------------------------------------------------ */
+
+      let parsedFollowUpDate =
+        null;
+
+      if (followUpDate) {
+        parsedFollowUpDate =
+          new Date(
+            followUpDate
+          );
+
+        if (
+          Number.isNaN(
+            parsedFollowUpDate.getTime()
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Invalid follow-up date.",
+          });
+        }
+      }
+
+      /* -----------------------------------------------
+         Find AMC contract
+      ------------------------------------------------ */
+
+      const contract =
+        await AmcContract.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!contract) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "AMC contract was not found.",
+        });
+      }
+
+      if (
+        contract.status ===
+        "Cancelled"
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "A reminder cannot be created for a cancelled AMC contract.",
+        });
+      }
+
+      if (
+        Number(
+          contract.pendingAmount ||
+          0
+        ) <= 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "This AMC contract has no pending payment.",
+        });
+      }
+
+      /* -----------------------------------------------
+         Resolve employee from Employee Master
+
+         When no new employee is selected, retain the
+         employee already assigned to the AMC contract.
+      ------------------------------------------------ */
+
+      let resolvedEmployee = {
+        assignedEmployeeId:
+          contract.assignedEmployeeId ||
+          null,
+
+        assignedEmployeeCode:
+          contract.assignedEmployeeCode ||
+          "",
+
+        assignedEmployeeName:
+          contract.assignedEmployeeName ||
+          "Unassigned",
+      };
+
+      const normalizedEmployeeId =
+        String(
+          assignedEmployeeId || ""
+        ).trim();
+
+      if (normalizedEmployeeId) {
+        resolvedEmployee =
+          await resolveAmcEmployee(
+            normalizedEmployeeId
+          );
+      }
+
+      /* -----------------------------------------------
+         Determine reminder status
+      ------------------------------------------------ */
+
+      const reminderStatus =
+        channel === "Phone Call"
+          ? "Call Logged"
+          : "Sent";
+
+      const reminderSentAt =
+        new Date();
+
+      /* -----------------------------------------------
+         Save reminder
+      ------------------------------------------------ */
+
+      const reminder =
+        await AmcReminder.create({
+          amcContractId:
+            contract._id,
+
+          contractCode:
+            contract.contractCode,
+
+          clientId:
+            contract.clientId,
+
+          clientCode:
+            contract.clientCode,
+
+          clientName:
+            contract.clientName,
+
+          channel,
+
+          message:
+            normalizedMessage,
+
+          assignedEmployeeId:
+            resolvedEmployee
+              .assignedEmployeeId,
+
+          assignedEmployeeCode:
+            resolvedEmployee
+              .assignedEmployeeCode,
+
+          assignedEmployeeName:
+            resolvedEmployee
+              .assignedEmployeeName,
+
+          followUpDate:
+            parsedFollowUpDate,
+
+          notes:
+            String(
+              notes || ""
+            ).trim(),
+
+          sentAt:
+            reminderSentAt,
+
+          sentBy:
+            req.user._id,
+
+          sentByName:
+            req.user.name ||
+            "Admin",
+
+          status:
+            reminderStatus,
+        });
+
+      /* -----------------------------------------------
+         Update AMC contract
+      ------------------------------------------------ */
+
+      contract.reminderStatus =
+        reminderStatus;
+
+      contract.lastReminderAt =
+        reminderSentAt;
+
+      contract.nextFollowUpDate =
+        parsedFollowUpDate;
+
+      contract.assignedEmployeeId =
+        resolvedEmployee
+          .assignedEmployeeId;
+
+      contract.assignedEmployeeCode =
+        resolvedEmployee
+          .assignedEmployeeCode;
+
+      contract.assignedEmployeeName =
+        resolvedEmployee
+          .assignedEmployeeName;
+
+      contract.updatedBy =
+        req.user._id;
+
+      contract.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      contract.timeline.push({
+        type:
+          "reminder",
+
+        title:
+          channel === "Phone Call"
+            ? "Payment follow-up call logged"
+            : `${channel} payment reminder sent`,
+
+        description:
+          channel === "Phone Call"
+            ? `Payment follow-up call was recorded. Next follow-up: ${
+                parsedFollowUpDate
+                  ? parsedFollowUpDate
+                      .toISOString()
+                      .slice(0, 10)
+                  : "Not scheduled"
+              }.`
+            : `Payment reminder was recorded through ${channel}. Next follow-up: ${
+                parsedFollowUpDate
+                  ? parsedFollowUpDate
+                      .toISOString()
+                      .slice(0, 10)
+                  : "Not scheduled"
+              }.`,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          req.user.role ||
+          "admin",
+
+        createdAt:
+          reminderSentAt,
+      });
+
+      await contract.save();
+
+      /* -----------------------------------------------
+         Create activity log
+      ------------------------------------------------ */
+
+      await createActivityLog({
+        action:
+          channel === "Phone Call"
+            ? "AMC Follow-up Call Logged"
+            : "AMC Reminder Sent",
+
+        category:
+          "AMC",
+
+        description:
+          channel === "Phone Call"
+            ? `Payment follow-up call was recorded for ${contract.contractCode}.`
+            : `${channel} payment reminder was recorded for ${contract.contractCode}.`,
+
+        entityType:
+          "amc",
+
+        entityId:
+          contract._id,
+
+        entityCode:
+          contract.contractCode,
+
+        entityName:
+          `${contract.clientName} - ${contract.productName}`,
+
+        clientId:
+          contract.clientId,
+
+        clientName:
+          contract.clientName,
+
+        employeeId:
+          resolvedEmployee
+            .assignedEmployeeId,
+
+        employeeName:
+          resolvedEmployee
+            .assignedEmployeeName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          req.user.role ||
+          "admin",
+
+        metadata: {
+          channel,
+
+          reminderStatus,
+
+          invoiceCode:
+            contract.invoiceCode,
+
+          pendingAmount:
+            contract.pendingAmount,
+
+          followUpDate:
+            parsedFollowUpDate,
+
+          assignedEmployeeCode:
+            resolvedEmployee
+              .assignedEmployeeCode,
+        },
+      });
+
+      return res.status(201).json({
+        success: true,
+
+        message:
+          channel === "Phone Call"
+            ? "Payment follow-up call recorded successfully."
+            : "AMC reminder recorded successfully.",
+
+        data: {
+          reminder:
+            amcReminderResponse(
+              reminder
+            ),
+
+          contract:
+            amcContractResponse(
+              contract
+            ),
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Create AMC reminder error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to save AMC reminder.",
       });
     }
   }

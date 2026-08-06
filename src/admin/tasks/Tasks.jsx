@@ -749,6 +749,18 @@ assignedEmployeeName:
             const freshTask = normalizeTaskFromApi(result.data);
 
             setSelectedTask(freshTask);
+            setTaskFiles(
+                (freshTask.attachments || []).map((file) => ({
+                    id: file._id,
+                    taskId: freshTask.id,
+                    name: file.fileName,
+                    type: file.fileType || "File",
+                    size: file.fileSize ? `${Math.max(1, Math.round(file.fileSize / 1024))} KB` : "—",
+                    uploadedBy: file.uploadedByName || "Administrator",
+                    uploadedAt: file.uploadedAt ? new Date(file.uploadedAt).toLocaleString("en-IN") : "—",
+                    fileUrl: file.fileUrl,
+                }))
+            );
             setTaskDetailsTab("overview");
 
             setTasks((current) =>
@@ -1414,7 +1426,7 @@ assignedEmployeeName:
         });
     };
 
-    const handleAddTaskFile = () => {
+    const handleAddTaskFile = async () => {
         if (!selectedTask) return;
 
         if (!selectedFile) {
@@ -1422,32 +1434,23 @@ assignedEmployeeName:
             return;
         }
 
-        const newFile = {
-            id: Date.now(),
-            taskId: selectedTask.id,
-            name: selectedFile.name,
-            type: selectedFile.type,
-            size: selectedFile.size,
-            uploadedBy: "Mangesh Kondhare",
-            initials: "MK",
-            uploadedAt: new Date().toLocaleString("en-IN", {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-            }),
-        };
-
-        setTaskFiles((current) => [newFile, ...current]);
-
-        setSelectedFile(null);
-
-        const input = document.getElementById("task-file-input");
-
-        if (input) {
-            input.value = "";
-        }
+        try {
+            const formData = new FormData();
+            formData.append("attachment", selectedFile.file);
+            const response = await fetch(`${API_URL}/api/admin/task/${selectedTask.id}/attachment`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${getAuthToken()}` },
+                body: formData,
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) throw new Error(result.message || "Unable to upload attachment.");
+            const updatedTask = normalizeTaskFromApi(result.data);
+            setSelectedTask(updatedTask);
+            setTaskFiles((updatedTask.attachments || []).map((file) => ({ id: file._id, taskId: updatedTask.id, name: file.fileName, type: file.fileType || "File", size: file.fileSize ? `${Math.max(1, Math.round(file.fileSize / 1024))} KB` : "—", uploadedBy: file.uploadedByName || "Administrator", uploadedAt: file.uploadedAt ? new Date(file.uploadedAt).toLocaleString("en-IN") : "—", fileUrl: file.fileUrl })));
+            setSelectedFile(null);
+            const input = document.getElementById("task-file-input");
+            if (input) input.value = "";
+        } catch (error) { alert(error.message); }
     };
 
     const openEditTaskDrawer = () => {

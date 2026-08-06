@@ -37,7 +37,9 @@ export default function App() {
         setCurrentPage(role);
     };
 
-  const handleLogout = () => {
+const handleLogout = () => {
+  // Signing out only clears the CRM session. Attendance is closed exclusively
+  // through the employee's explicit End Workday action.
   localStorage.removeItem(PAGE_STORAGE_KEY);
   localStorage.removeItem("client-connect-token");
   localStorage.removeItem("client-connect-user");

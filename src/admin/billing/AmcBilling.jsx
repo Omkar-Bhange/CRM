@@ -1,4 +1,8 @@
-import { useMemo, useState } from "react";
+import {
+    useEffect,
+    useMemo,
+    useState,
+} from "react";
 import AmcReminderModal from "./AmcReminderModal";
 import AmcInvoice from "./AmcInvoice";
 import {
@@ -27,241 +31,54 @@ import {
     WalletCards,
     X,
 } from "lucide-react";
+const API_URL =
+    import.meta.env.VITE_API_URL ||
+    "http://localhost:5000";
 
-const initialAmcRecords = [
-    {
-        id: 1,
-        contractNo: "AMC-CTR-1001",
-        clientCode: "CL-1001",
-        client: "Shree Ganesh Industries",
-        contactPerson: "Ramesh Patil",
-        mobile: "9876543210",
-        product: "NexERP",
-        version: "v3.4.2",
-        plan: "Premium",
-        users: 12,
-        startDate: "16 Jul 2025",
-        expiryDate: "15 Jul 2026",
-        invoiceNo: "AMC-2026-0048",
-        invoiceDate: "01 Jul 2026",
-        dueDate: "15 Jul 2026",
-        amount: 45000,
-        paidAmount: 0,
-        pendingAmount: 45000,
-        status: "Pending",
-        reminderStatus: "Sent",
-        assignedTo: "Akash Pawar",
-        lastReminder: "12 Jul 2026",
-        paymentHistory: [],
-        reminderHistory: [],
-        timeline: [
-            {
-                id: 1,
-                type: "created",
-                title: "AMC contract created",
-                description:
-                    "Premium AMC contract was created for NexERP.",
-                user: "Mangesh Kondhare",
-                time: "01 Jul 2026, 10:15 AM",
-            },
-            {
-                id: 2,
-                type: "invoice",
-                title: "AMC invoice generated",
-                description: "Invoice AMC-2026-0048 was generated.",
-                user: "Mangesh Kondhare",
-                time: "01 Jul 2026, 10:18 AM",
-            },
-            {
-                id: 3,
-                type: "reminder",
-                title: "Payment reminder sent",
-                description:
-                    "AMC payment reminder was sent to the client.",
-                user: "Akash Pawar",
-                time: "12 Jul 2026, 11:30 AM",
-            },
-        ],
-        renewalHistory: [],
-    },
-    {
-        id: 2,
-        contractNo: "AMC-CTR-1002",
-        clientCode: "CL-1002",
-        client: "Kavya Textiles Pvt Ltd",
-        contactPerson: "Sunita Sharma",
-        mobile: "9823012456",
-        product: "BillFlow",
-        version: "v2.8.1",
-        plan: "Standard",
-        users: 5,
-        startDate: "04 Aug 2025",
-        expiryDate: "03 Aug 2026",
-        invoiceNo: "AMC-2026-0051",
-        invoiceDate: "20 Jul 2026",
-        dueDate: "03 Aug 2026",
-        amount: 18000,
-        paidAmount: 18000,
-        pendingAmount: 0,
-        status: "Paid",
-        reminderStatus: "Not Required",
-        assignedTo: "Sneha Kale",
-        paymentHistory: [
-            {
-                id: 1,
-                date: "03 Aug 2026",
-                amount: 18000,
-                mode: "Bank Transfer",
-                referenceNo: "UTR98451236",
-                notes: "Full AMC payment received.",
-                receivedBy: "Mangesh Kondhare",
-            },
-        ],
-        lastReminder: "—",
-        timeline: [],
-        renewalHistory: [],
-        reminderHistory: [],
-    },
-    {
-        id: 3,
-        contractNo: "AMC-CTR-1003",
-        clientCode: "CL-1003",
-        client: "Omkar Traders",
-        contactPerson: "Vijay Kulkarni",
-        mobile: "9890123456",
-        product: "RetailPOS",
-        version: "v4.1.3",
-        plan: "Standard",
-        users: 6,
-        startDate: "22 Jun 2025",
-        expiryDate: "21 Jun 2026",
-        invoiceNo: "AMC-2026-0039",
-        invoiceDate: "05 Jun 2026",
-        dueDate: "21 Jun 2026",
-        amount: 12000,
-        paidAmount: 0,
-        pendingAmount: 12000,
-        status: "Overdue",
-        reminderStatus: "Sent",
-        assignedTo: "Rohit More",
-        lastReminder: "10 Jul 2026",
-        paymentHistory: [],
-        timeline: [],
-        renewalHistory: [],
-        reminderHistory: [],
-    },
-    {
-        id: 4,
-        contractNo: "AMC-CTR-1004",
-        clientCode: "CL-1004",
-        client: "Precision Auto Parts",
-        contactPerson: "Anil Deshmukh",
-        mobile: "9765432109",
-        product: "NexERP",
-        version: "v3.4.2",
-        plan: "Premium",
-        users: 18,
-        startDate: "10 Nov 2025",
-        expiryDate: "09 Nov 2026",
-        invoiceNo: "AMC-2026-0042",
-        invoiceDate: "25 Oct 2026",
-        dueDate: "09 Nov 2026",
-        amount: 60000,
-        paidAmount: 60000,
-        pendingAmount: 0,
-        status: "Paid",
-        reminderStatus: "Not Required",
-        assignedTo: "Pooja Shinde",
-        lastReminder: "—",
-        paymentHistory: [],
-        timeline: [],
-        renewalHistory: [],
-        reminderHistory: [],
-    },
-    {
-        id: 5,
-        contractNo: "AMC-CTR-1005",
-        clientCode: "CL-1005",
-        client: "GreenLeaf Agro",
-        contactPerson: "Priya Joshi",
-        mobile: "9012345678",
-        product: "StockPro",
-        version: "v2.5.0",
-        plan: "Premium",
-        users: 10,
-        startDate: "18 Jul 2025",
-        expiryDate: "17 Jul 2026",
-        invoiceNo: "AMC-2026-0049",
-        invoiceDate: "02 Jul 2026",
-        dueDate: "17 Jul 2026",
-        amount: 25000,
-        paidAmount: 10000,
-        pendingAmount: 15000,
-        status: "Partially Paid",
-        reminderStatus: "Sent",
-        assignedTo: "Akash Pawar",
-        lastReminder: "11 Jul 2026",
-        paymentHistory: [],
-        timeline: [],
-        renewalHistory: [],
-        reminderHistory: [],
-    },
-    {
-        id: 6,
-        contractNo: "AMC-CTR-1006",
-        clientCode: "CL-1006",
-        client: "Apex Medical Distributors",
-        contactPerson: "Rahul Shah",
-        mobile: "9988776655",
-        product: "NexERP",
-        version: "v3.4.2",
-        plan: "Standard",
-        users: 8,
-        startDate: "13 Jan 2026",
-        expiryDate: "12 Jan 2027",
-        invoiceNo: "",
-        invoiceDate: "",
-        dueDate: "12 Jan 2027",
-        amount: 30000,
-        paidAmount: 0,
-        pendingAmount: 30000,
-        status: "Upcoming",
-        reminderStatus: "Not Sent",
-        assignedTo: "Sneha Kale",
-        lastReminder: "—",
-        paymentHistory: [
-            {
-                id: 1,
-                date: "08 Jul 2026",
-                amount: 10000,
-                mode: "UPI",
-                referenceNo: "UPI458721",
-                notes: "Advance AMC payment.",
-                receivedBy: "Mangesh Kondhare",
-            },
-        ],
-        timeline: [],
-        renewalHistory: [],
-        reminderHistory: [],
+const getAuthToken = () =>
+    localStorage.getItem(
+        "client-connect-token"
+    ) ||
+    sessionStorage.getItem(
+        "client-connect-token"
+    ) ||
+    "";
 
 
-    },
-];
 const emptyNewAmcForm = {
-    client: "",
+    clientId: "",
+    clientCode: "",
+    clientName: "",
+
     contactPerson: "",
-    mobile: "",
-    product: "",
-    version: "",
+    contactMobile: "",
+    contactEmail: "",
+
+    clientProductId: "",
+
+    productId: "",
+    productCode: "",
+    productName: "",
+    productVersion: "",
+
     plan: "Standard",
-    users: "",
+    licensedUsers: "1",
+
     startDate: "",
     expiryDate: "",
     dueDate: "",
-    amount: "",
-    assignedTo: "",
-    notes: "",
 
+    taxableAmount: "",
+
+    cgstRate: "9",
+    sgstRate: "9",
+    igstRate: "0",
+
+    assignedEmployeeId: "",
+    assignedEmployeeCode: "",
+    assignedEmployeeName: "",
+
+    notes: "",
 };
 
 const statusOptions = [
@@ -273,13 +90,6 @@ const statusOptions = [
     "Upcoming",
 ];
 
-const productOptions = [
-    "All",
-    "NexERP",
-    "BillFlow",
-    "RetailPOS",
-    "StockPro",
-];
 const employeeOptions = [
     "Akash Pawar",
     "Sneha Kale",
@@ -307,6 +117,590 @@ const emptyRenewalForm = {
     notes: "",
 };
 
+const normalizeClientFromApi = (
+    client = {}
+) => ({
+    id: String(
+        client._id ||
+        client.id ||
+        ""
+    ),
+
+    clientCode:
+        client.clientCode ||
+        "",
+
+    companyName:
+        client.companyName ||
+        "",
+
+    contactPerson:
+        client.contactPerson ||
+        "",
+
+    mobile:
+        client.mobile ||
+        "",
+
+    email:
+        client.email ||
+        "",
+
+    products:
+        Array.isArray(client.products)
+            ? client.products.map(
+                (product) => ({
+                    clientProductId:
+                        String(
+                            product._id ||
+                            product.id ||
+                            ""
+                        ),
+
+                    productId:
+                        String(
+                            product.productId?._id ||
+                            product.productId ||
+                            ""
+                        ),
+
+                    productCode:
+                        product.productCode ||
+                        "",
+
+                    productName:
+                        product.productName ||
+                        "",
+
+                    version:
+                        product.version ||
+                        "v1.0.0",
+
+                    licensedUsers:
+                        Number(
+                            product.licensedUsers ||
+                            1
+                        ),
+
+                    supportType:
+                        product.supportType ||
+                        "Standard",
+
+                    amcStatus:
+                        product.amcStatus ||
+                        "Not Started",
+
+                    expiryDate:
+                        product.expiryDate ||
+                        "",
+
+                    installationStatus:
+                        product.installationStatus ||
+                        "Installed",
+                })
+            )
+            : [],
+});
+
+const normalizeEmployeeFromApi = (
+    employee = {}
+) => ({
+    id: String(
+        employee._id ||
+        employee.id ||
+        ""
+    ),
+
+    employeeCode:
+        employee.employeeCode ||
+        "",
+
+    name:
+        employee.name ||
+        employee.employeeName ||
+        "",
+
+    status:
+        employee.status ||
+        "Free",
+
+    isActive:
+        employee.isActive !== false,
+});
+
+const normalizeAmcContractFromApi = (
+    contract = {}
+) => {
+    const invoice =
+        contract.currentInvoice ||
+        contract.invoice ||
+        {};
+
+    return {
+    id: String(
+        contract._id ||
+        contract.id ||
+        ""
+    ),
+
+    mongoId: String(
+        contract._id ||
+        contract.id ||
+        ""
+    ),
+
+    contractNo:
+        contract.contractCode ||
+        "",
+
+        contractCode:
+        contract.contractCode ||
+        "",
+
+    currentInvoiceId:
+        String(
+            contract.currentInvoiceId?._id ||
+            contract.currentInvoiceId ||
+            contract.currentInvoice?._id ||
+            contract.currentInvoice?.id ||
+            contract.invoice?._id ||
+            contract.invoice?.id ||
+            ""
+        ),
+
+    amcInvoiceId:
+        String(
+            contract.currentInvoiceId?._id ||
+            contract.currentInvoiceId ||
+            contract.currentInvoice?._id ||
+            contract.currentInvoice?.id ||
+            contract.invoice?._id ||
+            contract.invoice?.id ||
+            ""
+        ),
+
+    currentInvoiceCode:
+        contract.currentInvoiceCode ||
+        contract.currentInvoice?.invoiceCode ||
+        contract.invoice?.invoiceCode ||
+        contract.invoiceCode ||
+        "",
+
+    invoiceNo:
+        contract.currentInvoice?.invoiceCode ||
+        contract.invoice?.invoiceCode ||
+        contract.invoiceCode ||
+        "",
+
+    invoiceCode:
+        contract.currentInvoice?.invoiceCode ||
+        contract.invoice?.invoiceCode ||
+        contract.invoiceCode ||
+        "",
+
+
+    invoiceDate:
+        contract.invoiceDate
+            ? new Date(
+                contract.invoiceDate
+            ).toLocaleDateString(
+                "en-GB",
+                {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                }
+            )
+            : "—",
+
+    clientId:
+        contract.clientId
+            ? String(
+                contract.clientId
+            )
+            : "",
+
+    clientCode:
+        contract.clientCode ||
+        "",
+
+    client:
+        contract.clientName ||
+        "",
+
+    clientName:
+        contract.clientName ||
+        "",
+
+    contactPerson:
+        contract.contactPerson ||
+        "",
+
+    mobile:
+        contract.contactMobile ||
+        "",
+
+    contactMobile:
+        contract.contactMobile ||
+        "",
+
+    contactEmail:
+        contract.contactEmail ||
+        "",
+
+    clientProductId:
+        contract.clientProductId
+            ? String(
+                contract.clientProductId
+            )
+            : "",
+
+    productId:
+        contract.productId
+            ? String(
+                contract.productId
+            )
+            : "",
+
+    productCode:
+        contract.productCode ||
+        "",
+
+    product:
+        contract.productName ||
+        "",
+
+    productName:
+        contract.productName ||
+        "",
+
+    version:
+        contract.productVersion ||
+        "",
+
+    productVersion:
+        contract.productVersion ||
+        "",
+
+    plan:
+        contract.plan ||
+        "Standard",
+
+    users:
+        Number(
+            contract.licensedUsers ||
+            1
+        ),
+
+    licensedUsers:
+        Number(
+            contract.licensedUsers ||
+            1
+        ),
+
+    startDate:
+        contract.startDate
+            ? new Date(
+                contract.startDate
+            ).toLocaleDateString(
+                "en-GB",
+                {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                }
+            )
+            : "—",
+
+    startDateValue:
+        contract.startDate
+            ? String(
+                contract.startDate
+            ).slice(0, 10)
+            : "",
+
+    expiryDate:
+        contract.expiryDate
+            ? new Date(
+                contract.expiryDate
+            ).toLocaleDateString(
+                "en-GB",
+                {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                }
+            )
+            : "—",
+
+    expiryDateValue:
+        contract.expiryDate
+            ? String(
+                contract.expiryDate
+            ).slice(0, 10)
+            : "",
+
+    dueDate:
+        contract.dueDate
+            ? new Date(
+                contract.dueDate
+            ).toLocaleDateString(
+                "en-GB",
+                {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                }
+            )
+            : "—",
+
+    dueDateValue:
+        contract.dueDate
+            ? String(
+                contract.dueDate
+            ).slice(0, 10)
+            : "",
+
+     taxableAmount:
+        Number(
+            invoice.taxableAmount ??
+            contract.taxableAmount ??
+            0
+        ),
+
+    cgstRate:
+        Number(
+            contract.cgstRate ||
+            0
+        ),
+
+    cgstAmount:
+        Number(
+            contract.cgstAmount ||
+            0
+        ),
+
+    sgstRate:
+        Number(
+            contract.sgstRate ||
+            0
+        ),
+
+    sgstAmount:
+        Number(
+            contract.sgstAmount ||
+            0
+        ),
+
+    igstRate:
+        Number(
+            contract.igstRate ||
+            0
+        ),
+
+    igstAmount:
+        Number(
+            contract.igstAmount ||
+            0
+        ),
+
+    totalTaxAmount:
+        Number(
+            contract.totalTaxAmount ||
+            0
+        ),
+
+    amount:
+        Number(
+            invoice.totalAmount ??
+            contract.totalAmount ??
+            0
+        ),
+
+    totalAmount:
+        Number(
+            invoice.totalAmount ??
+            contract.totalAmount ??
+            0
+        ),
+
+    paidAmount:
+        Number(
+            invoice.paidAmount ??
+            contract.paidAmount ??
+            0
+        ),
+
+    pendingAmount:
+        Number(
+            invoice.pendingAmount ??
+            contract.pendingAmount ??
+            0
+        ),
+
+    status:
+        contract.status ||
+        "Pending",
+
+    assignedEmployeeId:
+        contract.assignedEmployeeId
+            ? String(
+                contract.assignedEmployeeId
+            )
+            : "",
+
+    assignedEmployeeCode:
+        contract.assignedEmployeeCode ||
+        "",
+
+    assignedEmployeeName:
+        contract.assignedEmployeeName ||
+        "Unassigned",
+
+    assignedTo:
+        contract.assignedEmployeeName ||
+        "Unassigned",
+
+    reminderStatus:
+        contract.reminderStatus ||
+        "Not Sent",
+
+    lastReminder:
+        contract.lastReminderAt
+            ? new Date(
+                contract.lastReminderAt
+            ).toLocaleString(
+                "en-IN"
+            )
+            : "—",
+
+    nextFollowUpDate:
+        contract.nextFollowUpDate ||
+        null,
+
+    notes:
+        contract.notes ||
+        "",
+    paymentHistory:
+        Array.isArray(
+            contract.payments
+        )
+            ? contract.payments.map(
+                (payment) => ({
+                    id:
+                        payment._id ||
+                        payment.id,
+
+                    paymentCode:
+                        payment.paymentCode ||
+                        "",
+
+                    amcInvoiceId:
+                        payment.amcInvoiceId ||
+                        "",
+
+                    date:
+                        payment.paymentDate
+                            ? new Date(
+                                payment.paymentDate
+                            ).toLocaleDateString(
+                                "en-GB",
+                                {
+                                    day:
+                                        "2-digit",
+
+                                    month:
+                                        "short",
+
+                                    year:
+                                        "numeric",
+                                }
+                            )
+                            : "—",
+
+                    paymentDate:
+                        payment.paymentDate ||
+                        null,
+
+                    amount:
+                        Number(
+                            payment.amount ||
+                            0
+                        ),
+
+                    mode:
+                        payment.mode ||
+                        "Other",
+
+                    referenceNo:
+                        payment.referenceNo ||
+                        "—",
+
+                    notes:
+                        payment.notes ||
+                        "",
+
+                    receivedBy:
+                        payment.receivedByName ||
+                        "Admin",
+                })
+            )
+            : [],
+
+    reminderHistory:
+        Array.isArray(
+            contract.reminders
+        )
+            ? contract.reminders
+            : [],
+
+    renewalHistory:
+        Array.isArray(
+            contract.renewalHistory
+        )
+            ? contract.renewalHistory
+            : [],
+
+    timeline:
+        Array.isArray(
+            contract.timeline
+        )
+            ? contract.timeline.map(
+                (item) => ({
+                    id:
+                        item._id ||
+                        item.id ||
+                        `${item.title}-${item.createdAt}`,
+
+                    type:
+                        item.type ||
+                        "updated",
+
+                    title:
+                        item.title ||
+                        "AMC updated",
+
+                    description:
+                        item.description ||
+                        "",
+
+                    user:
+                        item.performedByName ||
+                        "System",
+
+                    time:
+                        item.createdAt
+                            ? new Date(
+                                item.createdAt
+                            ).toLocaleString(
+                                "en-IN"
+                            )
+                            : "—",
+                })
+            )
+            : [],
+    };
+};
 function formatCurrency(amount) {
     return new Intl.NumberFormat("en-IN", {
         style: "currency",
@@ -396,11 +790,60 @@ function AmcTimelineIcon({ type }) {
 export default function AmcBilling() {
     const [invoiceRecord, setInvoiceRecord] = useState(null);
     const [reminderRecord, setReminderRecord] = useState(null);
+        const [
+    savingReminder,
+    setSavingReminder,
+] = useState(false);
     const [historyInvoiceRecord, setHistoryInvoiceRecord] = useState(null);
     const [newAmcOpen, setNewAmcOpen] = useState(false);
     const [newAmcForm, setNewAmcForm] = useState(emptyNewAmcForm);
     const [newAmcError, setNewAmcError] = useState("");
-    const [records, setRecords] = useState(initialAmcRecords);
+    const [records, setRecords] =
+        useState([]);
+    const [clients, setClients] =
+        useState([]);
+
+    const [employees, setEmployees] =
+        useState([]);
+
+    const [
+        backendStats,
+        setBackendStats,
+    ] = useState({
+        totalCollected: 0,
+        totalPending: 0,
+        overdueCount: 0,
+        upcomingCount: 0,
+    });
+
+    const [
+        recordsLoading,
+        setRecordsLoading,
+    ] = useState(true);
+
+    const [
+        mastersLoading,
+        setMastersLoading,
+    ] = useState(true);
+
+    const [
+        savingAmc,
+        setSavingAmc,
+    ] = useState(false);
+        const [
+        savingPayment,
+        setSavingPayment,
+    ] = useState(false);
+
+    const [
+        recordsError,
+        setRecordsError,
+    ] = useState("");
+
+    const [
+        mastersError,
+        setMastersError,
+    ] = useState("");
     const [searchValue, setSearchValue] = useState("");
     const [statusFilter, setStatusFilter] = useState("All");
     const [productFilter, setProductFilter] = useState("All");
@@ -432,36 +875,326 @@ export default function AmcBilling() {
             minute: "2-digit",
         }),
     });
+    const loadClients = async () => {
+        const token =
+            getAuthToken();
 
-    const stats = useMemo(() => {
-        const totalCollected = records.reduce(
-            (sum, record) => sum + record.paidAmount,
-            0
+        if (!token) {
+            throw new Error(
+                "Login token was not found. Please login again."
+            );
+        }
+
+        const response =
+            await fetch(
+                `${API_URL}/api/admin/clients`,
+                {
+                    headers: {
+                        Accept:
+                            "application/json",
+
+                        Authorization:
+                            `Bearer ${token}`,
+                    },
+                }
+            );
+
+        const result =
+            await response.json();
+
+        if (
+            !response.ok ||
+            !result.success
+        ) {
+            throw new Error(
+                result.message ||
+                "Unable to load clients."
+            );
+        }
+
+        const normalizedClients =
+            Array.isArray(result.data)
+                ? result.data
+                    .map(
+                        normalizeClientFromApi
+                    )
+                    .filter(
+                        (client) =>
+                            client.id &&
+                            client.companyName
+                    )
+                    .sort((a, b) =>
+                        a.companyName.localeCompare(
+                            b.companyName
+                        )
+                    )
+                : [];
+
+        setClients(
+            normalizedClients
+        );
+    };
+    const loadEmployees = async () => {
+        const token =
+            getAuthToken();
+
+        if (!token) {
+            throw new Error(
+                "Login token was not found. Please login again."
+            );
+        }
+
+        const response =
+            await fetch(
+                `${API_URL}/api/employee/employees`,
+                {
+                    headers: {
+                        Accept:
+                            "application/json",
+
+                        Authorization:
+                            `Bearer ${token}`,
+                    },
+                }
+            );
+
+        const result =
+            await response.json();
+
+        if (
+            response.status === 401
+        ) {
+            throw new Error(
+                "Your login session has expired. Please login again."
+            );
+        }
+
+        if (
+            !response.ok ||
+            !result.success
+        ) {
+            throw new Error(
+                result.message ||
+                "Unable to load employees."
+            );
+        }
+
+        const normalizedEmployees =
+            Array.isArray(result.data)
+                ? result.data
+                    .map(
+                        normalizeEmployeeFromApi
+                    )
+                    .filter(
+                        (employee) =>
+                            employee.id &&
+                            employee.name &&
+                            employee.isActive
+                    )
+                    .sort((a, b) =>
+                        a.name.localeCompare(
+                            b.name
+                        )
+                    )
+                : [];
+
+        setEmployees(
+            normalizedEmployees
+        );
+    };
+    
+
+    const loadAmcContracts = async () => {
+    try {
+        setRecordsLoading(true);
+        setRecordsError("");
+
+        const token =
+            getAuthToken();
+
+        if (!token) {
+            throw new Error(
+                "Login token was not found. Please login again."
+            );
+        }
+
+        const response =
+            await fetch(
+                `${API_URL}/api/admin/amc/contracts?limit=500`,
+                {
+                    method: "GET",
+
+                    headers: {
+                        Accept:
+                            "application/json",
+
+                        Authorization:
+                            `Bearer ${token}`,
+                    },
+                }
+            );
+
+        /*
+         * This line is missing in your current code.
+         */
+        const result =
+            await response.json();
+
+        if (
+            response.status === 401
+        ) {
+            throw new Error(
+                "Your login session has expired. Please login again."
+            );
+        }
+
+        if (
+            !response.ok ||
+            result.success !== true
+        ) {
+            throw new Error(
+                result.message ||
+                "Unable to load AMC contracts."
+            );
+        }
+
+        const normalizedRecords =
+            Array.isArray(result.data)
+                ? result.data.map(
+                    normalizeAmcContractFromApi
+                )
+                : [];
+
+        setRecords(
+            normalizedRecords
         );
 
-        const totalPending = records.reduce(
-            (sum, record) => sum + record.pendingAmount,
-            0
+        setBackendStats({
+            totalCollected:
+                Number(
+                    result.stats
+                        ?.totalCollected ||
+                    0
+                ),
+
+            totalPending:
+                Number(
+                    result.stats
+                        ?.totalPending ||
+                    0
+                ),
+
+            overdueCount:
+                Number(
+                    result.stats
+                        ?.overdueCount ||
+                    0
+                ),
+
+            upcomingCount:
+                Number(
+                    result.stats
+                        ?.upcomingCount ||
+                    0
+                ),
+        });
+    } catch (error) {
+        console.error(
+            "Load AMC contracts error:",
+            error
         );
 
-        const overdueCount = records.filter(
-            (record) => record.status === "Overdue"
-        ).length;
+        setRecords([]);
 
-        const upcomingCount = records.filter(
-            (record) =>
-                record.status === "Upcoming" ||
-                record.status === "Pending" ||
-                record.status === "Partially Paid"
-        ).length;
+        setBackendStats({
+            totalCollected: 0,
+            totalPending: 0,
+            overdueCount: 0,
+            upcomingCount: 0,
+        });
 
-        return {
-            totalCollected,
-            totalPending,
-            overdueCount,
-            upcomingCount,
-        };
-    }, [records]);
+        setRecordsError(
+            error.message ||
+            "Unable to load AMC contracts."
+        );
+    } finally {
+        setRecordsLoading(false);
+    }
+};
+    const loadAmcMasters = async () => {
+        try {
+            setMastersLoading(true);
+            setMastersError("");
+
+            await Promise.all([
+                loadClients(),
+                loadEmployees(),
+            ]);
+        } catch (error) {
+            console.error(
+                "Load AMC masters error:",
+                error
+            );
+
+            setMastersError(
+                error.message ||
+                "Unable to load AMC masters."
+            );
+        } finally {
+            setMastersLoading(false);
+        }
+    };
+    useEffect(() => {
+        loadAmcContracts();
+        loadAmcMasters();
+    }, []);
+
+    const stats =
+        backendStats;
+    const selectedNewAmcClient =
+        clients.find(
+            (client) =>
+                String(client.id) ===
+                String(
+                    newAmcForm.clientId
+                )
+        ) || null;
+
+    const availableClientProducts =
+        selectedNewAmcClient
+            ? selectedNewAmcClient.products.filter(
+                (product) =>
+                    product.clientProductId &&
+                    product.productId &&
+                    product.productName &&
+                    product.installationStatus !==
+                    "Inactive"
+            )
+            : [];
+
+    const selectedNewAmcProduct =
+        availableClientProducts.find(
+            (product) =>
+                String(
+                    product.clientProductId
+                ) ===
+                String(
+                    newAmcForm.clientProductId
+                )
+        ) || null;
+
+    const productFilterOptions =
+        [
+            "All",
+            ...new Set(
+                records
+                    .map(
+                        (record) =>
+                            record.product
+                    )
+                    .filter(Boolean)
+            ),
+        ];
 
     const filteredRecords = useMemo(() => {
         return records.filter((record) => {
@@ -550,121 +1283,360 @@ export default function AmcBilling() {
             [name]: value,
         }));
     };
+    const handleRecordPayment =
+        async (event) => {
+            event.preventDefault();
 
-    const handleRecordPayment = (event) => {
-        event.preventDefault();
+            if (
+                !paymentRecord ||
+                savingPayment
+            ) {
+                return;
+            }
 
-        if (!paymentRecord) return;
+            const amount =
+                Number(
+                    paymentForm.amount
+                );
 
-        const amount = Number(paymentForm.amount);
-        const paymentEntry = {
-            id: Date.now(),
-            date: paymentForm.paymentDate
-                ? new Date(`${paymentForm.paymentDate}T00:00:00`).toLocaleDateString(
-                    "en-GB",
-                    {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                    }
+            if (
+                !Number.isFinite(
+                    amount
+                ) ||
+                amount <= 0
+            ) {
+                setFormError(
+                    "Enter a valid payment amount."
+                );
+                return;
+            }
+
+            if (
+                amount >
+                Number(
+                    paymentRecord.pendingAmount ||
+                    0
                 )
-                : new Date().toLocaleDateString("en-GB", {
-                    day: "2-digit",
-                    month: "short",
-                    year: "numeric",
-                }),
-            amount,
-            mode: paymentForm.mode,
-            referenceNo: paymentForm.referenceNo.trim() || "—",
-            notes: paymentForm.notes.trim() || "AMC payment received.",
-            receivedBy: "Mangesh Kondhare",
-        };
-        const paymentTimelineEvent = createAmcTimelineEvent({
-            type: "payment",
-            title: "AMC payment received",
-            description: `${formatCurrency(amount)} received through ${paymentForm.mode
-                }${paymentForm.referenceNo.trim()
-                    ? ` · Reference ${paymentForm.referenceNo.trim()}`
-                    : ""
-                }.`,
-        });
+            ) {
+                setFormError(
+                    `Payment cannot exceed ${formatCurrency(
+                        paymentRecord.pendingAmount
+                    )}.`
+                );
+                return;
+            }
 
-        if (!amount || amount <= 0) {
-            setFormError("Enter a valid payment amount.");
-            return;
-        }
+            if (
+                !paymentForm.paymentDate
+            ) {
+                setFormError(
+                    "Please select the payment date."
+                );
+                return;
+            }
 
-        if (amount > paymentRecord.pendingAmount) {
-            setFormError(
-                `Payment cannot exceed ${formatCurrency(
-                    paymentRecord.pendingAmount
-                )}.`
-            );
-            return;
-        }
+            const referenceRequiredModes = [
+                "Bank Transfer",
+                "UPI",
+                "Cheque",
+                "Card",
+            ];
 
-        setRecords((current) =>
-            current.map((record) => {
-                if (record.id !== paymentRecord.id) return record;
+            if (
+                referenceRequiredModes.includes(
+                    paymentForm.mode
+                ) &&
+                !paymentForm.referenceNo.trim()
+            ) {
+                setFormError(
+                    `Reference number is required for ${paymentForm.mode}.`
+                );
+                return;
+            }
 
-                const paidAmount = record.paidAmount + amount;
-                const pendingAmount = Math.max(record.amount - paidAmount, 0);
+            const invoiceId =
+                paymentRecord.currentInvoiceId ||
+                paymentRecord.amcInvoiceId ||
+                "";
 
-                return {
-                    ...record,
-                    paidAmount,
-                    pendingAmount,
+            const contractId =
+                paymentRecord.mongoId ||
+                paymentRecord.id ||
+                "";
 
-                    status:
-                        pendingAmount === 0
-                            ? "Paid"
-                            : paidAmount > 0
-                                ? "Partially Paid"
-                                : record.status,
+            if (
+                !invoiceId &&
+                !contractId
+            ) {
+                setFormError(
+                    "AMC invoice or contract ID was not found."
+                );
+                return;
+            }
+
+            try {
+                setSavingPayment(
+                    true
+                );
+
+                setFormError(
+                    ""
+                );
+
+                const token =
+                    getAuthToken();
+
+                if (!token) {
+                    throw new Error(
+                        "Login token was not found. Please login again."
+                    );
+                }
+
+                const response =
+                    await fetch(
+                        `${API_URL}/api/admin/amc/payment`,
+                        {
+                            method:
+                                "POST",
+
+                            headers: {
+                                "Content-Type":
+                                    "application/json",
+
+                                Accept:
+                                    "application/json",
+
+                                Authorization:
+                                    `Bearer ${token}`,
+                            },
+
+                            body:
+                                JSON.stringify({
+                                    amcInvoiceId:
+                                        invoiceId,
+
+                                    amcContractId:
+                                        contractId,
+
+                                    amount,
+
+                                    paymentDate:
+                                        paymentForm.paymentDate,
+
+                                    mode:
+                                        paymentForm.mode,
+
+                                    referenceNo:
+                                        paymentForm.referenceNo
+                                            .trim(),
+
+                                    notes:
+                                        paymentForm.notes
+                                            .trim(),
+                                }),
+                        }
+                    );
+
+                let result = {};
+
+                try {
+                    result =
+                        await response.json();
+                } catch {
+                    throw new Error(
+                        "Invalid response received from server."
+                    );
+                }
+
+                if (
+                    response.status ===
+                    401
+                ) {
+                    throw new Error(
+                        "Your login session has expired. Please login again."
+                    );
+                }
+
+                if (
+                    !response.ok ||
+                    result.success !== true
+                ) {
+                    throw new Error(
+                        result.message ||
+                        "Unable to record AMC payment."
+                    );
+                }
+
+                const responseContract =
+                    result.data?.contract ||
+                    result.contract;
+
+                const responsePayment =
+                    result.data?.payment ||
+                    result.payment;
+
+                if (
+                    !responseContract
+                ) {
+                    throw new Error(
+                        "Updated AMC contract was not returned by server."
+                    );
+                }
+
+                const normalizedContract =
+                    normalizeAmcContractFromApi(
+                        responseContract
+                    );
+
+                const normalizedPayment = {
+                    id:
+                        responsePayment?._id ||
+                        responsePayment?.id ||
+                        `${Date.now()}`,
+
+                    paymentCode:
+                        responsePayment?.paymentCode ||
+                        "",
+
+                    amcInvoiceId:
+                        responsePayment?.amcInvoiceId ||
+                        invoiceId,
+
+                    date:
+                        responsePayment?.paymentDate
+                            ? new Date(
+                                responsePayment.paymentDate
+                            ).toLocaleDateString(
+                                "en-GB",
+                                {
+                                    day:
+                                        "2-digit",
+
+                                    month:
+                                        "short",
+
+                                    year:
+                                        "numeric",
+                                }
+                            )
+                            : new Date(
+                                `${paymentForm.paymentDate}T00:00:00`
+                            ).toLocaleDateString(
+                                "en-GB",
+                                {
+                                    day:
+                                        "2-digit",
+
+                                    month:
+                                        "short",
+
+                                    year:
+                                        "numeric",
+                                }
+                            ),
+
+                    paymentDate:
+                        responsePayment?.paymentDate ||
+                        paymentForm.paymentDate,
+
+                    amount:
+                        Number(
+                            responsePayment?.amount ||
+                            amount
+                        ),
+
+                    mode:
+                        responsePayment?.mode ||
+                        paymentForm.mode,
+
+                    referenceNo:
+                        responsePayment?.referenceNo ||
+                        paymentForm.referenceNo.trim() ||
+                        "—",
+
+                    notes:
+                        responsePayment?.notes ||
+                        paymentForm.notes.trim(),
+
+                    receivedBy:
+                        responsePayment?.receivedByName ||
+                        "Admin",
+                };
+
+                const finalRecord = {
+                    ...paymentRecord,
+                    ...normalizedContract,
 
                     paymentHistory: [
-                        ...(record.paymentHistory || []),
-                        paymentEntry,
-                    ],
+                        ...(
+                            paymentRecord.paymentHistory ||
+                            []
+                        ),
 
-                    timeline: [
-                        ...(record.timeline || []),
-                        paymentTimelineEvent,
+                        normalizedPayment,
                     ],
                 };
-            })
-        );
 
-        setSelectedRecord((current) => {
-            if (!current || current.id !== paymentRecord.id) return current;
+                setRecords(
+                    (current) =>
+                        current.map(
+                            (record) =>
+                                record.id ===
+                                paymentRecord.id
+                                    ? finalRecord
+                                    : record
+                        )
+                );
 
-            const paidAmount = current.paidAmount + amount;
-            const pendingAmount = Math.max(current.amount - paidAmount, 0);
+                setSelectedRecord(
+                    (current) =>
+                        current?.id ===
+                        paymentRecord.id
+                            ? {
+                                ...current,
+                                ...finalRecord,
+                            }
+                            : current
+                );
 
-            return {
-                ...current,
-                paidAmount,
-                pendingAmount,
-                status:
-                    pendingAmount === 0
-                        ? "Paid"
-                        : paidAmount > 0
-                            ? "Partially Paid"
-                            : current.status,
-                paymentHistory: [
-                    ...(current.paymentHistory || []),
+                setInvoiceRecord(
+                    (current) =>
+                        current?.id ===
+                        paymentRecord.id
+                            ? {
+                                ...current,
+                                ...finalRecord,
+                            }
+                            : current
+                );
 
-                    paymentEntry,
-                ],
-                timeline: [
-                    ...(current.timeline || []),
-                    paymentTimelineEvent,
-                ],
-            };
-        });
+                closePaymentModal();
 
-        closePaymentModal();
-    };
+                /*
+                 * Reload totals and records from MongoDB.
+                 */
+                await loadAmcContracts();
+
+                alert(
+                    result.message ||
+                    "AMC payment recorded successfully."
+                );
+            } catch (error) {
+                console.error(
+                    "Record AMC payment error:",
+                    error
+                );
+
+                setFormError(
+                    error.message ||
+                    "Unable to record AMC payment."
+                );
+            } finally {
+                setSavingPayment(
+                    false
+                );
+            }
+        };
 
     const openRenewalModal = (record) => {
         setRenewalRecord(record);
@@ -821,13 +1793,21 @@ export default function AmcBilling() {
     const handleSendReminder = (record) => {
         setReminderRecord(record);
     };
-    const handleNewAmcChange = (event) => {
-        const { name, value } = event.target;
+    const handleNewAmcChange = (
+        event
+    ) => {
+        const {
+            name,
+            value,
+        } = event.target;
 
-        setNewAmcForm((current) => ({
-            ...current,
-            [name]: value,
-        }));
+        setNewAmcForm(
+            (current) => ({
+                ...current,
+                [name]:
+                    value,
+            })
+        );
 
         if (newAmcError) {
             setNewAmcError("");
@@ -840,124 +1820,204 @@ export default function AmcBilling() {
         setNewAmcError("");
     };
 
-    const handleCreateAmcContract = (event) => {
-        event.preventDefault();
+    const handleCreateAmcContract =
+        async (event) => {
+            event.preventDefault();
 
-        if (!newAmcForm.client.trim()) {
-            setNewAmcError("Please select or enter the client.");
-            return;
-        }
+            if (
+                !newAmcForm.clientId
+            ) {
+                setNewAmcError(
+                    "Please select a client."
+                );
+                return;
+            }
 
-        if (!newAmcForm.product) {
-            setNewAmcError("Please select the software product.");
-            return;
-        }
+            if (
+                !newAmcForm.clientProductId
+            ) {
+                setNewAmcError(
+                    "Please select a client product."
+                );
+                return;
+            }
 
-        if (!newAmcForm.startDate) {
-            setNewAmcError("Please select the AMC start date.");
-            return;
-        }
+            if (
+                !newAmcForm.startDate
+            ) {
+                setNewAmcError(
+                    "Please select the AMC start date."
+                );
+                return;
+            }
 
-        if (!newAmcForm.expiryDate) {
-            setNewAmcError("Please select the AMC expiry date.");
-            return;
-        }
+            if (
+                !newAmcForm.expiryDate
+            ) {
+                setNewAmcError(
+                    "Please select the AMC expiry date."
+                );
+                return;
+            }
 
-        if (!newAmcForm.dueDate) {
-            setNewAmcError("Please select the payment due date.");
-            return;
-        }
+            if (
+                !newAmcForm.dueDate
+            ) {
+                setNewAmcError(
+                    "Please select the payment due date."
+                );
+                return;
+            }
 
-        const amount = Number(newAmcForm.amount);
-        const users = Number(newAmcForm.users);
+            const taxableAmount =
+                Number(
+                    newAmcForm.taxableAmount
+                );
 
-        if (!amount || amount <= 0) {
-            setNewAmcError("Please enter a valid AMC amount.");
-            return;
-        }
+            if (
+                !taxableAmount ||
+                taxableAmount <= 0
+            ) {
+                setNewAmcError(
+                    "Please enter a valid AMC taxable amount."
+                );
+                return;
+            }
 
-        if (!users || users <= 0) {
-            setNewAmcError("Please enter a valid number of users.");
-            return;
-        }
+            const licensedUsers =
+                Number(
+                    newAmcForm.licensedUsers
+                );
 
-        const formatDate = (value) =>
-            new Date(`${value}T00:00:00`).toLocaleDateString("en-GB", {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-            });
+            if (
+                !licensedUsers ||
+                licensedUsers <= 0
+            ) {
+                setNewAmcError(
+                    "Please enter a valid licensed user count."
+                );
+                return;
+            }
 
-        const nextId =
-            Math.max(...records.map((record) => Number(record.id)), 0) + 1;
+            try {
+                setSavingAmc(true);
+                setNewAmcError("");
 
-        const contractNo = `AMC-CTR-${String(1000 + nextId)}`;
-        const invoiceNo = `AMC-2026-${String(Date.now()).slice(-4)}`;
+                const response =
+                    await fetch(
+                        `${API_URL}/api/admin/amc/contract`,
+                        {
+                            method:
+                                "POST",
 
+                            headers: {
+                                "Content-Type":
+                                    "application/json",
 
-        const newRecord = {
-            id: nextId,
-            contractNo,
-            clientCode: `CL-${String(1000 + nextId)}`,
-            client: newAmcForm.client.trim(),
-            contactPerson: newAmcForm.contactPerson.trim() || "Not provided",
-            mobile: newAmcForm.mobile.trim() || "Not provided",
-            product: newAmcForm.product,
-            version: newAmcForm.version.trim() || "Current",
-            plan: newAmcForm.plan,
-            users,
-            startDate: formatDate(newAmcForm.startDate),
-            expiryDate: formatDate(newAmcForm.expiryDate),
-            invoiceNo,
-            invoiceDate: new Date().toLocaleDateString("en-GB", {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-            }),
-            dueDate: formatDate(newAmcForm.dueDate),
-            amount,
-            paidAmount: 0,
-            pendingAmount: amount,
-            status: "Pending",
-            reminderStatus: "Not Sent",
-            assignedTo: newAmcForm.assignedTo || "Unassigned",
-            lastReminder: "—",
-            notes: newAmcForm.notes.trim(),
-            paymentHistory: [],
-            renewalHistory: [],
-            reminderHistory: [],
+                                Authorization:
+                                    `Bearer ${getAuthToken()}`,
+                            },
 
-            timeline: [
-                createAmcTimelineEvent({
-                    type: "created",
-                    title: "AMC contract created",
-                    description: `${newAmcForm.plan} AMC contract was created for ${newAmcForm.product}.`,
-                }),
+                            body:
+                                JSON.stringify({
+                                    clientId:
+                                        newAmcForm.clientId,
 
-                createAmcTimelineEvent({
-                    type: "invoice",
-                    title: "AMC invoice generated",
-                    description: `Invoice ${invoiceNo} was generated for ${formatCurrency(
-                        amount
-                    )}.`,
-                }),
+                                    clientProductId:
+                                        newAmcForm.clientProductId,
 
-                ...(newAmcForm.assignedTo
-                    ? [
-                        createAmcTimelineEvent({
-                            type: "assignment",
-                            title: `Assigned to ${newAmcForm.assignedTo}`,
-                            description:
-                                "Employee was assigned to manage this AMC contract.",
-                        }),
+                                    plan:
+                                        newAmcForm.plan,
+
+                                    licensedUsers,
+
+                                    startDate:
+                                        newAmcForm.startDate,
+
+                                    expiryDate:
+                                        newAmcForm.expiryDate,
+
+                                    dueDate:
+                                        newAmcForm.dueDate,
+
+                                    taxableAmount,
+
+                                    cgstRate:
+                                        Number(
+                                            newAmcForm.cgstRate ||
+                                            0
+                                        ),
+
+                                    sgstRate:
+                                        Number(
+                                            newAmcForm.sgstRate ||
+                                            0
+                                        ),
+
+                                    igstRate:
+                                        Number(
+                                            newAmcForm.igstRate ||
+                                            0
+                                        ),
+
+                                    assignedEmployeeId:
+                                        newAmcForm
+                                            .assignedEmployeeId ||
+                                        "",
+
+                                    notes:
+                                        newAmcForm.notes
+                                            .trim(),
+                                }),
+                        }
+                    );
+
+                const result =
+                    await response.json();
+
+                if (
+                    !response.ok ||
+                    !result.success
+                ) {
+                    throw new Error(
+                        result.message ||
+                        "Unable to create AMC contract."
+                    );
+                }
+
+                const createdRecord =
+                    normalizeAmcContractFromApi(
+                        result.data
+                    );
+
+                setRecords(
+                    (current) => [
+                        createdRecord,
+                        ...current,
                     ]
-                    : []),
-            ],
-        };
+                );
 
-        setRecords((current) => [newRecord, ...current]);
-        closeNewAmcDrawer();
-    };
+                closeNewAmcDrawer();
+
+                await loadAmcContracts();
+
+                alert(
+                    "AMC contract created successfully."
+                );
+            } catch (error) {
+                console.error(
+                    "Create AMC contract error:",
+                    error
+                );
+
+                setNewAmcError(
+                    error.message ||
+                    "Unable to create AMC contract."
+                );
+            } finally {
+                setSavingAmc(false);
+            }
+        };
     const handleOpenInvoicePreview = (record) => {
         const invoiceTimelineEvent = createAmcTimelineEvent({
             type: "invoice",
@@ -986,73 +2046,236 @@ export default function AmcBilling() {
 
         setInvoiceRecord(updatedRecord);
     };
-    const handleSaveReminder = (reminderEntry) => {
-        if (!reminderRecord) return;
+ const handleSaveReminder =
+    async (reminderEntry) => {
+        if (!reminderRecord) {
+            return;
+        }
 
-        const formattedFollowUpDate = reminderEntry.followUpDate
-            ? new Date(
-                `${reminderEntry.followUpDate}T00:00:00`
-            ).toLocaleDateString("en-GB", {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-            })
-            : "Not scheduled";
+        const contractId =
+            reminderRecord.mongoId ||
+            reminderRecord.id;
 
-        const savedReminder = {
-            ...reminderEntry,
-            followUpDate: formattedFollowUpDate,
-        };
+        if (!contractId) {
+            alert(
+                "AMC contract ID was not found."
+            );
+            return;
+        }
 
-        const reminderTimelineEvent = createAmcTimelineEvent({
-            type: "reminder",
-            title:
-                reminderEntry.channel === "Phone Call"
-                    ? "Payment follow-up call logged"
-                    : `${reminderEntry.channel} reminder sent`,
-            description: `${reminderEntry.channel === "Phone Call"
-                ? "Follow-up call recorded"
-                : `Payment reminder sent through ${reminderEntry.channel}`
-                }. Next follow-up: ${formattedFollowUpDate}.`,
-            user: reminderEntry.sentBy,
-        });
+        try {
+            setSavingReminder(true);
 
-        const updateRecord = (record) => ({
-            ...record,
-            reminderStatus:
-                reminderEntry.channel === "Phone Call"
-                    ? "Call Logged"
-                    : "Sent",
-            lastReminder: reminderEntry.sentAt,
-            assignedTo:
-                reminderEntry.assignedTo === "Unassigned"
-                    ? record.assignedTo
-                    : reminderEntry.assignedTo,
-            reminderHistory: [
-                ...(record.reminderHistory || []),
-                savedReminder,
-            ],
-            timeline: [
-                ...(record.timeline || []),
-                reminderTimelineEvent,
-            ],
-        });
+            const token =
+                getAuthToken();
 
-        setRecords((current) =>
-            current.map((record) =>
-                record.id === reminderRecord.id
-                    ? updateRecord(record)
-                    : record
-            )
-        );
+            if (!token) {
+                throw new Error(
+                    "Login token was not found. Please login again."
+                );
+            }
 
-        setSelectedRecord((current) =>
-            current?.id === reminderRecord.id
-                ? updateRecord(current)
-                : current
-        );
+            const response =
+                await fetch(
+                    `${API_URL}/api/admin/amc/contract/${contractId}/reminder`,
+                    {
+                        method:
+                            "POST",
 
-        setReminderRecord(null);
+                        headers: {
+                            "Content-Type":
+                                "application/json",
+
+                            Accept:
+                                "application/json",
+
+                            Authorization:
+                                `Bearer ${token}`,
+                        },
+
+                        body:
+                            JSON.stringify({
+                                channel:
+                                    reminderEntry.channel,
+
+                                message:
+                                    reminderEntry.message,
+
+                                followUpDate:
+                                    reminderEntry.followUpDate,
+
+                                assignedEmployeeId:
+                                    reminderEntry
+                                        .assignedEmployeeId ||
+                                    "",
+
+                                notes:
+                                    reminderEntry.notes ||
+                                    "",
+                            }),
+                    }
+                );
+
+            const result =
+                await response.json();
+
+            if (
+                response.status === 401
+            ) {
+                throw new Error(
+                    "Your login session has expired. Please login again."
+                );
+            }
+
+            if (
+                !response.ok ||
+                result.success !== true
+            ) {
+                throw new Error(
+                    result.message ||
+                    "Unable to save AMC reminder."
+                );
+            }
+
+            const updatedContract =
+                normalizeAmcContractFromApi(
+                    result.data.contract
+                );
+
+            const savedReminder =
+                result.data.reminder;
+
+            const normalizedReminder = {
+                id:
+                    savedReminder._id ||
+                    savedReminder.id,
+
+                channel:
+                    savedReminder.channel,
+
+                message:
+                    savedReminder.message,
+
+                followUpDate:
+                    savedReminder.followUpDate
+                        ? new Date(
+                            savedReminder.followUpDate
+                        ).toLocaleDateString(
+                            "en-GB",
+                            {
+                                day:
+                                    "2-digit",
+
+                                month:
+                                    "short",
+
+                                year:
+                                    "numeric",
+                            }
+                        )
+                        : "Not scheduled",
+
+                assignedEmployeeId:
+                    savedReminder
+                        .assignedEmployeeId ||
+                    "",
+
+                assignedEmployeeCode:
+                    savedReminder
+                        .assignedEmployeeCode ||
+                    "",
+
+                assignedEmployeeName:
+                    savedReminder
+                        .assignedEmployeeName ||
+                    "Unassigned",
+
+                assignedTo:
+                    savedReminder
+                        .assignedEmployeeName ||
+                    "Unassigned",
+
+                notes:
+                    savedReminder.notes ||
+                    "",
+
+                sentAt:
+                    savedReminder.sentAt
+                        ? new Date(
+                            savedReminder.sentAt
+                        ).toLocaleString(
+                            "en-IN"
+                        )
+                        : "—",
+
+                sentBy:
+                    savedReminder
+                        .sentByName ||
+                    "Admin",
+
+                status:
+                    savedReminder.status ||
+                    "Sent",
+            };
+
+            const finalRecord = {
+                ...updatedContract,
+
+                reminderHistory: [
+                    ...(
+                        reminderRecord
+                            .reminderHistory ||
+                        []
+                    ),
+
+                    normalizedReminder,
+                ],
+            };
+
+            setRecords(
+                (current) =>
+                    current.map(
+                        (record) =>
+                            record.id ===
+                            reminderRecord.id
+                                ? finalRecord
+                                : record
+                    )
+            );
+
+            setSelectedRecord(
+                (current) =>
+                    current?.id ===
+                    reminderRecord.id
+                        ? finalRecord
+                        : current
+            );
+
+            setReminderRecord(
+                null
+            );
+
+            await loadAmcContracts();
+
+            alert(
+                result.message ||
+                "AMC reminder saved successfully."
+            );
+        } catch (error) {
+            console.error(
+                "Save AMC reminder error:",
+                error
+            );
+
+            alert(
+                error.message ||
+                "Unable to save AMC reminder."
+            );
+        } finally {
+            setSavingReminder(
+                false
+            );
+        }
     };
 
     return (
@@ -1291,9 +2514,10 @@ export default function AmcBilling() {
                                         onChange={(event) => setProductFilter(event.target.value)}
                                         className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                                     >
-                                        {productOptions.map((product) => (
-                                            <option key={product}>{product}</option>
-                                        ))}
+                                        {productFilterOptions.map(
+                                            (product) => (
+                                                <option key={product}>{product}</option>
+                                            ))}
                                     </select>
                                 </div>
 
@@ -1561,12 +2785,28 @@ export default function AmcBilling() {
                         </p>
 
                         <button
-                            type="button"
-                            className="flex items-center gap-1 font-semibold text-violet-600"
-                        >
-                            <RefreshCw size={13} />
-                            Refresh data
-                        </button>
+    type="button"
+    onClick={
+        loadAmcContracts
+    }
+    disabled={
+        recordsLoading
+    }
+    className="flex items-center gap-1 font-semibold text-violet-600 disabled:cursor-not-allowed disabled:opacity-60"
+>
+    <RefreshCw
+        size={13}
+        className={
+            recordsLoading
+                ? "animate-spin"
+                : ""
+        }
+    />
+
+    {recordsLoading
+        ? "Refreshing..."
+        : "Refresh data"}
+</button>
                     </div>
                 </section>
             </div>
@@ -2107,18 +3347,30 @@ export default function AmcBilling() {
                             </button>
 
                             {selectedRecord.pendingAmount > 0 && (
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        const record = selectedRecord;
-                                        setSelectedRecord(null);
-                                        openPaymentModal(record);
-                                    }}
-                                    className="flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-xs font-semibold text-white hover:bg-emerald-700"
-                                >
-                                    <ReceiptIndianRupee size={15} />
-                                    Record Payment
-                                </button>
+                               <button
+    type="submit"
+    disabled={
+        savingPayment
+    }
+    className="flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+>
+    {savingPayment ? (
+        <>
+            <RefreshCw
+                size={15}
+                className="animate-spin"
+            />
+            Saving Payment...
+        </>
+    ) : (
+        <>
+            <ReceiptIndianRupee
+                size={15}
+            />
+            Record Payment
+        </>
+    )}
+</button>
                             )}
                         </div>
                     </div>
@@ -2247,13 +3499,17 @@ export default function AmcBilling() {
                         </div>
 
                         <div className="flex justify-end gap-3 border-t border-slate-200 bg-slate-50/60 px-6 py-4">
-                            <button
-                                type="button"
-                                onClick={closePaymentModal}
-                                className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600"
-                            >
-                                Cancel
-                            </button>
+                         <button
+    type="button"
+    disabled={
+        savingPayment
+    }
+    onClick={
+        closePaymentModal
+    }
+>
+    Cancel
+</button>
 
                             <button
                                 type="submit"
@@ -2466,47 +3722,148 @@ export default function AmcBilling() {
                                     </div>
 
                                     <div className="grid gap-5 sm:grid-cols-2">
-                                        <div className="sm:col-span-2">
+                                        <div>
                                             <label className="mb-2 block text-xs font-semibold text-slate-700">
-                                                Client <span className="text-rose-500">*</span>
+                                                Client
+                                                <span className="ml-1 text-rose-500">
+                                                    *
+                                                </span>
+                                            </label>
+
+                                            <select
+                                                name="clientId"
+                                                value={
+                                                    newAmcForm.clientId
+                                                }
+                                                disabled={
+                                                    mastersLoading
+                                                }
+                                                onChange={(event) => {
+                                                    const clientId =
+                                                        event.target.value;
+
+                                                    const selectedClient =
+                                                        clients.find(
+                                                            (client) =>
+                                                                String(
+                                                                    client.id
+                                                                ) ===
+                                                                String(
+                                                                    clientId
+                                                                )
+                                                        );
+
+                                                    setNewAmcForm(
+                                                        (current) => ({
+                                                            ...current,
+
+                                                            clientId,
+
+                                                            clientCode:
+                                                                selectedClient
+                                                                    ?.clientCode ||
+                                                                "",
+
+                                                            clientName:
+                                                                selectedClient
+                                                                    ?.companyName ||
+                                                                "",
+
+                                                            contactPerson:
+                                                                selectedClient
+                                                                    ?.contactPerson ||
+                                                                "",
+
+                                                            contactMobile:
+                                                                selectedClient
+                                                                    ?.mobile ||
+                                                                "",
+
+                                                            contactEmail:
+                                                                selectedClient
+                                                                    ?.email ||
+                                                                "",
+
+                                                            clientProductId:
+                                                                "",
+
+                                                            productId:
+                                                                "",
+
+                                                            productCode:
+                                                                "",
+
+                                                            productName:
+                                                                "",
+
+                                                            productVersion:
+                                                                "",
+
+                                                            plan:
+                                                                "Standard",
+
+                                                            licensedUsers:
+                                                                "1",
+                                                        })
+                                                    );
+
+                                                    setNewAmcError("");
+                                                }}
+                                                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100 disabled:opacity-60"
+                                            >
+                                                <option value="">
+                                                    {mastersLoading
+                                                        ? "Loading clients..."
+                                                        : "Select client"}
+                                                </option>
+
+                                                {clients.map((client) => (
+                                                    <option
+                                                        key={client.id}
+                                                        value={client.id}
+                                                    >
+                                                        {client.companyName}
+
+                                                        {client.clientCode
+                                                            ? ` (${client.clientCode})`
+                                                            : ""}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div>
+                                            <label className="mb-2 block text-xs font-semibold text-slate-700">
+                                                Contact Person
                                             </label>
 
                                             <input
-                                                name="client"
-                                                value={newAmcForm.client}
-                                                onChange={handleNewAmcChange}
-                                                placeholder="Enter client or company name"
-                                                className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                type="text"
+                                                value={
+                                                    newAmcForm.contactPerson
+                                                }
+                                                readOnly
+                                                placeholder="From Client Master"
+                                                className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600 outline-none"
                                             />
                                         </div>
 
                                         <div>
                                             <label className="mb-2 block text-xs font-semibold text-slate-700">
-                                                Contact person
+                                                Mobile
                                             </label>
 
                                             <input
-                                                name="contactPerson"
-                                                value={newAmcForm.contactPerson}
-                                                onChange={handleNewAmcChange}
-                                                placeholder="Primary contact name"
-                                                className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                type="text"
+                                                value={
+                                                    newAmcForm.contactMobile
+                                                }
+                                                readOnly
+                                                placeholder="From Client Master"
+                                                className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600 outline-none"
                                             />
                                         </div>
 
-                                        <div>
-                                            <label className="mb-2 block text-xs font-semibold text-slate-700">
-                                                Mobile number
-                                            </label>
-
-                                            <input
-                                                name="mobile"
-                                                value={newAmcForm.mobile}
-                                                onChange={handleNewAmcChange}
-                                                placeholder="Client mobile number"
-                                                className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                            />
-                                        </div>
                                     </div>
                                 </section>
 
@@ -2524,34 +3881,134 @@ export default function AmcBilling() {
                                     <div className="grid gap-5 sm:grid-cols-2">
                                         <div>
                                             <label className="mb-2 block text-xs font-semibold text-slate-700">
-                                                Product <span className="text-rose-500">*</span>
+                                                Client Product
+                                                <span className="ml-1 text-rose-500">
+                                                    *
+                                                </span>
                                             </label>
 
                                             <select
-                                                name="product"
-                                                value={newAmcForm.product}
-                                                onChange={handleNewAmcChange}
-                                                className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                name="clientProductId"
+                                                value={
+                                                    newAmcForm.clientProductId
+                                                }
+                                                disabled={
+                                                    !newAmcForm.clientId ||
+                                                    mastersLoading
+                                                }
+                                                onChange={(event) => {
+                                                    const clientProductId =
+                                                        event.target.value;
+
+                                                    const selectedProduct =
+                                                        availableClientProducts.find(
+                                                            (product) =>
+                                                                String(
+                                                                    product.clientProductId
+                                                                ) ===
+                                                                String(
+                                                                    clientProductId
+                                                                )
+                                                        );
+
+                                                    setNewAmcForm(
+                                                        (current) => ({
+                                                            ...current,
+
+                                                            clientProductId,
+
+                                                            productId:
+                                                                selectedProduct
+                                                                    ?.productId ||
+                                                                "",
+
+                                                            productCode:
+                                                                selectedProduct
+                                                                    ?.productCode ||
+                                                                "",
+
+                                                            productName:
+                                                                selectedProduct
+                                                                    ?.productName ||
+                                                                "",
+
+                                                            productVersion:
+                                                                selectedProduct
+                                                                    ?.version ||
+                                                                "",
+
+                                                            plan:
+                                                                [
+                                                                    "Basic",
+                                                                    "Standard",
+                                                                    "Premium",
+                                                                ].includes(
+                                                                    selectedProduct
+                                                                        ?.supportType
+                                                                )
+                                                                    ? selectedProduct
+                                                                        .supportType
+                                                                    : "Standard",
+
+                                                            licensedUsers:
+                                                                String(
+                                                                    selectedProduct
+                                                                        ?.licensedUsers ||
+                                                                    1
+                                                                ),
+                                                        })
+                                                    );
+
+                                                    setNewAmcError("");
+                                                }}
+                                                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100 disabled:opacity-60"
                                             >
-                                                <option value="">Select product</option>
-                                                <option>NexERP</option>
-                                                <option>BillFlow</option>
-                                                <option>RetailPOS</option>
-                                                <option>StockPro</option>
+                                                <option value="">
+                                                    {!newAmcForm.clientId
+                                                        ? "Select client first"
+                                                        : availableClientProducts.length ===
+                                                            0
+                                                            ? "No assigned products"
+                                                            : "Select client product"}
+                                                </option>
+
+                                                {availableClientProducts.map(
+                                                    (product) => (
+                                                        <option
+                                                            key={
+                                                                product.clientProductId
+                                                            }
+                                                            value={
+                                                                product.clientProductId
+                                                            }
+                                                        >
+                                                            {product.productCode
+                                                                ? `${product.productCode} - `
+                                                                : ""}
+
+                                                            {product.productName}
+
+                                                            {product.version
+                                                                ? ` (${product.version})`
+                                                                : ""}
+                                                        </option>
+                                                    )
+                                                )}
                                             </select>
                                         </div>
-
                                         <div>
                                             <label className="mb-2 block text-xs font-semibold text-slate-700">
-                                                Version
+                                                Product Version
                                             </label>
 
                                             <input
-                                                name="version"
-                                                value={newAmcForm.version}
-                                                onChange={handleNewAmcChange}
-                                                placeholder="Example: v3.4.2"
-                                                className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                type="text"
+                                                value={
+                                                    newAmcForm.productVersion
+                                                }
+                                                readOnly
+                                                placeholder="From Client Product"
+                                                className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600 outline-none"
                                             />
                                         </div>
 
@@ -2579,12 +4036,15 @@ export default function AmcBilling() {
 
                                             <input
                                                 type="number"
+                                                name="licensedUsers"
                                                 min="1"
-                                                name="users"
-                                                value={newAmcForm.users}
-                                                onChange={handleNewAmcChange}
-                                                placeholder="Example: 10"
-                                                className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                value={
+                                                    newAmcForm.licensedUsers
+                                                }
+                                                onChange={
+                                                    handleNewAmcChange
+                                                }
+                                                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                                             />
                                         </div>
                                     </div>
@@ -2659,31 +4119,96 @@ export default function AmcBilling() {
 
                                                 <input
                                                     type="number"
-                                                    min="1"
-                                                    name="amount"
-                                                    value={newAmcForm.amount}
-                                                    onChange={handleNewAmcChange}
-                                                    placeholder="Enter annual AMC amount"
-                                                    className="h-11 w-full rounded-xl border border-slate-200 pl-9 pr-3 text-sm text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                    name="taxableAmount"
+                                                    min="0"
+                                                    step="0.01"
+                                                    value={
+                                                        newAmcForm.taxableAmount
+                                                    }
+                                                    onChange={
+                                                        handleNewAmcChange
+                                                    }
+                                                    placeholder="Enter taxable amount"
+                                                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                                                 />
                                             </div>
                                         </div>
 
                                         <div>
                                             <label className="mb-2 block text-xs font-semibold text-slate-700">
-                                                Assigned employee
+                                                Assigned Employee
                                             </label>
 
                                             <select
-                                                name="assignedTo"
-                                                value={newAmcForm.assignedTo}
-                                                onChange={handleNewAmcChange}
-                                                className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm text-slate-700 outline-none"
+                                                name="assignedEmployeeId"
+                                                value={
+                                                    newAmcForm.assignedEmployeeId
+                                                }
+                                                disabled={
+                                                    mastersLoading
+                                                }
+                                                onChange={(event) => {
+                                                    const employeeId =
+                                                        event.target.value;
+
+                                                    const selectedEmployee =
+                                                        employees.find(
+                                                            (employee) =>
+                                                                String(
+                                                                    employee.id
+                                                                ) ===
+                                                                String(
+                                                                    employeeId
+                                                                )
+                                                        );
+
+                                                    setNewAmcForm(
+                                                        (current) => ({
+                                                            ...current,
+
+                                                            assignedEmployeeId:
+                                                                employeeId,
+
+                                                            assignedEmployeeCode:
+                                                                selectedEmployee
+                                                                    ?.employeeCode ||
+                                                                "",
+
+                                                            assignedEmployeeName:
+                                                                selectedEmployee
+                                                                    ?.name ||
+                                                                "",
+                                                        })
+                                                    );
+
+                                                    setNewAmcError("");
+                                                }}
+                                                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100 disabled:opacity-60"
                                             >
-                                                <option value="">Keep unassigned</option>
-                                                {employeeOptions.map((employee) => (
-                                                    <option key={employee}>{employee}</option>
-                                                ))}
+                                                <option value="">
+                                                    Keep unassigned
+                                                </option>
+
+                                                {employees.map(
+                                                    (employee) => (
+                                                        <option
+                                                            key={employee.id}
+                                                            value={employee.id}
+                                                            disabled={
+                                                                employee.status ===
+                                                                "Leave" ||
+                                                                employee.status ===
+                                                                "Inactive"
+                                                            }
+                                                        >
+                                                            {employee.name}
+
+                                                            {employee.employeeCode
+                                                                ? ` (${employee.employeeCode})`
+                                                                : ""}
+                                                        </option>
+                                                    )
+                                                )}
                                             </select>
                                         </div>
                                     </div>
@@ -2735,10 +4260,14 @@ export default function AmcBilling() {
 
                                 <button
                                     type="submit"
-                                    className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-5 text-xs font-semibold text-white transition hover:bg-violet-700"
+                                    disabled={savingAmc}
+                                    className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-5 text-xs font-semibold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                     <FileText size={15} />
-                                    Create AMC Contract
+
+                                    {savingAmc
+                                        ? "Creating..."
+                                        : "Create AMC Contract"}
                                 </button>
                             </div>
                         </form>
@@ -2758,12 +4287,23 @@ export default function AmcBilling() {
                 />
             )}
             {reminderRecord && (
-                <AmcReminderModal
-                    record={reminderRecord}
-                    onClose={() => setReminderRecord(null)}
-                    onSubmit={handleSaveReminder}
-                />
-            )}  
+               <AmcReminderModal
+    record={reminderRecord}
+    employees={employees}
+    saving={savingReminder}
+    onClose={() => {
+        if (!savingReminder) {
+            setReminderRecord(
+                null
+            );
+        }
+    }}
+    onSubmit={
+        handleSaveReminder
+    }
+/>
+
+            )}
         </>
     );
 }
