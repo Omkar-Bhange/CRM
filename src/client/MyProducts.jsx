@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
     Box,
     CalendarDays,
@@ -18,59 +18,7 @@ import {
     X,
 } from "lucide-react";
 
-const productRecords = [
-    {
-        id: 1,
-        name: "NexERP",
-        category: "Enterprise Resource Planning",
-        description:
-            "Complete ERP solution for manufacturing, distribution, billing, inventory and financial operations.",
-        version: "v4.2",
-        status: "Active",
-        purchaseDate: "12 Mar 2022",
-        installationDate: "18 Mar 2022",
-        licenceType: "Annual Licence",
-        licenceKey: "NEX-ERP-SGI-2022-0012",
-        licensedUsers: 12,
-        activeUsers: 9,
-        supportPlan: "Annual AMC",
-        supportStatus: "Active",
-        amcExpiry: "15 Jul 2026",
-        assignedEngineer: "Akash Pawar",
-        lastUpdated: "18 Jun 2026",
-        installationStatus: "Installed",
-        serverType: "Windows Server",
-        database: "SQL Server",
-        modules: [
-            "Sales",
-            "Purchase",
-            "Inventory",
-            "Accounts",
-            "GST Reports",
-            "User Management",
-        ],
-        documents: [
-            {
-                id: 1,
-                name: "NexERP Licence Certificate",
-                type: "PDF",
-                size: "340 KB",
-            },
-            {
-                id: 2,
-                name: "AMC Agreement 2026–27",
-                type: "PDF",
-                size: "1.2 MB",
-            },
-            {
-                id: 3,
-                name: "Installation Details",
-                type: "PDF",
-                size: "280 KB",
-            },
-        ],
-    },
-];
+const API_URL = "http://localhost:5000";
 
 function StatusBadge({ status }) {
     const styles = {
@@ -117,34 +65,96 @@ function DetailItem({ label, value, icon: Icon, valueClass = "" }) {
 }
 
 export default function MyProducts({ onNavigate }) {
-    const [searchValue, setSearchValue] = useState("");
-    const [selectedProductId, setSelectedProductId] = useState(null);
-    const [detailsOpen, setDetailsOpen] = useState(false);
-    const [documentOpen, setDocumentOpen] = useState(false);
+const [searchValue, setSearchValue] = useState("");
+const [selectedProductId, setSelectedProductId] = useState(null);
+const [detailsOpen, setDetailsOpen] = useState(false);
+const [documentOpen, setDocumentOpen] = useState(false);
+const [productRecords, setProductRecords] = useState([]);
+const [loading, setLoading] = useState(true);
+const [error, setError] = useState("");
+useEffect(() => {
+  const loadProducts = async () => {
+    try {
+      const token =
+        localStorage.getItem("client-connect-token") ||
+        sessionStorage.getItem("client-connect-token");
 
-    const filteredProducts = useMemo(() => {
-        const search = searchValue.trim().toLowerCase();
+      const response = await fetch(`${API_URL}/api/client/dashboard`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
-        if (!search) {
-            return productRecords;
-        }
+      const result = await response.json();
 
-        return productRecords.filter((product) =>
-            [
-                product.name,
-                product.category,
-                product.description,
-                product.version,
-                product.supportPlan,
-                product.assignedEngineer,
-                ...product.modules,
-            ].some((value) =>
-                String(value || "")
-                    .toLowerCase()
-                    .includes(search)
-            )
-        );
-    }, [searchValue]);
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || "Unable to load products.");
+      }
+
+     setProductRecords(
+  (result.data.products || []).map((product) => ({
+    id: product._id,
+    name: product.productName,
+    category: product.category || "Software",
+    description: product.notes || product.description || "",
+    version: product.version || product.currentVersion || "v1.0.0",
+    status:
+      product.installationStatus === "Inactive"
+        ? "Inactive"
+        : "Active",
+    purchaseDate: product.purchaseDate || "",
+    installationDate: product.installationDate || "",
+    licenceType: product.licenceType || "Annual Licence",
+    licenceKey: product.licenceKey || "",
+    licensedUsers: product.licensedUsers || 0,
+    activeUsers: product.activeUsers || 0,
+    supportPlan: product.supportType || product.supportPlan || "",
+    supportStatus: product.supportStatus || "Active",
+   amcExpiry: product.expiryDate || "",
+    assignedEngineer:
+      product.assignedEngineer ||
+      product.assignedEmployeeName ||
+      "Support Team",
+    lastUpdated: product.updatedAt || product.createdAt || "",
+    installationStatus: product.installationStatus || "Installed",
+    serverType: product.serverType || "",
+    database: product.database || "",
+    modules: product.modules || [],
+    documents: product.documents || [],
+  }))
+);
+    } catch (err) {
+      console.error("Load products:", err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  loadProducts();
+}, []);
+
+  const filteredProducts = useMemo(() => {
+  const search = searchValue.trim().toLowerCase();
+
+  if (!search) {
+    return productRecords;
+  }
+
+  return productRecords.filter((product) =>
+    [
+      product.name,
+      product.category,
+      product.description,
+      product.version,
+      product.supportPlan,
+      product.assignedEngineer,
+      ...(product.modules || []),
+    ].some((value) =>
+      String(value || "").toLowerCase().includes(search)
+    )
+  );
+}, [searchValue, productRecords]);
 
     const selectedProduct =
         productRecords.find(
@@ -168,7 +178,17 @@ export default function MyProducts({ onNavigate }) {
             `${documentName} will download after the document API is connected.`
         );
     };
+if (loading) {
+  return (
+    <div className="flex h-64 items-center justify-center text-sm text-slate-500">
+      Loading products...
+    </div>
+  );
+}
 
+if (error) {
+  return <div className="p-6 text-sm text-rose-600">{error}</div>;
+}
     return (
         <div>
             <section className="flex flex-col gap-5 border-b border-slate-200 pb-7 lg:flex-row lg:items-end lg:justify-between">

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
     ArrowRight,
     BellRing,
@@ -19,80 +20,28 @@ import {
     Users,
 } from "lucide-react";
 
-const products = [
-    {
-        id: 1,
-        name: "NexERP",
-        description: "ERP for manufacturing and distribution",
-        version: "v4.2",
-        purchaseDate: "12 Mar 2022",
-        licensedUsers: 12,
-        supportPlan: "Annual AMC",
-        status: "Active",
-    },
-];
+const API_URL = "http://localhost:5000";
 
-const billingHistory = [
-    {
-        id: 1,
-        invoiceNo: "INV-2026-014",
-        period: "AMC 2026–27",
-        amount: "₹45,000",
-        status: "Pending",
-    },
-    {
-        id: 2,
-        invoiceNo: "INV-2025-011",
-        period: "AMC 2025–26",
-        amount: "₹42,000",
-        status: "Paid",
-    },
-    {
-        id: 3,
-        invoiceNo: "INV-2024-008",
-        period: "AMC 2024–25",
-        amount: "₹40,000",
-        status: "Paid",
-    },
-];
+function activityIcon(type) {
+    if (type === "Ticket") {
+        return { icon: TicketCheck, iconClass: "bg-blue-50 text-blue-600" };
+    }
+    if (type === "Billing") {
+        return { icon: ReceiptText, iconClass: "bg-amber-50 text-amber-600" };
+    }
+    if (type === "Product") {
+        return { icon: PackageCheck, iconClass: "bg-emerald-50 text-emerald-600" };
+    }
+    return { icon: CheckCircle2, iconClass: "bg-slate-50 text-slate-600" };
+}
 
-const supportTickets = [
-    {
-        id: "TKT-1042",
-        title: "GST report mismatch in monthly summary",
-        createdAt: "Today, 09:40 AM",
-        assignedTo: "Akash Pawar",
-        priority: "High",
-        status: "In Progress",
-    },
-];
-
-const recentActivity = [
-    {
-        id: 1,
-        title: "Support ticket assigned",
-        description: "TKT-1042 was assigned to Akash Pawar.",
-        time: "Today, 10:05 AM",
-        icon: TicketCheck,
-        iconClass: "bg-blue-50 text-blue-600",
-    },
-    {
-        id: 2,
-        title: "AMC invoice generated",
-        description: "Invoice INV-2026-014 is available for download.",
-        time: "01 Jul 2026",
-        icon: ReceiptText,
-        iconClass: "bg-amber-50 text-amber-600",
-    },
-    {
-        id: 3,
-        title: "Product version updated",
-        description: "Your NexERP licence was updated to version v4.2.",
-        time: "18 Jun 2026",
-        icon: PackageCheck,
-        iconClass: "bg-emerald-50 text-emerald-600",
-    },
-];
+function formatCurrency(amount) {
+    return new Intl.NumberFormat("en-IN", {
+        style: "currency",
+        currency: "INR",
+        maximumFractionDigits: 0,
+    }).format(Number(amount || 0));
+}
 
 function StatusBadge({ status }) {
     const statusClasses = {
@@ -180,11 +129,123 @@ function SummaryCard({
 }
 
 export default function ClientDashboard({ onNavigate }) {
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+    const [client, setClient] = useState(null);
+    const [summary, setSummary] = useState({
+        activeProductCount: 0,
+        openTicketCount: 0,
+        totalLicensedUsers: 0,
+        amcStatus: "Not Started",
+        nextRenewal: "",
+    });
+    const [products, setProducts] = useState([]);
+    const [supportTickets, setSupportTickets] = useState([]);
+    const [billingHistory, setBillingHistory] = useState([]);
+    const [recentActivity, setRecentActivity] = useState([]);
+
+    const getAuthToken = () => {
+        return (
+            localStorage.getItem("client-connect-token") ||
+            sessionStorage.getItem("client-connect-token") ||
+            ""
+        );
+    };
+
+    useEffect(() => {
+        const loadDashboard = async () => {
+            try {
+                const response = await fetch(`${API_URL}/api/client/dashboard`, {
+                    headers: { Authorization: `Bearer ${getAuthToken()}` },
+                });
+
+                const result = await response.json();
+
+                if (!response.ok || !result.success) {
+                    throw new Error(result.message || "Unable to load dashboard.");
+                }
+
+                const data = result.data;
+
+                setClient(data.client);
+                setSummary(data.summary);
+
+                setProducts(
+                    (data.products || []).map((product) => ({
+                        id: product._id,
+                        name: product.productName,
+                        description: product.notes || "",
+                        version: product.version,
+                        purchaseDate: product.purchaseDate,
+                        licensedUsers: product.licensedUsers,
+                        supportPlan: product.supportType,
+                        status: product.installationStatus === "Inactive" ? "Inactive" : "Active",
+                    }))
+                );
+
+                setSupportTickets(
+                    (data.tickets || []).map((ticket) => ({
+                        id: ticket.ticketCode,
+                        title: ticket.title,
+                        createdAt: new Date(ticket.createdAt).toLocaleString("en-IN", {
+                            day: "2-digit",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                        }),
+                        assignedTo: ticket.assignedEmployeeName || "Unassigned",
+                        priority: ticket.priority,
+                        status: ticket.status,
+                    }))
+                );
+
+                // No invoice/billing schema exists on the backend yet, so this
+                // stays empty until that's built — see the "Bills & AMC" empty
+                // state below instead of showing fake invoices.
+                setBillingHistory(data.billingHistory || []);
+
+                setRecentActivity(
+                    (data.activity || []).map((item) => ({
+                        id: item._id,
+                        title: item.action,
+                        description: item.description,
+                        time: new Date(item.createdAt).toLocaleString("en-IN", {
+                            day: "2-digit",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                        }),
+                        ...activityIcon(item.category),
+                    }))
+                );
+            } catch (err) {
+                console.error("Client dashboard:", err);
+                setError(err.message);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadDashboard();
+    }, []);
+
     const handleDownloadBill = () => {
         alert(
             "The AMC invoice PDF will be connected when the billing backend is added."
         );
     };
+
+    if (loading) {
+        return (
+            <div className="flex h-96 items-center justify-center text-sm text-slate-500">
+                Loading your dashboard...
+            </div>
+        );
+    }
+
+    if (error) {
+        return <div className="p-6 text-sm text-rose-600">{error}</div>;
+    }
 
     return (
         <div>
@@ -196,7 +257,7 @@ export default function ClientDashboard({ onNavigate }) {
                     </div>
 
                     <h1 className="text-2xl font-semibold tracking-[-0.03em] text-slate-950 sm:text-3xl">
-                        Welcome, Ramesh
+                        Welcome, {client?.contactPerson || client?.companyName || "Client"}
                     </h1>
 
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
@@ -229,32 +290,32 @@ export default function ClientDashboard({ onNavigate }) {
             <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <SummaryCard
                     label="Active Products"
-                    value="1"
-                    description="NexERP licence currently active"
+                    value={String(summary.activeProductCount)}
+                    description={`${summary.activeProductCount} product${summary.activeProductCount === 1 ? "" : "s"} currently active`}
                     icon={Box}
                     iconClass="bg-cyan-100 text-cyan-700"
                 />
 
                 <SummaryCard
-                    label="AMC Amount Due"
-                    value="₹45,000"
-                    description="Payment due by 15 July 2026"
+                    label="AMC Status"
+                    value={summary.amcStatus || "—"}
+                    description={summary.nextRenewal ? `Next renewal on ${summary.nextRenewal}` : "No renewal date on file"}
                     icon={IndianRupee}
                     iconClass="bg-amber-100 text-amber-700"
                 />
 
                 <SummaryCard
                     label="Open Tickets"
-                    value="1"
-                    description="One ticket currently in progress"
+                    value={String(summary.openTicketCount)}
+                    description={`${summary.openTicketCount} ticket${summary.openTicketCount === 1 ? "" : "s"} currently open`}
                     icon={Headphones}
                     iconClass="bg-blue-100 text-blue-700"
                 />
 
                 <SummaryCard
                     label="Licensed Users"
-                    value="12"
-                    description="Users permitted under current licence"
+                    value={String(summary.totalLicensedUsers)}
+                    description="Users permitted across all licences"
                     icon={Users}
                     iconClass="bg-violet-100 text-violet-700"
                 />
@@ -367,43 +428,34 @@ export default function ClientDashboard({ onNavigate }) {
                         <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
                             <div>
                                 <p className="text-3xl font-semibold tracking-[-0.04em] text-slate-950">
-                                    ₹45,000
+                                    {summary.amcStatus || "Not Started"}
                                 </p>
 
                                 <p className="mt-2 text-xs text-slate-500">
-                                    AMC 2026–27 · Due on{" "}
-                                    <span className="font-semibold text-slate-800">
-                                        15 July 2026
-                                    </span>
+                                    {summary.nextRenewal
+                                        ? (
+                                            <>
+                                                Next renewal due on{" "}
+                                                <span className="font-semibold text-slate-800">
+                                                    {summary.nextRenewal}
+                                                </span>
+                                            </>
+                                        )
+                                        : "No renewal date on file yet."}
                                 </p>
                             </div>
 
                             <button
                                 type="button"
-                                onClick={handleDownloadBill}
+                                onClick={() => onNavigate("billing")}
                                 className="flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 text-xs font-semibold text-slate-950 transition hover:bg-cyan-400"
                             >
                                 <Download size={16} />
-                                Download Bill PDF
+                                View Billing Page
                             </button>
                         </div>
 
-                        <div className="mt-7">
-                            <div className="mb-2 flex items-center justify-between text-[10px] text-slate-500">
-                                <span>Current AMC period</span>
-                                <span>4 days remaining</span>
-                            </div>
-
-                            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                                <div className="h-full w-[92%] rounded-full bg-cyan-500" />
-                            </div>
-
-                            <p className="mt-2 text-[9px] text-slate-400">
-                                15 July 2025 – 15 July 2026
-                            </p>
-                        </div>
-
-                        <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                        <div className="mt-6 grid gap-3 sm:grid-cols-2">
                             <div className="rounded-xl bg-slate-50 p-3">
                                 <CalendarDays
                                     size={16}
@@ -411,26 +463,11 @@ export default function ClientDashboard({ onNavigate }) {
                                 />
 
                                 <p className="mt-2 text-[9px] uppercase tracking-wide text-slate-400">
-                                    Invoice date
+                                    Next renewal
                                 </p>
 
                                 <p className="mt-1 text-xs font-semibold text-slate-800">
-                                    01 Jul 2026
-                                </p>
-                            </div>
-
-                            <div className="rounded-xl bg-slate-50 p-3">
-                                <Clock3
-                                    size={16}
-                                    className="text-amber-600"
-                                />
-
-                                <p className="mt-2 text-[9px] uppercase tracking-wide text-slate-400">
-                                    Due date
-                                </p>
-
-                                <p className="mt-1 text-xs font-semibold text-slate-800">
-                                    15 Jul 2026
+                                    {summary.nextRenewal || "—"}
                                 </p>
                             </div>
 
@@ -445,10 +482,14 @@ export default function ClientDashboard({ onNavigate }) {
                                 </p>
 
                                 <div className="mt-1">
-                                    <StatusBadge status="Pending" />
+                                    <StatusBadge status={summary.amcStatus} />
                                 </div>
                             </div>
                         </div>
+
+                        <p className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-[10px] leading-4 text-slate-500">
+                            Detailed invoice amounts and due dates will appear here once the billing module is connected.
+                        </p>
                     </div>
                 </article>
             </section>
@@ -502,6 +543,14 @@ export default function ClientDashboard({ onNavigate }) {
                             </thead>
 
                             <tbody>
+                                {billingHistory.length === 0 && (
+                                    <tr>
+                                        <td colSpan={5} className="px-5 py-8 text-center text-xs text-slate-400">
+                                            No invoices yet — this will populate once billing is connected.
+                                        </td>
+                                    </tr>
+                                )}
+
                                 {billingHistory.map((bill) => (
                                     <tr
                                         key={bill.id}

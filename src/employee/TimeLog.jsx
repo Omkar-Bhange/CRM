@@ -55,6 +55,8 @@ import {
 */
 
 const DEMO_DATE = "2026-07-14";
+const API_BASE_URL =
+    import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
 
 const initialAgentStatus = {
     connected: true,
@@ -496,94 +498,179 @@ export default function TimeLog() {
     const [agentStatus, setAgentStatus] = useState(initialAgentStatus);
     const [tasks] = useState(initialTasks);
     const [sessions, setSessions] = useState(initialSessions);
-    const [agentEvents, setAgentEvents] = useState(initialAgentEvents);
-    const [applicationUsage] = useState(initialApplicationUsage);
-    const [timeDistribution] = useState(initialTimeDistribution);
-    const [idleSessions] = useState(initialIdleSessions);
-    const [dailyNotes, setDailyNotes] = useState(initialDailyNotes);
+
 
     const [selectedTaskId, setSelectedTaskId] = useState("TSK-2084");
     const [timerRunning, setTimerRunning] = useState(true);
-    const [currentSessionSeconds, setCurrentSessionSeconds] =
-        useState(12240);
+    const [currentSessionSeconds, setCurrentSessionSeconds] = useState(0);
+    const [agentEvents, setAgentEvents] = useState([]);
+    const [liveTaskSeconds, setLiveTaskSeconds] = useState(0);
+    const [dashboardMetrics, setDashboardMetrics] = useState({
+        tasksCompleted: 0,
+        ticketsSolved: 0,
+        supportCalls: 0,
+    });
+
+    const [attendanceStatus, setAttendanceStatus] = useState("Present");
+    const [loading, setLoading] = useState(true);
+    const [apiSummary, setApiSummary] = useState(null);
+    const [apiApplications, setApiApplications] = useState([]);
+    const [dashboardData, setDashboardData] = useState(null);
+    const [taskSessions, setTaskSessions] = useState([]);
+
+    const applicationUsage = apiApplications;
+
+    const timeDistribution = useMemo(() => {
+        const total = apiApplications.reduce(
+            (sum, app) => sum + Number(app.totalSeconds || 0),
+            0
+        );
+
+        return apiApplications.map((app, index) => ({
+            id: index,
+            category: app.category || app.applicationName,
+            seconds: app.totalSeconds || 0,
+            percentage:
+                total > 0
+                    ? Math.round(((app.totalSeconds || 0) / total) * 100)
+                    : 0,
+        }));
+    }, [apiApplications]);
+    const [idleSessions] = useState(initialIdleSessions);
+    const [dailyNotes, setDailyNotes] = useState(initialDailyNotes);
 
     const [noteText, setNoteText] = useState("");
     const [searchValue, setSearchValue] = useState("");
     const [activityFilter, setActivityFilter] = useState("All");
 
-    useEffect(() => {
-        if (!timerRunning) return undefined;
 
-        const intervalId = window.setInterval(() => {
-            setCurrentSessionSeconds((current) => current + 1);
+    const fetchTimeLog = async () => {
+        try {
+            const token =
+                localStorage.getItem("client-connect-token") ||
+                sessionStorage.getItem("client-connect-token");
+
+            if (!token) return;
+
+            const [timeRes, dashboardRes, sessionsRes] = await Promise.all([
+                fetch(`${API_BASE_URL}/api/employee/time-log/today`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                }),
+                fetch(`${API_BASE_URL}/api/employee/tasks/dashboard`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                }),
+                fetch(`${API_BASE_URL}/api/employee/time-log/sessions`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                }),
+            ]);
+
+            const timeResult = await timeRes.json();
+            const dashboardResult = await dashboardRes.json();
+            const sessionsResult = await sessionsRes.json();
+
+            if (sessionsResult.success) {
+                setTaskSessions(sessionsResult.data);
+            }
+
+            if (timeResult.success) {
+                setApiSummary(timeResult.data.summary);
+                setApiApplications(timeResult.data.applications);
+
+                setAgentStatus((prev) => ({
+                    ...prev,
+                    connected: true,
+                    deviceId: timeResult.data.employee.deviceId || prev.deviceId,
+                    lastSyncAt: timeResult.data.summary.lastSyncAt || prev.lastSyncAt,
+                }));
+            }
+
+           if (dashboardResult.success) {
+              setDashboardData(dashboardResult.data);
+  setDashboardMetrics({
+    
+    tasksCompleted: dashboardResult.data.tasksCompleted || 0,
+    ticketsSolved: dashboardResult.data.ticketsSolved || 0,
+    supportCalls: dashboardResult.data.supportCalls || 0,
+  });
+
+  setAttendanceStatus(
+    dashboardResult.data.attendanceStatus || "Present"
+  );
+}
+            
+        } catch (error) {
+            console.error("Failed to load time log/dashboard:", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+
+    useEffect(() => {
+        // If there is no active task, reset timer
+        if (!dashboardData?.activeTimer) {
+            setLiveTaskSeconds(0);
+            return;
+        }
+
+        // Initialize timer from backend
+        setLiveTaskSeconds(dashboardData.activeTimer.elapsedSeconds || 0);
+
+        // Only run the timer when task is In Progress
+        if (dashboardData.activeTimer.status !== "In Progress") {
+            return;
+        }
+
+        const interval = setInterval(() => {
+            setLiveTaskSeconds((prev) => prev + 1);
         }, 1000);
 
-        return () => window.clearInterval(intervalId);
-    }, [timerRunning]);
+        return () => clearInterval(interval);
+    }, [dashboardData?.activeTimer]);
+    useEffect(() => {
+        fetchTimeLog();
 
+        const refreshId = window.setInterval(fetchTimeLog, 30000);
+
+        return () => window.clearInterval(refreshId);
+    }, []);
+
+    const activeTask =
+        dashboardData?.activeTask ||
+        dashboardData?.tasks?.[0] ||
+        null;
+
+    const totalTrackedSeconds =
+        apiSummary?.totalTrackedSeconds || 0;
+
+    const productiveSeconds = apiApplications
+        .filter((app) => app.productivity === "Productive")
+        .reduce((total, app) => total + (app.totalSeconds || 0), 0);
     const selectedTask =
-        tasks.find((task) => task.id === selectedTaskId) || tasks[0];
+        tasks.find((task) => task.id === selectedTaskId) || tasks[0] || {
+            id: "",
+            title: "No active task",
+            client: "",
+            ticketId: "",
+            description: "",
+        };
 
-    const totalTrackedSeconds = useMemo(
-        () =>
-            sessions.reduce(
-                (total, session) =>
-                    total + Number(session.durationSeconds || 0),
-                0
-            ) + currentSessionSeconds,
-        [sessions, currentSessionSeconds]
+    const unproductiveSeconds = apiApplications
+        .filter((app) => app.productivity === "Unproductive")
+        .reduce((total, app) => total + (app.totalSeconds || 0), 0);
+
+    // Real idle time from agent data
+    const idleSeconds = Math.max(
+        totalTrackedSeconds - productiveSeconds - unproductiveSeconds,
+        0
     );
 
-    const productiveSeconds = useMemo(
-        () =>
-            applicationUsage
-                .filter(
-                    (application) =>
-                        application.productivity === "Productive"
-                )
-                .reduce(
-                    (total, application) =>
-                        total + application.totalSeconds,
-                    0
-                ),
-        [applicationUsage]
-    );
+    // Real productivity score
 
-    const unproductiveSeconds = useMemo(
-        () =>
-            applicationUsage
-                .filter(
-                    (application) =>
-                        application.productivity === "Unproductive"
-                )
-                .reduce(
-                    (total, application) =>
-                        total + application.totalSeconds,
-                    0
-                ),
-        [applicationUsage]
-    );
-
-    const idleSeconds = useMemo(
-        () =>
-            idleSessions.reduce(
-                (total, session) =>
-                    total + Number(session.durationSeconds || 0),
-                0
-            ),
-        [idleSessions]
-    );
-
-    const productivityScore = useMemo(() => {
-        const consideredTime =
-            productiveSeconds + unproductiveSeconds + idleSeconds;
-
-        if (consideredTime <= 0) return 0;
-
-        return Math.round(
-            (productiveSeconds / consideredTime) * 100
-        );
-    }, [productiveSeconds, unproductiveSeconds, idleSeconds]);
+    const productivityScore =
+        totalTrackedSeconds > 0
+            ? Math.round((productiveSeconds / totalTrackedSeconds) * 100)
+            : 0;
 
     const filteredEvents = useMemo(() => {
         return agentEvents.filter((event) => {
@@ -612,62 +699,133 @@ export default function TimeLog() {
         });
     }, [agentEvents, searchValue, activityFilter]);
 
-    const toggleTimer = () => {
-        setTimerRunning((current) => !current);
-    };
+    const toggleTimer = async () => {
+        if (!dashboardData?.activeTimer) return;
 
-    const endCurrentSession = () => {
-        if (!selectedTask || currentSessionSeconds <= 0) return;
+        const token =
+            localStorage.getItem("client-connect-token") ||
+            sessionStorage.getItem("client-connect-token");
+
+        const action =
+            dashboardData.activeTimer.status === "Paused" ? "resume" : "pause";
+
+        try {
+            const response = await fetch(
+                `${API_BASE_URL}/api/employee/tasks/${dashboardData.activeTimer._id}/${action}`,
+                {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+
+            const result = await response.json();
+
+            if (result.success) {
+                await fetchTimeLog();
+            }
+        } catch (error) {
+            console.error(`Failed to ${action} task:`, error);
+        }
+    };
+    const activeTaskSeconds = liveTaskSeconds;
+    useEffect(() => {
+        const active = dashboardData?.activeTimer;
+
+        if (!active) {
+            setLiveTaskSeconds(0);
+            return;
+        }
+
+        const baseSeconds = Number(active.elapsedSeconds || 0);
+
+        setLiveTaskSeconds(baseSeconds);
+
+        if (active.status !== "In Progress") return;
+
+        const startedAt = new Date(active.startedAt).getTime();
+
+        const tick = () => {
+            const running = Math.max(
+                0,
+                Math.floor((Date.now() - startedAt) / 1000)
+            );
+
+            setLiveTaskSeconds(baseSeconds + running);
+        };
+
+        tick();
+
+        const interval = setInterval(tick, 1000);
+
+        return () => clearInterval(interval);
+    }, [dashboardData?.activeTimer]);
+    const endCurrentSession = async () => {
+        if (!dashboardData?.activeTimer) return;
 
         const confirmed = window.confirm(
-            `End the active session for ${selectedTask.id}?`
+            `End the active session for ${dashboardData.activeTimer.taskCode}?`
         );
 
         if (!confirmed) return;
 
-        const now = new Date();
+        const token =
+            localStorage.getItem("client-connect-token") ||
+            sessionStorage.getItem("client-connect-token");
 
-        setSessions((current) => [
-            ...current.map((session) =>
-                session.status === "Running"
-                    ? {
-                          ...session,
-                          status: "Completed",
-                          endedAt: now.toLocaleTimeString("en-GB", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                          }),
-                          durationSeconds:
-                              Number(session.durationSeconds || 0) +
-                              currentSessionSeconds,
-                      }
-                    : session
-            ),
-        ]);
-
-        setTimerRunning(false);
-        setCurrentSessionSeconds(0);
-    };
-
-    const changeTask = (event) => {
-        const nextTaskId = event.target.value;
-
-        if (
-            timerRunning &&
-            currentSessionSeconds > 0 &&
-            nextTaskId !== selectedTaskId
-        ) {
-            const confirmed = window.confirm(
-                "Pause the current timer and switch to another task?"
+        try {
+            const response = await fetch(
+                `${API_BASE_URL}/api/employee/tasks/${dashboardData.activeTimer._id}/end`,
+                {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
             );
 
-            if (!confirmed) return;
+            const result = await response.json();
 
-            setTimerRunning(false);
+            if (result.success) {
+                await fetchTimeLog();
+            }
+        } catch (error) {
+            console.error("Failed to end session:", error);
         }
+    };
 
-        setSelectedTaskId(nextTaskId);
-        setCurrentSessionSeconds(0);
+    const changeTask = async (event) => {
+        const nextTaskId = event.target.value;
+        if (!nextTaskId) return;
+
+        const token =
+            localStorage.getItem("client-connect-token") ||
+            sessionStorage.getItem("client-connect-token");
+
+        try {
+            const response = await fetch(
+                `${API_BASE_URL}/api/employee/tasks/${nextTaskId}/start`,
+                {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        "Content-Type": "application/json",
+                    },
+                }
+            );
+
+            const result = await response.json();
+
+            if (result.success) {
+                await fetchTimeLog();
+            } else {
+                alert(result.message || "Unable to switch task");
+            }
+        } catch (error) {
+            console.error("Failed to switch task:", error);
+            alert("Failed to switch task");
+        }
     };
 
     const addDailyNote = (event) => {
@@ -692,9 +850,9 @@ export default function TimeLog() {
             current.map((note) =>
                 note.id === noteId
                     ? {
-                          ...note,
-                          completed: !note.completed,
-                      }
+                        ...note,
+                        completed: !note.completed,
+                    }
                     : note
             )
         );
@@ -757,29 +915,26 @@ export default function TimeLog() {
                 </div>
 
                 <div
-                    className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${
-                        agentStatus.connected
-                            ? "border-emerald-200 bg-emerald-50"
-                            : "border-rose-200 bg-rose-50"
-                    }`}
+                    className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${agentStatus.connected
+                        ? "border-emerald-200 bg-emerald-50"
+                        : "border-rose-200 bg-rose-50"
+                        }`}
                 >
                     <div
-                        className={`flex h-9 w-9 items-center justify-center rounded-lg ${
-                            agentStatus.connected
-                                ? "bg-emerald-100 text-emerald-700"
-                                : "bg-rose-100 text-rose-700"
-                        }`}
+                        className={`flex h-9 w-9 items-center justify-center rounded-lg ${agentStatus.connected
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-rose-100 text-rose-700"
+                            }`}
                     >
                         <Laptop size={17} />
                     </div>
 
                     <div>
                         <p
-                            className={`text-[10px] font-semibold ${
-                                agentStatus.connected
-                                    ? "text-emerald-700"
-                                    : "text-rose-700"
-                            }`}
+                            className={`text-[10px] font-semibold ${agentStatus.connected
+                                ? "text-emerald-700"
+                                : "text-rose-700"
+                                }`}
                         >
                             {agentStatus.connected
                                 ? "Windows Agent Connected"
@@ -794,7 +949,7 @@ export default function TimeLog() {
 
                     <button
                         type="button"
-                        onClick={simulateAgentSync}
+                        onClick={fetchTimeLog}
                         className="ml-2 flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-200 bg-white text-emerald-700 transition hover:bg-emerald-100"
                         title="Simulate agent sync"
                     >
@@ -833,7 +988,7 @@ export default function TimeLog() {
 
                 <MetricCard
                     label="Applications"
-                    value={applicationUsage.length}
+                    value={apiApplications.length}
                     description="Applications used today"
                     icon={AppWindow}
                     iconClass="bg-blue-100 text-blue-700"
@@ -842,7 +997,15 @@ export default function TimeLog() {
 
                 <MetricCard
                     label="Productivity"
-                    value={`${productivityScore}%`}
+                    value={`${(apiSummary?.totalTrackedSeconds || 0) > 0
+                        ? Math.round(
+                            (apiApplications
+                                .filter((a) => a.productivity === "Productive")
+                                .reduce((sum, a) => sum + (a.totalSeconds || 0), 0) /
+                                apiSummary.totalTrackedSeconds) * 100
+                        )
+                        : 0
+                        }%`}
                     description="Calculated from agent activity"
                     icon={BarChart3}
                     iconClass="bg-cyan-100 text-cyan-700"
@@ -879,11 +1042,10 @@ export default function TimeLog() {
                                 key={tab.id}
                                 type="button"
                                 onClick={() => setActiveTab(tab.id)}
-                                className={`whitespace-nowrap rounded-lg px-4 py-2 text-[11px] font-semibold transition ${
-                                    activeTab === tab.id
-                                        ? "bg-white text-slate-950 shadow-sm"
-                                        : "text-slate-500 hover:text-slate-800"
-                                }`}
+                                className={`whitespace-nowrap rounded-lg px-4 py-2 text-[11px] font-semibold transition ${activeTab === tab.id
+                                    ? "bg-white text-slate-950 shadow-sm"
+                                    : "text-slate-500 hover:text-slate-800"
+                                    }`}
                             >
                                 {tab.label}
                             </button>
@@ -891,7 +1053,7 @@ export default function TimeLog() {
                     </div>
 
                     <span className="text-[10px] text-slate-400">
-                        Data date: {DEMO_DATE}
+                        Data date: {new Date().toLocaleDateString()}
                     </span>
                 </div>
 
@@ -917,19 +1079,22 @@ export default function TimeLog() {
 
                                         <div className="relative">
                                             <select
-                                                value={selectedTaskId}
+                                                value={dashboardData?.activeTimer?._id || ""}
                                                 onChange={changeTask}
                                                 className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-10 text-xs font-semibold text-slate-800 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                                             >
-                                                {tasks.map((task) => (
-                                                    <option
-                                                        key={task.id}
-                                                        value={task.id}
-                                                    >
-                                                        {task.id} —{" "}
-                                                        {task.title}
-                                                    </option>
-                                                ))}
+                                                {(dashboardData?.tasks || [])
+                                                    .filter(
+                                                        (task) =>
+                                                            task.status === "In Progress" ||
+                                                            task.status === "Running" ||
+                                                            task.status === "Paused"
+                                                    )
+                                                    .map((task) => (
+                                                        <option key={task._id} value={task._id}>
+                                                            {task.taskCode} — {task.title}
+                                                        </option>
+                                                    ))}
                                             </select>
 
                                             <ChevronDown
@@ -938,63 +1103,76 @@ export default function TimeLog() {
                                             />
                                         </div>
                                     </div>
-
                                     <div className="mt-5 rounded-xl bg-slate-50 p-4">
                                         <p className="text-xs font-semibold text-slate-900">
-                                            {selectedTask.title}
+                                            {dashboardData?.activeTimer?.title || "No active task"}
                                         </p>
 
                                         <p className="mt-1 text-[10px] text-slate-500">
-                                            {selectedTask.client} ·{" "}
-                                            {selectedTask.project}
+                                            {dashboardData?.activeTimer?.clientName || "Internal"}
+                                            {" · "}
+                                            {dashboardData?.activeTimer?.project || "General"}
                                         </p>
 
-                                        {selectedTask.ticketId && (
+                                        {dashboardData?.activeTimer?.ticketCode && (
                                             <p className="mt-2 text-[10px] font-semibold text-blue-600">
-                                                Related ticket:{" "}
-                                                {selectedTask.ticketId}
+                                                Related ticket: {dashboardData.activeTimer.ticketCode}
                                             </p>
                                         )}
                                     </div>
 
                                     <p className="mt-6 font-mono text-4xl font-semibold tracking-[-0.04em] text-slate-950">
-                                        {formatTimer(
-                                            currentSessionSeconds
-                                        )}
+                                        {dashboardData?.activeTimer
+                                            ? formatTimer(activeTaskSeconds)
+                                            : "00:00:00"}
                                     </p>
 
                                     <p className="mt-2 text-[10px] text-slate-500">
-                                        Session is{" "}
-                                        {timerRunning
-                                            ? "currently running"
-                                            : "paused"}
+                                        {dashboardData?.activeTimer
+                                            ? `Status: ${dashboardData.activeTimer.status}`
+                                            : "No active session"}
+                                    </p>
+
+                                    <p className="mt-2 text-[10px] text-slate-500">
+                                        Session is {" "}
+                                        {dashboardData?.activeTimer
+                                            ? dashboardData.activeTimer.status === "Paused"
+                                                ? "paused"
+                                                : "currently running"
+                                            : "not running"}
                                     </p>
 
                                     <div className="mt-6 grid grid-cols-2 gap-3">
                                         <button
                                             type="button"
                                             onClick={toggleTimer}
-                                            className="flex h-11 items-center justify-center gap-2 rounded-xl bg-violet-600 text-xs font-semibold text-white transition hover:bg-violet-700"
+                                            disabled={!dashboardData?.activeTimer}
+                                            className="flex h-11 items-center justify-center gap-2 rounded-xl bg-violet-600 text-xs font-semibold text-white transition hover:bg-violet-700 disabled:opacity-50"
                                         >
-                                            {timerRunning ? (
-                                                <Pause size={15} />
+                                            {dashboardData?.activeTimer?.status === "Paused" ? (
+                                                <>
+                                                    <Play size={15} />
+                                                    Resume
+                                                </>
                                             ) : (
-                                                <Play size={15} />
+                                                <>
+                                                    <Pause size={15} />
+                                                    Pause
+                                                </>
                                             )}
-
-                                            {timerRunning
-                                                ? "Pause"
-                                                : "Resume"}
                                         </button>
 
                                         <button
                                             type="button"
                                             onClick={endCurrentSession}
-                                            className="flex h-11 items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
+                                            disabled={!dashboardData?.activeTimer}
+                                            className="flex h-11 items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
                                         >
                                             <Square size={14} />
                                             End Session
                                         </button>
+
+
                                     </div>
                                 </div>
                             </section>
@@ -1060,53 +1238,35 @@ export default function TimeLog() {
                                 </div>
 
                                 <div className="divide-y divide-slate-100">
-                                    {agentEvents
-                                        .slice(0, 5)
-                                        .map((event) => (
-                                            <div
-                                                key={event.id}
-                                                className="flex items-start gap-3 px-5 py-4"
-                                            >
-                                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
-                                                    <AppWindow size={17} />
-                                                </div>
-
-                                                <div className="min-w-0 flex-1">
-                                                    <div className="flex flex-wrap items-center justify-between gap-2">
-                                                        <p className="text-xs font-semibold text-slate-900">
-                                                            {
-                                                                event.applicationName
-                                                            }
-                                                        </p>
-
-                                                        <span
-                                                            className={`rounded-full px-2.5 py-1 text-[9px] font-semibold ring-1 ring-inset ${getActivityClasses(
-                                                                event.activityStatus
-                                                            )}`}
-                                                        >
-                                                            {
-                                                                event.activityStatus
-                                                            }
-                                                        </span>
-                                                    </div>
-
-                                                    <p className="mt-1 truncate text-[10px] text-slate-500">
-                                                        {event.windowTitle}
-                                                    </p>
-
-                                                    <p className="mt-2 text-[9px] text-slate-400">
-                                                        {formatAgentTime(
-                                                            event.capturedAt
-                                                        )}{" "}
-                                                        ·{" "}
-                                                        {event.keyboardEvents}{" "}
-                                                        keys ·{" "}
-                                                        {event.mouseEvents}{" "}
-                                                        mouse events
-                                                    </p>
-                                                </div>
+                                    {apiApplications.slice(0, 5).map((app) => (
+                                        <div key={app.applicationName} className="flex items-start gap-3 px-5 py-4">
+                                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
+                                                <AppWindow size={17} />
                                             </div>
-                                        ))}
+
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-center justify-between">
+                                                    <p className="text-xs font-semibold text-slate-900">
+                                                        {app.applicationName}
+                                                    </p>
+
+                                                    <span className="rounded-full px-2.5 py-1 text-[9px] font-semibold ring-1 ring-inset bg-emerald-50 text-emerald-700 ring-emerald-200">
+                                                        Active
+                                                    </span>
+                                                </div>
+
+                                                <p className="mt-1 truncate text-[10px] text-slate-500">
+                                                    {app.lastWindowTitle || app.project || app.client || "Application activity"}
+                                                </p>
+
+                                                <p className="mt-2 text-[9px] text-slate-400">
+                                                    {app.lastSeen ? new Date(app.lastSeen).toLocaleTimeString() : "Recently active"}
+                                                    {" · "}
+                                                    {formatSeconds(app.totalSeconds || 0)}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                             </section>
 
@@ -1158,21 +1318,19 @@ export default function TimeLog() {
                                                     onClick={() =>
                                                         toggleNote(note.id)
                                                     }
-                                                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
-                                                        note.completed
-                                                            ? "border-emerald-500 bg-emerald-500 text-white"
-                                                            : "border-slate-300 text-transparent"
-                                                    }`}
+                                                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${note.completed
+                                                        ? "border-emerald-500 bg-emerald-500 text-white"
+                                                        : "border-slate-300 text-transparent"
+                                                        }`}
                                                 >
                                                     <Check size={12} />
                                                 </button>
 
                                                 <p
-                                                    className={`flex-1 text-xs ${
-                                                        note.completed
-                                                            ? "text-slate-400 line-through"
-                                                            : "text-slate-700"
-                                                    }`}
+                                                    className={`flex-1 text-xs ${note.completed
+                                                        ? "text-slate-400 line-through"
+                                                        : "text-slate-700"
+                                                        }`}
                                                 >
                                                     {note.text}
                                                 </p>
@@ -1265,85 +1423,58 @@ export default function TimeLog() {
                                 </thead>
 
                                 <tbody className="divide-y divide-slate-100">
-                                    {filteredEvents.map((event) => (
+                                    {apiApplications.map((app, index) => (
                                         <tr
-                                            key={event.id}
+                                            key={`${app.applicationName}-${index}`}
                                             className="transition hover:bg-slate-50/70"
                                         >
                                             <td className="px-5 py-4 text-xs font-semibold text-slate-700">
-                                                {formatAgentTime(
-                                                    event.capturedAt
-                                                )}
+                                                {app.lastSeen ? formatAgentTime(app.lastSeen) : "--"}
                                             </td>
 
                                             <td className="px-4 py-4">
                                                 <p className="text-xs font-semibold text-slate-900">
-                                                    {
-                                                        event.applicationName
-                                                    }
+                                                    {app.applicationName}
                                                 </p>
-
                                                 <p className="mt-1 text-[10px] text-slate-500">
-                                                    {event.processName} ·{" "}
-                                                    {event.category}
+                                                    {app.category}
                                                 </p>
                                             </td>
 
                                             <td className="max-w-80 px-4 py-4">
                                                 <p className="truncate text-xs text-slate-700">
-                                                    {event.windowTitle}
+                                                    {app.lastWindowTitle || "--"}
                                                 </p>
                                             </td>
 
                                             <td className="px-4 py-4">
                                                 <p className="text-xs font-semibold text-violet-700">
-                                                    {event.taskId || "—"}
+                                                    {app.project || "--"}
                                                 </p>
-
                                                 <p className="mt-1 text-[10px] text-blue-600">
-                                                    {event.ticketId || ""}
+                                                    {app.client || ""}
                                                 </p>
                                             </td>
 
                                             <td className="px-4 py-4">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="flex items-center gap-1.5 text-[10px] text-slate-600">
-                                                        <Keyboard size={14} />
-                                                        {
-                                                            event.keyboardEvents
-                                                        }
-                                                    </div>
-
-                                                    <div className="flex items-center gap-1.5 text-[10px] text-slate-600">
-                                                        <MousePointer2
-                                                            size={14}
-                                                        />
-                                                        {
-                                                            event.mouseEvents
-                                                        }
-                                                    </div>
-                                                </div>
+                                                <span className="text-xs text-slate-700">
+                                                    {app.sessionCount} sessions
+                                                </span>
                                             </td>
 
                                             <td className="px-4 py-4">
                                                 <span
                                                     className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ring-1 ring-inset ${getProductivityClasses(
-                                                        event.productivity
+                                                        app.productivity
                                                     )}`}
                                                 >
-                                                    {event.productivity}
+                                                    {app.productivity}
                                                 </span>
                                             </td>
 
                                             <td className="px-5 py-4">
-                                                <span
-                                                    className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ring-1 ring-inset ${getActivityClasses(
-                                                        event.activityStatus
-                                                    )}`}
-                                                >
-                                                    {
-                                                        event.activityStatus
-                                                    }
+                                                <span className="inline-flex rounded-full bg-green-100 px-2.5 py-1 text-[10px] font-semibold text-green-700 ring-1 ring-inset ring-green-200">
+                                                    Synced
                                                 </span>
                                             </td>
                                         </tr>
@@ -1369,9 +1500,9 @@ export default function TimeLog() {
                                 </div>
 
                                 <div className="divide-y divide-slate-100">
-                                    {applicationUsage.map((application) => (
+                                    {apiApplications.map((application, index) => (
                                         <div
-                                            key={application.id}
+                                            key={application.applicationName || index}
                                             className="px-5 py-4"
                                         >
                                             <div className="flex items-center gap-3">
@@ -1503,65 +1634,67 @@ export default function TimeLog() {
                                     </th>
                                 </tr>
                             </thead>
-
                             <tbody className="divide-y divide-slate-100">
-                                {sessions.map((session) => (
-                                    <tr
-                                        key={session.id}
-                                        className="transition hover:bg-slate-50/70"
-                                    >
-                                        <td className="px-5 py-4">
-                                            <p className="text-xs font-semibold text-slate-900">
-                                                {session.title}
-                                            </p>
-
-                                            <p className="mt-1 text-[10px] text-slate-500">
-                                                {session.description}
-                                            </p>
-                                        </td>
-
-                                        <td className="px-4 py-4 text-xs font-semibold text-violet-700">
-                                            {session.taskId || "—"}
-                                        </td>
-
-                                        <td className="px-4 py-4 text-xs text-slate-600">
-                                            {session.applicationName || "—"}
-                                        </td>
-
-                                        <td className="px-4 py-4 text-xs text-slate-700">
-                                            {session.startedAt}
-                                        </td>
-
-                                        <td className="px-4 py-4 text-xs text-slate-700">
-                                            {session.endedAt || "Running"}
-                                        </td>
-
-                                        <td className="px-4 py-4 text-xs font-semibold text-slate-900">
-                                            {session.status === "Running"
-                                                ? formatSeconds(
-                                                      session.durationSeconds +
-                                                          currentSessionSeconds
-                                                  )
-                                                : formatSeconds(
-                                                      session.durationSeconds
-                                                  )}
-                                        </td>
-
-                                        <td className="px-5 py-4">
-                                            <span
-                                                className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ring-1 ring-inset ${
-                                                    session.status ===
-                                                    "Running"
-                                                        ? "bg-violet-50 text-violet-700 ring-violet-600/10"
-                                                        : "bg-emerald-50 text-emerald-700 ring-emerald-600/10"
-                                                }`}
-                                            >
-                                                {session.status}
-                                            </span>
+                                {taskSessions.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={7} className="px-6 py-10 text-center text-sm text-slate-500">
+                                            No task sessions recorded today.
                                         </td>
                                     </tr>
-                                ))}
+                                ) : (
+                                    taskSessions.map((session) => (
+                                        <tr key={session.id} className="transition hover:bg-slate-50/70">
+                                            {/* Session */}
+                                            <td className="px-5 py-4">
+                                                <p className="text-xs font-semibold text-slate-900">
+                                                    {session.title || session.applicationName || "Unknown"}
+                                                </p>
+                                                <p className="mt-1 text-[10px] text-slate-500">
+                                                    {session.description || session.project || session.client || "—"}
+                                                </p>
+                                            </td>
+
+                                            {/* Task */}
+                                            <td className="px-4 py-4 text-xs font-semibold text-violet-700">
+                                                {session.taskCode || "--"}
+                                            </td>
+
+                                            {/* Application */}
+                                            <td className="px-4 py-4 text-xs text-slate-600">
+                                                {session.applicationName || "—"}
+                                            </td>
+
+                                            {/* Start */}
+                                            <td className="px-4 py-4 text-xs text-slate-700">
+                                                {session.startedAt ? formatAgentTime(session.startedAt) : "--"}
+                                            </td>
+
+                                            {/* End */}
+                                            <td className="px-4 py-4 text-xs text-slate-700">
+                                                {session.endedAt ? formatAgentTime(session.endedAt) : "Running"}
+                                            </td>
+
+                                            {/* Duration */}
+                                            <td className="px-4 py-4 text-xs font-semibold text-slate-900">
+                                                {formatSeconds(session.durationSeconds || 0)}
+                                            </td>
+
+                                            {/* Status */}
+                                            <td className="px-5 py-4">
+                                                <span
+                                                    className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ring-1 ring-inset ${session.status === "Running"
+                                                            ? "bg-violet-50 text-violet-700 ring-violet-600/10"
+                                                            : "bg-emerald-50 text-emerald-700 ring-emerald-600/10"
+                                                        }`}
+                                                >
+                                                    {session.status}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
                             </tbody>
+
                         </table>
                     </div>
                 )}
@@ -1571,31 +1704,28 @@ export default function TimeLog() {
                         <div className="grid gap-5 lg:grid-cols-3">
                             <div className="rounded-2xl border border-slate-200 p-5">
                                 <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                    Tasks Completed
+                                    Tasks completed
                                 </p>
-
                                 <p className="mt-3 text-3xl font-semibold text-slate-950">
-                                    3
+                                    {dashboardMetrics?.tasksCompleted ?? 0}
                                 </p>
                             </div>
 
                             <div className="rounded-2xl border border-slate-200 p-5">
                                 <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                    Tickets Solved
+                                    Tickets solved
                                 </p>
-
                                 <p className="mt-3 text-3xl font-semibold text-slate-950">
-                                    2
+                                    {dashboardMetrics?.ticketsSolved ?? 0}
                                 </p>
                             </div>
 
                             <div className="rounded-2xl border border-slate-200 p-5">
                                 <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                    Support Calls
+                                    Support calls
                                 </p>
-
                                 <p className="mt-3 text-3xl font-semibold text-slate-950">
-                                    4
+                                    {dashboardMetrics?.supportCalls ?? 0}
                                 </p>
                             </div>
                         </div>
@@ -1619,45 +1749,54 @@ export default function TimeLog() {
                             </div>
 
                             <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-                                {[
-                                    {
-                                        label: "Worked",
-                                        value: formatSeconds(
-                                            totalTrackedSeconds
-                                        ),
-                                    },
-                                    {
-                                        label: "Productive",
-                                        value: formatSeconds(
-                                            productiveSeconds
-                                        ),
-                                    },
-                                    {
-                                        label: "Idle",
-                                        value: formatSeconds(idleSeconds),
-                                    },
-                                    {
-                                        label: "Productivity",
-                                        value: `${productivityScore}%`,
-                                    },
-                                    {
-                                        label: "Attendance",
-                                        value: "Present",
-                                    },
-                                ].map((item) => (
-                                    <div
-                                        key={item.label}
-                                        className="rounded-xl bg-slate-50 p-4"
-                                    >
-                                        <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                            {item.label}
-                                        </p>
+                                `{[
+  {
+    label: "Worked",
+    value: formatSeconds(apiSummary?.totalTrackedSeconds || 0),
+  },
+  {
+    label: "Productive",
+    value: formatSeconds(
+      apiApplications
+        .filter((a) => a.productivity === "Productive")
+        .reduce((sum, a) => sum + (a.totalSeconds || 0), 0)
+    ),
+  },
+  {
+    label: "Idle",
+    value: formatSeconds(idleSeconds),
+  },
+  {
+    label: "Productivity",
+    value: `${
+      (apiSummary?.totalTrackedSeconds || 0) > 0
+        ? Math.round(
+            (apiApplications
+              .filter((a) => a.productivity === "Productive")
+              .reduce((sum, a) => sum + (a.totalSeconds || 0), 0) /
+              apiSummary.totalTrackedSeconds) * 100
+          )
+        : 0
+    }%`,
+  },
+  {
+    label: "Attendance",
+    value: attendanceStatus,
+  },
+].map((item) => (
+  <div
+    key={item.label}
+    className="rounded-xl bg-slate-50 p-4"
+  >
+    <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+      {item.label}
+    </p>
 
-                                        <p className="mt-2 text-sm font-semibold text-slate-900">
-                                            {item.value}
-                                        </p>
-                                    </div>
-                                ))}
+    <p className="mt-2 text-sm font-semibold text-slate-900">
+      {item.value}
+    </p>
+  </div>
+))}`
                             </div>
                         </div>
 

@@ -14,7 +14,7 @@ const {
 const {
   SystemSettings,
 } = require("./settings");
-
+const AgentDailySummary = mongoose.models.AgentDailySummary;
 
 const SETTINGS_KEY =
   "system";
@@ -282,14 +282,25 @@ const uploadTaskAttachment = multer({
 router.use(authenticateUser);
 
 router.use((req, res, next) => {
-  if (req.user.role !== "admin") {
-    return res.status(403).json({
-      success: false,
-      message: "Admin access is required.",
-    });
-  }
+  if (req.user.role === "admin") return next();
 
-  next();
+  const taskMatch = req.path.match(/^\/task\/([a-fA-F0-9]{24})(\/(status|comment))?$/);
+  const ticketAttachMatch = req.path.match(/^\/ticket\/[a-fA-F0-9]{24}\/attachment$/);
+
+  const employeeAllowed =
+    req.user.role === "employee" &&
+    ((taskMatch &&
+      ((req.method === "GET" && !taskMatch[2]) ||
+        (req.method === "PATCH" && taskMatch[2] === "/status") ||
+        (req.method === "POST" && taskMatch[2] === "/comment"))) ||
+     (ticketAttachMatch && req.method === "POST"));
+
+  if (employeeAllowed) return next();
+
+  return res.status(403).json({
+    success: false,
+    message: "Admin access is required.",
+  });
 });
 
 /* =====================================================
@@ -732,6 +743,56 @@ const clientProductSchema =
         ],
         default: "Installed",
       },
+      licenceType: {
+  type: String,
+  enum: ["Perpetual Licence", "Annual Licence", "Monthly Subscription"],
+  default: "Annual Licence",
+},
+
+licenceKey: {
+  type: String,
+  default: "",
+  trim: true,
+},
+
+activeUsers: {
+  type: Number,
+  default: 0,
+  min: 0,
+},
+
+serverType: {
+  type: String,
+  default: "",
+  trim: true,
+},
+
+database: {
+  type: String,
+  default: "",
+  trim: true,
+},
+
+assignedEngineer: {
+  type: String,
+  default: "Support Team",
+  trim: true,
+},
+
+modules: {
+  type: [String],
+  default: [],
+},
+
+documents: {
+  type: [
+    {
+      name: { type: String, default: "" },
+      url: { type: String, default: "" },
+    },
+  ],
+  default: [],
+},
 
       notes: {
         type: String,
@@ -743,6 +804,7 @@ const clientProductSchema =
       _id: true,
       timestamps: true,
     }
+    
   );
 
 const clientSchema =
@@ -830,6 +892,29 @@ const clientSchema =
         default: "Not Started",
         index: true,
       },
+      gstNo: { type: String, default: "", trim: true },
+panNo: { type: String, default: "", trim: true },
+
+addressLine1: { type: String, default: "", trim: true },
+addressLine2: { type: String, default: "", trim: true },
+state: { type: String, default: "", trim: true },
+pinCode: { type: String, default: "", trim: true },
+country: { type: String, default: "India", trim: true },
+
+billingContact: { type: String, default: "", trim: true },
+billingEmail: { type: String, default: "", trim: true },
+
+preferredContact: {
+  type: String,
+  enum: ["Phone", "Email", "WhatsApp"],
+  default: "Phone",
+},
+
+supportLanguage: {
+  type: String,
+  enum: ["English", "Hindi", "Marathi"],
+  default: "English",
+},
 
       nextRenewal: {
         type: String,
@@ -1316,6 +1401,7 @@ projectName: {
 const Task =
   mongoose.models.Task ||
   mongoose.model("Task", taskSchema);
+ // module.exports.Task = Task;
 
 /* =====================================================
  ACTIVITY LOG SCHEMA
@@ -1476,6 +1562,7 @@ const ticketTimelineSchema =
           "status",
           "reply",
           "attachment",
+              "call",
           "resolved",
           "closed",
           "reopened",
@@ -1531,6 +1618,45 @@ const ticketTimelineSchema =
     }
   );
 
+  const ticketInternalNoteSchema =
+  new mongoose.Schema(
+    {
+      note: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      authorId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+
+      authorName: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      authorRole: {
+        type: String,
+        enum: [
+          "admin",
+          "employee",
+        ],
+        default: "employee",
+      },
+
+      createdAt: {
+        type: Date,
+        default: Date.now,
+      },
+    },
+    {
+      _id: true,
+    }
+  );
 const ticketReplySchema =
   new mongoose.Schema(
     {
@@ -1640,6 +1766,21 @@ const ticketAttachmentSchema =
     }
   );
 
+  const ticketCallLogSchema =
+  new mongoose.Schema(
+    {
+      callType: { type: String, enum: ["Incoming", "Outgoing"], default: "Outgoing" },
+      contactPerson: { type: String, default: "", trim: true },
+      mobile: { type: String, default: "", trim: true },
+      duration: { type: String, default: "", trim: true },
+      summary: { type: String, required: true, trim: true },
+      loggedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+      loggedByName: { type: String, default: "", trim: true },
+      loggedByRole: { type: String, enum: ["admin", "employee"], default: "employee" },
+      createdAt: { type: Date, default: Date.now },
+    },
+    { _id: true }
+  );
 const supportTicketSchema =
   new mongoose.Schema(
     {
@@ -1734,22 +1875,29 @@ const supportTicketSchema =
         trim: true,
       },
 
-      category: {
-        type: String,
-        enum: [
-          "Bug",
-          "Configuration",
-          "Data Issue",
-          "Feature Request",
-          "Installation",
-          "Training",
-          "Permission",
-          "Performance",
-          "Report",
-          "Other",
-        ],
-        default: "Other",
-      },
+    category: {
+  type: String,
+  enum: [
+    "Billing",
+    "Reports",
+    "Inventory",
+    "Accounts",
+    "GST",
+    "Backup",
+    "Login",
+    "Bug",
+    "Configuration",
+    "Data Issue",
+    "Feature Request",
+    "Installation",
+    "Training",
+    "Permission",
+    "Performance",
+    "Report",
+    "Other",
+  ],
+  default: "Other",
+},
 
       source: {
         type: String,
@@ -1885,11 +2033,19 @@ const supportTicketSchema =
         type: [ticketReplySchema],
         default: [],
       },
+      internalNotes: {
+    type: [ticketInternalNoteSchema],
+    default: [],
+},
 
       attachments: {
         type: [ticketAttachmentSchema],
         default: [],
       },
+      callLogs: {
+  type: [ticketCallLogSchema],
+  default: [],
+},
 
       timeline: {
         type: [ticketTimelineSchema],
@@ -4814,59 +4970,36 @@ async function resolveClientProduct(
     );
   }
 
-  return {
-    productId:
-      product._id,
+ return {
+  productId: product._id,
+  productCode: product.productCode,
+  productName: product.productName,
+  version: product.currentVersion || product.version || "v1.0.0",
 
-    productCode:
-      product.productCode,
+  purchaseDate: productData.purchaseDate || "",
+  installationDate: productData.installationDate || "",
 
-    productName:
-      product.productName,
+  licenceType: productData.licenceType || "Annual Licence",
+  licenceKey: productData.licenceKey || "",
 
-    version:
-      String(
-        productData.version ||
-        product.currentVersion ||
-        "v1.0.0"
-      ).trim(),
+  licensedUsers: productData.licensedUsers || 1,
+  activeUsers: productData.activeUsers || 0,
 
-    purchaseDate:
-      productData.purchaseDate || "",
+  supportType: productData.supportType || "Standard",
+  amcStatus: productData.amcStatus || "Not Started",
+  expiryDate: productData.expiryDate || "",
 
-    installationDate:
-      productData.installationDate ||
-      "",
+  installationStatus: productData.installationStatus || "Installed",
 
-    licensedUsers:
-      Math.max(
-        Number(
-          productData.licensedUsers ||
-          1
-        ),
-        1
-      ),
+  serverType: productData.serverType || "",
+  database: productData.database || "",
+  assignedEngineer: productData.assignedEngineer || "Support Team",
 
-    supportType:
-      productData.supportType ||
-      "Standard",
+  modules: productData.modules || [],
+  documents: productData.documents || [],
 
-    amcStatus:
-      productData.amcStatus ||
-      "Not Started",
-
-    expiryDate:
-      productData.expiryDate || "",
-
-    installationStatus:
-      productData.installationStatus ||
-      "Installed",
-
-    notes:
-      String(
-        productData.notes || ""
-      ).trim(),
-  };
+  notes: productData.notes || ""
+};
 }
 
 async function resolveClientProducts(
@@ -10450,6 +10583,75 @@ async function resolveTaskProject(projectId) {
     project,
   };
 }
+router.post("/task/:id/start", async (req, res) => {
+try {
+const Task = mongoose.model("Task");
+const Employee = mongoose.model("Employee");
+
+
+const task = await Task.findById(req.params.id);
+if (!task) {
+  return res.status(404).json({
+    success: false,
+    message: "Task not found.",
+  });
+}
+
+const employee = await Employee.findById(task.assignedEmployeeId);
+if (!employee) {
+  return res.status(404).json({
+    success: false,
+    message: "Assigned employee not found.",
+  });
+}
+
+// Mark task as active
+task.status = "In Progress";
+task.startedAt = new Date();
+await task.save();
+
+// Update employee current task
+employee.status = "Working";
+
+// Dashboard field
+employee.currentTask = task.title;
+
+// Windows Agent fields
+employee.currentTaskId = task._id;
+employee.currentTaskCode = task.taskCode || "";
+employee.currentTaskTitle = task.title || "";
+employee.currentClient = task.clientName || "—";
+employee.currentProject = task.projectName || "—";
+employee.currentTaskStartedAt = new Date();
+
+await employee.save();
+
+console.log("START TASK UPDATE", {
+  employee: employee.employeeCode,
+  taskId: employee.currentTaskId,
+  taskCode: employee.currentTaskCode,
+  taskTitle: employee.currentTaskTitle,
+  client: employee.currentClient,
+  project: employee.currentProject,
+});
+
+return res.json({
+  success: true,
+  message: "Task started successfully.",
+  task,
+  employee,
+});
+
+
+} catch (error) {
+console.error(error);
+return res.status(500).json({
+success: false,
+message: "Server error.",
+});
+}
+});
+
 /* =====================================================
    CREATE TASK
    POST /api/admin/task
@@ -13573,17 +13775,21 @@ router.patch("/ticket/:id/status", async (req, res) => {
       });
     }
 
-    const ticket = await SupportTicket.findOne({
-      _id: id,
-      isDeleted: false,
-    });
+ const ticket = await SupportTicket.findOne({ _id: id, isDeleted: false });
+if (!ticket) {
+  fs.unlink(req.file.path, () => {});
+  return res.status(404).json({ success: false, message: "Support ticket not found." });
+}
 
-    if (!ticket) {
-      return res.status(404).json({
-        success: false,
-        message: "Support ticket not found.",
-      });
-    }
+let uploaderName = req.user.name || "Admin";
+if (req.user.role === "employee") {
+  const employee = await Employee.findOne({ userId: req.user._id });
+  if (!employee || String(ticket.assignedEmployeeId) !== String(employee._id)) {
+    fs.unlink(req.file.path, () => {});
+    return res.status(403).json({ success: false, message: "You can only attach files to your assigned tickets." });
+  }
+  uploaderName = employee.name;
+}
 
     const previousStatus = ticket.status;
 

@@ -121,11 +121,26 @@ export default function Login({ onLogin }) {
       );
 
       storage.setItem(
-  "client-connect-user",
-  JSON.stringify(result.user)
-);
+        "client-connect-user",
+        JSON.stringify(result.user)
+      );
 
-onLogin(result.user.role, result.user);
+      if (result.user.role === "employee") {
+        try {
+          await fetch(`${API_URL}/api/attendance/login`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${result.token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ source: "web" }),
+          });
+        } catch (attendanceError) {
+          console.warn("Attendance auto-start failed:", attendanceError);
+        }
+      }
+
+      onLogin(result.user.role, result.user);
     } catch (error) {
       console.error("Login error:", error);
 

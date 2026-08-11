@@ -1,14 +1,24 @@
 const express = require("express");
-const mongoose = require("mongoose");
-const bcrypt = require("bcryptjs");
 
+const mongoose = require("mongoose");
+
+
+const bcrypt = require("bcryptjs");
+require("./admin");
 const {
   authenticateUser,
   User,
 } = require("./auth");
-
+const Task = mongoose.model("Task");
+const { getISTDateBucket, getISTDateString } = require("./utils/dateUtils");
+const ActivityLog = mongoose.models.ActivityLog || mongoose.model("ActivityLog");
 const router = express.Router();
+require("./agentSession"); // register models
 
+const AgentDailySummary =
+  mongoose.models.AgentDailySummary ||
+  mongoose.model("AgentDailySummary");
+// console.log("AgentDailySummary model:", !!AgentDailySummary);
 /* =========================================================
    EMPLOYEE SCHEMA
 ========================================================= */
@@ -87,9 +97,36 @@ const employeeSchema = new mongoose.Schema(
       default: "Free",
     },
 
+
+
+
     currentTask: {
       type: String,
       default: "Available for assignment",
+      trim: true,
+    },
+
+    // NEW: Active task reference
+    currentTaskId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Task",
+      default: null,
+    },
+    currentTicketId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "SupportTicket",
+      default: null,
+    },
+
+    currentTaskCode: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    currentTaskTitle: {
+      type: String,
+      default: "",
       trim: true,
     },
 
@@ -104,6 +141,13 @@ const employeeSchema = new mongoose.Schema(
       default: "—",
       trim: true,
     },
+
+    // NEW: When the employee started the active task
+    currentTaskStartedAt: {
+      type: Date,
+      default: null,
+    },
+
 
     loginTime: {
       type: Date,
@@ -152,6 +196,9 @@ const employeeSchema = new mongoose.Schema(
 const Employee =
   mongoose.models.Employee ||
   mongoose.model("Employee", employeeSchema);
+
+const SupportTicket =
+  mongoose.models.SupportTicket;
 
 /* =========================================================
    HELPERS
@@ -420,20 +467,30 @@ router.get("/dashboard", async (req, res, next) => {
       return res.status(404).json({ success: false, message: "Employee profile is not connected to this login account." });
     }
 
-    const Task = mongoose.models.Task;
+    //const Task = mongoose.models.Task;
     const SupportTicket = mongoose.models.SupportTicket;
     const Attendance = mongoose.models.Attendance;
-    const ActivityLog = mongoose.models.ActivityLog;
-    const today = new Date().toISOString().slice(0, 10);
-    const weekStart = new Date();
-    weekStart.setHours(0, 0, 0, 0);
-    weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
-    const assignmentQuery = { assignedEmployeeId: employee._id, isDeleted: false };
+  //  const ActivityLog =
+  // mongoose.models.ActivityLog || mongoose.model("ActivityLog");
+    // ----- IST day bucket (matches agent_daily_summary) -----
+    const now = new Date();
+    const bucketDate = getISTDateBucket(now);
+    const todayStart = bucketDate;
+    const tomorrowStart = new Date(bucketDate);
+    tomorrowStart.setUTCDate(tomorrowStart.getUTCDate() + 1);
+    const today = getISTDateString(now);
 
-    const todayStart = new Date(`${today}T00:00:00`);
-    const tomorrowStart = new Date(todayStart);
-    tomorrowStart.setDate(tomorrowStart.getDate() + 1);
-    const [attendance, tasks, tickets, activeTask, activeTaskCount, dueTodayCount, ticketCount, solvedThisWeek, workActivity] = await Promise.all([
+    const weekStart = new Date(todayStart);
+    weekStart.setUTCDate(weekStart.getUTCDate() - ((weekStart.getUTCDay() + 6) % 7));
+
+    const assignmentQuery = {
+      assignedEmployeeId: employee._id,
+      isDeleted: false,
+    };
+
+
+
+    const [attendance, tasks, tickets, activeTask, activeTaskCount, dueTodayCount, ticketCount, solvedThisWeek, agentSummary] = await Promise.all([
       Attendance ? Attendance.findOne({ employeeId: employee._id, date: today }).lean() : null,
       Task ? Task.find(assignmentQuery).sort({ dueDate: 1, createdAt: -1 }).limit(6).lean() : [],
       SupportTicket ? SupportTicket.find({ ...assignmentQuery, status: { $in: ["Assigned", "In Progress", "New"] } }).sort({ createdAt: -1 }).limit(6).lean() : [],
@@ -442,21 +499,66 @@ router.get("/dashboard", async (req, res, next) => {
       Task ? Task.countDocuments({ ...assignmentQuery, status: { $nin: ["Completed", "Closed", "Cancelled"] }, dueDate: { $gte: todayStart, $lt: tomorrowStart } }) : 0,
       SupportTicket ? SupportTicket.countDocuments({ ...assignmentQuery, status: { $in: ["Assigned", "In Progress", "New"] } }) : 0,
       SupportTicket ? SupportTicket.countDocuments({ ...assignmentQuery, status: "Resolved", resolvedAt: { $gte: weekStart } }) : 0,
-      ActivityLog ? ActivityLog.find({ employeeId: employee._id, createdAt: { $gte: new Date(`${today}T00:00:00`) }, isDeleted: false }).sort({ createdAt: -1 }).limit(8).lean() : [],
+      AgentDailySummary
+        ? AgentDailySummary.find({
+          employeeCode: employee.employeeCode,
+          date: bucketDate,
+        })
+          .sort({ totalSeconds: -1 })
+          .lean()
+        : [],
     ]);
 
-    const workLog = [
-      attendance?.loginTime && { id: `login-${attendance._id}`, type: "login", title: "Checked in", description: "Attendance login recorded", time: attendance.loginTime },
-      ...workActivity.map((item) => ({ id: item._id, type: item.category === "Task" ? "task" : "activity", title: item.action, description: item.description, time: item.createdAt })),
-      attendance?.logoutTime && { id: `logout-${attendance._id}`, type: "logout", title: "Checked out", description: "Attendance logout recorded", time: attendance.logoutTime },
-    ].filter(Boolean).sort((a, b) => new Date(a.time) - new Date(b.time));
 
+    const workLog = [
+      attendance?.loginTime && {
+        id: `login-${attendance._id}`,
+        type: "login",
+        title: "Checked in",
+        description: "Attendance login recorded",
+        time: attendance.loginTime,
+      },
+
+      ...agentSummary.map((item) => ({
+        id: item._id,
+        type: "task",
+        title: item.application,
+        description: `${item.lastWindowTitle || item.application} • ${Math.round(item.totalSeconds / 60)} min`,
+        time: item.lastSeen || item.firstSeen,
+      })),
+
+      attendance?.logoutTime && {
+        id: `logout-${attendance._id}`,
+        type: "logout",
+        title: "Checked out",
+        description: "Attendance logout recorded",
+        time: attendance.logoutTime,
+      },
+    ]
+      .filter(Boolean)
+      .sort((a, b) => new Date(a.time) - new Date(b.time));
+    const totalAgentSeconds = agentSummary.reduce(
+      (sum, item) => sum + (item.totalSeconds || 0),
+      0
+    );
+
+    const hoursToday = Math.round(totalAgentSeconds / 60);
+    // console.log("Agent summary count:", agentSummary.length);
+    // console.log("Total agent seconds:", totalAgentSeconds);
+    // console.log("Hours today:", hoursToday);
+    // console.log("Work log:", workLog);
     return res.json({
       success: true,
       data: {
         employee: employeeResponse(employee),
         attendance: attendance || null,
-        summary: { hoursToday: attendance?.workingMinutes || 0, activeTaskCount, dueTodayCount, ticketCount, solvedThisWeek },
+        summary: {
+          hoursToday,
+          activeTaskCount,
+          dueTodayCount,
+          ticketCount,
+          solvedThisWeek,
+        },
         activeTask,
         tasks,
         tickets,
@@ -468,12 +570,533 @@ router.get("/dashboard", async (req, res, next) => {
     next(error);
   }
 });
+/* =========================================================
+   MY TICKETS
+   GET /api/employee/my-tickets
+========================================================= */
 
+router.get("/my-tickets", async (req, res, next) => {
+  try {
+    if (req.user.role !== "employee") {
+      return res.status(403).json({
+        success: false,
+        message: "Employee account is required.",
+      });
+    }
+
+    const employee = await Employee.findOne({
+      userId: req.user._id,
+    });
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee profile not found.",
+      });
+    }
+
+    const tickets = await SupportTicket.find({
+      assignedEmployeeId: employee._id,
+      isDeleted: false,
+    })
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    for (const ticket of tickets) {
+      if (ticket.linkedTaskId) {
+        const linkedTask = await Task.findById(
+          ticket.linkedTaskId
+        ).lean();
+
+        ticket.linkedTask = linkedTask;
+      } else {
+        ticket.linkedTask = null;
+      }
+    }
+
+    return res.json({
+      success: true,
+      tickets,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+/* =========================================================
+   UPDATE TICKET STATUS
+   PATCH /api/employee/my-tickets/:id/status
+========================================================= */
+
+router.patch(
+  "/my-tickets/:id/status",
+  async (req, res, next) => {
+    try {
+      if (req.user.role !== "employee") {
+        return res.status(403).json({
+          success: false,
+          message: "Employee account is required.",
+        });
+      }
+
+      const employee =
+        await Employee.findOne({
+          userId: req.user._id,
+        });
+
+      if (!employee) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Employee profile not found.",
+        });
+      }
+
+      const { status, resolutionNote } = req.body;
+
+      const ticket =
+        await SupportTicket.findOne({
+          _id: req.params.id,
+          assignedEmployeeId:
+            employee._id,
+          isDeleted: false,
+        });
+
+      if (!ticket) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Ticket not found.",
+        });
+      }
+
+      ticket.status = status;
+
+      if (status === "Resolved") {
+        ticket.resolvedAt = new Date();
+      } else if (ticket.resolvedAt) {
+        ticket.resolvedAt = null;
+      }
+
+      if (typeof resolutionNote === "string") {
+        ticket.resolutionNote = resolutionNote.trim();
+      }
+
+      ticket.timeline.push({
+        type:
+          status === "Resolved"
+            ? "resolved"
+            : "status",
+
+        title:
+          "Ticket Status Updated",
+
+        description:
+          `Status changed to ${status}`,
+
+        createdAt:
+          new Date(),
+      });
+
+      await ticket.save();
+
+      return res.json({
+        success: true,
+        ticket,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+/* =========================================================
+   ADD TICKET REPLY
+========================================================= */
+
+router.post(
+  "/my-tickets/:id/reply",
+  async (req, res, next) => {
+    try {
+      if (req.user.role !== "employee") {
+        return res.status(403).json({
+          success: false,
+          message: "Employee account is required.",
+        });
+      }
+
+      const employee = await Employee.findOne({
+        userId: req.user._id,
+      });
+
+      if (!employee) {
+        return res.status(404).json({
+          success: false,
+          message: "Employee not found.",
+        });
+      }
+
+      const { message } = req.body;
+
+      if (!message || !message.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "Reply is required.",
+        });
+      }
+
+      const ticket = await SupportTicket.findOne({
+        _id: req.params.id,
+        assignedEmployeeId: employee._id,
+        isDeleted: false,
+      });
+
+      if (!ticket) {
+        return res.status(404).json({
+          success: false,
+          message: "Ticket not found.",
+        });
+      }
+
+      ticket.replies.push({
+        message: message.trim(),
+
+        replyType: "Public",
+
+        authorId: req.user._id,
+
+        authorName:
+          employee.employeeName,
+
+        authorRole: "employee",
+
+        createdAt: new Date(),
+      });
+      ticket.timeline.push({
+        type: "reply",
+        title: "Employee Reply",
+        description: message.trim(),
+
+        performedBy: req.user._id,
+        performedByName: employee.employeeName,
+        performedByRole: "employee",
+
+        createdAt: new Date(),
+      });
+
+      await ticket.save();
+
+      res.json({
+        success: true,
+        ticket,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+/* =========================================================
+   ADD INTERNAL NOTE
+========================================================= */
+
+router.post(
+  "/my-tickets/:id/internal-note",
+  async (req, res, next) => {
+    try {
+      if (req.user.role !== "employee") {
+        return res.status(403).json({
+          success: false,
+          message: "Employee account is required.",
+        });
+      }
+
+      const employee = await Employee.findOne({
+        userId: req.user._id,
+      });
+
+      if (!employee) {
+        return res.status(404).json({
+          success: false,
+          message: "Employee not found.",
+        });
+      }
+
+      const { note } = req.body;
+
+      if (!note || !note.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "Internal note is required.",
+        });
+      }
+
+      const ticket = await SupportTicket.findOne({
+        _id: req.params.id,
+        assignedEmployeeId: employee._id,
+        isDeleted: false,
+      });
+
+      if (!ticket) {
+        return res.status(404).json({
+          success: false,
+          message: "Ticket not found.",
+        });
+      }
+
+      ticket.internalNotes.push({
+        note: note.trim(),
+
+        authorId: req.user._id,
+
+        authorName: employee.employeeName,
+
+        authorRole: "employee",
+
+        createdAt: new Date(),
+      });
+
+      ticket.timeline.push({
+        type: "updated",
+
+        title: "Internal Note Added",
+
+        description: note.trim(),
+
+        performedBy: req.user._id,
+
+        performedByName: employee.employeeName,
+
+        performedByRole: "employee",
+
+        createdAt: new Date(),
+      });
+
+      await ticket.save();
+
+      return res.json({
+        success: true,
+        ticket,
+      });
+
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+router.post("/my-tickets/:id/call-log", async (req, res, next) => {
+  try {
+    if (req.user.role !== "employee") {
+      return res.status(403).json({ success: false, message: "Employee account is required." });
+    }
+    const employee = await Employee.findOne({ userId: req.user._id });
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee not found." });
+    }
+    const { callType, contactPerson, mobile, duration, summary } = req.body;
+    if (!contactPerson?.trim() || !duration?.trim() || !summary?.trim()) {
+      return res.status(400).json({ success: false, message: "Contact person, duration and summary are required." });
+    }
+    const ticket = await SupportTicket.findOne({ _id: req.params.id, assignedEmployeeId: employee._id, isDeleted: false });
+    if (!ticket) {
+      return res.status(404).json({ success: false, message: "Ticket not found." });
+    }
+    ticket.callLogs.push({
+      callType: callType === "Incoming" ? "Incoming" : "Outgoing",
+      contactPerson: contactPerson.trim(),
+      mobile: (mobile || "").trim(),
+      duration: duration.trim(),
+      summary: summary.trim(),
+      loggedBy: req.user._id,
+      loggedByName: employee.name,
+      loggedByRole: "employee",
+    });
+    ticket.timeline.push({
+      type: "call",
+      title: "Support Call Logged",
+      description: `${duration.trim()} call with ${contactPerson.trim()}.`,
+      performedBy: req.user._id,
+      performedByName: employee.name,
+      performedByRole: "employee",
+    });
+    await ticket.save();
+    return res.json({ success: true, ticket });
+  } catch (error) {
+    next(error);
+  }
+});
+function generateTaskCode() {
+  const year = new Date().getFullYear();
+
+  const uniquePart = `${Date.now()}${Math.floor(
+    Math.random() * 1000
+  )
+    .toString()
+    .padStart(3, "0")}`.slice(-8);
+
+  return `TSK-${year}-${uniquePart}`;
+}
+/* =========================================================
+   CREATE LINKED TASK
+========================================================= */
+
+router.post(
+  "/my-tickets/:id/create-task",
+  async (req, res, next) => {
+    try {
+      if (req.user.role !== "employee") {
+        return res.status(403).json({
+          success: false,
+          message: "Employee account is required.",
+        });
+      }
+
+      const employee = await Employee.findOne({
+        userId: req.user._id,
+      });
+
+      if (!employee) {
+        return res.status(404).json({
+          success: false,
+          message: "Employee profile not found.",
+        });
+      }
+
+      const ticket = await SupportTicket.findOne({
+        _id: req.params.id,
+        assignedEmployeeId: employee._id,
+        isDeleted: false,
+      });
+
+      if (!ticket) {
+        return res.status(404).json({
+          success: false,
+          message: "Ticket not found.",
+        });
+      }
+
+      // Prevent duplicate linked tasks
+      if (ticket.linkedTaskId) {
+        const existingTask = await Task.findById(
+          ticket.linkedTaskId
+        );
+
+        return res.json({
+          success: true,
+          alreadyExists: true,
+          task: existingTask,
+        });
+      }
+      const {
+        title,
+        description,
+        priority,
+        dueDate,
+        estimatedMinutes,
+      } = req.body;
+
+      const task = await Task.create({
+        taskCode: generateTaskCode(),
+
+        title:
+          title?.trim() ||
+          ticket.title,
+
+        description:
+          description?.trim() ||
+          ticket.description,
+
+        workType: "Client Support",
+
+        taskFor: "Product",
+
+        clientId: ticket.clientId,
+        clientName: ticket.clientName,
+
+        productId: ticket.productId,
+        productName: ticket.productName,
+
+        ticketId: ticket._id,
+        ticketCode: ticket.ticketCode,
+
+        assignedEmployeeId:
+          ticket.assignedEmployeeId,
+
+        assignedEmployeeName:
+          ticket.assignedEmployeeName,
+
+        assignedEmployeeCode:
+          ticket.assignedEmployeeCode,
+
+        assignedBy: ticket.assignedBy || req.user._id,
+
+        assignedByName:
+          ticket.assignedByName || employee.name || "",
+
+        priority:
+          priority ||
+          ticket.priority,
+
+        dueDate:
+          dueDate ||
+          ticket.dueDate ||
+          new Date(
+            Date.now() +
+            3 * 24 * 60 * 60 * 1000
+          ),
+
+        estimatedMinutes:
+          Number(estimatedMinutes) || 0,
+
+        timeline: [
+          {
+            action: "Task Created",
+
+            description: `Task created from ticket ${ticket.ticketCode}`,
+
+            performedBy: req.user._id,
+
+            performedByName: employee.name,
+
+            performedByRole: "employee",
+
+            createdAt: new Date(),
+          },
+        ],
+      });
+      ticket.linkedTaskId = task._id;
+      ticket.linkedTaskCode =
+        task.taskCode;
+
+      if (ticket.status === "New") {
+        ticket.status = "Assigned";
+      }
+      ticket.timeline.push({
+        type: "task",
+        title: "Linked Task Created",
+        description: `${task.taskCode} - ${task.title}`,
+        performedBy: req.user._id,
+        performedByName:
+          employee.name,
+        performedByRole:
+          "employee",
+      });
+
+      await ticket.save();
+
+      res.json({
+        success: true,
+        task,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 /* =========================================================
    MY TASKS DASHBOARD AND TIMER
 ========================================================= */
 router.get("/tasks/dashboard", async (req, res, next) => {
   try {
+    const SupportTicket = mongoose.models.SupportTicket;
+const Attendance = mongoose.models.Attendance;
     if (req.user.role !== "employee") return res.status(403).json({ success: false, message: "Employee account is required." });
     const employee = await Employee.findOne({ userId: req.user._id });
     const Task = mongoose.models.Task;
@@ -481,20 +1104,95 @@ router.get("/tasks/dashboard", async (req, res, next) => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
     const assigned = { assignedEmployeeId: employee._id, isDeleted: false };
-    const [tasks, summary, activeTimer] = await Promise.all([
-      Task.find(assigned).sort({ dueDate: 1, createdAt: -1 }).lean(),
-      Task.aggregate([
-        { $match: assigned },
-        { $group: { _id: null,
-          active: { $sum: { $cond: [{ $in: ["$status", ["Assigned", "In Progress", "Testing"]] }, 1, 0] } },
-          inProgress: { $sum: { $cond: [{ $eq: ["$status", "In Progress"] }, 1, 0] } },
-          dueToday: { $sum: { $cond: [{ $and: [{ $gte: ["$dueDate", today] }, { $lt: ["$dueDate", tomorrow] }, { $ne: ["$status", "Completed"] }] }, 1, 0] } },
-          overdue: { $sum: { $cond: [{ $and: [{ $lt: ["$dueDate", today] }, { $not: [{ $in: ["$status", ["Completed", "Cancelled"]] }] }] }, 1, 0] } },
-          completed: { $sum: { $cond: [{ $eq: ["$status", "Completed"] }, 1, 0] } },
-        } },
-      ]),
-      Task.findOne({ ...assigned, status: { $in: ["In Progress", "Paused"] } }).sort({ lastUpdated: -1 }).lean(),
-    ]);
+   const todayString = getISTDateString(new Date());
+
+const [
+  tasks,
+  summary,
+  activeTimer,
+  ticketsSolved,
+  attendance,
+] = await Promise.all([
+  Task.find(assigned).sort({ dueDate: 1, createdAt: -1 }).lean(),
+
+  Task.aggregate([
+    { $match: assigned },
+    {
+      $group: {
+        _id: null,
+        active: {
+          $sum: {
+            $cond: [
+              { $in: ["$status", ["Assigned", "In Progress", "Testing"]] },
+              1,
+              0,
+            ],
+          },
+        },
+        inProgress: {
+          $sum: {
+            $cond: [{ $eq: ["$status", "In Progress"] }, 1, 0],
+          },
+        },
+        dueToday: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $gte: ["$dueDate", today] },
+                  { $lt: ["$dueDate", tomorrow] },
+                  { $ne: ["$status", "Completed"] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+        overdue: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $lt: ["$dueDate", today] },
+                  { $not: [{ $in: ["$status", ["Completed", "Cancelled"]] }] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+        completed: {
+          $sum: {
+            $cond: [{ $eq: ["$status", "Completed"] }, 1, 0],
+          },
+        },
+      },
+    },
+  ]),
+
+  Task.findOne({
+    ...assigned,
+    status: { $in: ["In Progress", "Paused"] },
+  })
+    .sort({ lastUpdated: -1 })
+    .lean(),
+
+  SupportTicket
+    ? SupportTicket.countDocuments({
+        ...assigned,
+        status: "Resolved",
+      })
+    : 0,
+
+  Attendance
+    ? Attendance.findOne({
+        employeeId: employee._id,
+        date: todayString,
+      }).lean()
+    : null,
+]);
     const now = Date.now();
     const withCurrentElapsed = (task) => {
       if (!task) return null;
@@ -504,8 +1202,242 @@ router.get("/tasks/dashboard", async (req, res, next) => {
       const savedSeconds = Number(task.elapsedSeconds || 0) || Number(task.elapsedMinutes || task.spentMinutes || 0) * 60;
       return { ...task, elapsedSeconds: savedSeconds + runningSeconds, elapsedMinutes: Math.floor((savedSeconds + runningSeconds) / 60) };
     };
-    return res.json({ success: true, data: { summary: summary[0] || { active: 0, inProgress: 0, dueToday: 0, overdue: 0, completed: 0 }, activeTimer: withCurrentElapsed(activeTimer), tasks: tasks.map(withCurrentElapsed) } });
+const currentTask = withCurrentElapsed(activeTimer);
+
+return res.json({
+  success: true,
+data: {
+  summary: summary[0] || {
+    active: 0,
+    inProgress: 0,
+    dueToday: 0,
+    overdue: 0,
+    completed: 0,
+  },
+
+  tasksCompleted: summary[0]?.completed || 0,
+  ticketsSolved,
+  supportCalls: 0,
+  attendanceStatus: attendance
+    ? attendance.logoutTime
+      ? "Present"
+      : "Checked In"
+    : "Absent",
+
+  activeTask: currentTask,
+  activeTimer: currentTask,
+  tasks: tasks.map(withCurrentElapsed),
+},
+});
   } catch (error) { next(error); }
+});
+// START TASK
+router.post("/tasks/:id/start", authenticateUser, async (req, res, next) => {
+  try {
+    const employee = await Employee.findOne({ userId: req.user._id });
+    const Task = mongoose.models.Task;
+
+    if (!employee || !Task) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee or Task model not found",
+      });
+    }
+
+    // Pause any currently running task
+    await Task.updateMany(
+      {
+        assignedEmployeeId: employee._id,
+        status: "In Progress",
+      },
+      {
+        $set: {
+          status: "Paused",
+          pausedAt: new Date(),
+        },
+      }
+    );
+
+const task = await Task.findOne({
+  _id: req.params.id,
+  assignedEmployeeId: employee._id,
+});
+
+if (!task) {
+  return res.status(404).json({
+    success: false,
+    message: "Task not found",
+  });
+}
+
+// If the task is already running, keep the original startedAt
+if (task.status !== "In Progress") {
+  task.status = "In Progress";
+  task.startedAt = new Date();
+}
+
+task.lastUpdated = new Date();
+
+await task.save();
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found",
+      });
+    }
+    // Store active task on employee profile
+    employee.currentTaskId = task._id;
+    employee.currentTaskCode = task.taskCode;
+    employee.currentTaskTitle = task.title;
+    employee.currentProject = task.project || "General";
+    employee.currentClient = task.clientName || "Internal";
+
+    await employee.save();
+    res.json({
+      success: true,
+      message: "Task started",
+      data: task,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PAUSE TASK
+router.post("/tasks/:id/pause", authenticateUser, async (req, res, next) => {
+  try {
+    const employee = await Employee.findOne({ userId: req.user._id });
+    const Task = mongoose.models.Task;
+
+    const task = await Task.findOne({
+      _id: req.params.id,
+      assignedEmployeeId: employee._id,
+    });
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found",
+      });
+    }
+
+    if (task.startedAt) {
+      const elapsed = Math.floor(
+        (Date.now() - new Date(task.startedAt).getTime()) / 1000
+      );
+
+      task.elapsedSeconds = (task.elapsedSeconds || 0) + elapsed;
+    }
+
+    task.status = "Paused";
+    task.startedAt = null;
+    task.lastUpdated = new Date();
+
+    await task.save();
+
+    res.json({
+      success: true,
+      message: "Task paused",
+      data: task,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// RESUME TASK
+router.post("/tasks/:id/resume", authenticateUser, async (req, res, next) => {
+  try {
+    const employee = await Employee.findOne({ userId: req.user._id });
+    const Task = mongoose.models.Task;
+
+    await Task.updateMany(
+      {
+        assignedEmployeeId: employee._id,
+        status: "In Progress",
+      },
+      {
+        $set: {
+          status: "Paused",
+          pausedAt: new Date(),
+        },
+      }
+    );
+
+    const task = await Task.findOneAndUpdate(
+      {
+        _id: req.params.id,
+        assignedEmployeeId: employee._id,
+      },
+      {
+        $set: {
+          status: "In Progress",
+          startedAt: new Date(),
+          lastUpdated: new Date(),
+        },
+      },
+      { new: true }
+    );
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Task resumed",
+      data: task,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// END TASK SESSION
+router.post("/tasks/:id/end", authenticateUser, async (req, res, next) => {
+  try {
+    const employee = await Employee.findOne({ userId: req.user._id });
+    const Task = mongoose.models.Task;
+
+    const task = await Task.findOne({
+      _id: req.params.id,
+      assignedEmployeeId: employee._id,
+    });
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found",
+      });
+    }
+
+    if (task.startedAt) {
+      const elapsed = Math.floor(
+        (Date.now() - new Date(task.startedAt).getTime()) / 1000
+      );
+
+      task.elapsedSeconds = (task.elapsedSeconds || 0) + elapsed;
+    }
+
+    task.status = "Completed";
+    task.startedAt = null;
+    task.completedAt = new Date();
+    task.lastUpdated = new Date();
+
+    await task.save();
+
+    res.json({
+      success: true,
+      message: "Task completed",
+      data: task,
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 router.get("/tasks/:id", async (req, res, next) => {
@@ -546,16 +1478,48 @@ router.patch("/tasks/:id/timer", async (req, res, next) => {
     task.spentMinutes = task.elapsedMinutes; task.lastUpdated = now; await task.save();
     if (action === "start" || action === "resume") {
       employee.status = "Working";
+
+      // Dashboard
       employee.currentTask = task.title;
+
+      // Windows Agent fields
+      employee.currentTaskId = task._id;
+      employee.currentTaskCode = task.taskCode || "";
+      employee.currentTaskTitle = task.title || "";
+      employee.currentTicketId = task.ticketId || null;
       employee.currentClient = task.clientName || "—";
+      employee.currentProject = task.projectName || "—";
+      employee.currentTaskStartedAt = now;
+
+      console.log("TASK STARTED FOR AGENT", {
+        employee: employee.employeeCode,
+        taskId: task._id,
+        taskCode: task.taskCode,
+        title: task.title,
+        client: task.clientName,
+        project: task.projectName,
+      });
+
     } else if (action === "pause" || action === "stop") {
       employee.status = "Break";
+
     } else if (action === "complete") {
-      const remaining = await Task.exists({ assignedEmployeeId: employee._id, status: "In Progress", isDeleted: false });
+      const remaining = await Task.exists({
+        assignedEmployeeId: employee._id,
+        status: "In Progress",
+        isDeleted: false,
+      });
+
       if (!remaining) {
         employee.status = "Free";
         employee.currentTask = "Available for assignment";
+        employee.currentTaskId = null;
+        employee.currentTaskCode = "";
+        employee.currentTaskTitle = "";
+        employee.currentTicketId = null;
         employee.currentClient = "—";
+        employee.currentProject = "—";
+        employee.currentTaskStartedAt = null;
       }
     }
     employee.lastActivityAt = now;
@@ -1055,5 +2019,255 @@ router.patch(
     }
   }
 );
+/* =========================================================
+CURRENT ACTIVE TASK FOR WINDOWS AGENT
+GET /api/employee/agent/current-task/:employeeCode
+========================================================= */
 
+router.get("/agent/current-task/:employeeCode", async (req, res) => {
+  try {
+    const employee = await Employee.findOne({
+      employeeCode: String(req.params.employeeCode).toUpperCase(),
+    });
+
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found.",
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        employeeCode: employee.employeeCode,
+        taskId: employee.currentTaskId,
+        taskCode: employee.currentTaskCode,
+        taskTitle: employee.currentTaskTitle,
+        client: employee.currentClient,
+        project: employee.currentProject,
+        status: employee.status,
+        startedAt: employee.currentTaskStartedAt,
+      },
+    });
+
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error.",
+    });
+  }
+});
+// ADD this helper
+const PRODUCTIVE_CATEGORIES = ["Development", "Database", "Design", "Documentation", "Office"];
+const UNPRODUCTIVE_CATEGORIES = ["Entertainment", "Social Media", "Games"];
+
+function classifyProductivity(category) {
+  if (PRODUCTIVE_CATEGORIES.includes(category)) return "Productive";
+  if (UNPRODUCTIVE_CATEGORIES.includes(category)) return "Unproductive";
+  return "Neutral";
+}
+router.get("/time-log/activity", authenticateUser, async (req, res, next) => {
+  try {
+    const employee = await Employee.findOne({ userId: req.user._id });
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee not found" });
+    }
+
+    const today = getISTDateBucket(new Date());
+
+    const logs = await ActivityLog.find({
+      employeeCode: employee.employeeCode,
+      date: today,
+    })
+      .sort({ startTime: -1 })
+      .lean();
+
+    res.json({
+      success: true,
+      data: logs.map((log) => ({
+        id: log._id,
+        capturedAt: log.startTime,
+        application: log.application,
+        windowTitle: log.windowTitle,
+        durationSeconds: log.durationSeconds,
+        category: log.category,
+        activity: log.activity,
+        project: log.project,
+        client: log.client,
+        taskCode: log.taskCode || "",
+        ticketCode: log.ticketCode || "",
+        uploaded: !!log.uploaded,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+router.get("/time-log/sessions", authenticateUser, async (req, res, next) => {
+  try {
+    const employee = await Employee.findOne({ userId: req.user._id });
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found",
+      });
+    }
+
+    const today = getISTDateBucket(new Date());
+
+    const logs = await AgentDailySummary.find({
+      employeeCode: employee.employeeCode,
+      date: today,
+      taskId: { $ne: null },
+    })
+      .sort({ lastSeen: -1 })
+      .lean();
+
+    res.json({
+      success: true,
+   data: logs.map((log) => ({
+  id: log._id,
+  title: log.taskTitle || log.application,
+  description: log.project || log.client || "",
+  taskCode: log.taskCode || "--",
+  taskTitle: log.taskTitle || "",
+  applicationName: log.application,
+  startedAt: log.firstSeen,
+  endedAt: log.lastSeen,
+  durationSeconds: log.totalSeconds || 0,
+  status: "Completed",
+}))
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+/* =========================================================
+   EMPLOYEE TIME LOG (TODAY)
+   GET /api/employee/time-log/today
+   ========================================================= */
+
+
+router.get("/time-log/today", authenticateUser, async (req, res, next) => {
+  try {
+    const user = req.user;
+    const todayBucket = getISTDateBucket(new Date());
+
+    // Load employee profile linked to the logged-in user
+    const employeeProfile = await Employee.findOne({ userId: user._id });
+
+    if (!employeeProfile) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee profile not found",
+      });
+    }
+
+    const employeeCode = employeeProfile.employeeCode;
+
+    const records = await AgentDailySummary.find({
+      employeeCode,
+      date: todayBucket,
+    }).sort({ totalSeconds: -1 });
+
+    const totalTrackedSeconds = records.reduce(
+      (sum, r) => sum + Number(r.totalSeconds || 0),
+      0
+    );
+
+    const totalSessions = records.reduce(
+      (sum, r) => sum + Number(r.sessionCount || 0),
+      0
+    );
+
+    const applications = records.map((r) => ({
+      applicationName: r.application,
+      category: r.category || "Other",
+      totalSeconds: r.totalSeconds || 0,
+      productivity: classifyProductivity(r.category),
+      percentage:
+        totalTrackedSeconds > 0
+          ? Math.round((r.totalSeconds / totalTrackedSeconds) * 100)
+          : 0,
+      project: r.project || "",
+      client: r.client || "",
+      sessionCount: r.sessionCount || 0,
+      lastWindowTitle: r.lastWindowTitle || "",
+      lastSeen: r.lastSeen,
+    }));
+
+    const latest =
+      records.length > 0
+        ? records.reduce((a, b) =>
+          new Date(a.lastSeen || 0) > new Date(b.lastSeen || 0)
+            ? a
+            : b
+        )
+        : null;
+
+    res.json({
+      success: true,
+      data: {
+        employee: {
+          employeeCode,
+          name: employeeProfile.name || user.name,
+          deviceId: latest?.pcName || "",
+        },
+        summary: {
+          totalTrackedSeconds,
+          totalSessions,
+          applicationCount: applications.length,
+          lastSyncAt: latest?.lastSeen || null,
+        },
+        applications,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+router.get("/tasks/current", authenticateUser, async (req, res, next) => {
+  try {
+    const employee = await Employee.findOne({ userId: req.user._id });
+    const Task = mongoose.models.Task;
+
+    if (!employee || !Task) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee or Task model not found",
+      });
+    }
+
+    const activeTask = await Task.findOne({
+      assignedEmployeeId: employee._id,
+      status: { $in: ["In Progress", "Paused"] },
+    })
+      .sort({ lastUpdated: -1 })
+      .lean();
+
+    if (!activeTask) {
+      return res.json({
+        success: true,
+        data: null,
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        _id: activeTask._id,
+        taskCode: activeTask.taskCode,
+        title: activeTask.title,
+        status: activeTask.status,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 module.exports = router;

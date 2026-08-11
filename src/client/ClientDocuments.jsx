@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
     Archive,
     CalendarDays,
@@ -18,112 +18,28 @@ import {
     X,
 } from "lucide-react";
 
-const clientDocuments = [
-    {
-        id: 1,
-        name: "AMC Agreement 2026-27.pdf",
-        category: "AMC",
-        type: "PDF",
-        size: "1.4 MB",
-        uploadedOn: "02 Jul 2026",
-        uploadedBy: "Mangesh Kondhare",
-        description:
-            "Annual maintenance agreement for NexERP covering the period 16 July 2026 to 15 July 2027.",
-        product: "NexERP",
-        status: "Active",
-    },
-    {
-        id: 2,
-        name: "NexERP Licence Certificate.pdf",
-        category: "Licence",
-        type: "PDF",
-        size: "340 KB",
-        uploadedOn: "12 Mar 2022",
-        uploadedBy: "Mangesh Kondhare",
-        description:
-            "Software licence certificate issued to Shree Ganesh Industries for 12 licensed users.",
-        product: "NexERP",
-        status: "Active",
-    },
-    {
-        id: 3,
-        name: "Installation Details.pdf",
-        category: "Installation",
-        type: "PDF",
-        size: "280 KB",
-        uploadedOn: "18 Mar 2022",
-        uploadedBy: "Akash Pawar",
-        description:
-            "NexERP installation details including server configuration, database and deployment information.",
-        product: "NexERP",
-        status: "Verified",
-    },
-    {
-        id: 4,
-        name: "AMC Invoice INV-2026-014.pdf",
-        category: "Invoice",
-        type: "PDF",
-        size: "190 KB",
-        uploadedOn: "01 Jul 2026",
-        uploadedBy: "System",
-        description:
-            "Annual maintenance invoice generated for the 2026-27 billing period.",
-        product: "NexERP",
-        status: "Pending",
-    },
-    {
-        id: 5,
-        name: "Payment Receipt RCT-2025-0081.pdf",
-        category: "Receipt",
-        type: "PDF",
-        size: "145 KB",
-        uploadedOn: "12 Jul 2025",
-        uploadedBy: "Mangesh Kondhare",
-        description:
-            "Payment receipt for NexERP AMC invoice INV-2025-011.",
-        product: "NexERP",
-        status: "Paid",
-    },
-    {
-        id: 6,
-        name: "NexERP User Import Template.xlsx",
-        category: "Template",
-        type: "Excel",
-        size: "84 KB",
-        uploadedOn: "18 Jun 2026",
-        uploadedBy: "Sneha Kale",
-        description:
-            "Excel template used to import users into the NexERP user management module.",
-        product: "NexERP",
-        status: "Available",
-    },
-    {
-        id: 7,
-        name: "ERP Setup Screenshots.zip",
-        category: "Installation",
-        type: "ZIP",
-        size: "18 MB",
-        uploadedOn: "20 Mar 2022",
-        uploadedBy: "Akash Pawar",
-        description:
-            "Archive containing installation screenshots and configuration references.",
-        product: "NexERP",
-        status: "Available",
-    },
-    {
-        id: 8,
-        name: "GST Certificate.pdf",
-        category: "Company",
-        type: "PDF",
-        size: "480 KB",
-        uploadedOn: "12 Jan 2026",
-        uploadedBy: "Ramesh Patil",
-        description:
-            "GST registration certificate submitted by Shree Ganesh Industries.",
-        product: "Company",
-        status: "Verified",
-    },
-];
+const API_URL = "http://localhost:5000";
+
+function bytesToSize(bytes) {
+    if (bytes === 0) return "0 B";
+
+    const sizes = ["B", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return `${parseFloat((bytes / Math.pow(1024, i)).toFixed(1))} ${sizes[i]}`;
+}
+
+function formatDocumentDate(value) {
+    if (!value) return "Unknown";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return String(value);
+    }
+    return date.toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+    });
+}
 
 function getDocumentIcon(type) {
     if (type === "Excel") {
@@ -236,43 +152,80 @@ function DetailItem({ label, value, icon: Icon }) {
 }
 
 export default function ClientDocuments() {
+    const [documents, setDocuments] = useState([]);
+    const [documentsLoading, setDocumentsLoading] = useState(true);
+    const [documentsError, setDocumentsError] = useState("");
     const [searchValue, setSearchValue] = useState("");
     const [categoryFilter, setCategoryFilter] = useState("All");
     const [typeFilter, setTypeFilter] = useState("All");
-    const [selectedDocumentId, setSelectedDocumentId] =
-        useState(null);
+    const [selectedDocumentId, setSelectedDocumentId] = useState(null);
+
+    useEffect(() => {
+        const loadDocuments = async () => {
+            setDocumentsLoading(true);
+            setDocumentsError("");
+
+            try {
+                const token =
+                    localStorage.getItem("client-connect-token") ||
+                    sessionStorage.getItem("client-connect-token") ||
+                    "";
+
+                const response = await fetch(
+                    `${API_URL}/api/documents?status=All`,
+                    {
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                        },
+                    }
+                );
+
+                const result = await response.json();
+                if (!result.success) {
+                    throw new Error(result.message || "Unable to load documents.");
+                }
+
+                setDocuments(result.data || []);
+            } catch (error) {
+                setDocumentsError(error.message || "Unable to load documents.");
+                setDocuments([]);
+            } finally {
+                setDocumentsLoading(false);
+            }
+        };
+
+        loadDocuments();
+    }, []);
 
     const selectedDocument =
-        clientDocuments.find(
-            (document) => document.id === selectedDocumentId
-        ) || null;
+        documents.find((document) => document.id === selectedDocumentId) ||
+        null;
 
     const categories = [
         "All",
-        ...new Set(
-            clientDocuments.map(
-                (document) => document.category
-            )
-        ),
+        ...new Set(documents.map((document) => document.category || "General")),
+    ];
+
+    const types = [
+        "All",
+        ...new Set(documents.map((document) => document.documentType || "Document")),
     ];
 
     const filteredDocuments = useMemo(() => {
         const search = searchValue.trim().toLowerCase();
 
-        return clientDocuments.filter((document) => {
+        return documents.filter((document) => {
             const matchesSearch =
                 !search ||
                 [
                     document.name,
                     document.category,
-                    document.type,
-                    document.product,
+                    document.documentType,
+                    document.productName,
                     document.status,
-                    document.uploadedBy,
+                    document.uploadedByName,
                 ].some((value) =>
-                    String(value || "")
-                        .toLowerCase()
-                        .includes(search)
+                    String(value || "").toLowerCase().includes(search)
                 );
 
             const matchesCategory =
@@ -281,28 +234,88 @@ export default function ClientDocuments() {
 
             const matchesType =
                 typeFilter === "All" ||
-                document.type === typeFilter;
+                document.documentType === typeFilter;
 
-            return (
-                matchesSearch &&
-                matchesCategory &&
-                matchesType
-            );
+            return matchesSearch && matchesCategory && matchesType;
         });
-    }, [searchValue, categoryFilter, typeFilter]);
+    }, [documents, searchValue, categoryFilter, typeFilter]);
 
-    const totalStorage = "20.9 MB";
+    const totalStorage = documents.reduce(
+        (total, document) => total + Number(document.size || 0),
+        0
+    );
 
-    const handleDownload = (documentName) => {
-        alert(
-            `${documentName} will download after the document API is connected.`
-        );
+    const handleDownload = async (doc) => {
+        if (!doc?.downloadUrl) {
+            window.alert("Document download is not available yet.");
+            return;
+        }
+
+        try {
+            const token =
+                localStorage.getItem("client-connect-token") ||
+                sessionStorage.getItem("client-connect-token") ||
+                "";
+
+            const response = await fetch(doc.downloadUrl, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error("Unable to download document.");
+            }
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const link = window.document.createElement("a");
+            link.href = url;
+            link.download = doc.fileName || doc.name || "document";
+            window.document.body.appendChild(link);
+            link.click();
+            window.document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+        } catch (error) {
+            window.alert(error.message || "Unable to download document.");
+        }
     };
 
-    const handleUploadRequest = () => {
-        alert(
-            "Client document upload requests will be connected to the Admin approval workflow."
+    const handleUploadRequest = async () => {
+        const description = window.prompt(
+            "Describe the document you need from Total Solution:",
+            "Requesting agreement, invoice or installation file"
         );
+
+        if (!description || !description.trim()) {
+            return;
+        }
+
+        try {
+            const token =
+                localStorage.getItem("client-connect-token") ||
+                sessionStorage.getItem("client-connect-token") ||
+                "";
+
+            const response = await fetch(`${API_URL}/api/documents/request`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ description, name: "Document Request" }),
+            });
+
+            const result = await response.json();
+            if (!result.success) {
+                throw new Error(result.message || "Unable to submit document request.");
+            }
+
+            setDocuments((prev) => [result.data, ...prev]);
+            window.alert("Document request submitted successfully.");
+        } catch (error) {
+            window.alert(error.message || "Unable to submit request.");
+        }
     };
 
     return (
@@ -337,7 +350,7 @@ export default function ClientDocuments() {
             <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <SummaryCard
                     label="Total Documents"
-                    value={clientDocuments.length}
+                    value={documents.length}
                     description="Files linked to your client account"
                     icon={FolderOpen}
                     iconClass="bg-cyan-100 text-cyan-700"
@@ -346,7 +359,7 @@ export default function ClientDocuments() {
                 <SummaryCard
                     label="Agreements"
                     value={
-                        clientDocuments.filter(
+                        documents.filter(
                             (document) =>
                                 document.category === "AMC" ||
                                 document.category === "Licence"
@@ -360,7 +373,7 @@ export default function ClientDocuments() {
                 <SummaryCard
                     label="Invoices & Receipts"
                     value={
-                        clientDocuments.filter(
+                        documents.filter(
                             (document) =>
                                 document.category === "Invoice" ||
                                 document.category === "Receipt"
@@ -457,7 +470,7 @@ export default function ClientDocuments() {
                 <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
                     {filteredDocuments.map((document) => {
                         const Icon = getDocumentIcon(
-                            document.type
+                            document.documentType
                         );
 
                         return (
@@ -468,7 +481,7 @@ export default function ClientDocuments() {
                                 <div className="flex items-start justify-between gap-4">
                                     <div
                                         className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${getDocumentIconClasses(
-                                            document.type
+                                            document.documentType
                                         )}`}
                                     >
                                         <Icon size={19} />
@@ -486,7 +499,7 @@ export default function ClientDocuments() {
 
                                     <p className="mt-1 text-[10px] font-medium text-cyan-700">
                                         {document.category} ·{" "}
-                                        {document.product}
+                                        {document.productName}
                                     </p>
 
                                     <p className="mt-3 line-clamp-2 text-[10px] leading-5 text-slate-500">
@@ -497,12 +510,12 @@ export default function ClientDocuments() {
                                 <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
                                     <div>
                                         <p className="text-[9px] text-slate-400">
-                                            {document.type} ·{" "}
-                                            {document.size}
+                                            {document.documentType} ·{" "}
+                                            {bytesToSize(document.size || 0)}
                                         </p>
 
                                         <p className="mt-1 text-[9px] text-slate-500">
-                                            {document.uploadedOn}
+                                            {formatDocumentDate(document.requestedAt || document.createdAt)}
                                         </p>
                                     </div>
 
@@ -522,11 +535,7 @@ export default function ClientDocuments() {
 
                                         <button
                                             type="button"
-                                            onClick={() =>
-                                                handleDownload(
-                                                    document.name
-                                                )
-                                            }
+                                            onClick={() => handleDownload(document)}
                                             title="Download"
                                             className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-700"
                                         >
@@ -632,13 +641,13 @@ export default function ClientDocuments() {
                                         {(() => {
                                             const Icon =
                                                 getDocumentIcon(
-                                                    selectedDocument.type
+                                                    selectedDocument.documentType
                                                 );
 
                                             return (
                                                 <div
                                                     className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${getDocumentIconClasses(
-                                                        selectedDocument.type
+                                                        selectedDocument.documentType
                                                     )}`}
                                                 >
                                                     <Icon size={22} />
@@ -655,12 +664,10 @@ export default function ClientDocuments() {
 
                                             <p className="mt-1 text-[10px] text-slate-500">
                                                 {
-                                                    selectedDocument.type
+                                                    selectedDocument.documentType
                                                 }{" "}
                                                 ·{" "}
-                                                {
-                                                    selectedDocument.size
-                                                }
+                                                {bytesToSize(selectedDocument.size || 0)}
                                             </p>
                                         </div>
                                     </div>
@@ -685,23 +692,24 @@ export default function ClientDocuments() {
                                 <DetailItem
                                     label="Product"
                                     value={
-                                        selectedDocument.product
+                                        selectedDocument.productName
                                     }
                                     icon={FileCheck2}
                                 />
 
                                 <DetailItem
                                     label="Uploaded On"
-                                    value={
-                                        selectedDocument.uploadedOn
-                                    }
+                                    value={formatDocumentDate(
+                                        selectedDocument.requestedAt ||
+                                            selectedDocument.createdAt
+                                    )}
                                     icon={CalendarDays}
                                 />
 
                                 <DetailItem
                                     label="Uploaded By"
                                     value={
-                                        selectedDocument.uploadedBy
+                                        selectedDocument.uploadedByName
                                     }
                                     icon={UserRound}
                                 />
@@ -741,11 +749,7 @@ export default function ClientDocuments() {
                         <div className="grid gap-3 border-t border-slate-200 p-5 sm:grid-cols-2 sm:px-6">
                             <button
                                 type="button"
-                                onClick={() =>
-                                    handleDownload(
-                                        selectedDocument.name
-                                    )
-                                }
+                                onClick={() => handleDownload(selectedDocument)}
                                 className="flex h-11 items-center justify-center gap-2 rounded-xl bg-[#0f172a] px-4 text-xs font-semibold text-white transition hover:bg-cyan-600"
                             >
                                 <Download size={16} />

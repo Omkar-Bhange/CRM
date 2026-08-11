@@ -1,4 +1,11 @@
-import { useMemo, useRef, useState } from "react";
+import {
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
+const API_URL =
+    "http://localhost:5000/api";
 import {
     AlertCircle,
     ArrowLeft,
@@ -374,8 +381,20 @@ function getTimelineIcon(type) {
             className: "bg-blue-100 text-blue-700",
         };
     }
+      if (type === "reply") {                          // ← add this whole block
+        return {
+            icon: MessageSquare,
+            className: "bg-blue-100 text-blue-700",
+        };
+    }
 
     if (type === "file") {
+        return {
+            icon: Paperclip,
+            className: "bg-amber-100 text-amber-700",
+        };
+    }
+      if (type === "attachment") {                     // ← add this whole block
         return {
             icon: Paperclip,
             className: "bg-amber-100 text-amber-700",
@@ -440,7 +459,13 @@ function SummaryCard({
 export default function MyTickets() {
     const fileInputRef = useRef(null);
 
-    const [tickets, setTickets] = useState(initialTickets);
+const [tickets, setTickets] =
+  useState([]);
+
+
+
+const [loadingTickets, setLoadingTickets] =
+    useState(true);
     const [linkedTasks, setLinkedTasks] = useState(initialLinkedTasks);
     const [messages, setMessages] = useState(initialMessages);
     const [internalNotes, setInternalNotes] = useState(
@@ -482,9 +507,51 @@ export default function MyTickets() {
         description: "",
     });
 
-    const selectedTicket =
-        tickets.find((ticket) => ticket.id === selectedTicketId) ||
-        null;
+const selectedTicket =
+    tickets.find(
+        (ticket) =>
+            ticket._id === selectedTicketId
+    ) || null;
+        const loadTickets = async () => {
+    try {
+        setLoadingTickets(true);
+
+        const token =
+    localStorage.getItem("client-connect-token") ||
+    sessionStorage.getItem("client-connect-token");
+    if (!token) {
+    throw new Error("Please login again.");
+}
+
+        const response = await fetch(
+            `${API_URL}/employee/my-tickets`,
+            {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(
+                data.message ||
+                    "Failed to load tickets."
+            );
+        }
+
+        setTickets(data.tickets || []);
+    } catch (error) {
+        console.error(error);
+        alert(error.message);
+    } finally {
+        setLoadingTickets(false);
+    }
+};
+useEffect(() => {
+    loadTickets();
+}, []);
 
     const filteredTickets = useMemo(() => {
         return tickets.filter((ticket) => {
@@ -563,37 +630,43 @@ export default function MyTickets() {
         (ticket) => ticket.status === "Resolved"
     ).length;
 
-    const selectedMessages = selectedTicket
-        ? messages.filter(
-              (message) => message.ticketId === selectedTicket.id
-          )
-        : [];
+const selectedMessages =
+    selectedTicket?.replies || [];
 
-    const selectedNotes = selectedTicket
-        ? internalNotes.filter(
-              (note) => note.ticketId === selectedTicket.id
-          )
-        : [];
+const selectedNotes =
+    selectedTicket?.internalNotes || [];
+const selectedFiles = (selectedTicket?.attachments || []).map((file) => ({
+    id: file._id,
+    name: file.fileName,
+    type: file.fileType,
+    size: file.fileSize >= 1024 * 1024
+        ? `${(file.fileSize / (1024 * 1024)).toFixed(1)} MB`
+        : `${Math.max(1, Math.round(file.fileSize / 1024))} KB`,
+    uploadedBy: file.uploadedByName,
+    uploadedAt: new Date(file.uploadedAt).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
+}));
 
-    const selectedFiles = selectedTicket
-        ? files.filter((file) => file.ticketId === selectedTicket.id)
-        : [];
+const selectedCalls = (selectedTicket?.callLogs || []).map((call) => ({
+    id: call._id,
+    callType: call.callType,
+    contactPerson: call.contactPerson,
+    mobile: call.mobile,
+    startedAt: new Date(call.createdAt).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
+    duration: call.duration,
+    summary: call.summary,
+}))
 
-    const selectedCalls = selectedTicket
-        ? calls.filter((call) => call.ticketId === selectedTicket.id)
+const selectedTasks =
+    selectedTicket?.linkedTask
+        ? [selectedTicket.linkedTask]
         : [];
-
-    const selectedTasks = selectedTicket
-        ? linkedTasks.filter(
-              (task) => task.ticketId === selectedTicket.id
-          )
-        : [];
-
-    const selectedTimeline = selectedTicket
-        ? timeline.filter(
-              (item) => item.ticketId === selectedTicket.id
-          )
-        : [];
+const selectedTimeline = (selectedTicket?.timeline || []).map((item) => ({
+    id: item._id,
+    type: item.type,
+    title: item.title,
+    description: item.description,
+    createdAt: new Date(item.createdAt).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
+})).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     const addTimelineEntry = (
         ticketId,
@@ -621,7 +694,7 @@ export default function MyTickets() {
     };
 
     const openTicket = (ticket) => {
-        setSelectedTicketId(ticket.id);
+        setSelectedTicketId(ticket._id);
         setDetailsTab("overview");
         setReplyText("");
         setNoteText("");
@@ -663,91 +736,129 @@ export default function MyTickets() {
         );
     };
 
-    const handleStatusChange = (event) => {
-        if (!selectedTicket) return;
+const handleStatusChange = async (event) => {
+    if (!selectedTicket) return;
+
+    try {
+        const token =
+            localStorage.getItem("client-connect-token") ||
+            sessionStorage.getItem("client-connect-token");
 
         const nextStatus = event.target.value;
 
-        updateTicket({
-            status: nextStatus,
-            resolvedAt:
-                nextStatus === "Resolved"
-                    ? new Date().toISOString()
-                    : selectedTicket.resolvedAt,
-        });
-
-        addTimelineEntry(
-            selectedTicket.id,
-            nextStatus === "Resolved" ? "resolved" : "status",
-            "Ticket status updated",
-            `Status changed to ${nextStatus}.`
+        const response = await fetch(
+            `${API_URL}/employee/my-tickets/${selectedTicket._id}/status`,
+            {
+                method: "PATCH",
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    status: nextStatus,
+                }),
+            }
         );
-    };
 
-    const addReply = (event) => {
-        event.preventDefault();
+        const result = await response.json();
 
-        if (!selectedTicket || !replyText.trim()) return;
+        if (!response.ok || !result.success) {
+            throw new Error(
+                result.message || "Unable to update ticket."
+            );
+        }
 
-        const newMessage = {
-            id: Date.now(),
-            ticketId: selectedTicket.id,
-            type: "employee",
-            user: "Akash Pawar",
-            initials: "AP",
-            message: replyText.trim(),
-            createdAt: new Date().toLocaleString("en-IN", {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-            }),
-        };
+        // Reload latest tickets from MongoDB
+        await loadTickets();
 
-        setMessages((current) => [...current, newMessage]);
+    } catch (error) {
+        console.error(error);
+        alert(error.message);
+    }
+};
 
-        addTimelineEntry(
-            selectedTicket.id,
-            "message",
-            "Reply sent",
-            newMessage.message
+  const addReply = async (event) => {
+    event.preventDefault();
+
+    if (!selectedTicket || !replyText.trim()) return;
+
+    try {
+        const token =
+            localStorage.getItem("client-connect-token") ||
+            sessionStorage.getItem("client-connect-token");
+
+        const response = await fetch(
+            `${API_URL}/employee/my-tickets/${selectedTicket._id}/reply`,
+            {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    message: replyText.trim(),
+                }),
+            }
         );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            throw new Error(result.message);
+        }
 
         setReplyText("");
-    };
 
-    const addInternalNote = (event) => {
-        event.preventDefault();
+        await loadTickets();
 
-        if (!selectedTicket || !noteText.trim()) return;
+    } catch (error) {
+        console.error(error);
+        alert(error.message);
+    }
+};
 
-        const newNote = {
-            id: Date.now(),
-            ticketId: selectedTicket.id,
-            user: "Akash Pawar",
-            initials: "AP",
-            message: noteText.trim(),
-            createdAt: new Date().toLocaleString("en-IN", {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-            }),
-        };
+const addInternalNote = async (event) => {
+    event.preventDefault();
 
-        setInternalNotes((current) => [...current, newNote]);
+    if (!selectedTicket || !noteText.trim()) return;
 
-        addTimelineEntry(
-            selectedTicket.id,
-            "message",
-            "Internal note added",
-            newNote.message
+    try {
+        const token =
+            localStorage.getItem("client-connect-token") ||
+            sessionStorage.getItem("client-connect-token");
+
+        const response = await fetch(
+            `${API_URL}/employee/my-tickets/${selectedTicket._id}/internal-note`,
+            {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    note: noteText.trim(),
+                }),
+            }
         );
 
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            throw new Error(
+                result.message || "Unable to save internal note."
+            );
+        }
+
         setNoteText("");
-    };
+
+        // Reload latest ticket data from MongoDB
+        await loadTickets();
+
+    } catch (error) {
+        console.error(error);
+        alert(error.message);
+    }
+};
 
     const handleFileSelection = (event) => {
         const file = event.target.files?.[0];
@@ -771,40 +882,26 @@ export default function MyTickets() {
         });
     };
 
-    const uploadFile = () => {
-        if (!selectedTicket || !selectedFile) return;
-
-        const newFile = {
-            id: Date.now(),
-            ticketId: selectedTicket.id,
-            name: selectedFile.name,
-            type: selectedFile.type,
-            size: selectedFile.size,
-            uploadedBy: "Akash Pawar",
-            uploadedAt: new Date().toLocaleString("en-IN", {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-            }),
-        };
-
-        setFiles((current) => [newFile, ...current]);
-
-        addTimelineEntry(
-            selectedTicket.id,
-            "file",
-            "File uploaded",
-            newFile.name
-        );
-
+   const uploadFile = async () => {
+    if (!selectedTicket || !selectedFile) return;
+    try {
+        const token = localStorage.getItem("client-connect-token") || sessionStorage.getItem("client-connect-token");
+        const formData = new FormData();
+        formData.append("attachment", selectedFile.file);
+       const response = await fetch(`${API_URL}/admin/ticket/${selectedTicket._id}/attachment`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+            body: formData,
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message || "Unable to upload file.");
         setSelectedFile(null);
-
-        if (fileInputRef.current) {
-            fileInputRef.current.value = "";
-        }
-    };
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        await loadTickets();
+    } catch (error) {
+        alert(error.message);
+    }
+};
 
     const handleCallFormChange = (event) => {
         const { name, value } = event.target;
@@ -814,8 +911,9 @@ export default function MyTickets() {
             [name]: value,
         }));
     };
+    
 
-    const addCallLog = (event) => {
+  const addCallLog = async (event) => {
         event.preventDefault();
 
         if (!selectedTicket) return;
@@ -835,40 +933,48 @@ export default function MyTickets() {
             return;
         }
 
-        const newCall = {
-            id: Date.now(),
-            ticketId: selectedTicket.id,
-            callType: callForm.callType,
-            contactPerson: callForm.contactPerson.trim(),
-            mobile: callForm.mobile.trim(),
-            startedAt: new Date().toLocaleString("en-IN", {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-            }),
-            duration: callForm.duration.trim(),
-            summary: callForm.summary.trim(),
-        };
+        try {
+            const token =
+                localStorage.getItem("client-connect-token") ||
+                sessionStorage.getItem("client-connect-token");
 
-        setCalls((current) => [newCall, ...current]);
+            const response = await fetch(
+                `${API_URL}/employee/my-tickets/${selectedTicket._id}/call-log`,
+                {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        callType: callForm.callType,
+                        contactPerson: callForm.contactPerson.trim(),
+                        mobile: callForm.mobile.trim(),
+                        duration: callForm.duration.trim(),
+                        summary: callForm.summary.trim(),
+                    }),
+                }
+            );
 
-        addTimelineEntry(
-            selectedTicket.id,
-            "call",
-            "Support call logged",
-            `${newCall.duration} call with ${newCall.contactPerson}.`
-        );
+            const result = await response.json();
 
-        setCallForm((current) => ({
-            ...current,
-            duration: "",
-            summary: "",
-        }));
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || "Unable to save call log.");
+            }
+
+            setCallForm((current) => ({
+                ...current,
+                duration: "",
+                summary: "",
+            }));
+
+            await loadTickets();
+        } catch (error) {
+            alert(error.message);
+        }
     };
 
-    const resolveTicket = () => {
+    const resolveTicket = async () => {
         if (!selectedTicket) return;
 
         if (!resolutionText.trim()) {
@@ -876,38 +982,72 @@ export default function MyTickets() {
             return;
         }
 
-        updateTicket({
-            status: "Resolved",
-            resolutionNote: resolutionText.trim(),
-            resolvedAt: new Date().toISOString(),
-        });
+        try {
+            const token =
+                localStorage.getItem("client-connect-token") ||
+                sessionStorage.getItem("client-connect-token");
 
-        addTimelineEntry(
-            selectedTicket.id,
-            "resolved",
-            "Ticket resolved",
-            resolutionText.trim()
-        );
+            const response = await fetch(
+                `${API_URL}/employee/my-tickets/${selectedTicket._id}/status`,
+                {
+                    method: "PATCH",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        status: "Resolved",
+                        resolutionNote: resolutionText.trim(),
+                    }),
+                }
+            );
 
-        setDetailsTab("overview");
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || "Unable to resolve ticket.");
+            }
+
+            setDetailsTab("overview");
+            await loadTickets();
+        } catch (error) {
+            alert(error.message);
+        }
     };
 
-    const reopenTicket = () => {
+    const reopenTicket = async () => {
         if (!selectedTicket) return;
 
-        updateTicket({
-            status: "In Progress",
-            resolvedAt: "",
-        });
+        try {
+            const token =
+                localStorage.getItem("client-connect-token") ||
+                sessionStorage.getItem("client-connect-token");
 
-        addTimelineEntry(
-            selectedTicket.id,
-            "status",
-            "Ticket reopened",
-            "Ticket status changed back to In Progress."
-        );
+            const response = await fetch(
+                `${API_URL}/employee/my-tickets/${selectedTicket._id}/status`,
+                {
+                    method: "PATCH",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        status: "In Progress",
+                    }),
+                }
+            );
+
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || "Unable to reopen ticket.");
+            }
+
+            await loadTickets();
+        } catch (error) {
+            alert(error.message);
+        }
     };
-
     const openCreateTask = () => {
         if (!selectedTicket) return;
 
@@ -931,57 +1071,68 @@ export default function MyTickets() {
         }));
     };
 
-    const createLinkedTask = (event) => {
-        event.preventDefault();
+const createLinkedTask = async (event) => {
+    event.preventDefault();
 
-        if (!selectedTicket) return;
+    if (!selectedTicket) return;
 
-        if (!taskForm.title.trim()) {
-            alert("Please enter task title.");
-            return;
-        }
+    if (!taskForm.title.trim()) {
+        alert("Please enter task title.");
+        return;
+    }
 
-        if (!taskForm.dueDate) {
-            alert("Please select task due date.");
-            return;
-        }
+    if (!taskForm.dueDate) {
+        alert("Please select task due date.");
+        return;
+    }
 
-        const newTask = {
-            id: Date.now(),
-            ticketId: selectedTicket.id,
-            taskNo: `TSK-${String(Date.now()).slice(-4)}`,
-            title: taskForm.title.trim(),
-            status: "Assigned",
-            priority: taskForm.priority,
-            progress: 0,
-            spentTime: "0m",
-        };
+    try {
+        const token =
+            localStorage.getItem("client-connect-token") ||
+            sessionStorage.getItem("client-connect-token");
 
-        setLinkedTasks((current) => [newTask, ...current]);
-
-        setTickets((current) =>
-            current.map((ticket) =>
-                ticket.id === selectedTicket.id
-                    ? {
-                          ...ticket,
-                          linkedTaskIds: [
-                              ...(ticket.linkedTaskIds || []),
-                              newTask.id,
-                          ],
-                      }
-                    : ticket
-            )
+        const response = await fetch(
+            `${API_URL}/employee/my-tickets/${selectedTicket._id}/create-task`,
+            {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    title: taskForm.title,
+                    description: taskForm.description,
+                    priority: taskForm.priority,
+                    dueDate: taskForm.dueDate,
+                    estimatedMinutes:
+                        Number(taskForm.estimatedTime) || 0,
+                }),
+            }
         );
 
-        addTimelineEntry(
-            selectedTicket.id,
-            "task",
-            "Task created",
-            `${newTask.taskNo} — ${newTask.title}`
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            throw new Error(
+                result.message || "Unable to create task."
+            );
+        }
+
+        alert(
+            result.alreadyExists
+                ? `Task already linked: ${result.task.taskCode}`
+                : `Task created successfully: ${result.task.taskCode}`
         );
 
         setTaskFormOpen(false);
-    };
+
+        await loadTickets();
+
+    } catch (error) {
+        console.error(error);
+        alert(error.message);
+    }
+};
 
     return (
         <div>
@@ -1537,6 +1688,16 @@ export default function MyTickets() {
                                         <p className="mt-3 text-sm leading-6 text-slate-700">
                                             {selectedTicket.description}
                                         </p>
+
+                                        {selectedTicket.attachments?.length > 0 && (
+                                            <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-3">
+                                                <img
+                                                    src={`http://localhost:5000${selectedTicket.attachments[0].fileUrl}`}
+                                                    alt={selectedTicket.attachments[0].fileName}
+                                                    className="rounded-xl border border-slate-200 max-w-full"
+                                                />
+                                            </div>
+                                        )}
                                     </div>
 
                                     <div className="grid gap-4 sm:grid-cols-2">
@@ -1650,55 +1811,57 @@ export default function MyTickets() {
                             {detailsTab === "conversation" && (
                                 <div>
                                     <div className="space-y-4">
-                                        {selectedMessages.map((message) => {
-                                            const employee =
-                                                message.type === "employee";
+                                       {selectedMessages.map((message) => {
+    const employee =
+        message.authorRole === "employee";
 
-                                            return (
-                                                <div
-                                                    key={message.id}
-                                                    className={`flex gap-3 ${
-                                                        employee
-                                                            ? "flex-row-reverse"
-                                                            : ""
-                                                    }`}
-                                                >
-                                                    <div
-                                                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[10px] font-bold ${
-                                                            employee
-                                                                ? "bg-violet-600 text-white"
-                                                                : "bg-slate-900 text-white"
-                                                        }`}
-                                                    >
-                                                        {message.initials}
-                                                    </div>
+    return (
+        <div
+            key={message._id}
+            className={`flex gap-3 ${
+                employee
+                    ? "flex-row-reverse"
+                    : ""
+            }`}
+        >
+            <div
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[10px] font-bold ${
+                    employee
+                        ? "bg-violet-600 text-white"
+                        : "bg-slate-900 text-white"
+                }`}
+            >
+                {(message.authorName || "?")
+                    .substring(0, 2)
+                    .toUpperCase()}
+            </div>
 
-                                                    <div
-                                                        className={`max-w-[80%] rounded-2xl p-4 ${
-                                                            employee
-                                                                ? "rounded-tr-md bg-violet-50"
-                                                                : "rounded-tl-md bg-slate-50"
-                                                        }`}
-                                                    >
-                                                        <div className="flex items-center justify-between gap-5">
-                                                            <p className="text-xs font-semibold text-slate-900">
-                                                                {message.user}
-                                                            </p>
+            <div
+                className={`max-w-[80%] rounded-2xl p-4 ${
+                    employee
+                        ? "rounded-tr-md bg-violet-50"
+                        : "rounded-tl-md bg-slate-50"
+                }`}
+            >
+                <div className="flex items-center justify-between gap-5">
+                    <p className="text-xs font-semibold text-slate-900">
+                        {message.authorName}
+                    </p>
 
-                                                            <span className="text-[9px] text-slate-400">
-                                                                {
-                                                                    message.createdAt
-                                                                }
-                                                            </span>
-                                                        </div>
+                    <span className="text-[9px] text-slate-400">
+                        {new Date(
+                            message.createdAt
+                        ).toLocaleString()}
+                    </span>
+                </div>
 
-                                                        <p className="mt-2 text-xs leading-5 text-slate-600">
-                                                            {message.message}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
+                <p className="mt-2 text-xs leading-5 text-slate-600">
+                    {message.message}
+                </p>
+            </div>
+        </div>
+    );
+})}
                                     </div>
 
                                     <form
@@ -1785,34 +1948,48 @@ export default function MyTickets() {
                                         </div>
                                     </form>
 
-                                    <div className="mt-5 space-y-3">
-                                        {selectedNotes.map((note) => (
-                                            <div
-                                                key={note.id}
-                                                className="flex gap-3 rounded-2xl border border-amber-100 bg-amber-50/50 p-4"
-                                            >
-                                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-[10px] font-bold text-amber-700">
-                                                    {note.initials}
-                                                </div>
+                                   <div className="mt-5 space-y-3">
+    {selectedNotes.map((note) => (
+        <div
+            key={note._id}
+            className="flex gap-3 rounded-2xl border border-amber-100 bg-amber-50/50 p-4"
+        >
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-[10px] font-bold text-amber-700">
+                {(note.authorName || "?")
+                    .substring(0, 2)
+                    .toUpperCase()}
+            </div>
 
-                                                <div>
-                                                    <div className="flex flex-wrap items-center gap-3">
-                                                        <p className="text-xs font-semibold text-slate-900">
-                                                            {note.user}
-                                                        </p>
+            <div className="flex-1">
+                <div className="flex flex-wrap items-center gap-3">
+                    <p className="text-xs font-semibold text-slate-900">
+                        {note.authorName}
+                    </p>
 
-                                                        <span className="text-[9px] text-slate-400">
-                                                            {note.createdAt}
-                                                        </span>
-                                                    </div>
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-medium text-amber-700">
+                        {note.authorRole}
+                    </span>
 
-                                                    <p className="mt-2 text-xs leading-5 text-slate-600">
-                                                        {note.message}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
+                    <span className="text-[9px] text-slate-400">
+                        {new Date(
+                            note.createdAt
+                        ).toLocaleString()}
+                    </span>
+                </div>
+
+                <p className="mt-2 text-xs leading-5 text-slate-600 whitespace-pre-wrap">
+                    {note.note}
+                </p>
+            </div>
+        </div>
+    ))}
+
+    {selectedNotes.length === 0 && (
+        <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-xs text-slate-500">
+            No internal notes added yet.
+        </div>
+    )}
+</div>
                                 </div>
                             )}
 
@@ -1849,7 +2026,7 @@ export default function MyTickets() {
                                                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                                     <div>
                                                         <p className="text-xs font-semibold text-violet-600">
-                                                            {task.taskNo}
+                                                            {task.taskCode}
                                                         </p>
 
                                                         <p className="mt-2 text-sm font-semibold text-slate-900">
@@ -1891,7 +2068,7 @@ export default function MyTickets() {
                                                     </span>
 
                                                     <span className="text-[10px] text-slate-400">
-                                                        {task.spentTime}
+                                                        {task.spentMinutes} mins
                                                     </span>
                                                 </div>
                                             </div>

@@ -317,11 +317,12 @@ export default function MyAttendance() {
         const date = new Date(value);
         return Number.isNaN(date.getTime()) ? String(value).slice(0, 5) : date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
     };
-    const normalizeAttendance = (record) => ({
+ const normalizeAttendance = (record) => ({
         ...record,
         id: record._id,
         loginTime: toTimeInput(record.loginTime),
         logoutTime: toTimeInput(record.logoutTime),
+        breakStartedAt: toTimeInput(record.breakStartedAt),   // ← add this line
         workedMinutes: Number(record.workingMinutes || 0),
     });
     const [activeTab, setActiveTab] = useState("today");
@@ -330,10 +331,12 @@ export default function MyAttendance() {
 
     const [attendanceStatus, setAttendanceStatus] =
         useState("Absent");
+        const breakActive = attendanceStatus === "Break";
     const [loginTime, setLoginTime] = useState("");
     const [logoutTime, setLogoutTime] = useState("");
-    const [breakActive, setBreakActive] = useState(false);
+
     const [breakMinutes, setBreakMinutes] = useState(0);
+     const [breakStartedAt, setBreakStartedAt] = useState(null);
 
     const [calendarDate, setCalendarDate] = useState(
         new Date()
@@ -403,8 +406,8 @@ export default function MyAttendance() {
     const loadData = async () => {
         const headers = { Authorization: `Bearer ${getAuthToken()}` };
         const [todayResponse, historyResponse, leaveResponse] = await Promise.all([
-            fetch(`${API_URL}/api/admin/attendance/today`, { headers }),
-            fetch(`${API_URL}/api/admin/attendance/me`, { headers }),
+            fetch(`${API_URL}/api/attendance/today`, { headers }),
+            fetch(`${API_URL}/api/attendance/history`, { headers }),
             fetch(`${API_URL}/api/admin/leave/my`, { headers }),
         ]);
         const [today, history, leaves] = await Promise.all([todayResponse.json(), historyResponse.json(), leaveResponse.json()]);
@@ -414,10 +417,11 @@ export default function MyAttendance() {
         const current = today.data ? normalizeAttendance(today.data) : null;
         setAttendanceHistory((history.data || []).map(normalizeAttendance));
         setLeaveRequests((leaves.data || []).map((leave) => ({ ...leave, id: leave._id, appliedOn: leave.appliedAt?.slice(0, 10) })));
-        setAttendanceStatus(current?.workStatus || "Absent");
+        setAttendanceStatus(current?.workStatus || current?.status || "Absent");
         setLoginTime(current?.loginTime || "");
         setLogoutTime(current?.logoutTime || "");
         setBreakMinutes(Number(current?.breakMinutes || 0));
+        setBreakStartedAt(current?.breakStartedAt || null);
     };
 
     useEffect(() => {
@@ -425,11 +429,12 @@ export default function MyAttendance() {
     }, []);
 
     const handleAttendanceToggle = async () => {
-        const endpoint = attendanceStatus === "Working" ? "check-out" : "check-in";
+        const endpoint = attendanceStatus === "Working" || attendanceStatus === "Break" ? "logout" : "login";
         try {
-            const response = await fetch(`${API_URL}/api/admin/attendance/${endpoint}`, {
-                method: endpoint === "check-in" ? "POST" : "PUT",
+            const response = await fetch(`${API_URL}/api/attendance/${endpoint}`, {
+                method: "POST",
                 headers: { Authorization: `Bearer ${getAuthToken()}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ source: "web" }),
             });
             const result = await response.json();
             if (!response.ok || !result.success) throw new Error(result.message || "Attendance update failed.");
@@ -439,10 +444,23 @@ export default function MyAttendance() {
         }
     };
 
-    const handleBreakToggle = () => {
-        if (attendanceStatus !== "Working") return;
+const handleBreakToggle = async () => {
+        if (attendanceStatus !== "Working" && attendanceStatus !== "Break") return;
 
-        setBreakActive((current) => !current);
+        const endpoint = attendanceStatus === "Break" ? "break/end" : "break/start";
+
+        try {
+            const response = await fetch(`${API_URL}/api/attendance/${endpoint}`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${getAuthToken()}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ source: "web" }),
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) throw new Error(result.message || "Break update failed.");
+            await loadData();
+        } catch (error) {
+            alert(error.message);
+        }
     };
 
     const changeCalendarMonth = (direction) => {
@@ -771,8 +789,9 @@ export default function MyAttendance() {
                                         type="button"
                                         onClick={handleBreakToggle}
                                         disabled={
-                                            attendanceStatus !==
-                                            "Working"
+                                            !loginTime ||
+                                            !!logoutTime ||
+                                            !["Working", "Break"].includes(attendanceStatus)
                                         }
                                         className={`flex h-11 items-center justify-center gap-2 rounded-xl border text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
                                             breakActive
@@ -792,28 +811,23 @@ export default function MyAttendance() {
                                             handleAttendanceToggle
                                         }
                                         disabled={
-                                            attendanceStatus ===
-                                            "Logged Out"
+                                            attendanceStatus === "Logged Out"
                                         }
                                         className={`flex h-11 items-center justify-center gap-2 rounded-xl text-xs font-semibold transition ${
-                                            attendanceStatus ===
-                                            "Working"
+                                            attendanceStatus === "Working" || attendanceStatus === "Break"
                                                 ? "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
                                                 : "bg-violet-600 text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
                                         }`}
                                     >
-                                        {attendanceStatus ===
-                                        "Working" ? (
+                                        {attendanceStatus === "Working" || attendanceStatus === "Break" ? (
                                             <LogOut size={15} />
                                         ) : (
                                             <LogIn size={15} />
                                         )}
 
-                                        {attendanceStatus ===
-                                        "Working"
+                                        {attendanceStatus === "Working" || attendanceStatus === "Break"
                                             ? "End Workday"
-                                            : attendanceStatus ===
-                                                "Logged Out"
+                                            : attendanceStatus === "Logged Out"
                                               ? "Workday Completed"
                                               : "Start Workday"}
                                     </button>
@@ -831,63 +845,42 @@ export default function MyAttendance() {
                                     </p>
                                 </div>
 
-                                <div className="relative space-y-5 p-5 before:absolute before:bottom-7 before:left-[24px] before:top-7 before:w-px before:bg-slate-200">
+                               <div className="relative space-y-5 p-5 before:absolute before:bottom-7 before:left-[24px] before:top-7 before:w-px before:bg-slate-200">
                                     {[
                                         {
                                             id: 1,
                                             title: "Logged in",
-                                            description:
-                                                formatTime(loginTime),
+                                            description: formatTime(loginTime),
                                             icon: LogIn,
-                                            iconClass:
-                                                "bg-emerald-100 text-emerald-700",
+                                            iconClass: "bg-emerald-100 text-emerald-700",
                                         },
-                                        {
+                                        breakMinutes > 0 && {
                                             id: 2,
-                                            title: "Morning break",
-                                            description: "10:55 AM · 10m",
+                                            title: "Break time today",
+                                            description: `${formatDuration(breakMinutes)} total`,
                                             icon: Coffee,
-                                            iconClass:
-                                                "bg-amber-100 text-amber-700",
+                                            iconClass: "bg-amber-100 text-amber-700",
                                         },
                                         {
                                             id: 3,
-                                            title: "Lunch break",
-                                            description: "01:10 PM · 25m",
-                                            icon: Coffee,
-                                            iconClass:
-                                                "bg-blue-100 text-blue-700",
-                                        },
-                                        {
-                                            id: 4,
                                             title: breakActive
                                                 ? "Break active"
-                                                : attendanceStatus ===
-                                                    "Logged Out"
+                                                : attendanceStatus === "Logged Out"
                                                   ? "Logged out"
                                                   : "Currently working",
                                             description: breakActive
-                                                ? "Started recently"
-                                                : attendanceStatus ===
-                                                    "Logged Out"
-                                                  ? formatTime(
-                                                        logoutTime
-                                                    )
+                                                ? `Started at ${formatTime(breakStartedAt)}`
+                                                : attendanceStatus === "Logged Out"
+                                                  ? formatTime(logoutTime)
                                                   : "Work session active",
-                                            icon: breakActive
-                                                ? Coffee
-                                                : attendanceStatus ===
-                                                    "Logged Out"
-                                                  ? LogOut
-                                                  : Timer,
+                                            icon: breakActive ? Coffee : attendanceStatus === "Logged Out" ? LogOut : Timer,
                                             iconClass: breakActive
                                                 ? "bg-amber-100 text-amber-700"
-                                                : attendanceStatus ===
-                                                    "Logged Out"
+                                                : attendanceStatus === "Logged Out"
                                                   ? "bg-rose-100 text-rose-700"
                                                   : "bg-violet-100 text-violet-700",
                                         },
-                                    ].map((item) => {
+                                    ].filter(Boolean).map((item) => {
                                         const Icon = item.icon;
 
                                         return (

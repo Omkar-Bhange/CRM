@@ -20,41 +20,7 @@ import {
     X,
 } from "lucide-react";
 
-const companyInformation = {
-    clientCode: "CL-1001",
-    companyName: "Shree Ganesh Industries",
-    contactPerson: "Ramesh Patil",
-    designation: "Accounts Manager",
-    email: "ramesh@shreeganesh.com",
-    alternateEmail: "accounts@shreeganesh.com",
-    mobile: "9876543210",
-    alternateMobile: "9823012456",
-    gstNo: "27ABCDE1234F1Z5",
-    panNo: "ABCDE1234F",
-    addressLine1: "Plot No. 18, MIDC Industrial Area",
-    addressLine2: "Bhosari",
-    city: "Pune",
-    state: "Maharashtra",
-    pinCode: "411026",
-    country: "India",
-    clientSince: "12 Mar 2022",
-    accountStatus: "Active",
-    billingContact: "Ramesh Patil",
-    billingEmail: "accounts@shreeganesh.com",
-    preferredContact: "Phone",
-    supportLanguage: "English",
-};
 
-const purchasedProducts = [
-    {
-        id: 1,
-        name: "NexERP",
-        version: "v4.2",
-        licenceUsers: 12,
-        supportPlan: "Annual AMC",
-        status: "Active",
-    },
-];
 
 const emptyChangeRequest = {
     requestType: "Contact Information",
@@ -111,6 +77,7 @@ function InformationItem({
     );
 }
 
+
 function SummaryCard({
     label,
     value,
@@ -145,7 +112,7 @@ function SummaryCard({
     );
 }
 
-export default function ClientProfile() {
+export default function ClientProfile({ client }) {
     const [activeSection, setActiveSection] =
         useState("company");
 
@@ -164,6 +131,7 @@ export default function ClientProfile() {
         confirmPassword: "",
     });
 
+
     const [savedRequests, setSavedRequests] = useState([
         {
             id: 1,
@@ -174,7 +142,49 @@ export default function ClientProfile() {
             createdAt: "14 Jul 2026",
         },
     ]);
+    
+    const companyInformation = {
+  clientCode: client?.clientCode || "",
+  companyName: client?.companyName || "",
+  contactPerson: client?.contactPerson || "",
+  designation: client?.designation || "",
+  email: client?.email || "",
+  alternateEmail: client?.alternateEmail || "",
+  mobile: client?.mobile || "",
+  alternateMobile: client?.alternateMobile || "",
+  gstNo: client?.gstNo || "",
+  panNo: client?.panNo || "",
+  addressLine1: client?.addressLine1 || "",
+  addressLine2: client?.addressLine2 || "",
+  city: client?.city || "",
+  state: client?.state || "",
+  pinCode: client?.pinCode || "",
+  country: client?.country || "India",
+  clientSince: client?.createdAt
+    ? new Date(client.createdAt).toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })
+    : "",
+  accountStatus: client?.status || "Active",
+  billingContact: client?.billingContact || client?.contactPerson || "",
+  billingEmail: client?.billingEmail || client?.email || "",
+  preferredContact: client?.preferredContact || "Phone",
+  supportLanguage: client?.supportLanguage || "English",
+};
 
+const purchasedProducts = (client?.products || []).map((product) => ({
+  id: product._id || product.productId,
+  name: product.productName,
+  version: product.version || "v1.0.0",
+  licenceUsers: product.licensedUsers || 0,
+  supportPlan: product.supportType || "Standard",
+  status:
+    product.installationStatus === "Inactive"
+      ? "Inactive"
+      : "Active",
+}));
     const handleChangeRequestInput = (event) => {
         const { name, value } = event.target;
 

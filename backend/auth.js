@@ -25,6 +25,13 @@ const userSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
+    employeeCode: {
+  type: String,
+  default: "",
+  trim: true,
+  uppercase: true,
+  index: true,
+},
 
     password: {
       type: String,
@@ -105,6 +112,7 @@ function generateToken(user) {
       userId: user._id,
       role: user.role,
       email: user.email,
+      employeeCode: user.employeeCode || "",
 
       clientId:
         user.clientId || null,
@@ -360,6 +368,7 @@ router.post("/login", async (req, res, next) => {
   id: user._id,
   name: user.name,
   email: user.email,
+  employeeCode: user.employeeCode || "",
   role: user.role,
   status: user.status,
 
@@ -411,6 +420,7 @@ router.get(
 
         email:
           req.user.email,
+          employeeCode: req.user.employeeCode || "",
 
         role:
           req.user.role,

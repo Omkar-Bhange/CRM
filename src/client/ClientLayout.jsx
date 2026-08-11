@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ClientProfile from "./ClientProfile";
 import ClientDocuments from "./ClientDocuments";
 import ClientTickets from "./ClientTickets";
@@ -90,6 +90,20 @@ const pageInformation = {
     },
 };
 
+const API_URL = "http://localhost:5000";
+
+function getInitials(name) {
+    if (!name) return "CC";
+
+    return name
+        .split(" ")
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((word) => word[0])
+        .join("")
+        .toUpperCase();
+}
+
 function ComingSoonPage({ title, description, icon: Icon }) {
     return (
         <section className="flex min-h-[520px] items-center justify-center rounded-2xl border border-slate-200 bg-white p-8 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
@@ -119,6 +133,44 @@ export default function ClientLayout({ onLogout }) {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [profileMenuOpen, setProfileMenuOpen] = useState(false);
     const [notificationOpen, setNotificationOpen] = useState(false);
+    const [client, setClient] = useState(null);
+
+    const getAuthToken = () => {
+        return (
+            localStorage.getItem("client-connect-token") ||
+            sessionStorage.getItem("client-connect-token") ||
+            ""
+        );
+    };
+
+    useEffect(() => {
+        const loadClient = async () => {
+            try {
+                const response = await fetch(`${API_URL}/api/client/me`, {
+                    headers: {
+                        Authorization: `Bearer ${getAuthToken()}`,
+                    },
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    setClient(result.data);
+                }
+            } catch (error) {
+                console.error("Client profile:", error);
+            }
+        };
+
+        loadClient();
+    }, []);
+
+    const displayName = client?.contactPerson || client?.companyName || "Client";
+    const displayCompany = client?.companyName || "Client Workspace";
+    const initials = getInitials(client?.contactPerson || client?.companyName);
+    const clientSince = client?.createdAt
+        ? new Date(client.createdAt).toLocaleDateString("en-IN", { month: "long", year: "numeric" })
+        : "";
 
     const activeItem = useMemo(
         () =>
@@ -159,16 +211,16 @@ const renderPage = () => {
     }
 
     if (activeMenu === "tickets") {
-        return <ClientTickets />;
+        return <ClientTickets client={client} />;
     }
 
     if (activeMenu === "documents") {
         return <ClientDocuments />;
     }
 
-    if (activeMenu === "profile") {
-        return <ClientProfile />;
-    }
+if (activeMenu === "profile") {
+    return <ClientProfile client={client} />;
+}
 
     return (
         <ComingSoonPage
@@ -232,11 +284,11 @@ const renderPage = () => {
 
                             <div className="min-w-0">
                                 <p className="truncate text-xs font-semibold text-white">
-                                    Shree Ganesh Industries
+                                    {displayCompany}
                                 </p>
 
                                 <p className="mt-0.5 truncate text-[10px] text-slate-400">
-                                    Client since March 2022
+                                    {clientSince ? `Client since ${clientSince}` : "Client account"}
                                 </p>
                             </div>
                         </div>
@@ -338,16 +390,16 @@ const renderPage = () => {
                 <div className="shrink-0 border-t border-white/10 p-3">
                     <div className="flex items-center gap-3 rounded-xl p-2.5 transition hover:bg-white/[0.05]">
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400 to-teal-500 text-xs font-bold text-slate-950">
-                            RP
+                            {initials}
                         </div>
 
                         <div className="min-w-0 flex-1">
                             <p className="truncate text-xs font-semibold text-white">
-                                Ramesh Patil
+                                {displayName}
                             </p>
 
                             <p className="truncate text-[10px] text-slate-500">
-                                Shree Ganesh Industries
+                                {displayCompany}
                             </p>
                         </div>
 
@@ -436,12 +488,13 @@ const renderPage = () => {
                                             className="w-full rounded-xl p-3 text-left transition hover:bg-slate-50"
                                         >
                                             <p className="text-xs font-semibold text-slate-800">
-                                                AMC renewal due
+                                                AMC status: {client?.amcStatus || "—"}
                                             </p>
 
                                             <p className="mt-1 text-[10px] leading-4 text-slate-500">
-                                                Your NexERP AMC of ₹45,000
-                                                is due on 15 July 2026.
+                                                {client?.nextRenewal
+                                                    ? `Next renewal on ${client.nextRenewal}.`
+                                                    : "No renewal date on file yet."}
                                             </p>
                                         </button>
 
@@ -455,12 +508,11 @@ const renderPage = () => {
                                             className="w-full rounded-xl p-3 text-left transition hover:bg-slate-50"
                                         >
                                             <p className="text-xs font-semibold text-slate-800">
-                                                Ticket updated
+                                                Support tickets
                                             </p>
 
                                             <p className="mt-1 text-[10px] leading-4 text-slate-500">
-                                                TKT-1042 is currently being
-                                                handled by Akash Pawar.
+                                                View and track your support tickets here.
                                             </p>
                                         </button>
                                     </div>
@@ -480,11 +532,11 @@ const renderPage = () => {
                                 className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
                             >
                                 <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-cyan-100 text-[10px] font-bold text-cyan-700">
-                                    RP
+                                    {initials}
                                 </span>
 
                                 <span className="hidden sm:inline">
-                                    Ramesh
+                                    {displayName}
                                 </span>
 
                                 <ChevronDown

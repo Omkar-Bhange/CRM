@@ -254,7 +254,7 @@ const loadEmployeeProfile = async () => {
 };
 
 const loadTodayAttendance = async () => {
-    const response = await fetch(`${API_URL}/api/admin/attendance/today`, {
+    const response = await fetch(`${API_URL}/api/attendance/today`, {
         headers: { Authorization: `Bearer ${getAuthToken()}` },
     });
     const result = await response.json();
@@ -262,34 +262,84 @@ const loadTodayAttendance = async () => {
         throw new Error(result.message || "Unable to load today's attendance.");
     }
     setTodayAttendance(result.data || null);
-    setAttendanceStatus(result.data?.workStatus || "Absent");
+    setAttendanceStatus(result.data?.workStatus || result.data?.status || "Absent");
     setLoginTime(result.data?.loginTime ? new Date(result.data.loginTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—");
 };
 
 const loadDashboard = async () => {
     const response = await fetch(`${API_URL}/api/employee/dashboard`, {
-        headers: { Authorization: `Bearer ${getAuthToken()}` },
+        headers: {
+            Authorization: `Bearer ${getAuthToken()}`,
+            "Content-Type": "application/json",
+        },
     });
     const result = await response.json();
-    if (!response.ok || !result.success) throw new Error(result.message || "Unable to load dashboard.");
+    if (!response.ok || !result.success) {
+        throw new Error(result.message || "Unable to load dashboard.");
+    }
+
     const data = result.data;
-    const formatDate = (value) => value ? new Date(value).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "—";
+    const formatDate = (value) =>
+        value
+            ? new Date(value).toLocaleDateString("en-IN", {
+                  day: "2-digit",
+                  month: "short",
+              })
+            : "—";
+
     const mappedTasks = (data.tasks || []).map((task) => ({
-        id: task._id, taskNo: task.taskCode, ticketNo: task.ticketCode, title: task.title,
-        client: task.clientName, project: task.projectName, priority: task.priority, status: task.status,
-        dueDate: formatDate(task.dueDate), estimatedMinutes: task.estimatedMinutes, spentSeconds: Number(task.spentMinutes || 0) * 60, progress: task.progress,
+        id: task._id,
+        taskNo: task.taskCode,
+        ticketNo: task.ticketCode,
+        title: task.title,
+        client: task.clientName,
+        project: task.productName,
+        priority: task.priority,
+        status: task.status,
+        dueDate: formatDate(task.dueDate),
+        estimatedMinutes: task.estimatedMinutes,
+        spentSeconds: Number(task.spentMinutes || 0) * 60,
+        progress: task.progress,
     }));
+
     setEmployee(data.employee);
-    setTodayAttendance(data.attendance);
-    setAttendanceStatus(data.attendance?.workStatus || "Absent");
-    setLoginTime(data.attendance?.loginTime ? new Date(data.attendance.loginTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—");
-    setDashboardSummary(data.summary);
+    setTodayAttendance(data.attendance || null);
+    setAttendanceStatus(data.attendance?.workStatus || data.attendance?.status || "Absent");
+    setLoginTime(
+        data.attendance?.loginTime
+            ? new Date(data.attendance.loginTime).toLocaleTimeString("en-IN", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+              })
+            : "—"
+    );
+    setDashboardSummary(data.summary || { activeTaskCount: 0, dueTodayCount: 0, ticketCount: 0, solvedThisWeek: 0 });
     setTasks(mappedTasks);
     setActiveTaskId(data.activeTask?._id || null);
     setTimerRunning(data.activeTask?.status === "In Progress");
-    setAssignedTickets((data.tickets || []).map((ticket) => ({ id: ticket._id, ticketNo: ticket.ticketCode, title: ticket.title, client: ticket.clientName, project: ticket.productName, priority: ticket.priority, status: ticket.status, dueDate: formatDate(ticket.createdAt) })));
-    setWorkLogs((data.workLog || []).map((log) => ({ ...log, time: new Date(log.time).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) })));
+    setAssignedTickets(
+        (data.tickets || []).map((ticket) => ({
+            id: ticket._id,
+            ticketNo: ticket.ticketCode,
+            title: ticket.title,
+            client: ticket.clientName,
+            project: ticket.productName,
+            priority: ticket.priority,
+            status: ticket.status,
+            dueDate: formatDate(ticket.createdAt),
+        }))
+    );
+    setWorkLogs(
+        (data.workLog || []).map((log) => ({
+            ...log,
+            time: new Date(log.time).toLocaleTimeString("en-IN", {
+                hour: "2-digit",
+                minute: "2-digit",
+            }),
+        }))
+    );
 };
+
 
     const [tasks, setTasks] = useState([]);
     const [assignedTickets, setAssignedTickets] = useState([]);
@@ -297,8 +347,8 @@ const loadDashboard = async () => {
     const [activeTaskId, setActiveTaskId] = useState(null);
     const [timerRunning, setTimerRunning] = useState(true);
     const [attendanceStatus, setAttendanceStatus] =
-        useState("Logged In");
-    const [loginTime, setLoginTime] = useState("09:02 AM");
+        useState("Absent");
+    const [loginTime, setLoginTime] = useState("—");
 
     const activeTask =
         tasks.find((task) => task.id === activeTaskId) || null;
@@ -306,13 +356,13 @@ const loadDashboard = async () => {
     const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
     useEffect(() => {
-    loadDashboard()
-        .catch((err) => {
-            console.error("Dashboard:", err);
-            setError(err.message);
-        })
-        .finally(() => setLoading(false));
-}, []);
+        loadDashboard()
+            .catch((err) => {
+                console.error("Dashboard:", err);
+                setError(err.message);
+            })
+            .finally(() => setLoading(false));
+    }, []);
 
 
     const activeTaskCount = dashboardSummary.activeTaskCount;
@@ -371,11 +421,12 @@ const loadDashboard = async () => {
     };
 
     const handleAttendanceToggle = async () => {
-        const isWorking = todayAttendance?.workStatus === "Working";
+        const isWorking = todayAttendance?.workStatus === "Working" || todayAttendance?.workStatus === "Break";
         try {
-            const response = await fetch(`${API_URL}/api/admin/attendance/${isWorking ? "check-out" : "check-in"}`, {
-                method: isWorking ? "PUT" : "POST",
+            const response = await fetch(`${API_URL}/api/attendance/${isWorking ? "logout" : "login"}`, {
+                method: "POST",
                 headers: { Authorization: `Bearer ${getAuthToken()}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ source: "web" }),
             });
             const result = await response.json();
             if (!response.ok || !result.success) throw new Error(result.message || "Attendance update failed.");
@@ -444,18 +495,18 @@ if (error) {
                     onClick={handleAttendanceToggle}
                     disabled={attendanceStatus === "Logged Out"}
                     className={`flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-semibold transition ${
-                        attendanceStatus === "Working"
+                        attendanceStatus === "Working" || attendanceStatus === "Break"
                             ? "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
                             : "bg-violet-600 text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
                     }`}
                 >
-                    {attendanceStatus === "Working" ? (
+                    {attendanceStatus === "Working" || attendanceStatus === "Break" ? (
                         <LogOut size={15} />
                     ) : (
                         <LogIn size={15} />
                     )}
 
-                    {attendanceStatus === "Working"
+                    {attendanceStatus === "Working" || attendanceStatus === "Break"
                         ? "End Workday"
                         : attendanceStatus === "Logged Out"
                           ? "Workday Completed"

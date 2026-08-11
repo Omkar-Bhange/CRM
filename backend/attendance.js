@@ -68,6 +68,10 @@ logoutTime: {
       default: 0,
       min: 0,
     },
+    breakStartedAt: {          // ← add this block
+      type: Date,
+      default: null,
+    },
 
     workingMinutes: {
       type: Number,
@@ -646,6 +650,77 @@ await employee.save();
     }
   }
 );
+/* =========================================================
+   START BREAK
+========================================================= */
+
+router.post("/attendance/break-start", async (req, res, next) => {
+  try {
+    if (req.user.role !== "employee") {
+      return res.status(403).json({ success: false, message: "Employee account is required." });
+    }
+
+    const employee = await Employee.findOne({ userId: req.user._id });
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee profile not found." });
+    }
+
+    const attendance = await Attendance.findOne({ employeeId: employee._id, date: getTodayDate() });
+    if (!attendance) {
+      return res.status(404).json({ success: false, message: "You have not checked in today." });
+    }
+
+    if (attendance.workStatus !== "Working") {
+      return res.status(400).json({ success: false, message: "You can only start a break while working." });
+    }
+
+    attendance.workStatus = "Break";
+    attendance.breakStartedAt = new Date();
+    await attendance.save();
+
+    employee.status = "Break";
+    await employee.save();
+
+    return res.status(200).json({ success: true, message: "Break started.", data: attendance });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/* =========================================================
+   END BREAK
+========================================================= */
+
+router.put("/attendance/break-end", async (req, res, next) => {
+  try {
+    if (req.user.role !== "employee") {
+      return res.status(403).json({ success: false, message: "Employee account is required." });
+    }
+
+    const employee = await Employee.findOne({ userId: req.user._id });
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee profile not found." });
+    }
+
+    const attendance = await Attendance.findOne({ employeeId: employee._id, date: getTodayDate() });
+    if (!attendance || attendance.workStatus !== "Break" || !attendance.breakStartedAt) {
+      return res.status(400).json({ success: false, message: "No active break to end." });
+    }
+
+    const elapsedMinutes = Math.max(0, Math.floor((Date.now() - new Date(attendance.breakStartedAt).getTime()) / 60000));
+    attendance.breakMinutes = Number(attendance.breakMinutes || 0) + elapsedMinutes;
+    attendance.breakStartedAt = null;
+    attendance.workStatus = "Working";
+    await attendance.save();
+
+    employee.status = "Working";
+    await employee.save();
+
+    return res.status(200).json({ success: true, message: "Break ended.", data: attendance });
+  } catch (error) {
+    next(error);
+  }
+});
 /* =========================================================
    GET TODAY'S ATTENDANCE
 ========================================================= */

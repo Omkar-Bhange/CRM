@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
     AlertTriangle,
     CalendarDays,
@@ -164,14 +164,15 @@ const initialTickets = [
 ];
 
 const emptyTicketForm = {
-    product: "NexERP",
-    category: "Billing",
-    priority: "Medium",
-    title: "",
-    description: "",
-    contactMethod: "Phone",
-    attachmentName: "",
-};
+  product: "",
+  category: "Billing",
+  priority: "Medium",
+  title: "",
+  description: "",
+  contactMethod: "Phone",
+  attachment: null,
+  attachmentName: "",
+};;
 
 function StatusBadge({ status }) {
     const styles = {
@@ -192,10 +193,9 @@ function StatusBadge({ status }) {
 
     return (
         <span
-            className={`inline-flex rounded-full px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide ring-1 ring-inset ${
-                styles[status] ||
+            className={`inline-flex rounded-full px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide ring-1 ring-inset ${styles[status] ||
                 "bg-slate-100 text-slate-600 ring-slate-500/10"
-            }`}
+                }`}
         >
             {status}
         </span>
@@ -215,9 +215,8 @@ function PriorityBadge({ priority }) {
 
     return (
         <span
-            className={`inline-flex rounded-full px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide ring-1 ring-inset ${
-                styles[priority] || styles.Low
-            }`}
+            className={`inline-flex rounded-full px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide ring-1 ring-inset ${styles[priority] || styles.Low
+                }`}
         >
             {priority}
         </span>
@@ -258,21 +257,73 @@ function SummaryCard({
     );
 }
 
-export default function ClientTickets() {
-    const [tickets, setTickets] = useState(initialTickets);
+export default function ClientTickets({ client }) {
+    const [tickets, setTickets] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [submitting, setSubmitting] = useState(false);
     const [searchValue, setSearchValue] = useState("");
     const [statusFilter, setStatusFilter] = useState("All");
     const [priorityFilter, setPriorityFilter] = useState("All");
     const [raiseTicketOpen, setRaiseTicketOpen] = useState(false);
     const [selectedTicketId, setSelectedTicketId] = useState(null);
+    const [editingTicketId, setEditingTicketId] = useState(null);
     const [ticketForm, setTicketForm] =
         useState(emptyTicketForm);
     const [replyMessage, setReplyMessage] = useState("");
 
     const selectedTicket =
         tickets.find(
-            (ticket) => ticket.id === selectedTicketId
+            (ticket) => (ticket._id || ticket.id) === selectedTicketId
         ) || null;
+
+    const isEditing = Boolean(editingTicketId);
+    const canEditSelectedTicket =
+        selectedTicket &&
+        ["New", "Assigned"].includes(
+            selectedTicket.status
+        );
+
+    const openEditTicket = () => {
+        if (!selectedTicket) return;
+
+        setEditingTicketId(
+            selectedTicket._id || selectedTicket.id
+        );
+
+        setTicketForm({
+            product:
+                selectedTicket.productName ||
+                selectedTicket.product ||
+                "",
+            category:
+                selectedTicket.category ||
+                "Billing",
+            priority:
+                selectedTicket.priority ||
+                "Medium",
+            title:
+                selectedTicket.title || "",
+            description:
+                selectedTicket.description || "",
+            contactMethod:
+                selectedTicket.contactMethod ||
+                "Phone",
+            attachment: null,
+            attachmentName:
+                selectedTicket.attachments?.[0]?.originalName ||
+                selectedTicket.attachments?.[0]?.fileName ||
+                selectedTicket.attachmentName ||
+                "",
+        });
+
+        setRaiseTicketOpen(true);
+    };
+
+    const closeRaiseForm = () => {
+        setRaiseTicketOpen(false);
+        setEditingTicketId(null);
+        setTicketForm(emptyTicketForm);
+    };
 
     const filteredTickets = useMemo(() => {
         const search = searchValue.trim().toLowerCase();
@@ -281,11 +332,11 @@ export default function ClientTickets() {
             const matchesSearch =
                 !search ||
                 [
-                    ticket.ticketNo,
+                    ticket.ticketCode,
                     ticket.title,
-                    ticket.product,
+                    ticket.productName,
                     ticket.category,
-                    ticket.assignedTo,
+                    ticket.assignedEmployeeName,
                     ticket.status,
                 ].some((value) =>
                     String(value || "")
@@ -313,7 +364,42 @@ export default function ClientTickets() {
         statusFilter,
         priorityFilter,
     ]);
+    const loadTickets = async () => {
+        try {
+            setLoading(true);
 
+            const token =
+                localStorage.getItem("client-connect-token") ||
+                sessionStorage.getItem("client-connect-token");
+
+            const response = await fetch(
+                "http://localhost:5000/api/client/tickets",
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(
+                    result.message || "Failed to load tickets"
+                );
+            }
+
+            setTickets(result.data || []);
+        } catch (error) {
+            console.error("Load tickets error:", error);
+            alert(error.message || "Unable to load tickets");
+        } finally {
+            setLoading(false);
+        }
+    };
+    useEffect(() => {
+        loadTickets();
+    }, []);
     const openTicketCount = tickets.filter(
         (ticket) =>
             !["Resolved", "Closed"].includes(ticket.status)
@@ -336,15 +422,15 @@ export default function ClientTickets() {
             [name]: value,
         }));
     };
+const handleAttachmentChange = (event) => {
+  const file = event.target.files?.[0] || null;
 
-    const handleAttachmentChange = (event) => {
-        const file = event.target.files?.[0];
-
-        setTicketForm((current) => ({
-            ...current,
-            attachmentName: file?.name || "",
-        }));
-    };
+  setTicketForm((current) => ({
+    ...current,
+    attachment: file,
+    attachmentName: file?.name || "",
+  }));
+};
 
     const generateTicketNumber = () => {
         const highestNumber = tickets.reduce(
@@ -366,68 +452,67 @@ export default function ClientTickets() {
         return `TKT-${highestNumber + 1}`;
     };
 
-    const handleCreateTicket = (event) => {
-        event.preventDefault();
+const handleSubmitTicket = async (event) => {
+  event.preventDefault();
 
-        if (
-            !ticketForm.title.trim() ||
-            !ticketForm.description.trim()
-        ) {
-            alert(
-                "Please enter the issue title and description."
-            );
-            return;
-        }
+  try {
+    setSubmitting(true);
 
-        const currentDateTime =
-            new Date().toLocaleString("en-IN", {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-            });
+    const token =
+      localStorage.getItem("client-connect-token") ||
+      sessionStorage.getItem("client-connect-token");
 
-        const newTicket = {
-            id: Date.now(),
-            ticketNo: generateTicketNumber(),
-            title: ticketForm.title.trim(),
-            product: ticketForm.product,
-            category: ticketForm.category,
-            priority: ticketForm.priority,
-            status: "New",
-            createdAt: currentDateTime,
-            updatedAt: currentDateTime,
-            assignedTo: "Waiting for assignment",
-            description: ticketForm.description.trim(),
-            attachmentName:
-                ticketForm.attachmentName,
-            contactMethod:
-                ticketForm.contactMethod,
-            timeline: [
-                {
-                    id: Date.now(),
-                    type: "created",
-                    title: "Ticket raised",
-                    description:
-                        "Support request was submitted from the client portal.",
-                    user: "Ramesh Patil",
-                    time: currentDateTime,
-                },
-            ],
-            messages: [],
-        };
+    if (!token) {
+      throw new Error("Client session not found. Please log in again.");
+    }
 
-        setTickets((current) => [
-            newTicket,
-            ...current,
-        ]);
+    const formData = new FormData();
 
-        setTicketForm(emptyTicketForm);
-        setRaiseTicketOpen(false);
-        setSelectedTicketId(newTicket.id);
-    };
+    formData.append("title", ticketForm.title);
+    formData.append("description", ticketForm.description);
+    formData.append("productName", ticketForm.product);
+    formData.append("category", ticketForm.category);
+    formData.append("priority", ticketForm.priority);
+    formData.append("module", "General");
 
+    if (ticketForm.attachment) {
+      formData.append("attachment", ticketForm.attachment);
+    }
+
+    const endpoint = editingTicketId
+      ? `http://localhost:5000/api/client/tickets/${editingTicketId}`
+      : "http://localhost:5000/api/client/tickets";
+
+    const response = await fetch(endpoint, {
+      method: editingTicketId ? "PUT" : "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      throw new Error(result.message || "Failed to submit ticket");
+    }
+
+    await loadTickets();
+    setSelectedTicketId(result.data?._id || result.data?.id || null);
+    closeRaiseForm();
+
+    alert(
+      editingTicketId
+        ? `Ticket ${result.data.ticketCode} updated successfully`
+        : `Ticket ${result.data.ticketCode} created successfully`
+    );
+  } catch (error) {
+    console.error("Submit ticket error:", error);
+    alert(error.message || "Unable to submit ticket");
+  } finally {
+    setSubmitting(false);
+  }
+};
     const handleSendReply = () => {
         if (!selectedTicket || !replyMessage.trim()) {
             return;
@@ -446,39 +531,39 @@ export default function ClientTickets() {
             current.map((ticket) =>
                 ticket.id === selectedTicket.id
                     ? {
-                          ...ticket,
-                          updatedAt:
-                              currentDateTime,
-                          messages: [
-                              ...(ticket.messages ||
-                                  []),
-                              {
-                                  id: Date.now(),
-                                  sender:
-                                      "Ramesh Patil",
-                                  role: "Client",
-                                  message:
-                                      replyMessage.trim(),
-                                  time: currentDateTime,
-                              },
-                          ],
-                          timeline: [
-                              ...(ticket.timeline ||
-                                  []),
-                              {
-                                  id:
-                                      Date.now() +
-                                      1,
-                                  type: "message",
-                                  title:
-                                      "Client replied",
-                                  description:
-                                      replyMessage.trim(),
-                                  user: "Ramesh Patil",
-                                  time: currentDateTime,
-                              },
-                          ],
-                      }
+                        ...ticket,
+                        updatedAt:
+                            currentDateTime,
+                        messages: [
+                            ...(ticket.messages ||
+                                []),
+                            {
+                                id: Date.now(),
+                                sender:
+                                    "Ramesh Patil",
+                                role: "Client",
+                                message:
+                                    replyMessage.trim(),
+                                time: currentDateTime,
+                            },
+                        ],
+                        timeline: [
+                            ...(ticket.timeline ||
+                                []),
+                            {
+                                id:
+                                    Date.now() +
+                                    1,
+                                type: "message",
+                                title:
+                                    "Client replied",
+                                description:
+                                    replyMessage.trim(),
+                                user: "Ramesh Patil",
+                                time: currentDateTime,
+                            },
+                        ],
+                    }
                     : ticket
             )
         );
@@ -493,13 +578,13 @@ export default function ClientTickets() {
             current.map((ticket) =>
                 ticket.id === selectedTicket.id
                     ? {
-                          ...ticket,
-                          status: "Reopened",
-                          updatedAt:
-                              new Date().toLocaleString(
-                                  "en-IN"
-                              ),
-                      }
+                        ...ticket,
+                        status: "Reopened",
+                        updatedAt:
+                            new Date().toLocaleString(
+                                "en-IN"
+                            ),
+                    }
                     : ticket
             )
         );
@@ -512,13 +597,13 @@ export default function ClientTickets() {
             current.map((ticket) =>
                 ticket.id === selectedTicket.id
                     ? {
-                          ...ticket,
-                          status: "Closed",
-                          updatedAt:
-                              new Date().toLocaleString(
-                                  "en-IN"
-                              ),
-                      }
+                        ...ticket,
+                        status: "Closed",
+                        updatedAt:
+                            new Date().toLocaleString(
+                                "en-IN"
+                            ),
+                    }
                     : ticket
             )
         );
@@ -680,78 +765,82 @@ export default function ClientTickets() {
                         </select>
                     </div>
                 </div>
+                {loading ? (
+                    <div className="p-8 text-center text-slate-500">
+                        Loading tickets...
+                    </div>
+                ) : (
+                    <div className="divide-y divide-slate-100">
 
-                <div className="divide-y divide-slate-100">
-                    {filteredTickets.map((ticket) => (
-                        <button
-                            key={ticket.id}
-                            type="button"
-                            onClick={() =>
-                                setSelectedTicketId(ticket.id)
-                            }
-                            className="flex w-full flex-col gap-4 p-5 text-left transition hover:bg-slate-50/70 lg:flex-row lg:items-center"
-                        >
-                            <div className="flex min-w-0 flex-1 items-start gap-4">
-                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-cyan-700">
-                                    <Headphones size={18} />
-                                </div>
-
-                                <div className="min-w-0">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <p className="text-[10px] font-semibold text-cyan-700">
-                                            {ticket.ticketNo}
-                                        </p>
-
-                                        <span className="text-[9px] text-slate-300">
-                                            •
-                                        </span>
-
-                                        <p className="text-[10px] text-slate-500">
-                                            {ticket.product}
-                                        </p>
+                        {filteredTickets.map((ticket) => (
+                            <button
+                                key={ticket._id || ticket.id}
+                                type="button"
+                                 onClick={() => setSelectedTicketId(ticket._id || ticket.id)
+                                }
+                                className="flex w-full flex-col gap-4 p-5 text-left transition hover:bg-slate-50/70 lg:flex-row lg:items-center"
+                            >
+                                <div className="flex min-w-0 flex-1 items-start gap-4">
+                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-cyan-700">
+                                        <Headphones size={18} />
                                     </div>
 
-                                    <h3 className="mt-1 text-sm font-semibold text-slate-950">
-                                        {ticket.title}
-                                    </h3>
+                                    <div className="min-w-0">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <p className="text-[10px] font-semibold text-cyan-700">
+                                                {ticket.ticketCode}
+                                            </p>
 
-                                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[9px] text-slate-500">
-                                        <span>
-                                            Created:{" "}
-                                            {ticket.createdAt}
-                                        </span>
+                                            <span className="text-[9px] text-slate-300">
+                                                •
+                                            </span>
 
-                                        <span>
-                                            Assigned:{" "}
-                                            {ticket.assignedTo}
-                                        </span>
+                                            <p className="text-[10px] text-slate-500">
+                                                {ticket.productName}
+                                            </p>
+                                        </div>
 
-                                        <span>
-                                            Category:{" "}
-                                            {ticket.category}
-                                        </span>
+                                        <h3 className="mt-1 text-sm font-semibold text-slate-950">
+                                            {ticket.title}
+                                        </h3>
+
+                                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[9px] text-slate-500">
+                                            <span>
+                                                Created:{" "}
+                                                {ticket.createdAt}
+                                            </span>
+
+                                            <span>
+                                                Assigned:{" "}
+                                                {ticket.assignedEmployeeName}
+                                            </span>
+
+                                            <span>
+                                                Category:{" "}
+                                                {ticket.category}
+                                            </span>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            <div className="flex shrink-0 items-center gap-2">
-                                <PriorityBadge
-                                    priority={ticket.priority}
-                                />
+                                <div className="flex shrink-0 items-center gap-2">
+                                    <PriorityBadge
+                                        priority={ticket.priority}
+                                    />
 
-                                <StatusBadge
-                                    status={ticket.status}
-                                />
+                                    <StatusBadge
+                                        status={ticket.status}
+                                    />
 
-                                <ChevronRight
-                                    size={17}
-                                    className="ml-1 text-slate-300"
-                                />
-                            </div>
-                        </button>
-                    ))}
-                </div>
-
+                                    <ChevronRight
+                                        size={17}
+                                        className="ml-1 text-slate-300"
+                                    />
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+                )}
                 {filteredTickets.length === 0 && (
                     <div className="flex min-h-[300px] items-center justify-center bg-slate-50/40">
                         <div className="text-center">
@@ -792,7 +881,7 @@ export default function ClientTickets() {
                                 </p>
 
                                 <h2 className="mt-1 text-lg font-semibold text-slate-950">
-                                    Raise New Ticket
+                                    {isEditing ? "Edit Ticket" : "Raise New Ticket"}
                                 </h2>
                             </div>
 
@@ -808,7 +897,7 @@ export default function ClientTickets() {
                         </div>
 
                         <form
-                            onSubmit={handleCreateTicket}
+                            onSubmit={handleSubmitTicket}
                             className="flex min-h-0 flex-1 flex-col"
                         >
                             <div className="flex-1 overflow-y-auto p-5 sm:p-6">
@@ -832,17 +921,19 @@ export default function ClientTickets() {
 
                                         <select
                                             name="product"
-                                            value={
-                                                ticketForm.product
-                                            }
-                                            onChange={
-                                                handleFormChange
-                                            }
+                                            value={ticketForm.product}
+                                            onChange={handleFormChange}
                                             className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
                                         >
-                                            <option value="NexERP">
-                                                NexERP
-                                            </option>
+                                            <option value="">Select Product</option>
+                                            {client?.products?.map((product) => (
+                                                <option
+                                                    key={product.productId || product._id}
+                                                    value={product.productName}
+                                                >
+                                                    {product.productName}
+                                                </option>
+                                            ))}
                                         </select>
                                     </div>
 
@@ -1024,9 +1115,7 @@ export default function ClientTickets() {
                             <div className="grid gap-3 border-t border-slate-200 p-5 sm:grid-cols-2 sm:px-6">
                                 <button
                                     type="button"
-                                    onClick={() =>
-                                        setRaiseTicketOpen(false)
-                                    }
+                                    onClick={closeRaiseForm}
                                     className="h-11 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
                                 >
                                     Cancel
@@ -1037,7 +1126,7 @@ export default function ClientTickets() {
                                     className="flex h-11 items-center justify-center gap-2 rounded-xl bg-[#0f172a] text-xs font-semibold text-white transition hover:bg-cyan-600"
                                 >
                                     <Send size={15} />
-                                    Submit Ticket
+                                    {isEditing ? "Update Ticket" : "Submit Ticket"}
                                 </button>
                             </div>
                         </form>
@@ -1078,15 +1167,27 @@ export default function ClientTickets() {
                                 </h2>
                             </div>
 
-                            <button
-                                type="button"
-                                onClick={() =>
-                                    setSelectedTicketId(null)
-                                }
-                                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50"
-                            >
-                                <X size={19} />
-                            </button>
+                            <div className="flex items-center gap-2">
+                                {canEditSelectedTicket && (
+                                    <button
+                                        type="button"
+                                        onClick={openEditTicket}
+                                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-50"
+                                    >
+                                        Edit Ticket
+                                    </button>
+                                )}
+
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        setSelectedTicketId(null)
+                                    }
+                                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50"
+                                >
+                                    <X size={19} />
+                                </button>
+                            </div>
                         </div>
 
                         <div className="flex-1 overflow-y-auto p-5 sm:p-6">
@@ -1096,11 +1197,9 @@ export default function ClientTickets() {
                                         Product
                                     </p>
                                     <p className="mt-1 text-xs font-semibold text-slate-800">
-                                        {
-                                            selectedTicket.product
-                                        }
-                                    </p>
-                                </div>
+                            {selectedTicket.productName || selectedTicket.product}
+                        </p>
+                    </div>
 
                                 <div className="rounded-xl bg-slate-50 p-3">
                                     <p className="text-[9px] uppercase tracking-wide text-slate-400">
@@ -1149,18 +1248,82 @@ export default function ClientTickets() {
                                     }
                                 </p>
 
-                                {selectedTicket.attachmentName && (
-                                    <div className="mt-4 flex items-center gap-3 rounded-xl bg-slate-50 p-3">
-                                        <Paperclip
-                                            size={16}
-                                            className="text-cyan-700"
-                                        />
+                                {selectedTicket.attachments?.length > 0 ? (
+                                    <div className="mt-4 space-y-3">
+                                        {selectedTicket.attachments.map(
+                                            (attachment) => (
+                                                <div
+                                                    key={
+                                                        attachment.url ||
+                                                        attachment.fileUrl ||
+                                                        attachment.originalName
+                                                    }
+                                                    className="rounded-2xl border border-slate-200 p-4"
+                                                >
+                                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                                        <div className="min-w-0">
+                                                            <p className="text-xs font-semibold text-slate-900 truncate">
+                                                                {
+                                                                    attachment.originalName ||
+                                                                    attachment.fileName
+                                                                }
+                                                            </p>
 
-                                        <p className="text-xs font-semibold text-slate-700">
-                                            {
-                                                selectedTicket.attachmentName
-                                            }
-                                        </p>
+                                                            <p className="mt-1 text-[10px] text-slate-500">
+                                                                {attachment.mimeType || attachment.fileType} · {attachment.size ? `${attachment.size >= 1024 * 1024 ? `${(attachment.size / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(attachment.size / 1024))} KB`}` : "—"}
+                                                            </p>
+                                                        </div>
+
+                                                        <div className="flex flex-wrap gap-2">
+                                                            <a
+                                                                href={
+                                                                    attachment.url ||
+                                                                    `http://localhost:5000${attachment.fileUrl}`
+                                                                }
+                                                                target="_blank"
+                                                                rel="noreferrer"
+                                                                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-50"
+                                                            >
+                                                                View
+                                                            </a>
+                                                            <a
+                                                                href={
+                                                                    attachment.url ||
+                                                                    `http://localhost:5000${attachment.fileUrl}`
+                                                                }
+                                                                download={
+                                                                    attachment.originalName ||
+                                                                    attachment.fileName
+                                                                }
+                                                                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-50"
+                                                            >
+                                                                Download
+                                                            </a>
+                                                        </div>
+                                                    </div>
+
+                                                    {/(image\/png|image\/jpe?g|image\/gif|image\/svg\+xml)/.test(
+                                                        attachment.mimeType || attachment.fileType || ""
+                                                    ) && (
+                                                        <img
+                                                            src={
+                                                                attachment.url ||
+                                                                `http://localhost:5000${attachment.fileUrl}`
+                                                            }
+                                                            alt={
+                                                                attachment.originalName ||
+                                                                attachment.fileName
+                                                            }
+                                                            className="mt-4 max-w-full rounded-xl border border-slate-200"
+                                                        />
+                                                    )}
+                                                </div>
+                                            )
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-xs text-slate-500">
+                                        No attachments added to this ticket.
                                     </div>
                                 )}
                             </section>
@@ -1193,9 +1356,9 @@ export default function ClientTickets() {
                                                     selectedTicket
                                                         .timeline
                                                         .length -
-                                                        1 && (
-                                                    <span className="absolute left-[15px] top-8 h-[calc(100%+4px)] w-px bg-slate-200" />
-                                                )}
+                                                    1 && (
+                                                        <span className="absolute left-[15px] top-8 h-[calc(100%+4px)] w-px bg-slate-200" />
+                                                    )}
 
                                                 <div className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-cyan-200 bg-cyan-50 text-cyan-700">
                                                     <CheckCircle2
@@ -1247,138 +1410,116 @@ export default function ClientTickets() {
                                 </div>
 
                                 <div className="mt-4 space-y-3">
-                                    {selectedTicket.messages
-                                        .length === 0 && (
-                                        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-center text-[10px] text-slate-500">
-                                            No conversation
-                                            messages yet.
-                                        </div>
-                                    )}
-
-                                    {selectedTicket.messages.map(
-                                        (message) => (
-                                            <div
-                                                key={
-                                                    message.id
-                                                }
-                                                className={`rounded-xl p-4 ${
-                                                    message.role ===
-                                                    "Client"
-                                                        ? "ml-8 bg-cyan-50"
-                                                        : "mr-8 bg-slate-50"
+                                    {(selectedTicket.replies || []).map((reply) => (
+                                        <div
+                                            key={reply._id || reply.createdAt}
+                                            className={`rounded-xl p-4 ${reply.senderRole === "client"
+                                                    ? "ml-8 bg-cyan-50"
+                                                    : "mr-8 bg-slate-50"
                                                 }`}
-                                            >
-                                                <div className="flex items-center gap-2">
-                                                    <UserRound
-                                                        size={
-                                                            14
-                                                        }
-                                                        className="text-slate-500"
-                                                    />
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <UserRound
+                                                    size={14}
+                                                    className="text-slate-500"
+                                                />
 
-                                                    <p className="text-[10px] font-semibold text-slate-800">
-                                                        {
-                                                            message.sender
-                                                        }
-                                                    </p>
-
-                                                    <span className="text-[9px] text-slate-400">
-                                                        {
-                                                            message.role
-                                                        }
-                                                    </span>
-                                                </div>
-
-                                                <p className="mt-2 text-xs leading-5 text-slate-600">
-                                                    {
-                                                        message.message
-                                                    }
+                                                <p className="text-[10px] font-semibold text-slate-800">
+                                                    {reply.senderName}
                                                 </p>
 
-                                                <p className="mt-2 text-[9px] text-slate-400">
-                                                    {
-                                                        message.time
-                                                    }
-                                                </p>
+                                                <span className="text-[9px] text-slate-400">
+                                                    {reply.senderRole}
+                                                </span>
                                             </div>
-                                        )
-                                    )}
+
+                                            <p className="mt-2 text-xs leading-5 text-slate-600">
+                                                {reply.message}
+                                            </p>
+
+                                            <p className="mt-2 text-[9px] text-slate-400">
+                                                {reply.createdAt
+                                                    ? new Date(reply.createdAt).toLocaleString("en-IN")
+                                                    : ""}
+                                            </p>
+                                        </div>
+                                    ))}
                                 </div>
 
                                 {!["Closed"].includes(
                                     selectedTicket.status
                                 ) && (
-                                    <div className="mt-4 flex gap-3">
-                                        <textarea
-                                            value={replyMessage}
-                                            onChange={(event) =>
-                                                setReplyMessage(
-                                                    event.target
-                                                        .value
-                                                )
-                                            }
-                                            rows={3}
-                                            placeholder="Write a reply or provide additional information..."
-                                            className="min-h-[84px] flex-1 resize-none rounded-xl border border-slate-200 px-3 py-3 text-xs outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
-                                        />
+                                        <div className="mt-4 flex gap-3">
+                                            <textarea
+                                                value={replyMessage}
+                                                onChange={(event) =>
+                                                    setReplyMessage(
+                                                        event.target
+                                                            .value
+                                                    )
+                                                }
+                                                rows={3}
+                                                placeholder="Write a reply or provide additional information..."
+                                                className="min-h-[84px] flex-1 resize-none rounded-xl border border-slate-200 px-3 py-3 text-xs outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
+                                            />
 
-                                        <button
-                                            type="button"
-                                            onClick={
-                                                handleSendReply
-                                            }
-                                            className="flex w-11 shrink-0 items-center justify-center rounded-xl bg-[#0f172a] text-white transition hover:bg-cyan-600"
-                                        >
-                                            <Send size={16} />
-                                        </button>
-                                    </div>
-                                )}
+                                            <button
+                                                type="button"
+                                                onClick={
+                                                    handleSendReply
+                                                }
+                                                className="flex w-11 shrink-0 items-center justify-center rounded-xl bg-[#0f172a] text-white transition hover:bg-cyan-600"
+                                            >
+                                                <Send size={16} />
+                                            </button>
+                                        </div>
+                                    )}
                             </section>
                         </div>
 
                         <div className="flex flex-col gap-3 border-t border-slate-200 p-5 sm:flex-row sm:px-6">
                             {selectedTicket.status ===
                                 "Resolved" && (
-                                <>
-                                    <button
-                                        type="button"
-                                        onClick={
-                                            handleConfirmResolution
-                                        }
-                                        className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-xs font-semibold text-white transition hover:bg-emerald-700"
-                                    >
-                                        <CheckCircle2
-                                            size={16}
-                                        />
-                                        Confirm & Close
-                                    </button>
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={
+                                                handleConfirmResolution
+                                            }
+                                            className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-xs font-semibold text-white transition hover:bg-emerald-700"
+                                        >
+                                            <CheckCircle2
+                                                size={16}
+                                            />
+                                            Confirm & Close
+                                        </button>
 
-                                    <button
-                                        type="button"
-                                        onClick={
-                                            handleReopenTicket
-                                        }
-                                        className="flex h-11 flex-1 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-4 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
-                                    >
-                                        Reopen Ticket
-                                    </button>
-                                </>
-                            )}
+                                        <button
+                                            type="button"
+                                            onClick={
+                                                handleReopenTicket
+                                            }
+                                            className="flex h-11 flex-1 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-4 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
+                                        >
+                                            Reopen Ticket
+                                        </button>
+                                    </>
+                                )}
 
                             {selectedTicket.status !==
                                 "Resolved" && (
-                                <button
-                                    type="button"
-                                    onClick={() =>
-                                        setSelectedTicketId(
-                                            null
-                                        )
-                                    }
-                                    className="h-11 flex-1 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-                                >
-                                    Close Details
-                                </button>
-                            )}
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            setSelectedTicketId(
+                                                null
+                                            )
+                                        }
+                                        className="h-11 flex-1 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                                    >
+                                        Close Details
+                                    </button>
+                                )}
                         </div>
                     </aside>
                 </>
