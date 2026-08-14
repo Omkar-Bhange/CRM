@@ -1618,11 +1618,11 @@ export default function TimeLog() {
                                     </th>
 
                                     <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        Start
+                                      First Seen
                                     </th>
 
                                     <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        End
+                                        Last Seen
                                     </th>
 
                                     <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
@@ -1644,20 +1644,34 @@ export default function TimeLog() {
                                 ) : (
                                     taskSessions.map((session) => (
                                         <tr key={session.id} className="transition hover:bg-slate-50/70">
-                                            {/* Session */}
-                                            <td className="px-5 py-4">
-                                                <p className="text-xs font-semibold text-slate-900">
-                                                    {session.title || session.applicationName || "Unknown"}
-                                                </p>
-                                                <p className="mt-1 text-[10px] text-slate-500">
-                                                    {session.description || session.project || session.client || "—"}
-                                                </p>
-                                            </td>
+                                      
+<td className="px-5 py-4">
+    <p className="text-xs font-semibold text-slate-900">
+        {session.applicationName || "Unknown"}
+    </p>
+    <p className="mt-1 text-[10px] text-slate-500 truncate max-w-[280px]">
+        {session.lastWindowTitle || "No active window"}
+    </p>
+</td>
 
                                             {/* Task */}
-                                            <td className="px-4 py-4 text-xs font-semibold text-violet-700">
-                                                {session.taskCode || "--"}
-                                            </td>
+                                      
+<td className="px-4 py-4">
+  {session.taskTitle ? (
+    <div className="inline-flex flex-col rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
+      <span className="text-xs font-semibold text-violet-800">
+        {session.taskTitle}
+      </span>
+      {session.taskCode && (
+        <span className="text-[10px] text-violet-600 mt-0.5">
+          {session.taskCode}
+        </span>
+      )}
+    </div>
+  ) : (
+    <span className="text-xs text-slate-400">No task assigned</span>
+  )}
+</td>
 
                                             {/* Application */}
                                             <td className="px-4 py-4 text-xs text-slate-600">

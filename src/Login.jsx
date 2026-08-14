@@ -154,7 +154,7 @@ export default function Login({ onLogin }) {
   };
 
   return (
-    <main className="min-h-screen bg-[#f4f6fb] p-3 sm:p-5 lg:p-6">
+    <main className="enterprise-shell enterprise-page min-h-screen bg-[#f4f6fb] p-3 sm:p-5 lg:p-6">
       <div className="mx-auto grid min-h-[calc(100vh-24px)] max-w-[1500px] overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.10)] sm:min-h-[calc(100vh-40px)] lg:grid-cols-[1.08fr_0.92fr]">
         {/* Left Branding Section */}
         <section className="relative hidden overflow-hidden bg-[#111827] px-12 py-11 text-white lg:flex lg:flex-col lg:justify-between">
@@ -228,7 +228,7 @@ export default function Login({ onLogin }) {
         </section>
 
         {/* Right Login Section */}
-        <section className="flex items-center justify-center px-5 py-8 sm:px-10 lg:px-14 xl:px-20">
+        <section className="enterprise-workspace flex items-center justify-center px-5 py-8 sm:px-10 lg:px-14 xl:px-20">
           <div className="w-full max-w-[520px]">
             <div className="mb-9 lg:hidden">
               <div className="flex items-center gap-3">

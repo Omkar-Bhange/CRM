@@ -150,18 +150,18 @@ return <EmployeeDashboard onNavigate={openMenu} />;
     };
 
     return (
-        <div className="min-h-screen bg-[#f5f7fb] text-slate-800">
+        <div className="enterprise-shell min-h-screen bg-[#f5f7fb] text-slate-800">
             {sidebarOpen && (
                 <button
                     type="button"
                     aria-label="Close navigation"
                     onClick={() => setSidebarOpen(false)}
-                    className="fixed inset-0 z-40 bg-slate-950/50 backdrop-blur-sm lg:hidden"
+                    className="enterprise-backdrop fixed inset-0 z-40 bg-slate-950/50 backdrop-blur-sm lg:hidden"
                 />
             )}
 
             <aside
-                className={`fixed inset-y-0 left-0 z-50 flex w-[244px] flex-col border-r border-slate-800 bg-[#111827] transition-transform duration-300 lg:translate-x-0 ${
+                className={`enterprise-sidebar fixed inset-y-0 left-0 z-50 flex w-[244px] flex-col border-r border-slate-800 bg-[#111827] transition-transform duration-300 lg:translate-x-0 ${
                     sidebarOpen
                         ? "translate-x-0"
                         : "-translate-x-full"
@@ -231,7 +231,8 @@ return <EmployeeDashboard onNavigate={openMenu} />;
                                     key={item.id}
                                     type="button"
                                     onClick={() => openMenu(item.id)}
-                                    className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
+                                    aria-current={active ? "page" : undefined}
+                                    className={`enterprise-sidebar-nav-item group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
                                         active
                                             ? "bg-white text-slate-950 shadow-sm"
                                             : "text-slate-400 hover:bg-white/[0.06] hover:text-white"
@@ -273,7 +274,7 @@ return <EmployeeDashboard onNavigate={openMenu} />;
 
                     <button
                         type="button"
-                        className="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-400 transition hover:bg-white/[0.06] hover:text-white"
+                        className="enterprise-sidebar-nav-item group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-400 transition hover:bg-white/[0.06] hover:text-white"
                     >
                         <CircleHelp
                             size={18}
@@ -401,7 +402,7 @@ return <EmployeeDashboard onNavigate={openMenu} />;
                                         onClick={() =>
                                             setProfileOpen(false)
                                         }
-                                        className="fixed inset-0 z-40"
+                                        className="enterprise-backdrop fixed inset-0 z-40"
                                     />
 
                                     <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-60 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.16)]">
@@ -438,8 +439,8 @@ return <EmployeeDashboard onNavigate={openMenu} />;
                     </div>
                 </header>
 
-                <main className="min-h-[calc(100vh-72px)] p-4 sm:p-6">
-                    <div className="mx-auto max-w-[1600px]">
+                <main className="enterprise-workspace min-h-[calc(100vh-72px)] p-4 sm:p-6">
+                    <div className="enterprise-page mx-auto max-w-[1600px]">
                         {renderPage()}
                     </div>
                 </main>

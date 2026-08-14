@@ -1,7 +1,8 @@
 const express = require("express");
 const mongoose = require("mongoose");
+const axios = require("axios");
 
-const { authenticateUser } = require("./auth");
+const authenticateUser = require("./authMiddleware");
 
 const Attendance =
   mongoose.models.AttendanceV2 ||
@@ -436,7 +437,37 @@ async function getApprovedLeave(employeeId, date) {
 
 async function updateEmployeeStatus(employee, workStatus) {
   if (!employee) return;
-  employee.status = workStatus === "Working" ? "Working" : workStatus === "Break" ? "Break" : "Offline";
+
+  const Task = mongoose.models.Task;
+  const SupportTicket = mongoose.models.SupportTicket;
+
+  let status = "Offline";
+
+  if (workStatus === "Offline") {
+    status = "Offline";
+  } else if (workStatus === "Break") {
+    status = "Break";
+  } else {
+    const hasActiveTask = Task
+      ? await Task.exists({
+          assignedEmployeeId: employee._id,
+          isDeleted: false,
+          status: { $in: ["Assigned", "In Progress", "Paused", "Testing"] },
+        })
+      : false;
+
+    const hasActiveTicket = SupportTicket
+      ? await SupportTicket.exists({
+          assignedEmployeeId: employee._id,
+          isDeleted: false,
+          status: { $in: ["New", "Assigned", "In Progress"] },
+        })
+      : false;
+
+    status = hasActiveTask || hasActiveTicket ? "Working" : "Free";
+  }
+
+  employee.status = status;
   employee.lastActivityAt = new Date();
   await employee.save();
 }
@@ -515,6 +546,7 @@ router.post("/logout", async (req, res, next) => {
       return res.status(200).json({ success: true, message: "You are already logged out.", data: formatAttendance(attendance) });
     }
 
+    // End any active break
     if (attendance.breakStartedAt) {
       await endActiveBreak(attendance, employee, new Date(), "web");
     }
@@ -531,10 +563,54 @@ router.post("/logout", async (req, res, next) => {
     attendance.workStatus = "Logged Out";
     attendance.status = getAttendanceStatus(attendance);
     attendance.updatedBy = req.user._id;
-
     await attendance.save();
+
     await createAttendanceEvent(attendance._id, employee._id, "LOGOUT", req.body.source || "web", req.body.notes || "");
-    await updateEmployeeStatus(employee, "Logged Out");
+
+    // Update employee status to Offline
+    await updateEmployeeStatus(employee, "Offline");
+    try {
+  const agentHost = process.env.AGENT_API_HOST || "127.0.0.1";
+  const agentPort = process.env.AGENT_API_PORT || 4500;
+  const agentBaseUrl = `http://${agentHost}:${agentPort}`;
+
+  await axios.post(`${agentBaseUrl}/logout`, {
+    employeeCode: employee.employeeCode,
+  });
+
+  console.log(`Agent stopped for ${employee.employeeCode}`);
+} catch (err) {
+  console.warn("Agent logout API failed:", err.message);
+}
+
+    // Pause any active task
+    const Task = mongoose.models.Task;
+    if (Task) {
+      const activeTask = await Task.findOne({
+        assignedEmployeeId: employee._id,
+        status: "In Progress",
+        isDeleted: false,
+      });
+      if (activeTask) {
+        if (activeTask.startedAt) {
+          const elapsed = Math.floor((Date.now() - new Date(activeTask.startedAt).getTime()) / 1000);
+          activeTask.elapsedSeconds = (activeTask.elapsedSeconds || 0) + elapsed;
+        }
+        activeTask.status = "Paused";
+        activeTask.pausedAt = new Date();
+        activeTask.startedAt = null;
+        activeTask.lastUpdated = new Date();
+        await activeTask.save();
+        // Clear employee's current task fields
+        employee.currentTaskId = null;
+        employee.currentTaskCode = "";
+        employee.currentTaskTitle = "";
+        employee.currentClient = "—";
+        employee.currentProject = "—";
+        employee.currentTaskStartedAt = null;
+        await employee.save();
+      }
+    }
 
     return res.status(200).json({ success: true, message: "Logout recorded successfully.", data: formatAttendance(attendance) });
   } catch (error) {

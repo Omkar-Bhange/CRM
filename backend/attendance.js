@@ -1,9 +1,7 @@
 const express = require("express");
 const mongoose = require("mongoose");
 
-const {
-  authenticateUser,
-} = require("./auth");
+const authenticateUser = require("./authMiddleware");
 const Employee =
   mongoose.models.Employee ||
   mongoose.model("Employee");

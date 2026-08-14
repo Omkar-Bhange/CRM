@@ -5,6 +5,7 @@ import Tasks from "./tasks/Tasks";
 import AmcBilling from "./billing/AmcBilling";
 import Team from "./team/Team";
 
+
 import SupportTickets from "./tickets/SupportTickets";
 import {
     ArrowUpRight,
@@ -670,154 +671,6 @@ const clientAmcRecords = [
         reminderStatus: "Sent",
     },
 ];
-const clientPayments = [
-    {
-        id: 1,
-        receiptNo: "RCT-2026-0081",
-        client: "Shree Ganesh Industries",
-        invoiceNo: "AMC-2025-0031",
-        product: "NexERP",
-        paymentDate: "12 Jul 2025",
-        amount: 42000,
-        mode: "Bank Transfer",
-        referenceNo: "UTR92384721",
-        receivedBy: "Mangesh Kondhare",
-        status: "Completed",
-    },
-    {
-        id: 2,
-        receiptNo: "RCT-2026-0092",
-        client: "Kavya Textiles Pvt Ltd",
-        invoiceNo: "AMC-2026-0051",
-        product: "BillFlow",
-        paymentDate: "01 Aug 2026",
-        amount: 18000,
-        mode: "UPI",
-        referenceNo: "UPI74839201",
-        receivedBy: "Mangesh Kondhare",
-        status: "Completed",
-    },
-    {
-        id: 3,
-        receiptNo: "RCT-2026-0098",
-        client: "GreenLeaf Agro",
-        invoiceNo: "AMC-2026-0049",
-        product: "StockPro",
-        paymentDate: "10 Jul 2026",
-        amount: 10000,
-        mode: "Cheque",
-        referenceNo: "CHQ-674821",
-        receivedBy: "Akash Pawar",
-        status: "Completed",
-    },
-    {
-        id: 4,
-        receiptNo: "RCT-2026-0076",
-        client: "Precision Auto Parts",
-        invoiceNo: "AMC-2026-0042",
-        product: "NexERP",
-        paymentDate: "08 Jul 2026",
-        amount: 60000,
-        mode: "Bank Transfer",
-        referenceNo: "UTR98374125",
-        receivedBy: "Mangesh Kondhare",
-        status: "Completed",
-    },
-];
-
-const clientDocuments = [
-    {
-        id: 1,
-        client: "Shree Ganesh Industries",
-        name: "AMC Agreement.pdf",
-        type: "PDF",
-        category: "Agreement",
-        size: "1.4 MB",
-        uploadedOn: "02 Jul 2026",
-        uploadedBy: "Mangesh Kondhare",
-    },
-    {
-        id: 2,
-        client: "Shree Ganesh Industries",
-        name: "GST Certificate.pdf",
-        type: "PDF",
-        category: "Legal",
-        size: "480 KB",
-        uploadedOn: "12 Jan 2026",
-        uploadedBy: "Akash Pawar",
-    },
-    {
-        id: 3,
-        client: "Shree Ganesh Industries",
-        name: "Quotation.xlsx",
-        type: "Excel",
-        category: "Quotation",
-        size: "210 KB",
-        uploadedOn: "18 Jun 2026",
-        uploadedBy: "Sneha Kale",
-    },
-    {
-        id: 4,
-        client: "Shree Ganesh Industries",
-        name: "ERP Setup Images.zip",
-        type: "ZIP",
-        category: "Installation",
-        size: "18 MB",
-        uploadedOn: "20 Jul 2026",
-        uploadedBy: "Rohit More",
-    },
-];
-const clientActivity = [
-    {
-        id: 1,
-        client: "Shree Ganesh Industries",
-        type: "Client Created",
-        description: "Client account created in CRM",
-        user: "Mangesh Kondhare",
-        date: "10 Jan 2024",
-    },
-    {
-        id: 2,
-        client: "Shree Ganesh Industries",
-        type: "Software Installed",
-        description: "NexERP installed successfully",
-        user: "Akash Pawar",
-        date: "18 Jul 2024",
-    },
-    {
-        id: 3,
-        client: "Shree Ganesh Industries",
-        type: "AMC Generated",
-        description: "AMC Invoice AMC-2026-0048 generated",
-        user: "Mangesh Kondhare",
-        date: "01 Jul 2026",
-    },
-    {
-        id: 4,
-        client: "Shree Ganesh Industries",
-        type: "Ticket Raised",
-        description: "GST Report mismatch",
-        user: "Client Portal",
-        date: "13 Jul 2026",
-    },
-    {
-        id: 5,
-        client: "Shree Ganesh Industries",
-        type: "Ticket Assigned",
-        description: "Assigned to Akash Pawar",
-        user: "Admin",
-        date: "13 Jul 2026",
-    },
-    {
-        id: 6,
-        client: "Shree Ganesh Industries",
-        type: "Document Uploaded",
-        description: "AMC Agreement uploaded",
-        user: "Mangesh Kondhare",
-        date: "13 Jul 2026",
-    },
-];
-
 export default function Admin({ onLogout }) {
     const [clientTicketFilter, setClientTicketFilter] = useState("All");
     const [activeMenu, setActiveMenu] = useState("overview");
@@ -827,6 +680,9 @@ export default function Admin({ onLogout }) {
     const [clientsError, setClientsError] = useState("");
     const [savingClient, setSavingClient] = useState(false);
     const [deletingClientId, setDeletingClientId] = useState(null);
+    const [dashboardData, setDashboardData] = useState(null);
+    const [dashboardLoading, setDashboardLoading] = useState(true);
+    const [dashboardError, setDashboardError] = useState("");
 
     const [clientSearch, setClientSearch] = useState("");
     const [clientStatusFilter, setClientStatusFilter] = useState("All");
@@ -838,12 +694,58 @@ export default function Admin({ onLogout }) {
     const [productDrawerOpen, setProductDrawerOpen] = useState(false);
     const [savingProduct, setSavingProduct] = useState(false);
     const [editingProductId, setEditingProductId] = useState(null);
+    const [clientAmcData, setClientAmcData] = useState(null);
+    const [clientAmcLoading, setClientAmcLoading] = useState(false);
+    const [clientAmcError, setClientAmcError] = useState("");
+
+    const [clientPaymentsData, setClientPaymentsData] = useState([]);
+    const [clientPaymentsLoading, setClientPaymentsLoading] = useState(false);
+    const [clientPaymentsError, setClientPaymentsError] = useState("");
+
+    const [clientDocumentsData, setClientDocumentsData] = useState([]);
+    const [clientDocumentsLoading, setClientDocumentsLoading] = useState(false);
+    const [clientDocumentsError, setClientDocumentsError] = useState("");
+    const [savingClientDocument, setSavingClientDocument] = useState(false);
+    const [documentDrawerOpen, setDocumentDrawerOpen] = useState(false);
+    const [documentForm, setDocumentForm] = useState({
+        name: "",
+        type: "PDF",
+        category: "Agreement",
+        size: "",
+        notes: "",
+    });
+
+    const [clientActivityData, setClientActivityData] = useState([]);
+    const [clientActivityLoading, setClientActivityLoading] = useState(false);
+    const [clientActivityError, setClientActivityError] = useState("");
+
+    const [paymentDrawerOpen, setPaymentDrawerOpen] = useState(false);
+    const [paymentTarget, setPaymentTarget] = useState(null);
+    const [savingPayment, setSavingPayment] = useState(false);
+    const [paymentForm, setPaymentForm] = useState({
+        amount: "",
+        paymentDate: "",
+        mode: "Bank Transfer",
+        referenceNo: "",
+        notes: "",
+    });
+    const [amcLoading, setAmcLoading] = useState(false);
     const [deletingProductId, setDeletingProductId] = useState(null);
     const [productMasters, setProductMasters] = useState([]);
     const [productMastersLoading, setProductMastersLoading] =
         useState(false);
     const [productMastersError, setProductMastersError] =
         useState("");
+    const [dashboardStats, setDashboardStats] = useState([]);
+    const [amcRenewals, setAmcRenewals] = useState([]);
+    const [teamMembers, setTeamMembers] = useState([]);
+    const [recentTickets, setRecentTickets] = useState([]);
+    const [activeTasks, setActiveTasks] = useState([]);
+    const [clientActivities, setClientActivities] = useState([]);
+
+    // Loading & error states (per data set or a global loading flag)
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
 
     const [employees, setEmployees] = useState([]);
     const [employeesLoading, setEmployeesLoading] =
@@ -881,9 +783,9 @@ export default function Admin({ onLogout }) {
 
         amcStatus: "Not Started",
         nextRenewal: "",
-       assignedEmployeeId: "",
-assignedEmployeeCode: "",
-assignedEmployeeName: "",
+        assignedEmployeeId: "",
+        assignedEmployeeCode: "",
+        assignedEmployeeName: "",
         status: "Active",
         createLogin: true,
         temporaryPassword: "",
@@ -1020,18 +922,18 @@ assignedEmployeeName: "",
                 0
             ),
 
-      assignedEmployeeId:
-    client.assignedEmployeeId?._id ||
-    client.assignedEmployeeId ||
-    "",
+        assignedEmployeeId:
+            client.assignedEmployeeId?._id ||
+            client.assignedEmployeeId ||
+            "",
 
-assignedEmployeeCode:
-    client.assignedEmployeeCode ||
-    "",
+        assignedEmployeeCode:
+            client.assignedEmployeeCode ||
+            "",
 
-assignedEmployeeName:
-    client.assignedEmployeeName ||
-    "Unassigned",
+        assignedEmployeeName:
+            client.assignedEmployeeName ||
+            "Unassigned",
 
         status:
             client.status ||
@@ -1117,6 +1019,300 @@ assignedEmployeeName:
         return normalizeClientFromApi(
             result.data
         );
+    };
+
+    const loadClientAmc = async (clientId) => {
+        if (!clientId) return;
+
+        try {
+            setClientAmcLoading(true);
+            setClientAmcError("");
+
+            const response = await fetch(
+                `${API_URL}/api/admin/client/${clientId}/amc`,
+                {
+                    method: "GET",
+                    headers: {
+                        Accept: "application/json",
+                        Authorization: `Bearer ${getAuthToken()}`,
+                    },
+                }
+            );
+
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || "Unable to load AMC records.");
+            }
+
+            setClientAmcData(result.data);
+        } catch (error) {
+            console.error("Load client AMC error:", error);
+            setClientAmcError(error.message || "Unable to load AMC records.");
+            setClientAmcData(null);
+        } finally {
+            setClientAmcLoading(false);
+        }
+    };
+
+    const loadClientPayments = async (clientId) => {
+        if (!clientId) return;
+
+        try {
+            setClientPaymentsLoading(true);
+            setClientPaymentsError("");
+
+            const response = await fetch(
+                `${API_URL}/api/admin/client/${clientId}/payments`,
+                {
+                    method: "GET",
+                    headers: {
+                        Accept: "application/json",
+                        Authorization: `Bearer ${getAuthToken()}`,
+                    },
+                }
+            );
+
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || "Unable to load payments.");
+            }
+
+            setClientPaymentsData(result.data || []);
+        } catch (error) {
+            console.error("Load client payments error:", error);
+            setClientPaymentsError(error.message || "Unable to load payments.");
+            setClientPaymentsData([]);
+        } finally {
+            setClientPaymentsLoading(false);
+        }
+    };
+
+    const loadClientDocuments = async (clientId) => {
+        if (!clientId) return;
+
+        try {
+            setClientDocumentsLoading(true);
+            setClientDocumentsError("");
+
+            const response = await fetch(
+                `${API_URL}/api/admin/client/${clientId}/documents`,
+                {
+                    method: "GET",
+                    headers: {
+                        Accept: "application/json",
+                        Authorization: `Bearer ${getAuthToken()}`,
+                    },
+                }
+            );
+
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || "Unable to load documents.");
+            }
+
+            setClientDocumentsData(result.data || []);
+        } catch (error) {
+            console.error("Load client documents error:", error);
+            setClientDocumentsError(error.message || "Unable to load documents.");
+            setClientDocumentsData([]);
+        } finally {
+            setClientDocumentsLoading(false);
+        }
+    };
+
+    const addClientDocument = async (event) => {
+        event.preventDefault();
+
+        const clientId = selectedClient?._id || selectedClient?.id;
+        if (!clientId) return;
+
+        try {
+            setSavingClientDocument(true);
+
+            const response = await fetch(
+                `${API_URL}/api/admin/client/${clientId}/documents`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Accept: "application/json",
+                        Authorization: `Bearer ${getAuthToken()}`,
+                    },
+                    body: JSON.stringify(documentForm),
+                }
+            );
+
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || "Unable to add document.");
+            }
+
+            setDocumentDrawerOpen(false);
+            setDocumentForm({
+                name: "",
+                type: "PDF",
+                category: "Agreement",
+                size: "",
+                notes: "",
+            });
+
+            await loadClientDocuments(clientId);
+        } catch (error) {
+            console.error("Add client document error:", error);
+            alert(error.message || "Unable to add document.");
+        } finally {
+            setSavingClientDocument(false);
+        }
+    };
+
+    const deleteClientDocument = async (docId) => {
+        const clientId = selectedClient?._id || selectedClient?.id;
+        if (!clientId || !docId) return;
+
+        if (!window.confirm("Remove this document record?")) return;
+
+        try {
+            const response = await fetch(
+                `${API_URL}/api/admin/client/${clientId}/documents/${docId}`,
+                {
+                    method: "DELETE",
+                    headers: {
+                        Accept: "application/json",
+                        Authorization: `Bearer ${getAuthToken()}`,
+                    },
+                }
+            );
+
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || "Unable to delete document.");
+            }
+
+            await loadClientDocuments(clientId);
+        } catch (error) {
+            console.error("Delete client document error:", error);
+            alert(error.message || "Unable to delete document.");
+        }
+    };
+
+    const loadClientActivity = async (clientId) => {
+        if (!clientId) return;
+
+        try {
+            setClientActivityLoading(true);
+            setClientActivityError("");
+
+            const response = await fetch(
+                `${API_URL}/api/admin/activities?clientId=${clientId}&limit=50`,
+                {
+                    method: "GET",
+                    headers: {
+                        Accept: "application/json",
+                        Authorization: `Bearer ${getAuthToken()}`,
+                    },
+                }
+            );
+
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || "Unable to load activity.");
+            }
+
+            const activities = result.data || [];
+
+            setClientActivityData(
+                activities.map((item) => ({
+                    id: item._id,
+                    type: item.action,
+                    description: item.description,
+                    user: item.performedByName || "System",
+                    date: item.createdAt,
+                }))
+            );
+        } catch (error) {
+            console.error("Load client activity error:", error);
+            setClientActivityError(error.message || "Unable to load activity.");
+            setClientActivityData([]);
+        } finally {
+            setClientActivityLoading(false);
+        }
+    };
+
+    const openRecordPayment = (record) => {
+        const balance = Math.max((record.amount || 0) - (record.paidAmount || 0), 0);
+
+        setPaymentTarget(record);
+        setPaymentForm({
+            amount: balance > 0 ? String(balance) : "",
+            paymentDate: new Date().toISOString().slice(0, 10),
+            mode: "Bank Transfer",
+            referenceNo: "",
+            notes: "",
+        });
+        setPaymentDrawerOpen(true);
+    };
+
+    const submitRecordPayment = async (event) => {
+        event.preventDefault();
+
+        const clientId = selectedClient?._id || selectedClient?.id;
+        if (!clientId || !paymentTarget) return;
+
+        try {
+            setSavingPayment(true);
+
+            const response = await fetch(
+                `${API_URL}/api/admin/amc/payment`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Accept: "application/json",
+                        Authorization: `Bearer ${getAuthToken()}`,
+                    },
+                    body: JSON.stringify({
+                        amcInvoiceId: paymentTarget.id,
+                        amount: Number(paymentForm.amount),
+                        paymentDate: paymentForm.paymentDate,
+                        mode: paymentForm.mode,
+                        referenceNo: paymentForm.referenceNo,
+                        notes: paymentForm.notes,
+                    }),
+                }
+            );
+
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || "Unable to record payment.");
+            }
+
+            setPaymentDrawerOpen(false);
+            setPaymentTarget(null);
+
+            await Promise.all([
+                loadClientAmc(clientId),
+                loadClientPayments(clientId),
+            ]);
+
+            try {
+                const fullClient = await loadClientDetails(clientId);
+                setSelectedClient(fullClient);
+            } catch (refreshError) {
+                console.error("Refresh client after payment error:", refreshError);
+            }
+        } catch (error) {
+            console.error("Record payment error:", error);
+            alert(error.message || "Unable to record payment.");
+        } finally {
+            setSavingPayment(false);
+        }
     };
 
     const loadProductMasters = async () => {
@@ -1240,7 +1436,181 @@ assignedEmployeeName:
             setProductMastersLoading(false);
         }
     };
+    const formatDate = (dateString) => {
+        if (!dateString) return "—";
+        const date = new Date(dateString);
+        return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    };
+    const formatDateTime = (dateString) => {
+        if (!dateString) return "—";
+        const date = new Date(dateString);
+        return date.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    };
+    const timeAgo = (dateString) => {
+        const now = Date.now();
+        const diff = now - new Date(dateString).getTime();
+        const minutes = Math.floor(diff / 60000);
+        if (minutes < 1) return "Just now";
+        if (minutes < 60) return `${minutes} minute${minutes > 1 ? "s" : ""} ago`;
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) return `${hours} hour${hours > 1 ? "s" : ""} ago`;
+        const days = Math.floor(hours / 24);
+        return `${days} day${days > 1 ? "s" : ""} ago`;
+    };
+    const formatMinutes = (minutes) => {
+        if (!minutes) return "0h";
+        const h = Math.floor(minutes / 60);
+        const m = minutes % 60;
+        return h > 0 ? `${h}h ${m}m` : `${m}m`;
+    };
+    const formatWorkingTime = (minutes) => {
+        if (!minutes) return "0h";
+        const h = Math.floor(minutes / 60);
+        const m = minutes % 60;
+        return `${h}h ${m.toString().padStart(2, "0")}m`;
+    };
+    // Mapping for activity icons
+    const getIconForActivity = (category) => {
+        const map = {
+            Ticket: MessageSquare,
+            Payment: ReceiptText,
+            Client: UserRoundPlus,
+            Call: PhoneCall,
+            Invoice: FileCheck2,
+        };
+        return map[category] || Activity;
+    };
 
+    const getIconStyleForActivity = (category) => {
+        const map = {
+            Ticket: "bg-orange-100 text-orange-700",
+            Payment: "bg-emerald-100 text-emerald-700",
+            Client: "bg-violet-100 text-violet-700",
+            Call: "bg-blue-100 text-blue-700",
+            Invoice: "bg-slate-100 text-slate-700",
+        };
+        return map[category] || "bg-slate-100 text-slate-600";
+    };
+
+    const fetchDashboardStats = async () => {
+        const response = await fetch(`${API_URL}/api/admin/dashboard`, {
+            headers: { Authorization: `Bearer ${getAuthToken()}` },
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message);
+        return result.data; // { totalClients, amcCollected, amcPending, openTickets }
+    };
+
+    const fetchAmcRenewals = async () => {
+        const response = await fetch(`${API_URL}/api/admin/amc/contracts?status=Pending&status=Overdue&limit=5`, {
+            headers: { Authorization: `Bearer ${getAuthToken()}` },
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message);
+        // Transform result.data to match the shape of `amcRenewals` in the UI
+        return result.data.map(contract => ({
+            id: contract._id,
+            client: contract.clientName,
+            contact: contract.contactPerson || '',
+            product: contract.productName,
+            amount: `₹${contract.totalAmount.toLocaleString()}`,
+            dueDate: formatDate(contract.dueDate),
+            status: contract.status, // "Pending", "Overdue", etc.
+        }));
+    };
+    const fetchTeamMembers = async () => {
+        const response = await fetch(`${API_URL}/api/employee/employees`, {
+            headers: { Authorization: `Bearer ${getAuthToken()}` },
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message);
+        // Transform to match the teamMembers shape
+        return result.data.map(emp => ({
+            id: emp._id,
+            name: emp.name,
+            initials: emp.initials || emp.name.split(' ').map(w => w[0]).join(''),
+            role: emp.role,
+            currentTask: emp.currentTask || 'Available',
+            loginTime: emp.loginTime ? new Date(emp.loginTime).toLocaleTimeString() : '—',
+            workingTime: formatWorkingTime(emp.activeMinutes),
+            status: emp.status === 'Free' ? 'Free' : emp.status === 'Leave' ? 'Leave' : 'Working',
+            taskCount: emp.openTasks || 0,
+        }));
+    };
+    const fetchRecentTickets = async () => {
+        const response = await fetch(`${API_URL}/api/admin/tickets?limit=4`, {
+            headers: { Authorization: `Bearer ${getAuthToken()}` },
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message);
+        return result.data.map(ticket => ({
+            id: ticket.ticketCode,
+            title: ticket.title,
+            client: ticket.clientName,
+            product: ticket.productName,
+            assignedTo: ticket.assignedEmployeeName || 'Unassigned',
+            priority: ticket.priority,
+            status: ticket.status,
+            createdAt: formatDate(ticket.createdAt),
+            resolvedAt: ticket.resolvedAt ? formatDate(ticket.resolvedAt) : '—',
+            source: ticket.source,
+        }));
+    };
+    const fetchActiveTasks = async () => {
+        const response = await fetch(`${API_URL}/api/admin/tasks?status=In Progress&status=Testing&limit=3`, {
+            headers: { Authorization: `Bearer ${getAuthToken()}` },
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message);
+        return result.data.map(task => ({
+            id: task.taskCode,
+            title: task.title,
+            client: task.clientName || 'Internal',
+            product: task.productName || '',
+            assignedTo: task.assignedEmployeeName,
+            priority: task.priority,
+            status: task.status,
+            dueDate: formatDate(task.dueDate),
+            estimatedTime: formatMinutes(task.estimatedMinutes),
+            spentTime: formatMinutes(task.spentMinutes),
+            progress: task.progress || 0,
+        }));
+    };
+    const fetchClientActivities = async () => {
+        const response = await fetch(`${API_URL}/api/admin/activities?limit=5`, {
+            headers: { Authorization: `Bearer ${getAuthToken()}` },
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message);
+        // Transform to match clientActivities shape
+        return result.data.map(activity => ({
+            id: activity._id,
+            type: activity.category.toLowerCase(), // 'ticket', 'payment', etc.
+            title: activity.action,
+            description: activity.description,
+            time: timeAgo(activity.createdAt),
+            icon: getIconForActivity(activity.category),
+            iconStyle: getIconStyleForActivity(activity.category),
+        }));
+    };
+    const loadDashboard = async () => {
+        try {
+            setDashboardLoading(true);
+            const data = await fetchDashboardStats();
+            setDashboardStats([
+                { id: 1, label: "Total Clients", value: data.totalClients, change: "+4 this quarter", trend: "up", icon: Building2, iconStyle: "bg-violet-100 text-violet-700" },
+                { id: 2, label: "AMC Collected", value: `₹${Number(data.amcCollected).toLocaleString()}`, change: "+12.4% from last year", trend: "up", icon: IndianRupee, iconStyle: "bg-emerald-100 text-emerald-700" },
+                { id: 3, label: "AMC Pending", value: `₹${Number(data.amcPending).toLocaleString()}`, change: "8 renewals pending", trend: "down", icon: CreditCard, iconStyle: "bg-amber-100 text-amber-700" },
+                { id: 4, label: "Open Tickets", value: data.openTickets, change: "3 need attention", trend: "down", icon: TicketCheck, iconStyle: "bg-rose-100 text-rose-700" },
+            ]);
+            setDashboardError(null);
+        } catch (error) {
+            console.error("Dashboard load error:", error);
+            setDashboardError(error.message);
+        } finally {
+            setDashboardLoading(false);
+        }
+    };
     const loadEmployees = async () => {
         try {
             setEmployeesLoading(true);
@@ -1365,10 +1735,75 @@ assignedEmployeeName:
     };
 
     useEffect(() => {
-        loadClients();
-        loadProductMasters();
-        loadEmployees();
+        const loadAllData = async () => {
+            try {
+                // Load clients, products, employees (already existing)
+                await Promise.all([
+                    loadClients(),
+                    loadProductMasters(),
+                    loadEmployees(),
+                    loadDashboard(),
+                ]);
+
+                // Load other widgets in parallel
+                const [renewals, team, tickets, tasks, activities] = await Promise.all([
+                    fetchAmcRenewals(),
+                    fetchTeamMembers(),
+                    fetchRecentTickets(),
+                    fetchActiveTasks(),
+                    fetchClientActivities(),
+                ]);
+
+                setAmcRenewals(renewals);
+                setTeamMembers(team);
+                setRecentTickets(tickets);
+                setActiveTasks(tasks);
+                setClientActivities(activities);
+            } catch (error) {
+                console.error("Load all data error:", error);
+                setDashboardError(error.message);
+            }
+        };
+        loadAllData();
     }, []);
+
+    useEffect(() => {
+        const clientId = selectedClient?._id || selectedClient?.id;
+        if (!clientId) return;
+
+        if (clientDetailsTab === "amc" && !clientAmcData) {
+            loadClientAmc(clientId);
+        } else if (clientDetailsTab === "payments" && clientPaymentsData.length === 0) {
+            loadClientPayments(clientId);
+        } else if (clientDetailsTab === "documents" && clientDocumentsData.length === 0) {
+            loadClientDocuments(clientId);
+        } else if (clientDetailsTab === "activity" && clientActivityData.length === 0) {
+            loadClientActivity(clientId);
+        }
+    }, [clientDetailsTab, selectedClient]);
+
+    useEffect(() => {
+        if (
+            !sidebarOpen &&
+            !clientDrawerOpen &&
+            !productDrawerOpen &&
+            !paymentDrawerOpen
+        ) {
+            return undefined;
+        }
+
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+
+        return () => {
+            document.body.style.overflow = previousOverflow;
+        };
+    }, [
+        sidebarOpen,
+        clientDrawerOpen,
+        productDrawerOpen,
+        paymentDrawerOpen,
+    ]);
 
     const selectedMenu =
         menuItems.find((item) => item.id === activeMenu) || menuItems[0];
@@ -1387,8 +1822,8 @@ assignedEmployeeName:
                 client.email,
                 client.mobile,
                 client.city,
-              client.assignedEmployeeName,
-client.assignedEmployeeCode,
+                client.assignedEmployeeName,
+                client.assignedEmployeeCode,
                 ...(Array.isArray(client.products)
                     ? client.products.map((product) =>
                         typeof product === "string"
@@ -1438,8 +1873,8 @@ client.assignedEmployeeCode,
             amcStatus: "Not Started",
             nextRenewal: "",
             assignedEmployeeId: "",
-assignedEmployeeCode: "",
-assignedEmployeeName: "",
+            assignedEmployeeCode: "",
+            assignedEmployeeName: "",
             status: "Active",
         });
     };
@@ -1464,13 +1899,13 @@ assignedEmployeeName: "",
                 amcStatus: client.amcStatus || "Not Started",
                 nextRenewal: client.nextRenewal || "",
                 assignedEmployeeId:
-    client.assignedEmployeeId || "",
+                    client.assignedEmployeeId || "",
 
-assignedEmployeeCode:
-    client.assignedEmployeeCode || "",
+                assignedEmployeeCode:
+                    client.assignedEmployeeCode || "",
 
-assignedEmployeeName:
-    client.assignedEmployeeName || "",
+                assignedEmployeeName:
+                    client.assignedEmployeeName || "",
                 status: client.status || "Active",
             });
 
@@ -1533,8 +1968,8 @@ assignedEmployeeName:
 
             nextRenewal: "",
             assignedEmployeeId: "",
-assignedEmployeeCode: "",
-assignedEmployeeName: "",
+            assignedEmployeeCode: "",
+            assignedEmployeeName: "",
             status: "Active",
         });
 
@@ -1572,6 +2007,11 @@ assignedEmployeeName: "",
         setClientDetailsTab(
             "overview"
         );
+
+        setClientAmcData(null);
+        setClientPaymentsData([]);
+        setClientDocumentsData([]);
+        setClientActivityData([]);
 
         /*
          * Reload complete client record,
@@ -1616,6 +2056,10 @@ assignedEmployeeName: "",
     const closeClientDetails = () => {
         setSelectedClient(null);
         setClientDetailsTab("overview");
+        setClientAmcData(null);
+        setClientPaymentsData([]);
+        setClientDocumentsData([]);
+        setClientActivityData([]);
     };
     const resetProductForm = () => {
         setProductForm({
@@ -2234,8 +2678,8 @@ assignedEmployeeName: "",
                     clientForm.nextRenewal ||
                     "",
 
-              assignedEmployeeId:
-    clientForm.assignedEmployeeId || "",
+                assignedEmployeeId:
+                    clientForm.assignedEmployeeId || "",
 
                 status:
                     clientForm.status,
@@ -2449,74 +2893,74 @@ assignedEmployeeName: "",
 
     const getStatusClasses = (status) => {
         if (status === "Paid") {
-            return "bg-emerald-50 text-emerald-700 ring-emerald-600/10";
+            return "enterprise-badge bg-emerald-50 text-emerald-700 ring-emerald-600/10";
         }
 
         if (status === "Overdue") {
-            return "bg-rose-50 text-rose-700 ring-rose-600/10";
+            return "enterprise-badge bg-rose-50 text-rose-700 ring-rose-600/10";
         }
 
-        return "bg-amber-50 text-amber-700 ring-amber-600/10";
+        return "enterprise-badge bg-amber-50 text-amber-700 ring-amber-600/10";
     };
 
     const getPriorityClasses = (priority) => {
         if (priority === "Critical") {
-            return "bg-rose-50 text-rose-700 ring-rose-600/10";
+            return "enterprise-badge bg-rose-50 text-rose-700 ring-rose-600/10";
         }
 
         if (priority === "High") {
-            return "bg-orange-50 text-orange-700 ring-orange-600/10";
+            return "enterprise-badge bg-orange-50 text-orange-700 ring-orange-600/10";
         }
 
         if (priority === "Medium") {
-            return "bg-amber-50 text-amber-700 ring-amber-600/10";
+            return "enterprise-badge bg-amber-50 text-amber-700 ring-amber-600/10";
         }
 
-        return "bg-slate-100 text-slate-600 ring-slate-500/10";
+        return "enterprise-badge bg-slate-100 text-slate-600 ring-slate-500/10";
     };
 
     const getTicketStatusClasses = (status) => {
         if (status === "Resolved") {
-            return "bg-emerald-50 text-emerald-700 ring-emerald-600/10";
+            return "enterprise-badge bg-emerald-50 text-emerald-700 ring-emerald-600/10";
         }
 
         if (status === "In Progress") {
-            return "bg-violet-50 text-violet-700 ring-violet-600/10";
+            return "enterprise-badge bg-violet-50 text-violet-700 ring-violet-600/10";
         }
 
         if (status === "Waiting") {
-            return "bg-amber-50 text-amber-700 ring-amber-600/10";
+            return "enterprise-badge bg-amber-50 text-amber-700 ring-amber-600/10";
         }
 
-        return "bg-blue-50 text-blue-700 ring-blue-600/10";
+        return "enterprise-badge bg-blue-50 text-blue-700 ring-blue-600/10";
     };
 
     const getTaskStatusClasses = (status) => {
         if (status === "Testing") {
-            return "bg-blue-50 text-blue-700 ring-blue-600/10";
+            return "enterprise-badge bg-blue-50 text-blue-700 ring-blue-600/10";
         }
 
         if (status === "Completed") {
-            return "bg-emerald-50 text-emerald-700 ring-emerald-600/10";
+            return "enterprise-badge bg-emerald-50 text-emerald-700 ring-emerald-600/10";
         }
 
-        return "bg-violet-50 text-violet-700 ring-violet-600/10";
+        return "enterprise-badge bg-violet-50 text-violet-700 ring-violet-600/10";
     };
 
     const getClientAmcClasses = (status) => {
         if (status === "Paid") {
-            return "bg-emerald-50 text-emerald-700 ring-emerald-600/10";
+            return "enterprise-badge bg-emerald-50 text-emerald-700 ring-emerald-600/10";
         }
 
         if (status === "Overdue") {
-            return "bg-rose-50 text-rose-700 ring-rose-600/10";
+            return "enterprise-badge bg-rose-50 text-rose-700 ring-rose-600/10";
         }
 
         if (status === "Pending") {
-            return "bg-amber-50 text-amber-700 ring-amber-600/10";
+            return "enterprise-badge bg-amber-50 text-amber-700 ring-amber-600/10";
         }
 
-        return "bg-slate-100 text-slate-600 ring-slate-500/10";
+        return "enterprise-badge bg-slate-100 text-slate-600 ring-slate-500/10";
     };
     const getSelectedClientProducts =
         () => {
@@ -2653,27 +3097,36 @@ assignedEmployeeName: "",
         );
     };
     const getSelectedClientAmcRecords = () => {
-        if (!selectedClient) return [];
+        if (!clientAmcData?.invoices) return [];
 
-        return clientAmcRecords.filter(
-            (record) => record.client === selectedClient.companyName
-        );
+        return clientAmcData.invoices.map((invoice) => ({
+            id: invoice.id,
+            invoiceNo: invoice.invoiceCode,
+            invoiceDate: invoice.invoiceDate,
+            product: invoice.productName,
+            period: `${invoice.startDate} - ${invoice.endDate}`,
+            amount: invoice.totalAmount,
+            paidAmount: invoice.paidAmount,
+            dueDate: invoice.dueDate,
+            status: invoice.paymentStatus,
+            reminderStatus: invoice.reminderStatus || 'Not Sent',
+        }));
     };
 
     const getAmcPaymentStatusClasses = (status) => {
         if (status === "Paid") {
-            return "bg-emerald-50 text-emerald-700 ring-emerald-600/10";
+            return "enterprise-badge bg-emerald-50 text-emerald-700 ring-emerald-600/10";
         }
 
         if (status === "Overdue") {
-            return "bg-rose-50 text-rose-700 ring-rose-600/10";
+            return "enterprise-badge bg-rose-50 text-rose-700 ring-rose-600/10";
         }
 
         if (status === "Partially Paid") {
-            return "bg-blue-50 text-blue-700 ring-blue-600/10";
+            return "enterprise-badge bg-blue-50 text-blue-700 ring-blue-600/10";
         }
 
-        return "bg-amber-50 text-amber-700 ring-amber-600/10";
+        return "enterprise-badge bg-amber-50 text-amber-700 ring-amber-600/10";
     };
 
     const formatCurrency = (amount) => {
@@ -2687,9 +3140,7 @@ assignedEmployeeName: "",
     const getSelectedClientPayments = () => {
         if (!selectedClient) return [];
 
-        return clientPayments.filter(
-            (payment) => payment.client === selectedClient.companyName
-        );
+        return clientPaymentsData;
     };
 
     const getSelectedClientPendingAmount = () => {
@@ -2713,32 +3164,28 @@ assignedEmployeeName: "",
     const getSelectedClientDocuments = () => {
         if (!selectedClient) return [];
 
-        return clientDocuments.filter(
-            (doc) => doc.client === selectedClient.companyName
-        );
+        return clientDocumentsData;
     };
     const getSelectedClientActivity = () => {
         if (!selectedClient) return [];
 
-        return clientActivity.filter(
-            (activity) => activity.client === selectedClient.companyName
-        );
+        return clientActivityData;
     };
     return (
-        <div className="min-h-screen bg-[#f4f6fa] text-slate-900">
+        <div className="enterprise-shell min-h-screen bg-[#f4f6fa] text-slate-900">
             {/* Mobile Sidebar Overlay */}
             {sidebarOpen && (
                 <button
                     type="button"
                     aria-label="Close sidebar"
                     onClick={() => setSidebarOpen(false)}
-                    className="fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-sm lg:hidden"
+                    className="enterprise-backdrop fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-sm lg:hidden"
                 />
             )}
 
             {/* Sidebar */}
             <aside
-                className={`fixed inset-y-0 left-0 z-50 flex w-[272px] flex-col border-r border-white/10 bg-[#111827] text-white transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"
+                className={`enterprise-sidebar fixed inset-y-0 left-0 z-50 flex w-[272px] flex-col border-r border-white/10 text-white transition-transform duration-300 ease-out lg:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"
                     }`}
             >
                 {/* Sidebar Brand */}
@@ -2811,7 +3258,8 @@ assignedEmployeeName: "",
                                         setActiveMenu(item.id);
                                         setSidebarOpen(false);
                                     }}
-                                    className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${isActive
+                                    aria-current={isActive ? "page" : undefined}
+                                    className={`enterprise-sidebar-nav-item group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium ${isActive
                                         ? "bg-white text-slate-950 shadow-sm"
                                         : "text-slate-400 hover:bg-white/[0.06] hover:text-white"
                                         }`}
@@ -2854,7 +3302,8 @@ assignedEmployeeName: "",
                                 setActiveMenu("settings");
                                 setSidebarOpen(false);
                             }}
-                            className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${activeMenu === "settings"
+                            aria-current={activeMenu === "settings" ? "page" : undefined}
+                            className={`enterprise-sidebar-nav-item group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium ${activeMenu === "settings"
                                 ? "bg-white text-slate-950 shadow-sm"
                                 : "text-slate-400 hover:bg-white/[0.06] hover:text-white"
                                 }`}
@@ -2919,6 +3368,7 @@ assignedEmployeeName: "",
                 <header className="sticky top-0 z-30 flex h-[76px] items-center border-b border-slate-200 bg-white/90 px-4 backdrop-blur-xl sm:px-6 lg:px-8">
                     <button
                         type="button"
+                        aria-label="Open navigation"
                         onClick={() => setSidebarOpen(true)}
                         className="mr-3 flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 lg:hidden"
                     >
@@ -2927,7 +3377,7 @@ assignedEmployeeName: "",
 
                     <div className="min-w-0">
                         <h2 className="truncate text-lg font-semibold tracking-[-0.02em] text-slate-950">
-                            {selectedMenu.label}
+                            {activeMenu === "settings" ? "Settings" : selectedMenu.label}
                         </h2>
                         <p className="hidden text-xs text-slate-500 sm:block">
                             Manage your clients, support and company work
@@ -2951,6 +3401,7 @@ assignedEmployeeName: "",
 
                         <button
                             type="button"
+                            aria-label="Notifications"
                             className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
                         >
                             <Bell size={18} />
@@ -2974,10 +3425,10 @@ assignedEmployeeName: "",
 
                 {/* Page Content */}
                 {/* Page Content */}
-                <main className="p-4 sm:p-6 lg:p-8">
+                <main className="enterprise-workspace p-4 sm:p-6 lg:p-8">
                     <div className="mx-auto max-w-[1600px]">
                         {activeMenu === "overview" ? (
-                            <div>
+                            <div className="enterprise-page">
                                 {/* Dashboard Heading */}
                                 <section className="flex flex-col gap-5 border-b border-slate-200 pb-7 sm:flex-row sm:items-end sm:justify-between">
                                     <div>
@@ -3023,15 +3474,61 @@ assignedEmployeeName: "",
                                 </section>
 
                                 {/* Summary Statistics */}
-                                <section className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                                    {dashboardStats.map((stat) => {
+                                <section
+                                    aria-busy={dashboardLoading}
+                                    aria-live="polite"
+                                    className="mt-8 grid gap-5 sm:grid-cols-2 xl:grid-cols-4"
+                                >
+                                    {dashboardLoading ? (
+                                        Array.from({ length: 4 }).map((_, index) => (
+                                            <div
+                                                key={index}
+                                                aria-hidden="true"
+                                                className="animate-pulse rounded-2xl border border-slate-200 bg-white p-6"
+                                            >
+                                                <div className="flex items-start justify-between gap-4">
+                                                    <div className="space-y-3">
+                                                        <div className="h-3 w-24 rounded bg-slate-100" />
+                                                        <div className="h-8 w-28 rounded bg-slate-200" />
+                                                    </div>
+                                                    <div className="h-11 w-11 rounded-xl bg-slate-100" />
+                                                </div>
+                                                <div className="mt-6 h-3 w-36 rounded bg-slate-100" />
+                                            </div>
+                                        ))
+                                    ) : dashboardError ? (
+                                        <div className="enterprise-empty-state col-span-full flex flex-col items-start gap-3 p-6 sm:flex-row sm:items-center sm:justify-between">
+                                            <div className="flex items-start gap-3">
+                                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
+                                                    <AlertCircle size={19} />
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-semibold text-slate-900">
+                                                        Dashboard data could not be loaded
+                                                    </p>
+                                                    <p className="mt-1 text-xs text-slate-500">
+                                                        {dashboardError}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={loadDashboard}
+                                                className="flex h-10 shrink-0 items-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-semibold text-white transition hover:bg-violet-700"
+                                            >
+                                                <RefreshCw size={15} />
+                                                Retry
+                                            </button>
+                                        </div>
+                                    ) : dashboardStats.map((stat, index) => {
                                         const Icon = stat.icon;
                                         const isPositive = stat.trend === "up";
 
                                         return (
                                             <article
                                                 key={stat.id}
-                                                className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.04)] transition duration-200 hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_16px_40px_rgba(15,23,42,0.08)]"
+                                                className="enterprise-metric enterprise-surface--interactive group relative flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_8px_30px_rgba(15,23,42,0.04)] transition duration-200 hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_16px_40px_rgba(15,23,42,0.08)]"
+                                                style={{ "--ts-enter-delay": `${index * 55}ms` }}
                                             >
                                                 <div className="flex items-start justify-between gap-4">
                                                     <div>
@@ -3078,7 +3575,7 @@ assignedEmployeeName: "",
                                     })}
                                 </section>
 
-                                <div className="mt-7 grid items-start gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(320px,0.75fr)]">
+                                <div className="mt-8 grid gap-6 xl:grid-cols-[1.55fr_0.85fr] xl:items-stretch">
 
 
                                     {/* Temporary Next Section Placeholder */}
@@ -3232,7 +3729,7 @@ assignedEmployeeName: "",
                                         </div>
                                     </section>
                                     {/* Team Status */}
-                                    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+                                    <section className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
                                         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-5">
                                             <div>
                                                 <p className="text-sm font-semibold text-slate-950">
@@ -3250,7 +3747,7 @@ assignedEmployeeName: "",
                                             </span>
                                         </div>
 
-                                        <div className="divide-y divide-slate-100">
+                                        <div className="flex-1 divide-y divide-slate-100">
                                             {teamMembers.slice(0, 4).map((member) => {
                                                 const isFree = member.status === "Free";
                                                 const isLeave = member.status === "Leave";
@@ -3673,7 +4170,7 @@ assignedEmployeeName: "",
 
                         ) : activeMenu === "clients" ? (
                             selectedClient ? (
-                                <div>
+                                <div className="enterprise-page">
                                     <div>
                                         {/* Client Details Header */}
                                         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
@@ -3860,7 +4357,7 @@ assignedEmployeeName: "",
                                                     </p>
 
                                                     <p className="mt-2 text-sm font-semibold text-slate-800">
-                                                       {selectedClient.assignedEmployeeName || "Unassigned"}
+                                                        {selectedClient.assignedEmployeeName || "Unassigned"}
                                                     </p>
                                                 </div>
                                             </div>
@@ -3992,7 +4489,7 @@ assignedEmployeeName: "",
                                                                     Support Owner
                                                                 </dt>
                                                                 <dd className="text-right text-xs font-semibold text-slate-800">
-                                                                    {selectedClient.assignedTo}
+                                                                    {selectedClient.assignedEmployeeName || selectedClient.assignedTo || "Unassigned"}
                                                                 </dd>
                                                             </div>
                                                         </dl>
@@ -4632,6 +5129,12 @@ assignedEmployeeName: "",
 
                                                 ) : clientDetailsTab === "amc" ? (
                                                     <div>
+                                                        {clientAmcLoading && (
+                                                            <div className="px-5 py-3 text-xs text-slate-500 lg:px-6">Loading AMC records...</div>
+                                                        )}
+                                                        {clientAmcError && (
+                                                            <div className="px-5 py-3 text-xs text-rose-600 lg:px-6">{clientAmcError}</div>
+                                                        )}
                                                         <div>
                                                             {/* AMC Header */}
                                                             <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 lg:flex-row lg:items-center lg:justify-between lg:px-6">
@@ -4875,6 +5378,7 @@ assignedEmployeeName: "",
                                                                                                 {balance > 0 && (
                                                                                                     <button
                                                                                                         type="button"
+                                                                                                        onClick={() => openRecordPayment(record)}
                                                                                                         className="flex h-9 items-center gap-1.5 rounded-lg bg-slate-900 px-3 text-[10px] font-semibold text-white transition hover:bg-violet-600"
                                                                                                     >
                                                                                                         <Banknote size={14} />
@@ -4926,6 +5430,12 @@ assignedEmployeeName: "",
 
                                                 ) : clientDetailsTab === "payments" ? (
                                                     <div>
+                                                        {clientPaymentsLoading && (
+                                                            <div className="px-5 py-3 text-xs text-slate-500 lg:px-6">Loading payments...</div>
+                                                        )}
+                                                        {clientPaymentsError && (
+                                                            <div className="px-5 py-3 text-xs text-rose-600 lg:px-6">{clientPaymentsError}</div>
+                                                        )}
                                                         {/* Payments Header */}
                                                         <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 lg:flex-row lg:items-center lg:justify-between lg:px-6">
                                                             <div>
@@ -5189,6 +5699,12 @@ assignedEmployeeName: "",
                                                 ) : clientDetailsTab === "documents" ? (
 
                                                     <div>
+                                                        {clientDocumentsLoading && (
+                                                            <div className="px-5 py-3 text-xs text-slate-500 lg:px-6">Loading documents...</div>
+                                                        )}
+                                                        {clientDocumentsError && (
+                                                            <div className="px-5 py-3 text-xs text-rose-600 lg:px-6">{clientDocumentsError}</div>
+                                                        )}
                                                         <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 lg:flex-row lg:items-center lg:justify-between lg:px-6">
 
                                                             <div>
@@ -5201,12 +5717,91 @@ assignedEmployeeName: "",
                                                                 </p>
                                                             </div>
 
-                                                            <button className="flex h-9 items-center gap-2 rounded-lg bg-violet-600 px-4 text-xs font-semibold text-white">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setDocumentDrawerOpen(true)}
+                                                                className="flex h-9 items-center gap-2 rounded-lg bg-violet-600 px-4 text-xs font-semibold text-white"
+                                                            >
                                                                 <Upload size={15} />
                                                                 Upload Document
                                                             </button>
 
                                                         </div>
+
+                                                        {documentDrawerOpen && (
+                                                            <form
+                                                                onSubmit={addClientDocument}
+                                                                className="grid gap-3 border-b border-slate-200 bg-slate-50/60 px-5 py-4 sm:grid-cols-2 lg:px-6"
+                                                            >
+                                                                <input
+                                                                    required
+                                                                    placeholder="Document name (e.g. AMC Agreement.pdf)"
+                                                                    value={documentForm.name}
+                                                                    onChange={(e) =>
+                                                                        setDocumentForm({ ...documentForm, name: e.target.value })
+                                                                    }
+                                                                    className="h-10 rounded-lg border border-slate-200 px-3 text-xs"
+                                                                />
+
+                                                                <select
+                                                                    value={documentForm.type}
+                                                                    onChange={(e) =>
+                                                                        setDocumentForm({ ...documentForm, type: e.target.value })
+                                                                    }
+                                                                    className="h-10 rounded-lg border border-slate-200 px-3 text-xs"
+                                                                >
+                                                                    <option value="PDF">PDF</option>
+                                                                    <option value="Excel">Excel</option>
+                                                                    <option value="Word">Word</option>
+                                                                    <option value="Image">Image</option>
+                                                                    <option value="ZIP">ZIP</option>
+                                                                    <option value="Other">Other</option>
+                                                                </select>
+
+                                                                <select
+                                                                    value={documentForm.category}
+                                                                    onChange={(e) =>
+                                                                        setDocumentForm({ ...documentForm, category: e.target.value })
+                                                                    }
+                                                                    className="h-10 rounded-lg border border-slate-200 px-3 text-xs"
+                                                                >
+                                                                    <option value="Agreement">Agreement</option>
+                                                                    <option value="Legal">Legal</option>
+                                                                    <option value="Quotation">Quotation</option>
+                                                                    <option value="Invoice">Invoice</option>
+                                                                    <option value="Installation">Installation</option>
+                                                                    <option value="Other">Other</option>
+                                                                </select>
+
+                                                                <input
+                                                                    placeholder="Size (e.g. 1.4 MB)"
+                                                                    value={documentForm.size}
+                                                                    onChange={(e) =>
+                                                                        setDocumentForm({ ...documentForm, size: e.target.value })
+                                                                    }
+                                                                    className="h-10 rounded-lg border border-slate-200 px-3 text-xs"
+                                                                />
+
+                                                                <div className="flex gap-2 sm:col-span-2">
+                                                                    <button
+                                                                        type="submit"
+                                                                        disabled={savingClientDocument}
+                                                                        className="flex h-9 items-center gap-2 rounded-lg bg-violet-600 px-4 text-xs font-semibold text-white disabled:opacity-60"
+                                                                    >
+                                                                        {savingClientDocument ? "Saving..." : "Save Document"}
+                                                                    </button>
+
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setDocumentDrawerOpen(false)}
+                                                                        className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600"
+                                                                    >
+                                                                        Cancel
+                                                                    </button>
+                                                                </div>
+                                                            </form>
+                                                        )}
+
                                                         {/* Documents Table */}
                                                         <div className="overflow-x-auto">
                                                             <table className="min-w-[950px] w-full">
@@ -5326,6 +5921,7 @@ assignedEmployeeName: "",
 
                                                                                         <button
                                                                                             type="button"
+                                                                                            onClick={() => deleteClientDocument(document.id)}
                                                                                             className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600"
                                                                                             title="Delete document"
                                                                                         >
@@ -5425,6 +6021,12 @@ assignedEmployeeName: "",
                                                 ) : clientDetailsTab === "activity" ? (
 
                                                     <div>
+                                                        {clientActivityLoading && (
+                                                            <div className="px-6 py-3 text-xs text-slate-500">Loading activity...</div>
+                                                        )}
+                                                        {clientActivityError && (
+                                                            <div className="px-6 py-3 text-xs text-rose-600">{clientActivityError}</div>
+                                                        )}
                                                         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5">
 
                                                             <div>
@@ -5546,7 +6148,7 @@ assignedEmployeeName: "",
                                 </div>
                             ) : (
 
-                                <div>
+                                <div className="enterprise-page">
                                     {/* Clients Page Header */}
                                     <section className="flex flex-col gap-5 border-b border-slate-200 pb-6 sm:flex-row sm:items-end sm:justify-between">
                                         <div>
@@ -5627,7 +6229,7 @@ assignedEmployeeName: "",
                                     </section>
 
                                     {/* Filters and Table */}
-                                    <section className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+                                    <section className="enterprise-surface mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
                                         <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 lg:flex-row lg:items-center lg:justify-between lg:px-6">
                                             <div className="relative w-full lg:max-w-[420px]">
                                                 <Search
@@ -5642,7 +6244,7 @@ assignedEmployeeName: "",
                                                         setClientSearch(event.target.value)
                                                     }
                                                     placeholder="Search client, contact, product, city..."
-                                                    className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-400 focus:bg-white focus:ring-4 focus:ring-violet-100"
+                                                    className="enterprise-input h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-400 focus:bg-white focus:ring-4 focus:ring-violet-100"
                                                 />
                                             </div>
 
@@ -5658,7 +6260,7 @@ assignedEmployeeName: "",
                                                         onChange={(event) =>
                                                             setClientStatusFilter(event.target.value)
                                                         }
-                                                        className="h-10 min-w-[145px] appearance-none rounded-xl border border-slate-200 bg-white pl-9 pr-9 text-xs font-semibold text-slate-600 outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                        className="enterprise-input h-10 min-w-[145px] appearance-none rounded-xl border border-slate-200 bg-white pl-9 pr-9 text-xs font-semibold text-slate-600 outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                                                     >
                                                         <option value="All">All Status</option>
                                                         <option value="Active">Active</option>
@@ -5682,7 +6284,7 @@ assignedEmployeeName: "",
                                                         onChange={(event) =>
                                                             setClientAmcFilter(event.target.value)
                                                         }
-                                                        className="h-10 min-w-[155px] appearance-none rounded-xl border border-slate-200 bg-white pl-9 pr-9 text-xs font-semibold text-slate-600 outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                        className="enterprise-input h-10 min-w-[155px] appearance-none rounded-xl border border-slate-200 bg-white pl-9 pr-9 text-xs font-semibold text-slate-600 outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                                                     >
                                                         <option value="All">All AMC Status</option>
                                                         <option value="Paid">Paid</option>
@@ -5713,7 +6315,7 @@ assignedEmployeeName: "",
                                         </div>
 
                                         <div className="overflow-x-auto">
-                                            <table className="min-w-[1200px] w-full">
+                                            <table className="enterprise-table min-w-[1200px] w-full">
                                                 <thead>
                                                     <tr className="border-b border-slate-200 bg-slate-50/80">
                                                         <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400 lg:px-6">
@@ -5758,13 +6360,19 @@ assignedEmployeeName: "",
                                                     {clientsLoading ? (
                                                         <tr>
                                                             <td colSpan="9" className="px-6 py-16 text-center">
-                                                                <RefreshCw
-                                                                    size={28}
-                                                                    className="mx-auto animate-spin text-violet-600"
-                                                                />
-                                                                <p className="mt-3 text-sm font-semibold text-slate-700">
-                                                                    Loading clients...
-                                                                </p>
+                                                                <div
+                                                                    aria-busy="true"
+                                                                    aria-label="Loading clients"
+                                                                    className="mx-auto grid max-w-4xl grid-cols-[1.25fr_1fr_0.9fr_0.7fr_0.8fr_0.45fr_0.9fr_0.7fr] gap-5 animate-pulse"
+                                                                >
+                                                                    {Array.from({ length: 8 }).map((_, index) => (
+                                                                        <div
+                                                                            key={index}
+                                                                            className={`h-5 rounded bg-slate-100 ${index === 0 ? "w-full" : "w-4/5"}`}
+                                                                        />
+                                                                    ))}
+                                                                </div>
+                                                                <span className="sr-only">Loading clients...</span>
                                                             </td>
                                                         </tr>
                                                     ) : clientsError ? (
@@ -5891,7 +6499,7 @@ assignedEmployeeName: "",
 
                                                                 <td className="px-5 py-4">
                                                                     <p className="text-xs font-semibold text-slate-700">
-                                                                     {client.assignedEmployeeName || "Unassigned"}  
+                                                                        {client.assignedEmployeeName || "Unassigned"}
                                                                     </p>
                                                                 </td>
 
@@ -5982,17 +6590,17 @@ assignedEmployeeName: "",
                             )
 
                         ) : activeMenu === "tickets" ? (
-                            <SupportTickets />
+                            <div className="enterprise-page"><SupportTickets /></div>
                         ) : activeMenu === "billing" ? (
-                            <AmcBilling />
+                            <div className="enterprise-page"><AmcBilling /></div>
                         ) : activeMenu === "team" ? (
-                            <Team />
+                            <div className="enterprise-page"><Team /></div>
                         ) : activeMenu === "tasks" ? (
-                            <Tasks />
+                            <div className="enterprise-page"><Tasks /></div>
                         ) : activeMenu === "attendance" ? (
-                            <Attendance />
+                            <div className="enterprise-page"><Attendance /></div>
                         ) : activeMenu === "settings" ? (
-                            <SystemSettings />
+                            <div className="enterprise-page"><SystemSettings /></div>
                         ) : (
                             <div className="flex min-h-[calc(100vh-140px)] items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white/60 p-8">
                                 <div className="text-center">
@@ -6017,10 +6625,10 @@ assignedEmployeeName: "",
                         type="button"
                         aria-label="Close add client form"
                         onClick={closeClientDrawer}
-                        className="fixed inset-0 z-[70] bg-slate-950/40 backdrop-blur-[2px]"
+                        className="enterprise-backdrop fixed inset-0 z-[70] bg-slate-950/40 backdrop-blur-[2px]"
                     />
 
-                    <aside className="fixed inset-y-0 right-0 z-[80] flex w-full max-w-[620px] flex-col bg-white shadow-[-24px_0_70px_rgba(15,23,42,0.18)]">
+                    <aside className="enterprise-drawer fixed inset-y-0 right-0 z-[80] flex w-full max-w-[620px] flex-col bg-white shadow-[-24px_0_70px_rgba(15,23,42,0.18)]">
                         {/* Drawer Header */}
                         <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-5 sm:px-6">
                             <div>
@@ -6042,6 +6650,7 @@ assignedEmployeeName: "",
 
                             <button
                                 type="button"
+                                aria-label="Close client form"
                                 onClick={closeClientDrawer}
                                 className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
                             >
@@ -6184,219 +6793,215 @@ assignedEmployeeName: "",
                                                 className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-800 outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                                             />
                                         </div>
-                                        
+
                                     </div>
                                     {/* ================= CLIENT LOGIN ACCOUNT ================= */}
-{!editingClientId && (
-    <div className="sm:col-span-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        {/* Header */}
-        <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-gradient-to-r from-violet-50 via-white to-cyan-50 px-4 py-3.5">
-            <div className="flex min-w-0 items-center gap-3">
-                <div
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-                        clientForm.createLogin
-                            ? "bg-violet-600 text-white shadow-lg shadow-violet-200"
-                            : "bg-slate-100 text-slate-500"
-                    }`}
-                >
-                    <ShieldCheck size={19} />
-                </div>
+                                    {!editingClientId && (
+                                        <div className="sm:col-span-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                                            {/* Header */}
+                                            <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-gradient-to-r from-violet-50 via-white to-cyan-50 px-4 py-3.5">
+                                                <div className="flex min-w-0 items-center gap-3">
+                                                    <div
+                                                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${clientForm.createLogin
+                                                                ? "bg-violet-600 text-white shadow-lg shadow-violet-200"
+                                                                : "bg-slate-100 text-slate-500"
+                                                            }`}
+                                                    >
+                                                        <ShieldCheck size={19} />
+                                                    </div>
 
-                <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-semibold text-slate-900">
-                            Client Portal Login
-                        </h3>
+                                                    <div className="min-w-0">
+                                                        <div className="flex items-center gap-2">
+                                                            <h3 className="text-sm font-semibold text-slate-900">
+                                                                Client Portal Login
+                                                            </h3>
 
-                        <span
-                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                                clientForm.createLogin
-                                    ? "bg-emerald-100 text-emerald-700"
-                                    : "bg-slate-100 text-slate-500"
-                            }`}
-                        >
-                            {clientForm.createLogin
-                                ? "ENABLED"
-                                : "DISABLED"}
-                        </span>
-                    </div>
+                                                            <span
+                                                                className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${clientForm.createLogin
+                                                                        ? "bg-emerald-100 text-emerald-700"
+                                                                        : "bg-slate-100 text-slate-500"
+                                                                    }`}
+                                                            >
+                                                                {clientForm.createLogin
+                                                                    ? "ENABLED"
+                                                                    : "DISABLED"}
+                                                            </span>
+                                                        </div>
 
-                    <p className="mt-0.5 text-[11px] leading-4 text-slate-500">
-                        Create portal access using the client's email address.
-                    </p>
-                </div>
-            </div>
+                                                        <p className="mt-0.5 text-[11px] leading-4 text-slate-500">
+                                                            Create portal access using the client's email address.
+                                                        </p>
+                                                    </div>
+                                                </div>
 
-            {/* Premium Toggle */}
-            <button
-                type="button"
-                role="switch"
-                aria-checked={clientForm.createLogin}
-                onClick={() =>
-                    setClientForm((current) => ({
-                        ...current,
-                        createLogin: !current.createLogin,
-                        temporaryPassword:
-                            current.createLogin
-                                ? ""
-                                : current.temporaryPassword,
-                    }))
-                }
-                className={`relative h-7 w-12 shrink-0 rounded-full transition-all duration-200 ${
-                    clientForm.createLogin
-                        ? "bg-violet-600 shadow-inner"
-                        : "bg-slate-300"
-                }`}
-            >
-                <span
-                    className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-md transition-all duration-200 ${
-                        clientForm.createLogin
-                            ? "left-6"
-                            : "left-1"
-                    }`}
-                />
-            </button>
-        </div>
+                                                {/* Premium Toggle */}
+                                                <button
+                                                    type="button"
+                                                    role="switch"
+                                                    aria-checked={clientForm.createLogin}
+                                                    onClick={() =>
+                                                        setClientForm((current) => ({
+                                                            ...current,
+                                                            createLogin: !current.createLogin,
+                                                            temporaryPassword:
+                                                                current.createLogin
+                                                                    ? ""
+                                                                    : current.temporaryPassword,
+                                                        }))
+                                                    }
+                                                    className={`relative h-7 w-12 shrink-0 rounded-full transition-all duration-200 ${clientForm.createLogin
+                                                            ? "bg-violet-600 shadow-inner"
+                                                            : "bg-slate-300"
+                                                        }`}
+                                                >
+                                                    <span
+                                                        className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-md transition-all duration-200 ${clientForm.createLogin
+                                                                ? "left-6"
+                                                                : "left-1"
+                                                            }`}
+                                                    />
+                                                </button>
+                                            </div>
 
-        {/* Login Details */}
-        {clientForm.createLogin && (
-            <div className="space-y-4 p-4">
-                <div className="grid gap-4 sm:grid-cols-2">
-                    {/* Login Email */}
-                    <div>
-                        <label className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-700">
-                            <Mail size={14} className="text-violet-600" />
-                            Login Email
-                        </label>
+                                            {/* Login Details */}
+                                            {clientForm.createLogin && (
+                                                <div className="space-y-4 p-4">
+                                                    <div className="grid gap-4 sm:grid-cols-2">
+                                                        {/* Login Email */}
+                                                        <div>
+                                                            <label className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-700">
+                                                                <Mail size={14} className="text-violet-600" />
+                                                                Login Email
+                                                            </label>
 
-                        <div className="flex h-11 items-center rounded-xl border border-slate-200 bg-slate-50 px-3">
-                            <Mail
-                                size={16}
-                                className="mr-2 shrink-0 text-slate-400"
-                            />
+                                                            <div className="flex h-11 items-center rounded-xl border border-slate-200 bg-slate-50 px-3">
+                                                                <Mail
+                                                                    size={16}
+                                                                    className="mr-2 shrink-0 text-slate-400"
+                                                                />
 
-                            <span className="min-w-0 truncate text-xs font-medium text-slate-700">
-                                {clientForm.email.trim() ||
-                                    "Enter client email above"}
-                            </span>
-                        </div>
+                                                                <span className="min-w-0 truncate text-xs font-medium text-slate-700">
+                                                                    {clientForm.email.trim() ||
+                                                                        "Enter client email above"}
+                                                                </span>
+                                                            </div>
 
-                        {!clientForm.email.trim() && (
-                            <p className="mt-1.5 text-[10px] font-medium text-amber-600">
-                                Email is required to create login access.
-                            </p>
-                        )}
-                    </div>
+                                                            {!clientForm.email.trim() && (
+                                                                <p className="mt-1.5 text-[10px] font-medium text-amber-600">
+                                                                    Email is required to create login access.
+                                                                </p>
+                                                            )}
+                                                        </div>
 
-                    {/* Temporary Password */}
-                    <div>
-                        <label className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-700">
-                            <Shield size={14} className="text-violet-600" />
-                            Temporary Password
-                        </label>
+                                                        {/* Temporary Password */}
+                                                        <div>
+                                                            <label className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-700">
+                                                                <Shield size={14} className="text-violet-600" />
+                                                                Temporary Password
+                                                            </label>
 
-                        <div className="flex h-11 overflow-hidden rounded-xl border border-slate-200 bg-white transition focus-within:border-violet-400 focus-within:ring-4 focus-within:ring-violet-100">
-                            <input
-                                type="text"
-                                name="temporaryPassword"
-                                value={clientForm.temporaryPassword}
-                                onChange={handleClientInputChange}
-                                placeholder="Auto-generated if blank"
-                                autoComplete="new-password"
-                                className="min-w-0 flex-1 bg-transparent px-3 text-xs font-medium text-slate-800 outline-none placeholder:text-slate-400"
-                            />
+                                                            <div className="flex h-11 overflow-hidden rounded-xl border border-slate-200 bg-white transition focus-within:border-violet-400 focus-within:ring-4 focus-within:ring-violet-100">
+                                                                <input
+                                                                    type="text"
+                                                                    name="temporaryPassword"
+                                                                    value={clientForm.temporaryPassword}
+                                                                    onChange={handleClientInputChange}
+                                                                    placeholder="Auto-generated if blank"
+                                                                    autoComplete="new-password"
+                                                                    className="min-w-0 flex-1 bg-transparent px-3 text-xs font-medium text-slate-800 outline-none placeholder:text-slate-400"
+                                                                />
 
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    const upper =
-                                        "ABCDEFGHJKLMNPQRSTUVWXYZ";
-                                    const lower =
-                                        "abcdefghijkmnopqrstuvwxyz";
-                                    const numbers =
-                                        "23456789";
-                                    const symbols =
-                                        "@#$!";
-                                    const all =
-                                        upper +
-                                        lower +
-                                        numbers +
-                                        symbols;
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        const upper =
+                                                                            "ABCDEFGHJKLMNPQRSTUVWXYZ";
+                                                                        const lower =
+                                                                            "abcdefghijkmnopqrstuvwxyz";
+                                                                        const numbers =
+                                                                            "23456789";
+                                                                        const symbols =
+                                                                            "@#$!";
+                                                                        const all =
+                                                                            upper +
+                                                                            lower +
+                                                                            numbers +
+                                                                            symbols;
 
-                                    const randomFrom = (characters) =>
-                                        characters[
-                                            crypto.getRandomValues(
-                                                new Uint32Array(1)
-                                            )[0] % characters.length
-                                        ];
+                                                                        const randomFrom = (characters) =>
+                                                                            characters[
+                                                                            crypto.getRandomValues(
+                                                                                new Uint32Array(1)
+                                                                            )[0] % characters.length
+                                                                            ];
 
-                                    const generatedPassword = [
-                                        randomFrom(upper),
-                                        randomFrom(lower),
-                                        randomFrom(numbers),
-                                        randomFrom(symbols),
-                                        ...Array.from(
-                                            { length: 6 },
-                                            () => randomFrom(all)
-                                        ),
-                                    ]
-                                        .sort(() => Math.random() - 0.5)
-                                        .join("");
+                                                                        const generatedPassword = [
+                                                                            randomFrom(upper),
+                                                                            randomFrom(lower),
+                                                                            randomFrom(numbers),
+                                                                            randomFrom(symbols),
+                                                                            ...Array.from(
+                                                                                { length: 6 },
+                                                                                () => randomFrom(all)
+                                                                            ),
+                                                                        ]
+                                                                            .sort(() => Math.random() - 0.5)
+                                                                            .join("");
 
-                                    setClientForm((current) => ({
-                                        ...current,
-                                        temporaryPassword:
-                                            generatedPassword,
-                                    }));
-                                }}
-                                className="flex shrink-0 items-center gap-1.5 border-l border-slate-200 bg-slate-50 px-3 text-[11px] font-semibold text-violet-700 transition hover:bg-violet-50"
-                            >
-                                <RefreshCw size={13} />
-                                Generate
-                            </button>
-                        </div>
+                                                                        setClientForm((current) => ({
+                                                                            ...current,
+                                                                            temporaryPassword:
+                                                                                generatedPassword,
+                                                                        }));
+                                                                    }}
+                                                                    className="flex shrink-0 items-center gap-1.5 border-l border-slate-200 bg-slate-50 px-3 text-[11px] font-semibold text-violet-700 transition hover:bg-violet-50"
+                                                                >
+                                                                    <RefreshCw size={13} />
+                                                                    Generate
+                                                                </button>
+                                                            </div>
 
-                        <p className="mt-1.5 text-[10px] text-slate-400">
-                            Leave blank to let the server generate it.
-                        </p>
-                    </div>
-                </div>
+                                                            <p className="mt-1.5 text-[10px] text-slate-400">
+                                                                Leave blank to let the server generate it.
+                                                            </p>
+                                                        </div>
+                                                    </div>
 
-                {/* Information Strip */}
-                <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/70 px-3.5 py-3">
-                    <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-700">
-                        <ShieldCheck size={15} />
-                    </div>
+                                                    {/* Information Strip */}
+                                                    <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/70 px-3.5 py-3">
+                                                        <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-700">
+                                                            <ShieldCheck size={15} />
+                                                        </div>
 
-                    <div>
-                        <p className="text-[11px] font-semibold text-blue-900">
-                            Secure first login
-                        </p>
+                                                        <div>
+                                                            <p className="text-[11px] font-semibold text-blue-900">
+                                                                Secure first login
+                                                            </p>
 
-                        <p className="mt-0.5 text-[10px] leading-4 text-blue-700">
-                            The client will log in with this temporary
-                            password and will be required to change it
-                            after the first login.
-                        </p>
-                    </div>
-                </div>
-            </div>
-        )}
+                                                            <p className="mt-0.5 text-[10px] leading-4 text-blue-700">
+                                                                The client will log in with this temporary
+                                                                password and will be required to change it
+                                                                after the first login.
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
 
-        {!clientForm.createLogin && (
-            <div className="flex items-center gap-3 px-4 py-3.5">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
-                    <AlertCircle size={15} />
-                </div>
+                                            {!clientForm.createLogin && (
+                                                <div className="flex items-center gap-3 px-4 py-3.5">
+                                                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+                                                        <AlertCircle size={15} />
+                                                    </div>
 
-                <p className="text-[11px] leading-4 text-slate-500">
-                    The client record will be created without portal
-                    access. Login can be enabled later.
-                </p>
-            </div>
-        )}
-    </div>
-)}
+                                                    <p className="text-[11px] leading-4 text-slate-500">
+                                                        The client record will be created without portal
+                                                        access. Login can be enabled later.
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
 
                                     <div>
                                         <label className="mb-2 block text-xs font-semibold text-slate-700">
@@ -6595,64 +7200,64 @@ assignedEmployeeName: "",
                                             Assigned Employee
                                         </label>
 
-                                       <select
-    name="assignedEmployeeId"
-    value={
-        clientForm.assignedEmployeeId ||
-        ""
-    }
-    onChange={(event) => {
-        const selectedEmployee =
-            employees.find(
-                (employee) =>
-                    String(employee.id) ===
-                    String(event.target.value)
-            );
+                                        <select
+                                            name="assignedEmployeeId"
+                                            value={
+                                                clientForm.assignedEmployeeId ||
+                                                ""
+                                            }
+                                            onChange={(event) => {
+                                                const selectedEmployee =
+                                                    employees.find(
+                                                        (employee) =>
+                                                            String(employee.id) ===
+                                                            String(event.target.value)
+                                                    );
 
-        setClientForm((current) => ({
-            ...current,
+                                                setClientForm((current) => ({
+                                                    ...current,
 
-            assignedEmployeeId:
-                event.target.value,
+                                                    assignedEmployeeId:
+                                                        event.target.value,
 
-            assignedEmployeeCode:
-                selectedEmployee?.employeeCode ||
-                "",
+                                                    assignedEmployeeCode:
+                                                        selectedEmployee?.employeeCode ||
+                                                        "",
 
-            assignedEmployeeName:
-                selectedEmployee?.name ||
-                "",
-        }));
-    }}
-    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
->
-    <option value="">
-        Unassigned
-    </option>
+                                                    assignedEmployeeName:
+                                                        selectedEmployee?.name ||
+                                                        "",
+                                                }));
+                                            }}
+                                            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                        >
+                                            <option value="">
+                                                Unassigned
+                                            </option>
 
-    {employeesLoading && (
-        <option disabled>
-            Loading employees...
-        </option>
-    )}
+                                            {employeesLoading && (
+                                                <option disabled>
+                                                    Loading employees...
+                                                </option>
+                                            )}
 
-    {employees.map((employee) => (
-        <option
-            key={
-                employee.id ||
-                employee._id
-            }
-            value={
-                employee.id ||
-                employee._id
-            }
-        >
-            {employee.employeeCode
-                ? `${employee.employeeCode} - ${employee.name}`
-                : employee.name}
-        </option>
-    ))}
-</select>
+                                            {employees.map((employee) => (
+                                                <option
+                                                    key={
+                                                        employee.id ||
+                                                        employee._id
+                                                    }
+                                                    value={
+                                                        employee.id ||
+                                                        employee._id
+                                                    }
+                                                >
+                                                    {employee.employeeCode
+                                                        ? `${employee.employeeCode} - ${employee.name}`
+                                                        : employee.name}
+                                                </option>
+                                            ))}
+                                        </select>
 
                                         {employeesError && (
                                             <div className="mt-2 flex items-center justify-between gap-3">
@@ -6715,27 +7320,27 @@ assignedEmployeeName: "",
                                         </>
                                     )}
                                 </button>
-                                
+
                             </div>
-                            
+
                         </form>
-                       
+
                     </aside>
-                    
+
                 </>
-                
+
             )}{/* Assign Product Drawer */}
-            
+
             {productDrawerOpen && selectedClient && (
                 <>
                     <button
                         type="button"
                         aria-label="Close product form"
                         onClick={closeProductDrawer}
-                        className="fixed inset-0 z-[90] bg-slate-950/40 backdrop-blur-[2px]"
+                        className="enterprise-backdrop fixed inset-0 z-[90] bg-slate-950/40 backdrop-blur-[2px]"
                     />
 
-                    <aside className="fixed inset-y-0 right-0 z-[100] flex w-full max-w-[620px] flex-col bg-white shadow-[-24px_0_70px_rgba(15,23,42,0.18)]">
+                    <aside className="enterprise-drawer fixed inset-y-0 right-0 z-[100] flex w-full max-w-[620px] flex-col bg-white shadow-[-24px_0_70px_rgba(15,23,42,0.18)]">
                         <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-5 sm:px-6">
                             <div>
                                 <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-violet-600">
@@ -6762,6 +7367,7 @@ assignedEmployeeName: "",
 
                             <button
                                 type="button"
+                                aria-label="Close product form"
                                 disabled={savingProduct}
                                 onClick={closeProductDrawer}
                                 className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
@@ -6999,6 +7605,120 @@ assignedEmployeeName: "",
                         </form>
                     </aside>
                 </>
+            )}
+
+            {paymentDrawerOpen && paymentTarget && (
+                <div className="enterprise-backdrop fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/50 px-4">
+                    <form
+                        onSubmit={submitRecordPayment}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="payment-dialog-title"
+                        className="enterprise-modal w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl"
+                    >
+                        <h3 id="payment-dialog-title" className="text-sm font-semibold text-slate-950">
+                            Record Payment — {paymentTarget.invoiceNo}
+                        </h3>
+
+                        <p className="mt-1 text-xs text-slate-500">
+                            {paymentTarget.product} · Balance due:{" "}
+                            {formatCurrency(
+                                Math.max(
+                                    (paymentTarget.amount || 0) - (paymentTarget.paidAmount || 0),
+                                    0
+                                )
+                            )}
+                        </p>
+
+                        <div className="mt-4 grid gap-3">
+                            <div>
+                                <label className="mb-1 block text-xs font-semibold text-slate-700">
+                                    Amount *
+                                </label>
+                                <input
+                                    required
+                                    type="number"
+                                    min="0.01"
+                                    step="0.01"
+                                    value={paymentForm.amount}
+                                    onChange={(e) =>
+                                        setPaymentForm({ ...paymentForm, amount: e.target.value })
+                                    }
+                                    className="enterprise-input h-10 w-full rounded-lg border border-slate-200 px-3 text-sm"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="mb-1 block text-xs font-semibold text-slate-700">
+                                    Payment Date *
+                                </label>
+                                <input
+                                    required
+                                    type="date"
+                                    value={paymentForm.paymentDate}
+                                    onChange={(e) =>
+                                        setPaymentForm({ ...paymentForm, paymentDate: e.target.value })
+                                    }
+                                    className="enterprise-input h-10 w-full rounded-lg border border-slate-200 px-3 text-sm"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="mb-1 block text-xs font-semibold text-slate-700">
+                                    Mode
+                                </label>
+                                <select
+                                    value={paymentForm.mode}
+                                    onChange={(e) =>
+                                        setPaymentForm({ ...paymentForm, mode: e.target.value })
+                                    }
+                                    className="enterprise-input h-10 w-full rounded-lg border border-slate-200 px-3 text-sm"
+                                >
+                                    <option value="Cash">Cash</option>
+                                    <option value="Bank Transfer">Bank Transfer</option>
+                                    <option value="UPI">UPI</option>
+                                    <option value="Cheque">Cheque</option>
+                                    <option value="Card">Card</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="mb-1 block text-xs font-semibold text-slate-700">
+                                    Reference No.
+                                </label>
+                                <input
+                                    value={paymentForm.referenceNo}
+                                    onChange={(e) =>
+                                        setPaymentForm({ ...paymentForm, referenceNo: e.target.value })
+                                    }
+                                    className="enterprise-input h-10 w-full rounded-lg border border-slate-200 px-3 text-sm"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="mt-5 flex justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setPaymentDrawerOpen(false);
+                                    setPaymentTarget(null);
+                                }}
+                                className="flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
+                            >
+                                Cancel
+                            </button>
+
+                            <button
+                                type="submit"
+                                disabled={savingPayment}
+                                className="flex h-10 items-center justify-center gap-2 rounded-xl bg-violet-600 px-5 text-sm font-semibold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                {savingPayment ? "Saving..." : "Save Payment"}
+                            </button>
+                        </div>
+                    </form>
+                </div>
             )}
         </div >
     );

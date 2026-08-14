@@ -86,6 +86,15 @@ taskId: {
   type: mongoose.Schema.Types.ObjectId,
   default: null,
 },
+taskCode: {
+  type: String,
+  default: "",
+},
+
+taskTitle: {
+  type: String,
+  default: "",
+},
 
 ticketId: {
   type: mongoose.Schema.Types.ObjectId,

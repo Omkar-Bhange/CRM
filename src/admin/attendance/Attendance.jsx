@@ -241,26 +241,28 @@ function SummaryCard({
     descriptionClass = "text-slate-500",
 }) {
     return (
-        <div className="rounded-2xl border border-slate-200 bg-white p-5">
-            <div className="flex items-start justify-between gap-4">
+        <div className="group relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.045)] transition-all duration-300 hover:-translate-y-1 hover:border-violet-200 hover:shadow-[0_16px_45px_rgba(15,23,42,0.09)]">
+            <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-slate-50 transition duration-300 group-hover:scale-110 group-hover:bg-violet-50" />
+
+            <div className="relative flex items-start justify-between gap-4">
                 <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
                         {label}
                     </p>
 
-                    <p className="mt-2 text-2xl font-semibold text-slate-950">
+                    <p className="mt-2 text-3xl font-bold tracking-[-0.04em] text-slate-950">
                         {value}
                     </p>
                 </div>
 
                 <div
-                    className={`flex h-10 w-10 items-center justify-center rounded-xl ${iconClass}`}
+                    className={`flex h-11 w-11 items-center justify-center rounded-2xl shadow-sm ${iconClass}`}
                 >
                     <Icon size={19} />
                 </div>
             </div>
 
-            <p className={`mt-4 text-xs ${descriptionClass}`}>
+            <p className={`relative mt-4 text-[11px] font-medium ${descriptionClass}`}>
                 {description}
             </p>
         </div>
@@ -270,209 +272,209 @@ function SummaryCard({
 export default function Attendance() {
     const API_URL = "http://localhost:5000";
 
-const [employees, setEmployees] = useState([]);
+    const [employees, setEmployees] = useState([]);
 
 
 
-const [attendanceSummary, setAttendanceSummary] = useState({
-  total: 0,
-  present: 0,
-  absent: 0,
-  late: 0,
-  halfDay: 0,
-  leave: 0,
-  working: 0,
-  break: 0,
-  free: 0,
-  loggedOut: 0,
-});
+    const [attendanceSummary, setAttendanceSummary] = useState({
+        total: 0,
+        present: 0,
+        absent: 0,
+        late: 0,
+        halfDay: 0,
+        leave: 0,
+        working: 0,
+        break: 0,
+        free: 0,
+        loggedOut: 0,
+    });
 
-const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(true);
 
-const [error, setError] = useState("");
+    const [error, setError] = useState("");
 
-const getAuthToken = () => {
-    return (
-        localStorage.getItem("client-connect-token") ||
-        sessionStorage.getItem("client-connect-token") ||
-        ""
-    );
-};
-const getEmployee = (employeeId) => {
-    return employees.find(
-        (employee) =>
-            employee._id === employeeId ||
-            employee.id === employeeId
-    );
-};
-
-const normalizeEmployee = (employee = {}) => ({
-    _id: employee._id,
-    id: employee._id,
-
-    employeeCode: employee.employeeCode || "",
-
-    name: employee.name || "",
-
-    department: employee.department || "",
-
-    role: employee.role || "",
-
-    initials:
-        employee.initials ||
-        employee.name
-            ?.split(" ")
-            .map((x) => x[0])
-            .join("")
-            .substring(0, 2)
-            .toUpperCase(),
-
-    status: employee.status || "Free",
-});
-
-const loadEmployees = async () => {
-    try {
-        const response = await fetch(
-            `${API_URL}/api/employee/employees`,
-            {
-                headers: {
-                    Authorization: `Bearer ${getAuthToken()}`,
-                    "Content-Type": "application/json",
-                },
-            }
+    const getAuthToken = () => {
+        return (
+            localStorage.getItem("client-connect-token") ||
+            sessionStorage.getItem("client-connect-token") ||
+            ""
         );
+    };
+    const getEmployee = (employeeId) => {
+        return employees.find(
+            (employee) =>
+                employee._id === employeeId ||
+                employee.id === employeeId
+        );
+    };
 
-        const result = await response.json();
+    const normalizeEmployee = (employee = {}) => ({
+        _id: employee._id,
+        id: employee._id,
 
-        if (!response.ok || !result.success) {
-            throw new Error(
-                result.message || "Failed to load employees."
+        employeeCode: employee.employeeCode || "",
+
+        name: employee.name || "",
+
+        department: employee.department || "",
+
+        role: employee.role || "",
+
+        initials:
+            employee.initials ||
+            employee.name
+                ?.split(" ")
+                .map((x) => x[0])
+                .join("")
+                .substring(0, 2)
+                .toUpperCase(),
+
+        status: employee.status || "Free",
+    });
+
+    const loadEmployees = async () => {
+        try {
+            const response = await fetch(
+                `${API_URL}/api/employee/employees`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${getAuthToken()}`,
+                        "Content-Type": "application/json",
+                    },
+                }
             );
-        }
 
-        const employeeData = (result.data || []).map(normalizeEmployee);
+            const result = await response.json();
 
-        setEmployees(employeeData);
-    } catch (err) {
-        console.error("Load Employees:", err);
-        setError(err.message);
-    }
-};
-
-const loadAttendance = async () => {
-    try {
-        const response = await fetch(
-            `${API_URL}/api/admin/attendance`,
-            {
-                headers: {
-                    Authorization: `Bearer ${getAuthToken()}`,
-                    "Content-Type": "application/json",
-                },
+            if (!response.ok || !result.success) {
+                throw new Error(
+                    result.message || "Failed to load employees."
+                );
             }
-        );
 
-        const result = await response.json();
+            const employeeData = (result.data || []).map(normalizeEmployee);
 
-        if (!response.ok || !result.success) {
-            throw new Error(
-                result.message || "Failed to load attendance."
+            setEmployees(employeeData);
+        } catch (err) {
+            console.error("Load Employees:", err);
+            setError(err.message);
+        }
+    };
+
+    const loadAttendance = async () => {
+        try {
+            const response = await fetch(
+                `${API_URL}/api/admin/attendance`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${getAuthToken()}`,
+                        "Content-Type": "application/json",
+                    },
+                }
             );
-        }
 
-        setAttendance(result.data || []);
-    } catch (err) {
-        console.error("Load Attendance:", err);
-        setError(err.message);
-    }
-};
+            const result = await response.json();
 
-
-const loadSummary = async () => {
-    try {
-        const response = await fetch(
-            `${API_URL}/api/admin/attendance-summary`,
-            {
-                headers: {
-                    Authorization: `Bearer ${getAuthToken()}`,
-                    "Content-Type": "application/json",
-                },
+            if (!response.ok || !result.success) {
+                throw new Error(
+                    result.message || "Failed to load attendance."
+                );
             }
-        );
 
-        const result = await response.json();
-
-        if (response.ok && result.success) {
-            setAttendanceSummary(result.data);
+            setAttendance(result.data || []);
+        } catch (err) {
+            console.error("Load Attendance:", err);
+            setError(err.message);
         }
-    } catch (err) {
-        console.error("Load Summary:", err);
-    }
-};
-const loadTodayAttendance = async () => {
-    try {
-        const response = await fetch(
-            `${API_URL}/api/admin/attendance/today/all`,
-            {
-                headers: {
-                    Authorization: `Bearer ${getAuthToken()}`,
-                    "Content-Type": "application/json",
-                },
-            }
-        );
+    };
 
-        const result = await response.json();
 
-        if (!response.ok || !result.success) {
-            throw new Error(
-                result.message || "Failed to load attendance."
+    const loadSummary = async () => {
+        try {
+            const response = await fetch(
+                `${API_URL}/api/admin/attendance-summary`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${getAuthToken()}`,
+                        "Content-Type": "application/json",
+                    },
+                }
             );
+
+            const result = await response.json();
+
+            if (response.ok && result.success) {
+                setAttendanceSummary(result.data);
+            }
+        } catch (err) {
+            console.error("Load Summary:", err);
         }
+    };
+    const loadTodayAttendance = async () => {
+        try {
+            const response = await fetch(
+                `${API_URL}/api/admin/attendance/today/all`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${getAuthToken()}`,
+                        "Content-Type": "application/json",
+                    },
+                }
+            );
 
-        setAttendance(result.data || []);
+            const result = await response.json();
 
-        setAttendanceSummary(result.summary || {
-            total: 0,
-            present: 0,
-            absent: 0,
-            late: 0,
-            halfDay: 0,
-            leave: 0,
-            working: 0,
-            break: 0,
-            free: 0,
-            loggedOut: 0,
-        });
+            if (!response.ok || !result.success) {
+                throw new Error(
+                    result.message || "Failed to load attendance."
+                );
+            }
 
-    } catch (err) {
-        console.error(err);
-        setError(err.message);
-    }
-};
+            setAttendance(result.data || []);
 
-const loadLeaveRequests = async () => {
-    try {
-        const response = await fetch(`${API_URL}/api/admin/leave`, {
-            headers: { Authorization: `Bearer ${getAuthToken()}` },
-        });
-        const result = await response.json();
-        if (!response.ok || !result.success) {
-            throw new Error(result.message || "Failed to load leave requests.");
+            setAttendanceSummary(result.summary || {
+                total: 0,
+                present: 0,
+                absent: 0,
+                late: 0,
+                halfDay: 0,
+                leave: 0,
+                working: 0,
+                break: 0,
+                free: 0,
+                loggedOut: 0,
+            });
+
+        } catch (err) {
+            console.error(err);
+            setError(err.message);
         }
-        setLeaveRequests((result.data || []).map((leave) => ({
-            ...leave,
-            id: leave._id,
-            employeeId: String(leave.employeeId),
-        })));
-    } catch (err) {
-        setError(err.message);
-    }
-};
+    };
+
+    const loadLeaveRequests = async () => {
+        try {
+            const response = await fetch(`${API_URL}/api/admin/leave`, {
+                headers: { Authorization: `Bearer ${getAuthToken()}` },
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || "Failed to load leave requests.");
+            }
+            setLeaveRequests((result.data || []).map((leave) => ({
+                ...leave,
+                id: leave._id,
+                employeeId: String(leave.employeeId),
+            })));
+        } catch (err) {
+            setError(err.message);
+        }
+    };
 
 
     const [activeTab, setActiveTab] = useState("today");
     const [attendance, setAttendance] = useState([]);
 
-const [leaveRequests, setLeaveRequests] = useState([]);
+    const [leaveRequests, setLeaveRequests] = useState([]);
 
     const [searchValue, setSearchValue] = useState("");
     const [statusFilter, setStatusFilter] = useState("All");
@@ -497,42 +499,42 @@ const [leaveRequests, setLeaveRequests] = useState([]);
     );
 
     useEffect(() => {
-    const init = async () => {
-        setLoading(true);
+        const init = async () => {
+            setLoading(true);
 
-        await Promise.all([loadEmployees(), loadTodayAttendance(), loadLeaveRequests()]);
+            await Promise.all([loadEmployees(), loadTodayAttendance(), loadLeaveRequests()]);
 
-        setLoading(false);
-    };
+            setLoading(false);
+        };
 
-    init();
-}, []);
-   const attendanceRows = useMemo(() => {
-    return attendance.filter((record) => {
-        const search = searchValue.trim().toLowerCase();
+        init();
+    }, []);
+    const attendanceRows = useMemo(() => {
+        return attendance.filter((record) => {
+            const search = searchValue.trim().toLowerCase();
 
-        const matchesSearch =
-            !search ||
-            [
-                record.employeeName,
-               record.employeeCode,
-                record.role,
-                record.department,
-                record.attendanceStatus,
-                record.workStatus,
-            ].some((value) =>
-                String(value || "")
-                    .toLowerCase()
-                    .includes(search)
-            );
+            const matchesSearch =
+                !search ||
+                [
+                    record.employeeName,
+                    record.employeeCode,
+                    record.role,
+                    record.department,
+                    record.attendanceStatus,
+                    record.workStatus,
+                ].some((value) =>
+                    String(value || "")
+                        .toLowerCase()
+                        .includes(search)
+                );
 
-        const matchesStatus =
-            statusFilter === "All" ||
-            record.attendanceStatus === statusFilter;
+            const matchesStatus =
+                statusFilter === "All" ||
+                record.attendanceStatus === statusFilter;
 
-        return matchesSearch && matchesStatus;
-    });
-}, [attendance, searchValue, statusFilter]);
+            return matchesSearch && matchesStatus;
+        });
+    }, [attendance, searchValue, statusFilter]);
 
     const summary = useMemo(() => {
         const present = attendance.filter((record) =>
@@ -694,65 +696,98 @@ const [leaveRequests, setLeaveRequests] = useState([]);
     };
 
     if (loading) {
-    return (
-        <div className="flex items-center justify-center h-64">
-            Loading attendance...
-        </div>
-    );
-}
+        return (
+            <div className="flex items-center justify-center h-64">
+                Loading attendance...
+            </div>
+        );
+    }
 
-if (error) {
-    return (
-        <div className="p-6 text-red-600">
-            {error}
-        </div>
-    );
-}
-    return (
-        <div>
-            <div className="flex flex-col gap-4 border-b border-slate-200 pb-6 lg:flex-row lg:items-end lg:justify-between">
-                <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-violet-600">
-                        Employee Management
-                    </p>
+    if (error) {
+        return (
+            <div className="p-6 text-red-600">
+                {error}
+            </div>
+        );
+    }
+return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-violet-50/30">
+        <div className="enterprise-page mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
+        <section className="relative overflow-hidden rounded-3xl border border-slate-200/80 bg-white px-6 py-6 shadow-[0_12px_40px_rgba(15,23,42,0.06)] sm:px-7 lg:px-8">
 
-                    <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-950">
-                        Attendance & Leave
-                    </h2>
+    <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-violet-100/70 blur-3xl" />
+    <div className="pointer-events-none absolute -bottom-32 left-1/3 h-64 w-64 rounded-full bg-blue-100/50 blur-3xl" />
 
-                    <p className="mt-1 text-xs text-slate-500">
-                        Track daily attendance, working hours, late arrivals
-                        and employee leave requests.
-                    </p>
-                </div>
+    <div className="relative flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
 
-                <div className="flex flex-wrap items-center gap-2">
-                    <button
-                        type="button"
-                        className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
-                    >
-                        <Download size={15} />
-                        Export Report
-                    </button>
-
-                    <button
-                        type="button"
-                        onClick={() => setActiveTab("leaves")}
-                        className="relative flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700"
-                    >
-                        <CalendarDays size={15} />
-                        Leave Requests
-
-                        {pendingLeaveCount > 0 && (
-                            <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1 text-[9px] font-bold text-violet-700">
-                                {pendingLeaveCount}
-                            </span>
-                        )}
-                    </button>
-                </div>
+        <div className="flex items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-600/20">
+                <UserCheck size={21} />
             </div>
 
-            <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            <div>
+                <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-600">
+                        Employee Management
+                    </span>
+
+                    <span className="h-1 w-1 rounded-full bg-slate-300" />
+
+                    <span className="text-[10px] font-semibold text-slate-400">
+                        Attendance Control
+                    </span>
+                </div>
+
+                <h1 className="mt-2 text-2xl font-bold tracking-[-0.035em] text-slate-950 sm:text-[28px]">
+                    Attendance & Leave
+                </h1>
+
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                    Monitor employee presence, login and logout activity,
+                    working hours, late arrivals and leave requests from one workspace.
+                </p>
+            </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+
+            <div className="hidden rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-right xl:block">
+                <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                    Total Employees
+                </p>
+
+                <p className="mt-0.5 text-lg font-bold text-slate-900">
+                    {attendanceSummary.total || employees.length}
+                </p>
+            </div>
+
+            <button
+                type="button"
+                className="flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-600 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50"
+            >
+                <Download size={15} />
+                Export Report
+            </button>
+
+            <button
+                type="button"
+                onClick={() => setActiveTab("leaves")}
+                className="relative flex h-11 items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 text-xs font-bold text-white shadow-lg shadow-violet-600/20 transition-all hover:-translate-y-0.5 hover:shadow-xl"
+            >
+                <CalendarDays size={15} />
+                Leave Requests
+
+                {pendingLeaveCount > 0 && (
+                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1 text-[9px] font-bold text-violet-700">
+                        {pendingLeaveCount}
+                    </span>
+                )}
+            </button>
+        </div>
+    </div>
+</section>
+
+            <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
                 <SummaryCard
                     label="Present"
                     value={attendanceSummary.present}
@@ -773,7 +808,7 @@ if (error) {
 
                 <SummaryCard
                     label="Late"
-                   value={attendanceSummary.late}
+                    value={attendanceSummary.late}
                     description={`After ${formatTime(officeSettings.lateAfter)}`}
                     icon={Clock3}
                     iconClass="bg-amber-100 text-amber-700"
@@ -782,7 +817,7 @@ if (error) {
 
                 <SummaryCard
                     label="On Leave"
-                   value={attendanceSummary.leave}
+                    value={attendanceSummary.leave}
                     description="Approved leave today"
                     icon={CalendarDays}
                     iconClass="bg-blue-100 text-blue-700"
@@ -799,9 +834,9 @@ if (error) {
                 />
             </div>
 
-            <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+       <div className="enterprise-surface mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white">
                 <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="flex gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1">
+                   <div className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-slate-50 p-1">
                         {[
                             {
                                 id: "today",
@@ -824,11 +859,11 @@ if (error) {
                                 key={tab.id}
                                 type="button"
                                 onClick={() => setActiveTab(tab.id)}
-                                className={`whitespace-nowrap rounded-lg px-4 py-2 text-[11px] font-semibold transition ${
-                                    activeTab === tab.id
-                                        ? "bg-white text-slate-950 shadow-sm"
-                                        : "text-slate-500 hover:text-slate-800"
-                                }`}
+                                className={`relative whitespace-nowrap rounded-lg px-4 py-2.5 text-[11px] font-bold transition-all ${
+    activeTab === tab.id
+        ? "bg-white text-violet-700 shadow-sm ring-1 ring-slate-200"
+        : "text-slate-500 hover:bg-white/70 hover:text-slate-800"
+}`}
                             >
                                 {tab.label}
                             </button>
@@ -850,7 +885,7 @@ if (error) {
                                         setSearchValue(event.target.value)
                                     }
                                     placeholder="Search employee..."
-                                    className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-xs text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-violet-400 focus:ring-4 focus:ring-violet-100 sm:w-64"
+                                    className="enterprise-input h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-xs text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-violet-400 focus:ring-4 focus:ring-violet-100 sm:w-64"
                                 />
                             </div>
 
@@ -859,11 +894,10 @@ if (error) {
                                 onClick={() =>
                                     setFiltersOpen((current) => !current)
                                 }
-                                className={`flex h-10 items-center justify-center gap-2 rounded-xl border px-4 text-xs font-semibold transition ${
-                                    filtersOpen || statusFilter !== "All"
+                                className={`flex h-10 items-center justify-center gap-2 rounded-xl border px-4 text-xs font-semibold transition ${filtersOpen || statusFilter !== "All"
                                         ? "border-violet-200 bg-violet-50 text-violet-700"
                                         : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                                }`}
+                                    }`}
                             >
                                 <Filter size={15} />
                                 Filters
@@ -889,7 +923,7 @@ if (error) {
                                                     event.target.value
                                                 )
                                             }
-                                            className="h-10 min-w-44 rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                            className="enterprise-input h-10 min-w-44 rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                                         >
                                             <option>All</option>
                                             <option>Present</option>
@@ -915,31 +949,31 @@ if (error) {
                         )}
 
                         <div className="overflow-x-auto">
-                            <table className="min-w-[1100px] w-full">
+                           <table className="w-full min-w-[1160px]">
                                 <thead>
-                                    <tr className="border-b border-slate-200 bg-slate-50/80">
-                                        <th className="px-5 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                    <tr className="border-b border-slate-200 bg-slate-50/90">
+                                        <th className="px-5 py-3 text-left text-[10px] font-bolduppercase tracking-[0.14em] text-slate-400">
                                             Employee
                                         </th>
-                                        <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                        <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
                                             Attendance
                                         </th>
-                                        <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                        <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
                                             Login
                                         </th>
-                                        <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                        <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
                                             Logout
                                         </th>
-                                        <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                        <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
                                             Break
                                         </th>
-                                        <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                        <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
                                             Working hours
                                         </th>
-                                        <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                        <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
                                             Current status
                                         </th>
-                                        <th className="px-5 py-3 text-right text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                        <th className="px-5 py-3 text-right text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
                                             Actions
                                         </th>
                                     </tr>
@@ -949,21 +983,21 @@ if (error) {
                                     {attendanceRows.map((record) => (
                                         <tr
                                             key={record.id}
-                                            className="transition hover:bg-slate-50/70"
+                                            className="group transition-all hover:bg-violet-50/35"
                                         >
                                             <td className="px-5 py-4">
                                                 <div className="flex items-center gap-3">
-                                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-xs font-bold text-white">
-                                                {record.employeeName
-    ?.split(" ")
-    .map(x => x[0])
-    .join("")
-    .substring(0,2)
-    .toUpperCase()}
+                                                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-slate-800 to-slate-950 text-xs font-bold text-white shadow-sm">
+                                                        {record.employeeName
+                                                            ?.split(" ")
+                                                            .map(x => x[0])
+                                                            .join("")
+                                                            .substring(0, 2)
+                                                            .toUpperCase()}
                                                     </div>
 
                                                     <div>
-                                                        <p className="text-xs font-semibold text-slate-900">
+                                                        <p className="text-xs font-bold text-slate-900 transition group-hover:text-violet-700">
                                                             {
                                                                 record.employeeName
                                                             }
@@ -971,7 +1005,7 @@ if (error) {
 
                                                         <p className="mt-1 text-[10px] text-slate-500">
                                                             {
-                                                               record.employeeCode
+                                                                record.employeeCode
                                                             }{" "}
                                                             ·{" "}
                                                             {
@@ -1034,14 +1068,14 @@ if (error) {
                                                     )}
                                                 </p>
 
-                                                <div className="mt-2 h-1.5 w-24 overflow-hidden rounded-full bg-slate-100">
+                                               <div className="mt-2 h-2 w-28 overflow-hidden rounded-full bg-slate-100 ring-1 ring-inset ring-slate-200/60">
                                                     <div
-                                                        className="h-full rounded-full bg-violet-500"
+                                                        className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 transition-all duration-500"
                                                         style={{
                                                             width: `${Math.min(
                                                                 (record.workingMinutes /
                                                                     officeSettings.fullDayMinutes) *
-                                                                    100,
+                                                                100,
                                                                 100
                                                             )}%`,
                                                         }}
@@ -1068,7 +1102,7 @@ if (error) {
                                                                 record
                                                             )
                                                         }
-                                                        className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-semibold text-slate-600 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+                                                       className="flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-[10px] font-bold text-slate-600 shadow-sm transition-all hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
                                                     >
                                                         <MoreHorizontal
                                                             size={14}
@@ -1084,7 +1118,7 @@ if (error) {
                         </div>
 
                         {attendanceRows.length === 0 && (
-                            <div className="flex min-h-[280px] flex-col items-center justify-center px-6 text-center">
+                            <div className="enterprise-empty-state flex min-h-[280px] flex-col items-center justify-center px-6 text-center">
                                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
                                     <Search size={23} />
                                 </div>
@@ -1104,7 +1138,7 @@ if (error) {
                 {activeTab === "calendar" && (
                     <div className="p-5">
                         <div className="grid gap-5 xl:grid-cols-[280px_minmax(0,1fr)]">
-                            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                           <div className="rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 shadow-[0_8px_28px_rgba(15,23,42,0.04)]">
                                 <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                                     Select employee
                                 </p>
@@ -1119,20 +1153,18 @@ if (error) {
                                                     employee.id
                                                 )
                                             }
-                                            className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${
-                                                selectedEmployeeId ===
-                                                employee.id
-                                                    ? "bg-violet-600 text-white shadow-lg shadow-violet-200"
-                                                    : "bg-white text-slate-700 hover:bg-slate-100"
-                                            }`}
+                                            className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${selectedEmployeeId ===
+                                                    employee.id
+                                                    ? "bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-600/20"
+                                                    : "border border-transparent bg-white text-slate-700 hover:border-slate-200 hover:bg-slate-50"
+                                                }`}
                                         >
                                             <div
-                                                className={`flex h-9 w-9 items-center justify-center rounded-lg text-[10px] font-bold ${
-                                                    selectedEmployeeId ===
-                                                    employee.id
+                                                className={`flex h-9 w-9 items-center justify-center rounded-lg text-[10px] font-bold ${selectedEmployeeId ===
+                                                        employee.id
                                                         ? "bg-white/15 text-white"
                                                         : "bg-slate-900 text-white"
-                                                }`}
+                                                    }`}
                                             >
                                                 {employee.initials}
                                             </div>
@@ -1143,12 +1175,11 @@ if (error) {
                                                 </p>
 
                                                 <p
-                                                    className={`mt-1 truncate text-[10px] ${
-                                                        selectedEmployeeId ===
-                                                        employee.id
+                                                    className={`mt-1 truncate text-[10px] ${selectedEmployeeId ===
+                                                            employee.id
                                                             ? "text-violet-100"
                                                             : "text-slate-400"
-                                                    }`}
+                                                        }`}
                                                 >
                                                     {employee.role}
                                                 </p>
@@ -1158,7 +1189,7 @@ if (error) {
                                 </div>
                             </div>
 
-                            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_8px_28px_rgba(15,23,42,0.04)]">
                                 <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                                     <div>
                                         <h3 className="text-sm font-semibold text-slate-950">
@@ -1299,9 +1330,9 @@ if (error) {
                                             return (
                                                 <div
                                                     key={dateKey}
-                                                    className="min-h-24 border border-slate-100 p-2"
+                                                   className="group min-h-24 border border-slate-100 bg-white p-2 transition hover:bg-violet-50/30"
                                                 >
-                                                    <span className="text-[10px] font-semibold text-slate-500">
+                                                    <span className="text-[10px] font-bold text-slate-500">
                                                         {date.getDate()}
                                                     </span>
 
@@ -1326,8 +1357,8 @@ if (error) {
 
                 {activeTab === "leaves" && (
                     <div>
-                        <div className="grid gap-4 border-b border-slate-200 bg-slate-50/60 p-5 sm:grid-cols-3">
-                            <div className="rounded-xl border border-slate-200 bg-white p-4">
+                     <div className="grid gap-4 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-violet-50/30 p-5 sm:grid-cols-3">
+                            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_6px_24px_rgba(15,23,42,0.04)]">
                                 <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                                     Pending
                                 </p>
@@ -1374,7 +1405,7 @@ if (error) {
                         </div>
 
                         <div className="overflow-x-auto">
-                            <table className="min-w-[1000px] w-full">
+                            <table className="enterprise-table min-w-[1000px] w-full">
                                 <thead>
                                     <tr className="border-b border-slate-200 bg-slate-50/80">
                                         <th className="px-5 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
@@ -1410,11 +1441,11 @@ if (error) {
                                         return (
                                             <tr
                                                 key={request.id}
-                                                className="transition hover:bg-slate-50/70"
+                                                className="group transition-all hover:bg-violet-50/35"
                                             >
                                                 <td className="px-5 py-4">
                                                     <div className="flex items-center gap-3">
-                                                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-900 text-[10px] font-bold text-white">
+                                                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-slate-800 to-slate-950 text-[10px] font-bold text-white shadow-sm">
                                                             {
                                                                 employee?.initials
                                                             }
@@ -1472,7 +1503,7 @@ if (error) {
                                                 <td className="px-5 py-4">
                                                     <div className="flex justify-end">
                                                         {request.status ===
-                                                        "Pending" ? (
+                                                            "Pending" ? (
                                                             <button
                                                                 type="button"
                                                                 onClick={() => {
@@ -1520,7 +1551,7 @@ if (error) {
                             </div>
 
                             <div className="overflow-x-auto">
-                                <table className="min-w-[900px] w-full">
+                                <table className="enterprise-table min-w-[900px] w-full">
                                     <thead>
                                         <tr className="border-b border-slate-200 bg-white">
                                             <th className="px-5 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
@@ -1549,47 +1580,36 @@ if (error) {
 
                                     <tbody className="divide-y divide-slate-100">
                                         {employees.map((employee) => {
-                                            const records =
-                                                monthlyAttendance[
-                                                    employee.id
-                                                ] || {};
+                                            const employeeRecords = attendance.filter(
+                                                (record) =>
+                                                    record.employeeCode === employee.employeeCode ||
+                                                    record.employeeName === employee.name
+                                            );
 
-                                            const values =
-                                                Object.values(records);
-
-                                            const present = values.filter(
-                                                (status) =>
-                                                    status === "Present"
+                                            const present = employeeRecords.filter(
+                                                (record) => record.attendanceStatus === "Present"
                                             ).length;
 
-                                            const late = values.filter(
-                                                (status) => status === "Late"
+                                            const late = employeeRecords.filter(
+                                                (record) => record.attendanceStatus === "Late"
                                             ).length;
 
-                                            const halfDay = values.filter(
-                                                (status) =>
-                                                    status === "Half Day"
+                                            const halfDay = employeeRecords.filter(
+                                                (record) => record.attendanceStatus === "Half Day"
                                             ).length;
 
-                                            const absent = values.filter(
-                                                (status) =>
-                                                    status === "Absent"
+                                            const absent = employeeRecords.filter(
+                                                (record) => record.attendanceStatus === "Absent"
                                             ).length;
 
-                                            const leave = values.filter(
-                                                (status) =>
-                                                    status === "On Leave"
+                                            const leave = employeeRecords.filter(
+                                                (record) => record.attendanceStatus === "On Leave"
                                             ).length;
 
-                                            const workingDays =
-                                                values.length || 1;
+                                            const workingDays = employeeRecords.length || 1;
 
                                             const attendanceRate = Math.round(
-                                                ((present +
-                                                    late +
-                                                    halfDay * 0.5) /
-                                                    workingDays) *
-                                                    100
+                                                ((present + late + halfDay * 0.5) / workingDays) * 100
                                             );
 
                                             return (
@@ -1680,15 +1700,16 @@ if (error) {
                         type="button"
                         aria-label="Close attendance editor"
                         onClick={closeAttendanceEditor}
-                        className="fixed inset-0 z-[70] bg-slate-950/40 backdrop-blur-[2px]"
+                        className="enterprise-backdrop fixed inset-0 z-[70] bg-slate-950/40 backdrop-blur-[2px]"
                     />
 
-                    <aside className="fixed inset-y-0 right-0 z-[80] flex w-full max-w-[520px] flex-col bg-white shadow-[-24px_0_70px_rgba(15,23,42,0.22)]">
-                        <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
+                    <aside className="fixed inset-y-0 right-0 z-[80] flex w-full max-w-[620px] flex-col overflow-hidden border-l border-slate-200 bg-[#f8fafc] shadow-[-30px_0_90px_rgba(15,23,42,0.22)]">
+                        <div className="relative flex items-start justify-between overflow-hidden border-b border-slate-200 bg-white px-6 py-6">
+    <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-600 via-indigo-500 to-blue-500" />
                             <div>
-                                <p className="text-xs font-semibold text-violet-600">
-                                    Attendance Correction
-                                </p>
+                              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-violet-600">
+    Attendance Management
+</p>
 
                                 <h2 className="mt-2 text-xl font-semibold text-slate-950">
                                     {
@@ -1717,7 +1738,7 @@ if (error) {
                             onSubmit={handleSaveAttendance}
                             className="flex min-h-0 flex-1 flex-col"
                         >
-                            <div className="flex-1 space-y-5 overflow-y-auto p-6">
+                            <div className="flex-1 space-y-6 overflow-y-auto p-6">
                                 <div className="grid gap-4 sm:grid-cols-2">
                                     <div>
                                         <label className="mb-2 block text-xs font-semibold text-slate-700">
@@ -1730,7 +1751,7 @@ if (error) {
                                             onChange={
                                                 handleAttendanceChange
                                             }
-                                            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                            className="enterprise-input h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                                         >
                                             <option>Present</option>
                                             <option>Late</option>
@@ -1888,11 +1909,11 @@ if (error) {
                             setSelectedLeave(null);
                             setReviewNote("");
                         }}
-                        className="fixed inset-0 z-[90] bg-slate-950/40 backdrop-blur-[2px]"
+                        className="enterprise-backdrop fixed inset-0 z-[90] bg-slate-950/40 backdrop-blur-[2px]"
                     />
 
                     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                        <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+                        <div className="enterprise-modal w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
                             <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
                                 <div>
                                     <p className="text-xs font-semibold text-violet-600">
@@ -2014,5 +2035,6 @@ if (error) {
                 </>
             )}
         </div>
+         </div>
     );
 }

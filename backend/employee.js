@@ -5,10 +5,8 @@ const mongoose = require("mongoose");
 
 const bcrypt = require("bcryptjs");
 require("./admin");
-const {
-  authenticateUser,
-  User,
-} = require("./auth");
+const authenticateUser = require("./authMiddleware");
+const { User } = require("./auth");
 const Task = mongoose.model("Task");
 const { getISTDateBucket, getISTDateString } = require("./utils/dateUtils");
 const ActivityLog = mongoose.models.ActivityLog || mongoose.model("ActivityLog");
@@ -249,6 +247,39 @@ function employeeResponse(employee) {
     updatedAt: employee.updatedAt,
   };
 }
+async function resolveLinkedTicket(task) {
+  if (!task.ticketId) return;
+  const SupportTicket = mongoose.models.SupportTicket;
+  const ticket = await SupportTicket.findById(task.ticketId);
+  if (!ticket) return;
+  if (["Resolved", "Closed"].includes(ticket.status)) return;
+
+  ticket.status = "Resolved";
+  ticket.resolvedAt = new Date();
+  ticket.resolutionNote = `Resolved by completing linked task ${task.taskCode} – ${task.title}.`;
+  ticket.timeline.push({
+    type: "resolved",
+    title: "Ticket Resolved Automatically",
+    description: `Resolved after linked task ${task.taskCode} was completed.`,
+    performedBy: task.assignedBy || null,
+    performedByName: "System",
+    performedByRole: "system",
+  });
+  await ticket.save();
+
+  const Client = mongoose.models.Client;
+  if (Client) {
+    const openCount = await SupportTicket.countDocuments({
+      clientId: ticket.clientId,
+      isDeleted: false,
+      status: { $nin: ["Resolved", "Verified", "Closed", "Cancelled"] },
+    });
+    await Client.updateOne(
+      { _id: ticket.clientId },
+      { $set: { openTickets: openCount } }
+    );
+  }
+}
 
 function requireAdmin(req, res, next) {
   if (req.user.role !== "admin") {
@@ -421,8 +452,7 @@ router.get("/employees/:id", async (req, res, next) => {
 
    GET /api/employee/me
 ========================================================= */
-
-router.get("/me", async (req, res, next) => {
+router.get("/me", authenticateUser, async (req, res, next) => {
   try {
     if (req.user.role !== "employee") {
       return res.status(403).json({
@@ -438,8 +468,7 @@ router.get("/me", async (req, res, next) => {
     if (!employee) {
       return res.status(404).json({
         success: false,
-        message:
-          "Employee profile is not connected to this login account.",
+        message: "Employee profile is not connected to this login account.",
       });
     }
 
@@ -543,6 +572,26 @@ router.get("/dashboard", async (req, res, next) => {
     );
 
     const hoursToday = Math.round(totalAgentSeconds / 60);
+    // Calculate live work status
+let workStatus = "Offline";
+
+if (attendance && !attendance.logoutTime) {
+  const hasActiveTask = tasks.some((t) =>
+    ["Assigned", "In Progress", "Paused", "Testing"].includes(t.status)
+  );
+
+  const hasActiveTicket = tickets.some((t) =>
+    ["New", "Assigned", "In Progress"].includes(t.status)
+  );
+
+  if (attendance.breakStartedAt && !attendance.breakEndedAt) {
+    workStatus = "Break";
+  } else if (hasActiveTask || hasActiveTicket) {
+    workStatus = "Working";
+  } else {
+    workStatus = "Free";
+  }
+}
     // console.log("Agent summary count:", agentSummary.length);
     // console.log("Total agent seconds:", totalAgentSeconds);
     // console.log("Hours today:", hoursToday);
@@ -551,7 +600,15 @@ router.get("/dashboard", async (req, res, next) => {
       success: true,
       data: {
         employee: employeeResponse(employee),
-        attendance: attendance || null,
+        attendance: attendance
+  ? attendance: attendance
+  ? {
+      ...attendance,
+      workStatus: employee.status,
+    }
+  : {
+      workStatus: employee.status,
+    },
         summary: {
           hoursToday,
           activeTaskCount,
@@ -601,18 +658,34 @@ router.get("/my-tickets", async (req, res, next) => {
     })
       .sort({ updatedAt: -1 })
       .lean();
+for (const ticket of tickets) {
+  // Ticket time is always independent
+  ticket.timeSpentMinutes = Number(ticket.spentMinutes || 0);
 
-    for (const ticket of tickets) {
-      if (ticket.linkedTaskId) {
-        const linkedTask = await Task.findById(
-          ticket.linkedTaskId
-        ).lean();
+  if (ticket.linkedTaskId) {
+    const linkedTask = await Task.findById(ticket.linkedTaskId).lean();
 
-        ticket.linkedTask = linkedTask;
-      } else {
-        ticket.linkedTask = null;
-      }
+    if (linkedTask) {
+      // Remove timing fields so they cannot be mistaken for ticket time
+      const {
+        spentMinutes,
+        elapsedMinutes,
+        elapsedSeconds,
+        startedAt,
+        pausedAt,
+        totalPausedMinutes,
+        lastUpdated,
+        ...safeTask
+      } = linkedTask;
+
+      ticket.linkedTask = safeTask;
+    } else {
+      ticket.linkedTask = null;
     }
+  } else {
+    ticket.linkedTask = null;
+  }
+}
 
     return res.json({
       success: true,
@@ -698,6 +771,19 @@ router.patch(
       });
 
       await ticket.save();
+      const Client = mongoose.models.Client;
+if (Client) {
+  const openCount = await SupportTicket.countDocuments({
+    clientId: ticket.clientId,
+    isDeleted: false,
+    status: { $nin: ["Resolved", "Verified", "Closed", "Cancelled"] },
+  });
+
+  await Client.updateOne(
+    { _id: ticket.clientId },
+    { $set: { openTickets: openCount } }
+  );
+}
 
       return res.json({
         success: true,
@@ -1473,8 +1559,37 @@ router.patch("/tasks/:id/timer", async (req, res, next) => {
     } else if (action === "pause" || action === "stop") {
       addElapsed(task); task.status = "Paused"; task.pausedAt = now; task.startedAt = null;
     } else if (action === "complete") {
-      addElapsed(task); task.status = "Completed"; task.progress = 100; task.completedAt = now; task.startedAt = null; task.pausedAt = null;
-    } else return res.status(400).json({ success: false, message: "Invalid timer action." });
+  addElapsed(task);
+
+  task.status = "Completed";
+  task.progress = 100;
+  task.completedAt = now;
+  task.startedAt = null;
+  task.pausedAt = null;
+  task.lastUpdated = now;
+
+  // Save the completed task first
+  await task.save();
+
+  // Then resolve the linked ticket
+  await resolveLinkedTicket(task);
+  // Recalculate employee status after task completion
+const hasActiveTask = await Task.exists({
+  assignedEmployeeId: employee._id,
+  isDeleted: false,
+  status: { $in: ["Assigned", "In Progress", "Paused", "Testing"] },
+});
+
+const hasActiveTicket = await SupportTicket.exists({
+  assignedEmployeeId: employee._id,
+  isDeleted: false,
+  status: { $in: ["New", "Assigned", "In Progress"] },
+});
+
+employee.status = hasActiveTask || hasActiveTicket ? "Working" : "Free";
+employee.lastActivityAt = new Date();
+await employee.save();
+} else return res.status(400).json({ success: false, message: "Invalid timer action." });
     task.spentMinutes = task.elapsedMinutes; task.lastUpdated = now; await task.save();
     if (action === "start" || action === "resume") {
       employee.status = "Working";
@@ -1503,25 +1618,35 @@ router.patch("/tasks/:id/timer", async (req, res, next) => {
     } else if (action === "pause" || action === "stop") {
       employee.status = "Break";
 
-    } else if (action === "complete") {
-      const remaining = await Task.exists({
-        assignedEmployeeId: employee._id,
-        status: "In Progress",
-        isDeleted: false,
-      });
+   } else if (action === "complete") {
+  // Check for ANY remaining active tasks
+  const remainingTasks = await Task.exists({
+    assignedEmployeeId: employee._id,
+    isDeleted: false,
+    status: { $in: ["Assigned", "In Progress", "Paused", "Testing"] },
+  });
 
-      if (!remaining) {
-        employee.status = "Free";
-        employee.currentTask = "Available for assignment";
-        employee.currentTaskId = null;
-        employee.currentTaskCode = "";
-        employee.currentTaskTitle = "";
-        employee.currentTicketId = null;
-        employee.currentClient = "—";
-        employee.currentProject = "—";
-        employee.currentTaskStartedAt = null;
-      }
-    }
+  // Check for ANY remaining active tickets
+  const remainingTickets = await SupportTicket.exists({
+    assignedEmployeeId: employee._id,
+    isDeleted: false,
+    status: { $in: ["New", "Assigned", "In Progress"] },
+  });
+
+  if (!remainingTasks && !remainingTickets) {
+    employee.status = "Free";
+    employee.currentTask = "Available for assignment";
+    employee.currentTaskId = null;
+    employee.currentTaskCode = "";
+    employee.currentTaskTitle = "";
+    employee.currentTicketId = null;
+    employee.currentClient = "—";
+    employee.currentProject = "—";
+    employee.currentTaskStartedAt = null;
+  } else {
+    employee.status = "Working";
+  }
+}
     employee.lastActivityAt = now;
     await employee.save();
     return res.json({ success: true, data: task });
@@ -2120,26 +2245,35 @@ router.get("/time-log/sessions", authenticateUser, async (req, res, next) => {
 
     const today = getISTDateBucket(new Date());
 
-    const logs = await AgentDailySummary.find({
-      employeeCode: employee.employeeCode,
-      date: today,
-      taskId: { $ne: null },
-    })
-      .sort({ lastSeen: -1 })
-      .lean();
-
+const logs = await AgentDailySummary.find({
+  employeeCode: employee.employeeCode,
+  date: today,
+})
+.sort({ lastSeen: -1 })
+.lean();
     res.json({
       success: true,
-   data: logs.map((log) => ({
+data: logs.map((log) => ({
   id: log._id,
-  title: log.taskTitle || log.application,
-  description: log.project || log.client || "",
-  taskCode: log.taskCode || "--",
-  taskTitle: log.taskTitle || "",
+
+  // Main session title
+  sessionTitle: log.taskTitle || log.application,
+
+  // Task information
+  taskTitle: log.taskTitle || "No task assigned",
+  taskCode: log.taskCode || "",
+
+  // Additional info
+  project: log.project || "",
+  client: log.client || "",
   applicationName: log.application,
+lastWindowTitle: log.lastWindowTitle || "",  
+  // Timing
   startedAt: log.firstSeen,
   endedAt: log.lastSeen,
   durationSeconds: log.totalSeconds || 0,
+
+  // Status
   status: "Completed",
 }))
     });

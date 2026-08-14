@@ -157,9 +157,9 @@ const initialLeaveRequests = [
 ];
 
 const officeSettings = {
-    startTime: "09:00",
+    startTime: "10:00",
     endTime: "18:00",
-    lateAfter: "09:10",
+    lateAfter: "10:10",
     fullDayMinutes: 480,
 };
 

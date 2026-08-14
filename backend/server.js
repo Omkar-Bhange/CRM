@@ -275,81 +275,89 @@ app.post("/api/agent/events", async (req, res) => {
     const processedIds = [];
     const failed = [];
 
-  for (const session of sessions) {
-  try {
-    const today = getISTDateBucket(new Date(session.startTime));
+    for (const session of sessions) {
+      try {
+        const today = getISTDateBucket(new Date(session.startTime));
 
-    // Prevent duplicate processing of the same session
-    try {
-      await ProcessedSession.create({
-        sessionId: session.id,
-        employeeCode: employee.employeeCode,
-      });
-    } catch (dupErr) {
-      // Mongo duplicate key error = already processed
-      if (dupErr.code === 11000) {
-        console.log("Duplicate session skipped:", session.id);
-        continue;
-      }
-      throw dupErr;
-    }
-
-    console.log(
-      "EVENT",
-      session.application,
-      "|",
-      session.windowTitle,
-      "|",
-      session.durationSeconds
-    );
-    const activeTask =
-  employee.currentTaskId
-    ? await mongoose.models.Task.findById(employee.currentTaskId).lean()
-    : null;
-
-        await AgentDailySummary.findOneAndUpdate(
-          {
+        // Prevent duplicate processing of the same session
+        try {
+          await ProcessedSession.create({
+            sessionId: session.id,
             employeeCode: employee.employeeCode,
-            application: session.application,
-            date: today,
-          },
-          {
-            $inc: {
-              totalSeconds: session.durationSeconds,
-              sessionCount: 1,
-            },
-            $set: {
-              employeeId: employee._id,
-              employeeName: employee.name,
-              pcName,
-
-              application: session.application,
-              lastWindowTitle: session.windowTitle,
-              lastSeen: new Date(session.endTime),
-
-              category: session.category || "Other",
-              activity: session.activity || "",
-              project: session.project || employee.currentProject || "—",
-              client: session.client || employee.currentClient || "—",
-
-              // attach the currently selected task
-           taskId: activeTask?._id || null,
-taskCode: activeTask?.taskCode || "",
-taskTitle: activeTask?.title || "",
-
-ticketId: activeTask?.ticketId || null,
-ticketCode: activeTask?.ticketCode || "",
-            },
-            $setOnInsert: {
-              firstSeen: new Date(session.startTime),
-              date: today,
-            },
-          },
-          {
-            upsert: true,
-            returnDocument: "after",
+          });
+        } catch (dupErr) {
+          // Mongo duplicate key error = already processed
+          if (dupErr.code === 11000) {
+            console.log("Duplicate session skipped:", session.id);
+            continue;
           }
+          throw dupErr;
+        }
+
+        console.log(
+          "EVENT",
+          session.application,
+          "|",
+          session.windowTitle,
+          "|",
+          session.durationSeconds
         );
+        const activeTask =
+          employee.currentTaskId
+            ? await mongoose.models.Task.findById(employee.currentTaskId).lean()
+            : null;
+//             console.log("AGENT TASK CONTEXT", {
+//   employee: employee.employeeCode,
+//   currentTaskId: employee.currentTaskId,
+//   currentTaskCode: employee.currentTaskCode,
+//   currentTaskTitle: employee.currentTaskTitle,
+//   activeTask: activeTask?.title,
+// });
+
+ await AgentDailySummary.findOneAndUpdate(
+  {
+    employeeCode: employee.employeeCode,
+    application: session.application,
+    date: today,
+  },
+  {
+    $inc: {
+      totalSeconds: session.durationSeconds,
+      sessionCount: 1,
+    },
+    $set: {
+      employeeId: employee._id,
+      employeeName: employee.name,
+      pcName,
+
+      application: session.application,
+      lastWindowTitle: session.windowTitle,
+      lastSeen: new Date(session.endTime),
+
+      category: session.category || "Other",
+      activity: session.activity || "",
+
+      // Keep one record per application, but update task info
+      project: employee.currentProject || "",
+      client: employee.currentClient || "",
+
+      taskId: employee.currentTaskId || null,
+      taskCode: employee.currentTaskCode || "",
+      taskTitle: employee.currentTaskTitle || "",
+
+      ticketId: activeTask?.ticketId || null,
+      ticketCode: activeTask?.ticketCode || "",
+    },
+    $setOnInsert: {
+      firstSeen: new Date(session.startTime),
+      date: today,
+    },
+  },
+  {
+    upsert: true,
+    returnDocument: "after",
+  }
+);
 
         processedIds.push(session.id);
       } catch (sessionErr) {
@@ -540,11 +548,36 @@ app.post("/api/agent/heartbeat", async (req, res) => {
       });
     }
 
-    employee.status = status || "Working";
+    // Recalculate status from actual work
+    const Task = mongoose.models.Task;
+    const SupportTicket = mongoose.models.SupportTicket;
+
+    const hasActiveTask = await Task.exists({
+      assignedEmployeeId: employee._id,
+      isDeleted: false,
+      status: { $in: ["Assigned", "In Progress", "Paused", "Testing"] },
+    });
+
+    const hasActiveTicket = await SupportTicket.exists({
+      assignedEmployeeId: employee._id,
+      isDeleted: false,
+      status: { $in: ["New", "Assigned", "In Progress"] },
+    });
+
+    if (status === "Offline") {
+      employee.status = "Offline";
+    } else if (status === "Break") {
+      employee.status = "Break";
+    } else {
+      employee.status = hasActiveTask || hasActiveTicket ? "Working" : "Free";
+    }
+
     employee.lastActivityAt = now;
 
     if (task) {
       employee.currentTask = task;
+    } else if (employee.status === "Free") {
+      employee.currentTask = "Available for assignment";
     }
 
     await employee.save();

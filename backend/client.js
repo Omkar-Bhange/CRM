@@ -46,9 +46,7 @@ const upload = multer({
 // before we grab them below (same pattern employee.js uses for admin.js).
 require("./admin");
 
-const {
-  authenticateUser,
-} = require("./auth");
+const authenticateUser = require("./authMiddleware");
 
 const Client = mongoose.model("Client");
 const SupportTicket = mongoose.models.SupportTicket;

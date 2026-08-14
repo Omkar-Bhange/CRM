@@ -744,10 +744,10 @@ function SettingsDrawer({
                 type="button"
                 aria-label="Close drawer"
                 onClick={onClose}
-                className="fixed inset-0 z-[80] bg-slate-950/40 backdrop-blur-[2px]"
+                className="enterprise-backdrop fixed inset-0 z-[80] bg-slate-950/40 backdrop-blur-[2px]"
             />
 
-            <aside className="fixed inset-y-0 right-0 z-[90] flex w-full max-w-[580px] flex-col bg-white shadow-[-24px_0_70px_rgba(15,23,42,0.22)]">
+            <aside className="enterprise-drawer fixed inset-y-0 right-0 z-[90] flex w-full max-w-[580px] flex-col bg-white shadow-[-24px_0_70px_rgba(15,23,42,0.22)]">
                 <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
                     <div>
                         <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-violet-600">
@@ -3244,7 +3244,7 @@ export default function SystemSettings() {
     return (
 
 
-        <div>
+        <div className="enterprise-page">
             <div className="flex flex-col gap-4 border-b border-slate-200 pb-6 lg:flex-row lg:items-end lg:justify-between">
                 <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-violet-600">
@@ -3317,7 +3317,7 @@ export default function SystemSettings() {
                 </div>
             )}
             <div className="mt-6 grid gap-5 xl:grid-cols-[280px_minmax(0,1fr)]">
-                <aside className="h-fit overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                <aside className="enterprise-surface h-fit overflow-hidden rounded-2xl border border-slate-200 bg-white">
                     <div className="border-b border-slate-200 px-5 py-4">
                         <p className="text-xs font-semibold text-slate-950">
                             Configuration
@@ -3383,7 +3383,7 @@ export default function SystemSettings() {
                     </div>
                 </aside>
 
-                <section className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                <section className="enterprise-surface min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white">
                     <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5">
                         <div>
                             <h3 className="text-sm font-semibold text-slate-950">

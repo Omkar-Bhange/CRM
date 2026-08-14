@@ -1,12 +1,11 @@
 const express = require("express");
 const mongoose = require("mongoose");
-const { authenticateUser } = require("./auth");
 
 const router = express.Router();
 
-/* =====================================================
-   AUTHORIZATION
-===================================================== */
+// Use the middleware file
+
+const authenticateUser = require("./authMiddleware");
 
 router.use(authenticateUser);
 
@@ -20,6 +19,7 @@ router.use((req, res, next) => {
 
   next();
 });
+
 
 /* =====================================================
    CONSTANTS

@@ -4,7 +4,7 @@ const path = require("path");
 const fs = require("fs");
 const multer = require("multer");
 
-const { authenticateUser } = require("./auth");
+const authenticateUser = require("./authMiddleware");
 require("./admin");
 require("./employee");
 

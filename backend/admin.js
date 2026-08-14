@@ -7,14 +7,13 @@ const bcrypt =
   require("bcryptjs");
 const crypto =
   require("crypto");
-const {
-  authenticateUser,
-  User,
-} = require("./auth");
+const authenticateUser = require("./authMiddleware");
+const { User } = require("./auth");
 const {
   SystemSettings,
 } = require("./settings");
-const AgentDailySummary = mongoose.models.AgentDailySummary;
+const AgentDailySummary = require("./agentSession");
+const AgentDevice = require("./models/AgentDevice");
 
 const SETTINGS_KEY =
   "system";
@@ -3423,7 +3422,100 @@ const AmcReminder =
     "AmcReminder",
     amcReminderSchema
   );
-  
+
+
+
+/* =====================================================
+   CLIENT DOCUMENT SCHEMA (metadata only, no file storage)
+===================================================== */
+
+const clientDocumentSchema = new mongoose.Schema(
+  {
+    clientId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Client",
+      required: true,
+      index: true,
+    },
+
+    clientCode: {
+      type: String,
+      default: "",
+      trim: true,
+      uppercase: true,
+    },
+
+    clientName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    name: {
+      type: String,
+      required: [true, "Document name is required."],
+      trim: true,
+    },
+
+    type: {
+      type: String,
+      enum: ["PDF", "Excel", "Word", "Image", "ZIP", "Other"],
+      default: "Other",
+    },
+
+    category: {
+      type: String,
+      enum: [
+        "Agreement",
+        "Legal",
+        "Quotation",
+        "Invoice",
+        "Installation",
+        "Other",
+      ],
+      default: "Other",
+    },
+
+    size: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    uploadedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    uploadedByName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    notes: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+  },
+  {
+    timestamps: true,
+    collection: "clientdocuments",
+  }
+);
+
+const ClientDocument =
+  mongoose.models.ClientDocument ||
+  mongoose.model("ClientDocument", clientDocumentSchema);
+
 
 
   /* =====================================================
@@ -8978,6 +9070,298 @@ router.get(
 );
 
 /* =====================================================
+   GET CLIENT AMC (contract + invoices)
+   GET /api/admin/client/:id/amc
+===================================================== */
+
+router.get("/client/:id/amc", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid client ID.",
+      });
+    }
+
+    const [contracts, invoices] = await Promise.all([
+      AmcContract.find({
+        clientId: id,
+        isDeleted: false,
+      }).sort({ createdAt: -1 }),
+
+      AmcInvoice.find({
+        clientId: id,
+        isDeleted: false,
+      }).sort({ invoiceDate: -1 }),
+    ]);
+
+    const contractReminderByCode = {};
+    contracts.forEach((contract) => {
+      contractReminderByCode[contract.contractCode] =
+        contract.reminderStatus || "Not Sent";
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        contracts,
+        invoices: invoices.map((invoice) => ({
+          id: invoice._id,
+          invoiceCode: invoice.invoiceCode,
+          invoiceDate: invoice.invoiceDate,
+          productName: invoice.productName,
+          startDate: invoice.contractStartDate,
+          endDate: invoice.contractExpiryDate,
+          totalAmount: invoice.totalAmount,
+          paidAmount: invoice.paidAmount,
+          dueDate: invoice.dueDate,
+          paymentStatus: invoice.paymentStatus,
+          reminderStatus:
+            contractReminderByCode[invoice.contractCode] || "Not Sent",
+        })),
+      },
+    });
+  } catch (error) {
+    console.error("Get client AMC error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Unable to load client AMC records.",
+    });
+  }
+});
+
+/* =====================================================
+   GET CLIENT PAYMENTS
+   GET /api/admin/client/:id/payments
+===================================================== */
+
+router.get("/client/:id/payments", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid client ID.",
+      });
+    }
+
+    const payments = await AmcPayment.find({
+      clientId: id,
+      isDeleted: false,
+    }).sort({ paymentDate: -1 });
+
+    return res.status(200).json({
+      success: true,
+      data: payments.map((payment) => ({
+        id: payment._id,
+        receiptNo: payment.paymentCode,
+        invoiceNo: payment.invoiceCode,
+        product: payment.productName,
+        paymentDate: payment.paymentDate,
+        amount: payment.amount,
+        mode: payment.mode,
+        referenceNo: payment.referenceNo,
+        receivedBy: payment.receivedByName,
+        status: "Completed",
+      })),
+    });
+  } catch (error) {
+    console.error("Get client payments error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Unable to load client payments.",
+    });
+  }
+});
+
+/* =====================================================
+   GET CLIENT DOCUMENTS
+   GET /api/admin/client/:id/documents
+===================================================== */
+
+router.get("/client/:id/documents", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid client ID.",
+      });
+    }
+
+    const documents = await ClientDocument.find({
+      clientId: id,
+      isDeleted: false,
+    }).sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      data: documents.map((doc) => ({
+        id: doc._id,
+        name: doc.name,
+        type: doc.type,
+        category: doc.category,
+        size: doc.size,
+        uploadedOn: doc.createdAt,
+        uploadedBy: doc.uploadedByName,
+        notes: doc.notes,
+      })),
+    });
+  } catch (error) {
+    console.error("Get client documents error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Unable to load client documents.",
+    });
+  }
+});
+
+/* =====================================================
+   ADD CLIENT DOCUMENT (metadata only)
+   POST /api/admin/client/:id/documents
+===================================================== */
+
+router.post("/client/:id/documents", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid client ID.",
+      });
+    }
+
+    const client = await Client.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        message: "Client not found.",
+      });
+    }
+
+    const {
+      name,
+      type = "Other",
+      category = "Other",
+      size = "",
+      notes = "",
+      uploadedByName = "",
+    } = req.body;
+
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Document name is required.",
+      });
+    }
+
+    const document = await ClientDocument.create({
+      clientId: client._id,
+      clientCode: client.clientCode || "",
+      clientName: client.companyName || "",
+      name: String(name).trim(),
+      type,
+      category,
+      size,
+      notes,
+      uploadedByName,
+    });
+
+    await ActivityLog.create({
+      action: "Document Uploaded",
+      category: "Client",
+      description: `${document.name} uploaded for ${client.companyName}`,
+      entityType: "client",
+      entityId: client._id,
+      entityName: client.companyName,
+      clientId: client._id,
+      clientName: client.companyName,
+      performedByName: uploadedByName || "Admin",
+      performedByRole: "admin",
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Document added.",
+      data: {
+        id: document._id,
+        name: document.name,
+        type: document.type,
+        category: document.category,
+        size: document.size,
+        uploadedOn: document.createdAt,
+        uploadedBy: document.uploadedByName,
+      },
+    });
+  } catch (error) {
+    console.error("Add client document error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Unable to add document.",
+    });
+  }
+});
+
+/* =====================================================
+   DELETE CLIENT DOCUMENT
+   DELETE /api/admin/client/:id/documents/:docId
+===================================================== */
+
+router.delete("/client/:id/documents/:docId", async (req, res) => {
+  try {
+    const { id, docId } = req.params;
+
+    if (
+      !mongoose.Types.ObjectId.isValid(id) ||
+      !mongoose.Types.ObjectId.isValid(docId)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid ID.",
+      });
+    }
+
+    const document = await ClientDocument.findOneAndUpdate(
+      { _id: docId, clientId: id },
+      { isDeleted: true },
+      { new: true }
+    );
+
+    if (!document) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Document removed.",
+    });
+  } catch (error) {
+    console.error("Delete client document error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Unable to delete document.",
+    });
+  }
+});
+
+/* =====================================================
    UPDATE CLIENT
    PUT /api/admin/client/:id
 ===================================================== */
@@ -11774,167 +12158,7 @@ router.put("/task/:id", async (req, res) => {
 
 router.patch("/task/:id/status", async (req, res) => {
   try {
-    const { id } = req.params;
-    const { status, progress, resolutionNote } =
-      req.body;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid task ID.",
-      });
-    }
-
-    const task = await Task.findOne({
-      _id: id,
-      isDeleted: false,
-    });
-
-    if (!task) {
-      return res.status(404).json({
-        success: false,
-        message: "Task not found.",
-      });
-    }
-
-    if (req.user.role === "employee") {
-      const employee = await Employee.findOne({ userId: req.user._id });
-      if (!employee || String(task.assignedEmployeeId) !== String(employee._id)) {
-        return res.status(403).json({
-          success: false,
-          message: "You can update only your assigned tasks.",
-        });
-      }
-    }
-
-    const previousStatus = task.status;
-    if (!status) {
-      return res.status(400).json({
-        success: false,
-        message: "Task status is required.",
-      });
-    }
-    const allowedTaskStatuses = [
-      "Assigned",
-      "Accepted",
-      "In Progress",
-      "Paused",
-      "Waiting",
-      "Testing",
-      "Completed",
-      "Verified",
-      "Closed",
-      "Cancelled",
-    ];
-
-    if (!allowedTaskStatuses.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid task status.",
-      });
-    }
-
-    if (
-      previousStatus === status &&
-      progress === undefined &&
-      resolutionNote === undefined
-    ) {
-      return res.status(200).json({
-        success: true,
-        message:
-          "Task already has this status.",
-        data: taskResponse(task),
-      });
-    }
-
-    task.status = status;
-
-    if (progress !== undefined) {
-      task.progress = Math.min(
-        Math.max(Number(progress || 0), 0),
-        100
-      );
-    }
-
-    if (resolutionNote !== undefined) {
-      task.resolutionNote =
-        String(resolutionNote || "").trim();
-    }
-
-    if (
-      status === "In Progress" &&
-      !task.startDate
-    ) {
-      task.startDate = new Date();
-    }
-
-    const isCompleted =
-      status === "Completed" ||
-      status === "Closed";
-
-    const wasCompleted =
-      previousStatus === "Completed" ||
-      previousStatus === "Closed";
-
-    if (isCompleted) {
-      task.progress = 100;
-      task.completedAt =
-        task.completedAt || new Date();
-    } else {
-      task.completedAt = null;
-    }
-
-    task.timeline.push({
-      action: "Status Changed",
-      description: `Status changed from ${previousStatus} to ${status}.`,
-      performedBy: req.user._id,
-      performedByName:
-        req.user.name || "Admin",
-      performedByRole: req.user.role,
-    });
-
-    await task.save();
-    if (previousStatus !== status) {
-      await createActivityLog({
-        action: "Task Status Changed",
-
-        category: "Task",
-
-        description:
-          `${task.taskCode} changed from ${previousStatus} to ${status}.`,
-
-        entityType: "task",
-
-        entityId: task._id,
-
-        entityCode: task.taskCode,
-
-        entityName: task.title,
-
-        clientId: task.clientId,
-
-        clientName: task.clientName,
-
-        employeeId:
-          task.assignedEmployeeId,
-
-        employeeName:
-          task.assignedEmployeeName,
-
-        performedBy: req.user._id,
-
-        performedByName:
-          req.user.name || "Admin",
-
-        performedByRole: req.user.role,
-
-        metadata: {
-          previousStatus,
-          currentStatus: status,
-          progress: task.progress,
-        },
-      });
-    }
+    // ... existing code up to the point where task is saved and employee summaries are updated ...
 
     if (isCompleted && !wasCompleted) {
       await updateEmployeeTaskSummary(
@@ -11978,6 +12202,41 @@ router.patch("/task/:id/status", async (req, res) => {
       );
     }
 
+    // --- AUTO-RESOLVE LINKED TICKET ---
+    // Insert this block here
+    if (isCompleted && task.ticketId) {
+      const SupportTicket = mongoose.models.SupportTicket;
+      const ticket = await SupportTicket.findById(task.ticketId);
+      if (ticket && !["Resolved", "Closed"].includes(ticket.status)) {
+        ticket.status = "Resolved";
+        ticket.resolvedAt = new Date();
+        ticket.resolutionNote = `Resolved by completing linked task ${task.taskCode}.`;
+        ticket.timeline.push({
+          type: "resolved",
+          title: "Ticket Resolved Automatically",
+          description: `Resolved after linked task ${task.taskCode} was completed.`,
+          performedBy: req.user._id,
+          performedByName: req.user.name || "Admin",
+          performedByRole: req.user.role || "admin",
+        });
+        await ticket.save();
+        // Update client open ticket count
+        const Client = mongoose.models.Client;
+        if (Client) {
+          const openCount = await SupportTicket.countDocuments({
+            clientId: ticket.clientId,
+            isDeleted: false,
+            status: { $nin: ["Resolved", "Verified", "Closed", "Cancelled"] },
+          });
+          await Client.updateOne(
+            { _id: ticket.clientId },
+            { $set: { openTickets: openCount } }
+          );
+        }
+      }
+    }
+    // --- END AUTO-RESOLVE ---
+
     return res.status(200).json({
       success: true,
       message: "Task status updated successfully.",
@@ -11994,7 +12253,6 @@ router.patch("/task/:id/status", async (req, res) => {
     });
   }
 });
-
 /* =====================================================
    ADD TASK COMMENT
    POST /api/admin/task/:id/comment
@@ -15939,32 +16197,81 @@ router.get(
           );
         }
       );
+      // =============================
+// LOAD PAYMENTS AND REMINDERS
+// =============================
+const contractIds = contracts.map((contract) => String(contract._id));
+const contractCodes = contracts.map((contract) => contract.contractCode);
 
-      const data =
-        contracts.map(
-          (contract) => {
-            const invoice =
-              invoiceById.get(
-                String(
-                  contract.currentInvoiceId ||
-                  ""
-                )
-              ) ||
-              invoiceByCode.get(
-                String(
-                  contract.currentInvoiceCode ||
-                  contract.invoiceCode ||
-                  ""
-                )
-              ) ||
-              null;
+const [payments, reminders] = await Promise.all([
+  AmcPayment.find({
+    isDeleted: false,
+    $or: [
+      { contractId: { $in: contractIds } },
+      { contractCode: { $in: contractCodes } },
+    ],
+  }).sort({ paymentDate: -1 }),
 
-            return mergeAmcContractWithInvoice(
-              contract,
-              invoice
-            );
-          }
-        );
+  AmcReminder.find({
+    isDeleted: false,
+    $or: [
+      { amcContractId: { $in: contractIds } },
+      { contractCode: { $in: contractCodes } },
+    ],
+  }).sort({ sentAt: -1 }),
+]);
+
+const paymentsByContract = new Map();
+
+payments.forEach((payment) => {
+  const key =
+    payment.contractCode || String(payment.contractId || "");
+
+  if (!paymentsByContract.has(key)) {
+    paymentsByContract.set(key, []);
+  }
+
+  paymentsByContract.get(key).push(payment);
+});
+
+const remindersByContract = new Map();
+
+reminders.forEach((reminder) => {
+  const key =
+    reminder.contractCode || String(reminder.amcContractId || "");
+
+  if (!remindersByContract.has(key)) {
+    remindersByContract.set(key, []);
+  }
+
+  remindersByContract.get(key).push(reminder);
+});
+
+    const data = contracts.map((contract) => {
+  const invoice =
+    invoiceById.get(String(contract.currentInvoiceId || "")) ||
+    invoiceByCode.get(
+      String(contract.currentInvoiceCode || contract.invoiceCode || "")
+    ) ||
+    null;
+
+  const merged = mergeAmcContractWithInvoice(contract, invoice);
+merged.payments =
+  paymentsByContract.get(contract.contractCode) ||
+  paymentsByContract.get(String(contract._id)) ||
+  [];
+
+merged.reminders =
+  remindersByContract.get(contract.contractCode) ||
+  remindersByContract.get(String(contract._id)) ||
+  [];
+
+  merged.renewalHistory =
+    contract.renewalHistory || [];
+
+  return merged;
+});
+
 
       /*
        * Dashboard totals now come from permanent invoices,
@@ -17913,4 +18220,462 @@ router.post(
     }
   }
 );
+router.get('/dashboard', async (req, res) => {
+  try {
+    const totalClients = await Client.countDocuments({ isDeleted: false });
+// AMC collected
+const amcCollectedResult = await AmcInvoice.aggregate([
+  {
+    $match: {
+      isDeleted: false,
+      paidAmount: { $gt: 0 },
+    },
+  },
+  {
+    $group: {
+      _id: null,
+      total: { $sum: '$paidAmount' },
+    },
+  },
+]);
+
+const amcCollected = amcCollectedResult[0]?.total || 0;
+
+// AMC pending
+const amcPendingResult = await AmcInvoice.aggregate([
+  {
+    $match: {
+      isDeleted: false,
+      pendingAmount: { $gt: 0 },
+    },
+  },
+  {
+    $group: {
+      _id: null,
+      total: { $sum: '$pendingAmount' },
+    },
+  },
+]);
+
+const amcPending = amcPendingResult[0]?.total || 0;
+
+
+    const openTickets = await SupportTicket.countDocuments({
+      isDeleted: false,
+      status: { $nin: ['Resolved', 'Verified', 'Closed', 'Cancelled'] }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        totalClients,
+        amcCollected,
+        amcPending,
+        openTickets
+      }
+    });
+  } catch (error) {
+    console.error('Dashboard error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+/* =========================================================
+   GET EMPLOYEE PC ACTIVITY
+   GET /api/admin/pc-activity/:employeeCode?date=2026-08-12
+========================================================= */
+
+
+router.get("/pc-activity/:employeeCode", async (req, res) => {
+  try {
+    const { employeeCode } = req.params;
+
+    if (!employeeCode) {
+      return res.status(400).json({
+        success: false,
+        message: "Employee code is required.",
+      });
+    }
+
+    // Date format: YYYY-MM-DD (default = today)
+ // Date format: YYYY-MM-DD (default = today in IST)
+const dateString =
+  req.query.date ||
+  new Date().toLocaleDateString('en-CA', {
+    timeZone: 'Asia/Kolkata',
+  });
+
+// Create the IST day bucket (stored in Mongo as 18:30 UTC of the previous day)
+const [year, month, day] = dateString.split('-').map(Number);
+
+const dayStart = new Date(Date.UTC(year, month - 1, day - 1, 18, 30, 0));
+const dayEnd = new Date(Date.UTC(year, month - 1, day, 18, 29, 59, 999));
+
+    const sessions = await AgentDailySummary.find({
+      employeeCode: employeeCode.toUpperCase(),
+      date: { $gte: dayStart, $lte: dayEnd },
+    })
+      .sort({ lastSeen: -1 })
+      .lean();
+
+    const device = await AgentDevice.findOne({
+      employeeCode: employeeCode.toUpperCase(),
+      isActive: true,
+    }).lean();
+
+    // ---------- Summary ----------
+    const totalSeconds = sessions.reduce(
+      (sum, item) => sum + (item.totalSeconds || 0),
+      0
+    );
+
+    const productiveSeconds = sessions
+      .filter(
+        (item) =>
+          item.category !== "Idle" &&
+          item.category !== "Break"
+      )
+      .reduce(
+        (sum, item) => sum + (item.totalSeconds || 0),
+        0
+      );
+
+    const idleSeconds = sessions
+      .filter((item) => item.category === "Idle")
+      .reduce(
+        (sum, item) => sum + (item.totalSeconds || 0),
+        0
+      );
+
+    const breakSeconds = sessions
+      .filter((item) => item.category === "Break")
+      .reduce(
+        (sum, item) => sum + (item.totalSeconds || 0),
+        0
+      );
+
+    const formatDuration = (seconds = 0) => {
+      const totalMinutes = Math.floor(seconds / 60);
+
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+
+      if (hours <= 0) return `${minutes}m`;
+      return minutes > 0
+        ? `${hours}h ${minutes}m`
+        : `${hours}h`;
+    };
+
+    // ---------- Current Activity ----------
+    const latest = sessions[0];
+
+    const currentActivity = latest
+      ? {
+          application: latest.application,
+          windowTitle: latest.lastWindowTitle,
+          startedAt: latest.firstSeen,
+          runningTime: formatDuration(
+            latest.totalSeconds
+          ),
+          status: device?.status || "Offline",
+          lastSyncAt: latest.lastSeen,
+          deviceName:
+            device?.deviceName ||
+            device?.pcName ||
+            latest.pcName,
+        }
+      : {
+          application: "No activity",
+          windowTitle: "",
+          startedAt: null,
+          runningTime: "0m",
+          status: "Offline",
+          lastSyncAt: null,
+          deviceName: device?.deviceName || "Not registered",
+        };
+
+    // ---------- Applications ----------
+    const applications = sessions.map((item) => ({
+      id: String(item._id),
+      application: item.application,
+      category: item.category,
+      startedAt: item.firstSeen,
+      endedAt: item.lastSeen,
+      duration: formatDuration(item.totalSeconds),
+      productivity:
+        item.category === "Idle"
+          ? "Idle"
+          : item.category === "Break"
+          ? "Break"
+          : "Productive",
+      project: item.project,
+      client: item.client,
+      taskId: item.taskId,
+      ticketId: item.ticketId,
+      windowTitle: item.lastWindowTitle,
+    }));
+
+    // ---------- Top Applications ----------
+    const topApplications = [...sessions]
+      .sort(
+        (a, b) =>
+          (b.totalSeconds || 0) -
+          (a.totalSeconds || 0)
+      )
+      .slice(0, 5)
+      .map((item) => ({
+        name: item.application,
+        duration: formatDuration(item.totalSeconds),
+        percentage:
+          totalSeconds > 0
+            ? Math.round(
+                (item.totalSeconds / totalSeconds) * 100
+              )
+            : 0,
+      }));
+
+    return res.json({
+      success: true,
+      data: {
+        currentActivity,
+        summary: {
+          productiveTime:
+            formatDuration(productiveSeconds),
+          idleTime: formatDuration(idleSeconds),
+          breakTime: formatDuration(breakSeconds),
+          applicationsUsed: sessions.length,
+        },
+        applications,
+        topApplications,
+        idleSessions: [],
+      },
+    });
+  } catch (error) {
+    console.error(
+      "PC activity fetch error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to load PC activity.",
+    });
+  }
+});
+/* =========================================================
+   GET EMPLOYEE OVERVIEW
+   GET /api/admin/team/:employeeCode/overview
+========================================================= */
+
+router.get("/team/:employeeCode/overview", async (req, res) => {
+  try {
+    const { employeeCode } = req.params;
+
+    const Employee = mongoose.models.Employee;
+    const Task = mongoose.models.Task;
+    const Attendance = mongoose.models.Attendance;
+    const SupportTicket = mongoose.models.SupportTicket;
+
+    const employee = await Employee.findOne({
+      employeeCode: employeeCode.toUpperCase(),
+    }).lean();
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found.",
+      });
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    const [attendance, openTasks, completedToday, openTickets] =
+      await Promise.all([
+        Attendance.findOne({
+          employeeId: employee._id,
+          date: today,
+        }).lean(),
+
+        Task.countDocuments({
+          assignedEmployeeId: employee._id,
+          isDeleted: false,
+          status: {
+            $in: [
+              "Assigned",
+              "In Progress",
+              "Paused",
+              "Testing",
+            ],
+          },
+        }),
+
+        Task.countDocuments({
+          assignedEmployeeId: employee._id,
+          isDeleted: false,
+          status: "Completed",
+          completedAt: {
+            $gte: new Date(`${today}T00:00:00.000Z`),
+            $lte: new Date(`${today}T23:59:59.999Z`),
+          },
+        }),
+
+        SupportTicket.countDocuments({
+          assignedEmployeeId: employee._id,
+          isDeleted: false,
+          status: {
+            $in: ["New", "Assigned", "In Progress"],
+          },
+        }),
+      ]);
+
+    const formatTime = (value) => {
+      if (!value) return "—";
+
+      return new Date(value).toLocaleTimeString("en-IN", {
+        hour: "numeric",
+        minute: "2-digit",
+      });
+    };
+
+    const activeMinutes =
+      attendance?.workingMinutes ||
+      attendance?.totalWorkedMinutes ||
+      0;
+
+    return res.json({
+      success: true,
+      data: {
+        role: employee.role || "Employee",
+        department: employee.department || "General",
+        employeeCode: employee.employeeCode,
+        loginTime: formatTime(attendance?.loginTime),
+        activeTime: `${Math.floor(activeMinutes / 60)}h ${activeMinutes % 60}m`,
+        openTasks,
+        completedToday,
+        openTickets,
+        status: employee.status,
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Employee overview fetch error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to load employee overview.",
+    });
+  }
+});
+/* =========================================================
+   GET EMPLOYEE ATTENDANCE
+   GET /api/admin/team/:employeeCode/attendance
+========================================================= */
+
+router.get("/team/:employeeCode/attendance", async (req, res) => {
+  try {
+    const { employeeCode } = req.params;
+
+    const Employee = mongoose.models.Employee;
+    const Attendance = mongoose.models.Attendance;
+
+    const employee = await Employee.findOne({
+      employeeCode: employeeCode.toUpperCase(),
+    });
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found.",
+      });
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    const attendance = await Attendance.findOne({
+      employeeId: employee._id,
+      date: today,
+    }).lean();
+
+    const formatTime = (value) => {
+      if (!value) return "—";
+
+      return new Date(value).toLocaleTimeString("en-IN", {
+        hour: "numeric",
+        minute: "2-digit",
+      });
+    };
+
+    const formatDuration = (minutes = 0) => {
+      const hrs = Math.floor(minutes / 60);
+      const mins = minutes % 60;
+
+      if (hrs <= 0) return `${mins}m`;
+      return `${hrs}h ${mins}m`;
+    };
+
+    return res.json({
+      success: true,
+      data: {
+        loginTime: formatTime(attendance?.loginTime),
+        logoutTime: attendance?.logoutTime
+          ? formatTime(attendance.logoutTime)
+          : "Not logged out",
+
+        attendanceStatus: attendance
+          ? attendance.status || "Present"
+          : "Absent",
+
+        activeTime: formatDuration(
+          attendance?.workingMinutes ||
+            attendance?.totalWorkedMinutes ||
+            0
+        ),
+
+        breakTime: formatDuration(
+          attendance?.totalBreakMinutes ||
+            attendance?.breakMinutes ||
+            0
+        ),
+
+        idleTime: "0m",
+        productiveTime: formatDuration(
+          attendance?.workingMinutes ||
+            attendance?.totalWorkedMinutes ||
+            0
+        ),
+
+        sessions: attendance
+          ? [
+              {
+                name: "Current Session",
+                start: formatTime(attendance.loginTime),
+                end: attendance.logoutTime
+                  ? formatTime(attendance.logoutTime)
+                  : "—",
+                duration: formatDuration(
+                  attendance?.workingMinutes ||
+                    attendance?.totalWorkedMinutes ||
+                    0
+                ),
+                status: attendance.logoutTime
+                  ? "Completed"
+                  : "Active",
+              },
+            ]
+          : [],
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Employee attendance fetch error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to load attendance.",
+    });
+  }
+});
 module.exports = router;

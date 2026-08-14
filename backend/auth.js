@@ -2,9 +2,12 @@ const express = require("express");
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const authenticateUser = require("./authMiddleware");
+const axios = require("axios");
 
 const router = express.Router();
-
+require("./employee"); // registers the Employee model
+const Employee = mongoose.model("Employee");
 /* =========================================================
    USER SCHEMA
    Admin, Employee and Client use the same users collection
@@ -101,6 +104,39 @@ passwordChangedAt: {
 
 const User =
   mongoose.models.User || mongoose.model("User", userSchema);
+  const AgentDailyLoginSchema = new mongoose.Schema(
+  {
+    employeeCode: {
+      type: String,
+      required: true,
+      uppercase: true,
+      index: true,
+    },
+    date: {
+      type: String,
+      required: true,
+      index: true,
+    },
+    startedAt: {
+      type: Date,
+      default: Date.now,
+    },
+    endedAt: {
+      type: Date,
+      default: null,
+    },
+  },
+  { collection: "agent_daily_logins" }
+);
+
+AgentDailyLoginSchema.index(
+  { employeeCode: 1, date: 1 },
+  { unique: true }
+);
+
+const AgentDailyLogin =
+  mongoose.models.AgentDailyLogin ||
+  mongoose.model("AgentDailyLogin", AgentDailyLoginSchema);
 
 /* =========================================================
    TOKEN GENERATOR
@@ -126,70 +162,25 @@ function generateToken(user) {
     }
   );
 }
+function getISTDateString() {
+  const now = new Date();
+
+  const ist = new Date(
+    now.toLocaleString("en-US", {
+      timeZone: "Asia/Kolkata",
+    })
+  );
+
+  const year = ist.getFullYear();
+  const month = String(ist.getMonth() + 1).padStart(2, "0");
+  const day = String(ist.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
 
 /* =========================================================
    AUTHENTICATION MIDDLEWARE
-   ========================================================= */
 
-async function authenticateUser(req, res, next) {
-  try {
-    const authorizationHeader = req.headers.authorization;
-
-    if (
-      !authorizationHeader ||
-      !authorizationHeader.startsWith("Bearer ")
-    ) {
-      return res.status(401).json({
-        success: false,
-        message: "Authentication token is required.",
-      });
-    }
-
-    const token = authorizationHeader.split(" ")[1];
-
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET
-    );
-
-    const user = await User.findById(decoded.userId).select(
-      "-password"
-    );
-
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: "User account was not found.",
-      });
-    }
-
-    if (user.status !== "Active") {
-      return res.status(403).json({
-        success: false,
-        message: `Your account is ${user.status.toLowerCase()}.`,
-      });
-    }
-
-    req.user = user;
-    next();
-  } catch (error) {
-    if (error.name === "TokenExpiredError") {
-      return res.status(401).json({
-        success: false,
-        message: "Your login session has expired.",
-      });
-    }
-
-    if (error.name === "JsonWebTokenError") {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid authentication token.",
-      });
-    }
-
-    next(error);
-  }
-}
 
 /* =========================================================
    REGISTER FIRST ADMIN
@@ -359,7 +350,41 @@ router.post("/login", async (req, res, next) => {
     await user.save();
 
     const token = generateToken(user);
+   const employee = await Employee.findOne({ userId: user._id });
 
+
+if (employee && employee.employeeCode) {
+  const employeeCode = employee.employeeCode.toUpperCase();
+  const today = getISTDateString();
+
+  const existing = await AgentDailyLogin.findOne({
+    employeeCode,
+    date: today,
+  });
+
+  if (!existing) {
+    try {
+      const agentPort = process.env.AGENT_API_PORT || 4500;
+      const agentHost = process.env.AGENT_API_HOST || "127.0.0.1";
+      const agentBaseUrl = `http://${agentHost}:${agentPort}`;
+
+      await axios.post(`${agentBaseUrl}/login`, {
+        employeeCode,
+      });
+
+      await AgentDailyLogin.create({
+        employeeCode,
+        date: today,
+      });
+
+      console.log("Agent daily login recorded for", employeeCode);
+    } catch (err) {
+      console.error("Agent login trigger failed:", err.message);
+    }
+  } else {
+    console.log("Agent login already recorded today for", employeeCode);
+  }
+}
     return res.status(200).json({
       success: true,
       message: "Login successful.",
@@ -586,7 +611,6 @@ router.get("/test", (req, res) => {
     message: "Authentication API is working.",
   });
 });
-
 module.exports = router;
-module.exports.authenticateUser = authenticateUser;
 module.exports.User = User;
+module.exports.authenticateUser = authenticateUser;

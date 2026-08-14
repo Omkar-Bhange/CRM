@@ -232,18 +232,18 @@ if (activeMenu === "profile") {
 };
 
     return (
-        <div className="min-h-screen bg-[#f4f6fa] text-slate-900">
+        <div className="enterprise-shell min-h-screen bg-[#f4f6fa] text-slate-900">
             {sidebarOpen && (
                 <button
                     type="button"
                     aria-label="Close sidebar"
                     onClick={() => setSidebarOpen(false)}
-                    className="fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-sm lg:hidden"
+                    className="enterprise-backdrop fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-sm lg:hidden"
                 />
             )}
 
             <aside
-                className={`fixed inset-y-0 left-0 z-50 flex w-[260px] flex-col border-r border-white/10 bg-[#0f172a] text-white transition-transform duration-300 lg:translate-x-0 ${
+                className={`enterprise-sidebar fixed inset-y-0 left-0 z-50 flex w-[260px] flex-col border-r border-white/10 bg-[#0f172a] text-white transition-transform duration-300 lg:translate-x-0 ${
                     sidebarOpen
                         ? "translate-x-0"
                         : "-translate-x-full"
@@ -312,7 +312,8 @@ if (activeMenu === "profile") {
                                     onClick={() =>
                                         handleNavigation(item.id)
                                     }
-                                    className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all ${
+                                    aria-current={isActive ? "page" : undefined}
+                                    className={`enterprise-sidebar-nav-item group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all ${
                                         isActive
                                             ? "bg-cyan-400/10 text-cyan-300"
                                             : "text-slate-400 hover:bg-white/[0.06] hover:text-white"
@@ -368,7 +369,7 @@ if (activeMenu === "profile") {
 
                     <button
                         type="button"
-                        className="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-400 transition hover:bg-white/[0.06] hover:text-white"
+                        className="enterprise-sidebar-nav-item group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-400 transition hover:bg-white/[0.06] hover:text-white"
                     >
                         <CircleHelp
                             size={18}
@@ -572,8 +573,8 @@ if (activeMenu === "profile") {
                     </div>
                 </header>
 
-                <main className="p-4 sm:p-6 lg:p-8">
-                    <div className="mx-auto max-w-[1600px]">
+                <main className="enterprise-workspace p-4 sm:p-6 lg:p-8">
+                    <div className="enterprise-page mx-auto max-w-[1600px]">
                         {renderPage()}
                     </div>
                 </main>
