@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import jsPDF from "jspdf";
 import {
     AlertCircle,
     Banknote,
@@ -30,16 +31,66 @@ function formatCurrency(amount) {
 }
 
 function formatDate(value) {
-    if (!value) return "Not available";
+    if (!value) {
+        return "Not available";
+    }
 
     try {
-        return new Date(value).toLocaleDateString("en-IN", {
-            day: "2-digit",
-            month: "short",
-            year: "numeric",
-        });
+        /*
+         * Preserve database calendar date.
+         *
+         * Avoid timezone conversions changing
+         * 01 Aug into 31 Jul on some systems.
+         */
+        const rawValue =
+            String(value).trim();
+
+        const dateOnlyMatch =
+            rawValue.match(
+                /^(\d{4})-(\d{2})-(\d{2})/
+            );
+
+        let date;
+
+        if (dateOnlyMatch) {
+            const year =
+                Number(dateOnlyMatch[1]);
+
+            const month =
+                Number(dateOnlyMatch[2]);
+
+            const day =
+                Number(dateOnlyMatch[3]);
+
+            date =
+                new Date(
+                    year,
+                    month - 1,
+                    day
+                );
+        } else {
+            date =
+                new Date(value);
+        }
+
+        if (
+            Number.isNaN(
+                date.getTime()
+            )
+        ) {
+            return "Not available";
+        }
+
+        return date.toLocaleDateString(
+            "en-IN",
+            {
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+            }
+        );
     } catch {
-        return String(value);
+        return "Not available";
     }
 }
 
@@ -104,6 +155,8 @@ export default function ClientBilling() {
     const [selectedInvoiceId, setSelectedInvoiceId] = useState(null);
     const [billingRecords, setBillingRecords] = useState([]);
     const [paymentRecords, setPaymentRecords] = useState([]);
+    const [invoiceDocuments, setInvoiceDocuments] = useState([]);
+
     const [dashboardData, setDashboardData] = useState({
         totalBilled: 0,
         totalPaid: 0,
@@ -129,23 +182,48 @@ export default function ClientBilling() {
 
             try {
                 const token = getAuthToken();
-                const [dashboardResponse, invoiceResponse, paymentResponse] = await Promise.all([
-                    fetch(`${API_URL}/api/client/amc/dashboard`, {
-                        headers: { Authorization: `Bearer ${token}` },
-                    }),
-                    fetch(`${API_URL}/api/client/amc/invoices`, {
-                        headers: { Authorization: `Bearer ${token}` },
-                    }),
-                    fetch(`${API_URL}/api/client/amc/payments`, {
-                        headers: { Authorization: `Bearer ${token}` },
-                    }),
-                ]);
+              const [
+    dashboardResponse,
+    invoiceResponse,
+    paymentResponse,
+    documentResponse,
+] = await Promise.all([
+    fetch(`${API_URL}/api/client/amc/dashboard`, {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+    }),
 
-                const [dashboardJson, invoiceJson, paymentJson] = await Promise.all([
-                    dashboardResponse.json(),
-                    invoiceResponse.json(),
-                    paymentResponse.json(),
-                ]);
+    fetch(`${API_URL}/api/client/amc/invoices`, {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+    }),
+
+    fetch(`${API_URL}/api/client/amc/payments`, {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+    }),
+
+    fetch(`${API_URL}/api/client/amc/documents`, {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+    }),
+]);
+
+        const [
+    dashboardJson,
+    invoiceJson,
+    paymentJson,
+    documentJson,
+] = await Promise.all([
+    dashboardResponse.json(),
+    invoiceResponse.json(),
+    paymentResponse.json(),
+    documentResponse.json(),
+]);
 
                 if (!dashboardResponse.ok || !dashboardJson.success) {
                     throw new Error(dashboardJson.message || "Unable to load AMC dashboard.");
@@ -156,6 +234,12 @@ export default function ClientBilling() {
                 if (!paymentResponse.ok || !paymentJson.success) {
                     throw new Error(paymentJson.message || "Unable to load AMC payments.");
                 }
+                if (!documentResponse.ok || !documentJson.success) {
+    console.warn(
+        "AMC documents could not be loaded:",
+        documentJson.message
+    );
+}
 
                 setDashboardData({
                     totalBilled: Number(dashboardJson.data.totalBilled || 0),
@@ -166,6 +250,11 @@ export default function ClientBilling() {
                 });
                 setBillingRecords(invoiceJson.data || []);
                 setPaymentRecords(paymentJson.data || []);
+                setInvoiceDocuments(
+    documentResponse.ok && documentJson.success
+        ? documentJson.data || []
+        : []
+);
             } catch (err) {
                 setError(err.message || "Unable to load billing data.");
             } finally {
@@ -210,29 +299,1513 @@ export default function ClientBilling() {
         0
     );
     const paidInvoiceCount = billingRecords.filter((record) => (record.paymentStatus || record.status) === "Paid").length;
+  const getCustomInvoiceDocument = (invoice) => {
+    if (!invoice) {
+        return null;
+    }
 
-    const handleDownloadInvoice = (invoiceId) => {
+    const invoiceContractId =
+        String(
+            invoice.contractId ||
+            invoice.amcContractId ||
+            ""
+        );
+
+    if (!invoiceContractId) {
+        return null;
+    }
+
+    return (
+        invoiceDocuments.find(
+            (document) => {
+                const documentType =
+                    String(
+                        document.documentType ||
+                        document.type ||
+                        ""
+                    )
+                        .trim()
+                        .toLowerCase();
+
+                const documentContractId =
+                    String(
+                        document.contractId ||
+                        document.amcContractId ||
+                        ""
+                    );
+
+                const isOwnInvoice =
+                    documentType ===
+                    "own invoice / bill";
+
+                const sameContract =
+                    documentContractId ===
+                    invoiceContractId;
+
+                return (
+                    isOwnInvoice &&
+                    sameContract
+                );
+            }
+        ) || null
+    );
+};
+
+const downloadCustomInvoice =
+    async (
+        document,
+        invoice
+    ) => {
+        try {
+            if (!document) {
+                return false;
+            }
+
+            const documentId =
+                document.id ||
+                document._id;
+
+            if (!documentId) {
+                throw new Error(
+                    "Custom invoice document ID is missing."
+                );
+            }
+
+            const token =
+                getAuthToken();
+
+            if (!token) {
+                throw new Error(
+                    "Login token was not found. Please login again."
+                );
+            }
+
+            /*
+             * IMPORTANT:
+             * backend route is singular:
+             *
+             * /amc/document/:documentId/download
+             */
+            const response =
+                await fetch(
+                    `${API_URL}/api/client/amc/document/${documentId}/download`,
+                    {
+                        method:
+                            "GET",
+
+                        headers: {
+                            Authorization:
+                                `Bearer ${token}`,
+                        },
+                    }
+                );
+
+            if (!response.ok) {
+                let message =
+                    "Unable to download uploaded invoice.";
+
+                try {
+                    const result =
+                        await response.json();
+
+                    message =
+                        result.message ||
+                        message;
+                } catch {
+                    // binary/file response
+                }
+
+                throw new Error(
+                    message
+                );
+            }
+
+            const blob =
+                await response.blob();
+
+            const objectUrl =
+                URL.createObjectURL(
+                    blob
+                );
+
+            const fileName =
+                document.fileName ||
+                document.name ||
+                `${
+                    invoice?.invoiceCode ||
+                    "AMC-Invoice"
+                }.pdf`;
+
+            const link =
+                window.document.createElement(
+                    "a"
+                );
+
+            link.href =
+                objectUrl;
+
+            link.download =
+                fileName;
+
+            window.document.body.appendChild(
+                link
+            );
+
+            link.click();
+
+            link.remove();
+
+            setTimeout(
+                () => {
+                    URL.revokeObjectURL(
+                        objectUrl
+                    );
+                },
+                1000
+            );
+
+            return true;
+        } catch (error) {
+            console.error(
+                "Custom invoice download error:",
+                error
+            );
+
+            alert(
+                error.message ||
+                "Unable to download custom invoice."
+            );
+
+            return false;
+        }
+    };
+const handleDownloadInvoice =
+    async (invoiceId) => {
         if (!invoiceId) {
-            alert("No invoice selected for download.");
+            alert(
+                "No invoice selected for download."
+            );
             return;
         }
 
-        window.open(`${API_URL}/api/client/amc/invoice/${invoiceId}/pdf`, "_blank");
+        try {
+            let invoice =
+                billingRecords.find(
+                    (record) =>
+                        String(record.id) ===
+                        String(invoiceId)
+                ) ||
+                (
+                    String(
+                        dashboardData.latestInvoice?.id
+                    ) === String(invoiceId)
+                        ? dashboardData.latestInvoice
+                        : null
+                );
+
+            if (!invoice) {
+                const token =
+                    getAuthToken();
+
+                const response =
+                    await fetch(
+                        `${API_URL}/api/client/amc/invoices/${invoiceId}`,
+                        {
+                            headers: {
+                                Authorization:
+                                    `Bearer ${token}`,
+                            },
+                        }
+                    );
+
+                const result =
+                    await response.json();
+
+                if (
+                    !response.ok ||
+                    !result.success
+                ) {
+                    throw new Error(
+                        result.message ||
+                        "Unable to load invoice."
+                    );
+                }
+
+                invoice =
+                    result.data;
+            }
+
+            if (!invoice) {
+                throw new Error(
+                    "Invoice information was not found."
+                );
+            }
+/*
+ * ==========================================
+ * CHECK FOR ADMIN-UPLOADED CUSTOM INVOICE
+ * ==========================================
+ *
+ * If Total Solution uploaded its own invoice
+ * for this AMC, give that exact file to the
+ * client instead of generating another PDF.
+ */
+
+const customInvoiceDocument =
+    getCustomInvoiceDocument(
+        invoice
+    );
+
+if (customInvoiceDocument) {
+
+    const downloaded =
+        await downloadCustomInvoice(
+            customInvoiceDocument,
+            invoice
+        );
+
+    if (downloaded) {
+        return;
+    }
+}
+            const taxableAmount =
+                Number(
+                    invoice.taxableAmount ||
+                    0
+                );
+
+            const cgstRate =
+                Number(
+                    invoice.cgstRate ||
+                    0
+                );
+
+            const sgstRate =
+                Number(
+                    invoice.sgstRate ||
+                    0
+                );
+
+            const igstRate =
+                Number(
+                    invoice.igstRate ||
+                    0
+                );
+
+            const cgstAmount =
+                Number(
+                    invoice.cgstAmount ||
+                    0
+                );
+
+            const sgstAmount =
+                Number(
+                    invoice.sgstAmount ||
+                    0
+                );
+
+            const igstAmount =
+                Number(
+                    invoice.igstAmount ||
+                    0
+                );
+
+            const totalTax =
+                Number(
+                    invoice.totalTaxAmount ??
+                    invoice.gstAmount ??
+                    (
+                        cgstAmount +
+                        sgstAmount +
+                        igstAmount
+                    )
+                );
+
+            const totalAmount =
+                Number(
+                    invoice.totalAmount ||
+                    invoice.amount ||
+                    0
+                );
+
+            const paidAmount =
+                Number(
+                    invoice.paidAmount ||
+                    0
+                );
+
+            const pendingAmount =
+                Number(
+                    invoice.balanceAmount ??
+                    invoice.pendingAmount ??
+                    Math.max(
+                        totalAmount -
+                        paidAmount,
+                        0
+                    )
+                );
+
+            const pdf =
+                new jsPDF({
+                    orientation:
+                        "portrait",
+                    unit:
+                        "mm",
+                    format:
+                        "a4",
+                });
+
+            const pageWidth =
+                210;
+
+            const pageHeight =
+                297;
+
+            const margin =
+                14;
+
+            const contentWidth =
+                pageWidth -
+                margin * 2;
+
+            /*
+             * ==========================
+             * PREMIUM HEADER
+             * ==========================
+             */
+
+            pdf.setFillColor(
+                15,
+                23,
+                42
+            );
+
+            pdf.rect(
+                0,
+                0,
+                pageWidth,
+                38,
+                "F"
+            );
+
+            pdf.setFillColor(
+                6,
+                182,
+                212
+            );
+
+            pdf.rect(
+                0,
+                35,
+                pageWidth,
+                3,
+                "F"
+            );
+
+            pdf.setTextColor(
+                255,
+                255,
+                255
+            );
+
+            pdf.setFont(
+                "helvetica",
+                "bold"
+            );
+
+            pdf.setFontSize(
+                19
+            );
+
+            pdf.text(
+                "TOTAL SOLUTION",
+                margin,
+                14
+            );
+
+            pdf.setFont(
+                "helvetica",
+                "normal"
+            );
+
+            pdf.setFontSize(
+                8
+            );
+
+            pdf.setTextColor(
+                203,
+                213,
+                225
+            );
+
+            pdf.text(
+                "Software Solutions • ERP • AMC • Technical Support",
+                margin,
+                21
+            );
+
+            pdf.setFont(
+                "helvetica",
+                "bold"
+            );
+
+            pdf.setFontSize(
+                16
+            );
+
+            pdf.setTextColor(
+                255,
+                255,
+                255
+            );
+
+            pdf.text(
+                "AMC INVOICE",
+                pageWidth -
+                    margin,
+                14,
+                {
+                    align:
+                        "right",
+                }
+            );
+
+            pdf.setFontSize(
+                9
+            );
+
+            pdf.setTextColor(
+                165,
+                243,
+                252
+            );
+
+            pdf.text(
+                invoice.invoiceCode ||
+                    "AMC Invoice",
+                pageWidth -
+                    margin,
+                21,
+                {
+                    align:
+                        "right",
+                }
+            );
+
+            /*
+             * ==========================
+             * INVOICE META
+             * ==========================
+             */
+
+            const metaTop =
+                47;
+
+            pdf.setTextColor(
+                100,
+                116,
+                139
+            );
+
+            pdf.setFont(
+                "helvetica",
+                "bold"
+            );
+
+            pdf.setFontSize(
+                7.5
+            );
+
+            pdf.text(
+                "INVOICE DATE",
+                margin,
+                metaTop
+            );
+
+            pdf.text(
+                "DUE DATE",
+                82,
+                metaTop
+            );
+
+            pdf.text(
+                "STATUS",
+                146,
+                metaTop
+            );
+
+            pdf.setTextColor(
+                15,
+                23,
+                42
+            );
+
+            pdf.setFontSize(
+                9
+            );
+
+            pdf.text(
+                formatDate(
+                    invoice.invoiceDate
+                ),
+                margin,
+                metaTop + 7
+            );
+
+            pdf.text(
+                formatDate(
+                    invoice.dueDate
+                ),
+                82,
+                metaTop + 7
+            );
+
+            pdf.setTextColor(
+                pendingAmount > 0
+                    ? 180
+                    : 5,
+                pendingAmount > 0
+                    ? 83
+                    : 150,
+                pendingAmount > 0
+                    ? 9
+                    : 105
+            );
+
+            pdf.text(
+                invoice.paymentStatus ||
+                    invoice.status ||
+                    "Pending",
+                146,
+                metaTop + 7
+            );
+
+            /*
+             * ==========================
+             * BILL TO / AMC INFO
+             * ==========================
+             */
+
+            const infoTop =
+                65;
+
+            pdf.setFillColor(
+                248,
+                250,
+                252
+            );
+
+            pdf.setDrawColor(
+                226,
+                232,
+                240
+            );
+
+            pdf.roundedRect(
+                margin,
+                infoTop,
+                contentWidth,
+                39,
+                2,
+                2,
+                "FD"
+            );
+
+            pdf.setFont(
+                "helvetica",
+                "bold"
+            );
+
+            pdf.setTextColor(
+                6,
+                182,
+                212
+            );
+
+            pdf.setFontSize(
+                7.5
+            );
+
+            pdf.text(
+                "BILL TO",
+                margin + 5,
+                infoTop + 8
+            );
+
+            pdf.setTextColor(
+                15,
+                23,
+                42
+            );
+
+            pdf.setFontSize(
+                12
+            );
+
+            pdf.text(
+                invoice.clientName ||
+                    "Client",
+                margin + 5,
+                infoTop + 17
+            );
+
+            pdf.setFont(
+                "helvetica",
+                "normal"
+            );
+
+            pdf.setFontSize(
+                8
+            );
+
+            pdf.setTextColor(
+                71,
+                85,
+                105
+            );
+
+            if (
+                invoice.clientCode
+            ) {
+                pdf.text(
+                    `Client Code: ${invoice.clientCode}`,
+                    margin + 5,
+                    infoTop + 24
+                );
+            }
+
+            if (
+                invoice.contactPerson
+            ) {
+                pdf.text(
+                    `Contact: ${invoice.contactPerson}`,
+                    margin + 5,
+                    infoTop + 30
+                );
+            }
+
+            if (
+                invoice.contactMobile
+            ) {
+                pdf.text(
+                    `Mobile: ${invoice.contactMobile}`,
+                    margin + 5,
+                    infoTop + 36
+                );
+            }
+
+            pdf.setFont(
+                "helvetica",
+                "bold"
+            );
+
+            pdf.setTextColor(
+                100,
+                116,
+                139
+            );
+
+            pdf.text(
+                "AMC DETAILS",
+                112,
+                infoTop + 8
+            );
+
+            pdf.setTextColor(
+                15,
+                23,
+                42
+            );
+
+            pdf.setFontSize(
+                9
+            );
+
+            pdf.text(
+                invoice.productName ||
+                    "-",
+                112,
+                infoTop + 17
+            );
+
+            pdf.setFont(
+                "helvetica",
+                "normal"
+            );
+
+            pdf.setFontSize(
+                8
+            );
+
+            pdf.setTextColor(
+                71,
+                85,
+                105
+            );
+
+            pdf.text(
+                `Period: ${invoicePeriod(
+                    invoice
+                )}`,
+                112,
+                infoTop + 24
+            );
+
+            pdf.text(
+                `Plan: ${
+                    invoice.plan ||
+                    invoice.invoiceType ||
+                    "Annual AMC"
+                }`,
+                112,
+                infoTop + 30
+            );
+
+            pdf.text(
+                `Users: ${
+                    invoice.licensedUsers ||
+                    "-"
+                }`,
+                112,
+                infoTop + 36
+            );
+
+            /*
+             * ==========================
+             * ITEMS TABLE
+             * ==========================
+             */
+
+            const tableTop =
+                116;
+
+            pdf.setFillColor(
+                241,
+                245,
+                249
+            );
+
+            pdf.roundedRect(
+                margin,
+                tableTop,
+                contentWidth,
+                10,
+                1.5,
+                1.5,
+                "F"
+            );
+
+            pdf.setTextColor(
+                71,
+                85,
+                105
+            );
+
+            pdf.setFont(
+                "helvetica",
+                "bold"
+            );
+
+            pdf.setFontSize(
+                7.5
+            );
+
+            pdf.text(
+                "DESCRIPTION",
+                margin + 4,
+                tableTop + 6.5
+            );
+
+            pdf.text(
+                "QTY",
+                132,
+                tableTop + 6.5
+            );
+
+            pdf.text(
+                "RATE",
+                160,
+                tableTop + 6.5
+            );
+
+            pdf.text(
+                "AMOUNT",
+                pageWidth -
+                    margin -
+                    4,
+                tableTop + 6.5,
+                {
+                    align:
+                        "right",
+                }
+            );
+
+            const rowTop =
+                tableTop + 10;
+
+            pdf.setDrawColor(
+                226,
+                232,
+                240
+            );
+
+            pdf.rect(
+                margin,
+                rowTop,
+                contentWidth,
+                26,
+                "D"
+            );
+
+            pdf.setTextColor(
+                15,
+                23,
+                42
+            );
+
+            pdf.setFont(
+                "helvetica",
+                "bold"
+            );
+
+            pdf.setFontSize(
+                8.5
+            );
+
+            pdf.text(
+                `Annual Maintenance Contract - ${
+                    invoice.productName ||
+                    ""
+                }`,
+                margin + 4,
+                rowTop + 8
+            );
+
+            pdf.setFont(
+                "helvetica",
+                "normal"
+            );
+
+            pdf.setTextColor(
+                100,
+                116,
+                139
+            );
+
+            pdf.setFontSize(
+                7
+            );
+
+            pdf.text(
+                `${
+                    invoice.description ||
+                    "Annual maintenance, software support and technical assistance."
+                }`,
+                margin + 4,
+                rowTop + 15,
+                {
+                    maxWidth:
+                        100,
+                }
+            );
+
+            pdf.setTextColor(
+                30,
+                41,
+                59
+            );
+
+            pdf.setFontSize(
+                8
+            );
+
+            pdf.text(
+                "1",
+                136,
+                rowTop + 8
+            );
+
+            pdf.text(
+                taxableAmount.toFixed(
+                    2
+                ),
+                174,
+                rowTop + 8,
+                {
+                    align:
+                        "right",
+                }
+            );
+
+            pdf.setFont(
+                "helvetica",
+                "bold"
+            );
+
+            pdf.text(
+                taxableAmount.toFixed(
+                    2
+                ),
+                pageWidth -
+                    margin -
+                    4,
+                rowTop + 8,
+                {
+                    align:
+                        "right",
+                }
+            );
+
+            /*
+             * ==========================
+             * GST + TOTALS
+             * ==========================
+             */
+
+            let y =
+                160;
+
+            const totalLabelX =
+                125;
+
+            const totalValueX =
+                pageWidth -
+                margin;
+
+            const totalRow = (
+                label,
+                value,
+                options = {}
+            ) => {
+                const {
+                    bold = false,
+                    large = false,
+                } = options;
+
+                pdf.setFont(
+                    "helvetica",
+                    bold
+                        ? "bold"
+                        : "normal"
+                );
+
+                pdf.setFontSize(
+                    large
+                        ? 11
+                        : 8.5
+                );
+
+                pdf.setTextColor(
+                    bold
+                        ? 15
+                        : 71,
+                    bold
+                        ? 23
+                        : 85,
+                    bold
+                        ? 42
+                        : 105
+                );
+
+                pdf.text(
+                    label,
+                    totalLabelX,
+                    y
+                );
+
+                pdf.text(
+                    value,
+                    totalValueX,
+                    y,
+                    {
+                        align:
+                            "right",
+                    }
+                );
+
+                y +=
+                    large
+                        ? 10
+                        : 7;
+            };
+
+            totalRow(
+                "Taxable Amount",
+                taxableAmount.toFixed(
+                    2
+                )
+            );
+
+            if (
+                cgstRate > 0
+            ) {
+                totalRow(
+                    `CGST @ ${cgstRate}%`,
+                    cgstAmount.toFixed(
+                        2
+                    )
+                );
+            }
+
+            if (
+                sgstRate > 0
+            ) {
+                totalRow(
+                    `SGST @ ${sgstRate}%`,
+                    sgstAmount.toFixed(
+                        2
+                    )
+                );
+            }
+
+            if (
+                igstRate > 0
+            ) {
+                totalRow(
+                    `IGST @ ${igstRate}%`,
+                    igstAmount.toFixed(
+                        2
+                    )
+                );
+            }
+
+            if (
+                totalTax === 0
+            ) {
+                totalRow(
+                    "GST",
+                    "N.A."
+                );
+            }
+
+            pdf.setDrawColor(
+                203,
+                213,
+                225
+            );
+
+            pdf.line(
+                totalLabelX,
+                y - 2,
+                totalValueX,
+                y - 2
+            );
+
+            y += 4;
+
+            totalRow(
+                "GRAND TOTAL",
+                totalAmount.toFixed(
+                    2
+                ),
+                {
+                    bold: true,
+                    large: true,
+                }
+            );
+
+            /*
+             * ==========================
+             * PAYMENT SUMMARY
+             * ==========================
+             */
+
+            const paymentTop =
+                Math.max(
+                    y + 5,
+                    205
+                );
+
+            pdf.setFillColor(
+                248,
+                250,
+                252
+            );
+
+            pdf.setDrawColor(
+                226,
+                232,
+                240
+            );
+
+            pdf.roundedRect(
+                margin,
+                paymentTop,
+                contentWidth,
+                37,
+                2,
+                2,
+                "FD"
+            );
+
+            pdf.setFont(
+                "helvetica",
+                "bold"
+            );
+
+            pdf.setFontSize(
+                8
+            );
+
+            pdf.setTextColor(
+                100,
+                116,
+                139
+            );
+
+            pdf.text(
+                "PAYMENT SUMMARY",
+                margin + 5,
+                paymentTop + 8
+            );
+
+            pdf.setFontSize(
+                7
+            );
+
+            pdf.text(
+                "TOTAL",
+                margin + 5,
+                paymentTop + 18
+            );
+
+            pdf.text(
+                "PAID",
+                78,
+                paymentTop + 18
+            );
+
+            pdf.text(
+                "PENDING",
+                137,
+                paymentTop + 18
+            );
+
+            pdf.setFont(
+                "helvetica",
+                "bold"
+            );
+
+            pdf.setFontSize(
+                11
+            );
+
+            pdf.setTextColor(
+                15,
+                23,
+                42
+            );
+
+            pdf.text(
+                `Rs. ${totalAmount.toLocaleString(
+                    "en-IN"
+                )}`,
+                margin + 5,
+                paymentTop + 27
+            );
+
+            pdf.setTextColor(
+                5,
+                150,
+                105
+            );
+
+            pdf.text(
+                `Rs. ${paidAmount.toLocaleString(
+                    "en-IN"
+                )}`,
+                78,
+                paymentTop + 27
+            );
+
+            pdf.setTextColor(
+                pendingAmount > 0
+                    ? 217
+                    : 5,
+                pendingAmount > 0
+                    ? 119
+                    : 150,
+                pendingAmount > 0
+                    ? 6
+                    : 105
+            );
+
+            pdf.text(
+                `Rs. ${pendingAmount.toLocaleString(
+                    "en-IN"
+                )}`,
+                137,
+                paymentTop + 27
+            );
+
+            /*
+             * ==========================
+             * PAYMENT / BANK PLACEHOLDER
+             * ==========================
+             */
+
+            const bankTop =
+                paymentTop + 45;
+
+            pdf.setDrawColor(
+                226,
+                232,
+                240
+            );
+
+            pdf.roundedRect(
+                margin,
+                bankTop,
+                105,
+                31,
+                2,
+                2,
+                "D"
+            );
+
+            pdf.setFont(
+                "helvetica",
+                "bold"
+            );
+
+            pdf.setFontSize(
+                8
+            );
+
+            pdf.setTextColor(
+                15,
+                23,
+                42
+            );
+
+            pdf.text(
+                "PAYMENT INFORMATION",
+                margin + 5,
+                bankTop + 8
+            );
+
+            pdf.setFont(
+                "helvetica",
+                "normal"
+            );
+
+            pdf.setFontSize(
+                7.5
+            );
+
+            pdf.setTextColor(
+                100,
+                116,
+                139
+            );
+
+            pdf.text(
+                "Please pay using the payment details",
+                margin + 5,
+                bankTop + 16
+            );
+
+            pdf.text(
+                "shared by Total Solution.",
+                margin + 5,
+                bankTop + 22
+            );
+
+            /*
+             * QR PLACEHOLDER
+             */
+            pdf.roundedRect(
+                126,
+                bankTop,
+                70,
+                31,
+                2,
+                2,
+                "D"
+            );
+
+            pdf.setFont(
+                "helvetica",
+                "bold"
+            );
+
+            pdf.setTextColor(
+                6,
+                182,
+                212
+            );
+
+            pdf.text(
+                "PHONEPE / UPI",
+                161,
+                bankTop + 9,
+                {
+                    align:
+                        "center",
+                }
+            );
+
+            pdf.setFont(
+                "helvetica",
+                "normal"
+            );
+
+            pdf.setTextColor(
+                100,
+                116,
+                139
+            );
+
+            pdf.setFontSize(
+                7
+            );
+
+            pdf.text(
+                "Payment QR will appear here",
+                161,
+                bankTop + 17,
+                {
+                    align:
+                        "center",
+                }
+            );
+
+            pdf.text(
+                "after company payment setup.",
+                161,
+                bankTop + 23,
+                {
+                    align:
+                        "center",
+                }
+            );
+
+            /*
+             * ==========================
+             * FOOTER
+             * ==========================
+             */
+
+            pdf.setDrawColor(
+                226,
+                232,
+                240
+            );
+
+            pdf.line(
+                margin,
+                280,
+                pageWidth -
+                    margin,
+                280
+            );
+
+            pdf.setFont(
+                "helvetica",
+                "normal"
+            );
+
+            pdf.setTextColor(
+                100,
+                116,
+                139
+            );
+
+            pdf.setFontSize(
+                7
+            );
+
+            pdf.text(
+                "This is a computer-generated AMC invoice.",
+                pageWidth / 2,
+                286,
+                {
+                    align:
+                        "center",
+                }
+            );
+
+            pdf.setFont(
+                "helvetica",
+                "bold"
+            );
+
+            pdf.setTextColor(
+                15,
+                23,
+                42
+            );
+
+            pdf.text(
+                "Thank you for choosing Total Solution.",
+                pageWidth / 2,
+                291,
+                {
+                    align:
+                        "center",
+                }
+            );
+
+            pdf.save(
+                `${
+                    invoice.invoiceCode ||
+                    "AMC-Invoice"
+                }.pdf`
+            );
+        } catch (error) {
+            console.error(
+                "Invoice PDF generation error:",
+                error
+            );
+
+            alert(
+                error.message ||
+                "Unable to generate invoice PDF."
+            );
+        }
     };
 
-    const handleDownloadReceipt = (payment) => {
-        if (!payment?.invoiceId) {
-            alert("Receipt download is unavailable for this payment.");
+const handleDownloadReceipt =
+    (payment) => {
+        if (!payment) {
+            alert(
+                "Payment information is unavailable."
+            );
             return;
         }
 
-        window.open(`${API_URL}/api/client/amc/invoice/${payment.invoiceId}/pdf`, "_blank");
+        alert(
+            "Dedicated payment receipt PDF will be connected next. The payment itself is saved successfully."
+        );
     };
 
-    const invoicePeriod = (invoice) => {
-        if (!invoice) return "Not available";
-        return `${formatDate(invoice.contractStartDate)} � ${formatDate(invoice.contractExpiryDate)}`;
-    };
+   const invoicePeriod = (invoice) => {
+    if (!invoice) {
+        return "Not available";
+    }
+
+    const startDate =
+        invoice.contractStartDate ||
+        invoice.contractStart ||
+        null;
+
+    const expiryDate =
+        invoice.contractExpiryDate ||
+        invoice.contractEnd ||
+        null;
+
+    if (
+        !startDate &&
+        !expiryDate
+    ) {
+        return "Not available";
+    }
+
+    return `${formatDate(
+        startDate
+    )} — ${formatDate(
+        expiryDate
+    )}`;
+};
 
     const closeInvoiceDrawer = () => setSelectedInvoiceId(null);
 
@@ -325,7 +1898,16 @@ export default function ClientBilling() {
                                 {formatCurrency(currentInvoice?.balanceAmount ?? currentInvoice?.pendingAmount ?? 0)}
                             </p>
                             <p className="mt-2 text-xs text-slate-500">
-                                {currentInvoice?.productName || "AMC coverage"} � {currentInvoice ? invoicePeriod(currentInvoice) : "Not available"}
+                               {currentInvoice?.productName ||
+    "AMC coverage"}{" "}
+<span className="text-slate-300">
+    •
+</span>{" "}
+{currentInvoice
+    ? invoicePeriod(
+        currentInvoice
+    )
+    : "Not available"}
                             </p>
                             <div className="mt-3 flex flex-wrap items-center gap-2">
                                 <StatusBadge status={currentInvoice?.paymentStatus || currentInvoice?.status || "Pending"} />
@@ -418,8 +2000,33 @@ export default function ClientBilling() {
                             {filteredBillingRecords.map((record) => (
                                 <tr key={record.id} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/60">
                                     <td className="px-5 py-4">
-                                        <p className="text-xs font-semibold text-slate-950">{record.invoiceCode || record.invoiceNo || "-"}</p>
-                                        <p className="mt-1 text-[9px] text-slate-400">{record.invoiceDate ? formatDate(record.invoiceDate) : "-"}</p>
+                                       <p className="text-xs font-semibold text-slate-950">
+    {record.invoiceCode ||
+        record.invoiceNo ||
+        "-"}
+</p>
+
+<div className="mt-1 flex items-center gap-2">
+
+    <span className="text-[9px] text-slate-400">
+        {record.invoiceDate
+            ? formatDate(
+                record.invoiceDate
+            )
+            : "-"}
+    </span>
+
+    {getCustomInvoiceDocument(record) ? (
+        <span className="rounded-full bg-cyan-50 px-2 py-0.5 text-[8px] font-bold uppercase tracking-wide text-cyan-700 ring-1 ring-cyan-200">
+            Custom Bill
+        </span>
+    ) : (
+        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[8px] font-bold uppercase tracking-wide text-slate-500">
+            System Invoice
+        </span>
+    )}
+
+</div>
                                     </td>
                                     <td className="px-4 py-4 text-xs font-medium text-slate-700">{record.productName || record.product || "-"}</td>
                                     <td className="px-4 py-4 text-xs text-slate-500">{invoicePeriod(record)}</td>

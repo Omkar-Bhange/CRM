@@ -17,7 +17,12 @@ import {
     CreditCard,
     Download,
     Eye,
+    FileImage,
     FileText,
+    FolderOpen,
+    Paperclip,
+    Trash2,
+    Upload,
     Filter,
     History,
     IndianRupee,
@@ -64,6 +69,11 @@ const emptyNewAmcForm = {
     expiryDate: "",
     dueDate: "",
     taxableAmount: "",
+    invoiceSource: "SYSTEM",
+    gstApplicable: "YES",
+    gstRate: "18",
+    customGstRate: "",
+    taxType: "CGST_SGST",
     cgstRate: "9",
     sgstRate: "9",
     igstRate: "0",
@@ -565,6 +575,91 @@ const normalizeAmcContractFromApi = (
             )
                 ? contract.renewalHistory
                 : [],
+       documents:
+    Array.isArray(contract.documents)
+        ? contract.documents.map(
+            (document) => ({
+                id: String(
+                    document._id ||
+                    document.id ||
+                    ""
+                ),
+
+                type:
+                    document.documentType ||
+                    document.type ||
+                    "Other Document",
+
+                documentType:
+                    document.documentType ||
+                    document.type ||
+                    "Other Document",
+
+                name:
+                    document.fileName ||
+                    document.name ||
+                    "Document",
+
+                fileName:
+                    document.fileName ||
+                    document.name ||
+                    "Document",
+
+                mimeType:
+                    document.mimeType ||
+                    document.contentType ||
+                    "",
+
+                size:
+                    Number(
+                        document.fileSize ||
+                        document.size ||
+                        0
+                    ),
+
+                fileSize:
+                    Number(
+                        document.fileSize ||
+                        document.size ||
+                        0
+                    ),
+
+                previewUrl:
+                    document.previewUrl ||
+                    document.url ||
+                    "",
+
+                downloadUrl:
+                    document.downloadUrl ||
+                    "",
+
+                source:
+                    document.source ||
+                    "Uploaded",
+
+                status:
+                    document.status ||
+                    "Available",
+
+                uploadedAt:
+                    document.uploadedAt ||
+                    document.createdAt ||
+                    null,
+
+                uploadedBy:
+                    document.uploadedByName ||
+                    document.uploadedBy ||
+                    "Admin",
+
+                uploadedByName:
+                    document.uploadedByName ||
+                    "Admin",
+
+                localOnly:
+                    false,
+            })
+        )
+        : [],
         timeline:
             Array.isArray(
                 contract.timeline
@@ -694,6 +789,7 @@ export default function AmcBilling() {
     const [historyInvoiceRecord, setHistoryInvoiceRecord] = useState(null);
     const [newAmcOpen, setNewAmcOpen] = useState(false);
     const [newAmcForm, setNewAmcForm] = useState(emptyNewAmcForm);
+    const [ownInvoiceFile, setOwnInvoiceFile] = useState(null);
     const [newAmcError, setNewAmcError] = useState("");
     const [records, setRecords] = useState([]);
     const [clients, setClients] = useState([]);
@@ -723,6 +819,13 @@ export default function AmcBilling() {
     const [renewalForm, setRenewalForm] = useState(emptyRenewalForm);
     const [formError, setFormError] = useState("");
     const [activeTab, setActiveTab] = useState("Overview");
+    const [localDocuments, setLocalDocuments] = useState({});
+    const [documentType, setDocumentType] = useState("AMC Agreement");
+    const [documentError, setDocumentError] = useState("");
+    const [
+    uploadingDocument,
+    setUploadingDocument,
+] = useState(false);
 
     const createAmcTimelineEvent = ({
         type,
@@ -1421,20 +1524,95 @@ export default function AmcBilling() {
         setReminderRecord(record);
     };
 
+    const deriveGstRates = (form) => {
+        if (form.gstApplicable !== "YES") {
+            return { cgstRate: 0, sgstRate: 0, igstRate: 0, effectiveRate: 0 };
+        }
+
+        const selectedRate =
+            form.gstRate === "CUSTOM"
+                ? Number(form.customGstRate || 0)
+                : Number(form.gstRate || 0);
+        const effectiveRate = Number.isFinite(selectedRate) && selectedRate >= 0
+            ? selectedRate
+            : 0;
+
+        if (form.taxType === "IGST") {
+            return { cgstRate: 0, sgstRate: 0, igstRate: effectiveRate, effectiveRate };
+        }
+
+        const halfRate = effectiveRate / 2;
+        return {
+            cgstRate: halfRate,
+            sgstRate: halfRate,
+            igstRate: 0,
+            effectiveRate,
+        };
+    };
+
+    const gstPreview = useMemo(() => {
+        const taxableAmount = Math.max(Number(newAmcForm.taxableAmount || 0), 0);
+        const rates = deriveGstRates(newAmcForm);
+        const cgstAmount = taxableAmount * (rates.cgstRate / 100);
+        const sgstAmount = taxableAmount * (rates.sgstRate / 100);
+        const igstAmount = taxableAmount * (rates.igstRate / 100);
+        const totalTaxAmount = cgstAmount + sgstAmount + igstAmount;
+
+        return {
+            ...rates,
+            taxableAmount,
+            cgstAmount,
+            sgstAmount,
+            igstAmount,
+            totalTaxAmount,
+            grandTotal: taxableAmount + totalTaxAmount,
+        };
+    }, [newAmcForm]);
+
     const handleNewAmcChange = (event) => {
         const { name, value } = event.target;
-        setNewAmcForm((current) => ({
-            ...current,
-            [name]: value,
-        }));
+        setNewAmcForm((current) => {
+            const next = { ...current, [name]: value };
+
+            if (name === "gstApplicable" && value === "NO") {
+                next.cgstRate = "0";
+                next.sgstRate = "0";
+                next.igstRate = "0";
+            }
+
+            return next;
+        });
         if (newAmcError) {
             setNewAmcError("");
         }
     };
 
+    const handleOwnInvoiceFileChange = (event) => {
+        const file = event.target.files?.[0] || null;
+        if (!file) return;
+
+        const allowedTypes = [
+            "application/pdf",
+            "image/jpeg",
+            "image/png",
+        ];
+        const extensionAllowed = /\.(pdf|jpe?g|png)$/i.test(file.name);
+
+        if ((!allowedTypes.includes(file.type) && !extensionAllowed) || file.size > 10 * 1024 * 1024) {
+            setOwnInvoiceFile(null);
+            event.target.value = "";
+            setNewAmcError("Upload a PDF, JPG, JPEG or PNG file up to 10 MB.");
+            return;
+        }
+
+        setOwnInvoiceFile(file);
+        setNewAmcError("");
+    };
+
     const closeNewAmcDrawer = () => {
         setNewAmcOpen(false);
         setNewAmcForm(emptyNewAmcForm);
+        setOwnInvoiceFile(null);
         setNewAmcError("");
     };
 
@@ -1467,6 +1645,17 @@ export default function AmcBilling() {
                 return;
             }
             const licensedUsers = Number(newAmcForm.licensedUsers);
+            if (newAmcForm.gstApplicable === "YES" && newAmcForm.gstRate === "CUSTOM") {
+                const customRate = Number(newAmcForm.customGstRate);
+                if (!Number.isFinite(customRate) || customRate < 0 || customRate > 100) {
+                    setNewAmcError("Enter a valid custom GST rate between 0 and 100%.");
+                    return;
+                }
+            }
+            if (newAmcForm.invoiceSource === "UPLOAD" && !ownInvoiceFile) {
+                setNewAmcError("Please choose the self-made invoice or receipt file.");
+                return;
+            }
             if (!licensedUsers || licensedUsers <= 0) {
                 setNewAmcError("Please enter a valid licensed user count.");
                 return;
@@ -1491,9 +1680,9 @@ export default function AmcBilling() {
                             expiryDate: newAmcForm.expiryDate,
                             dueDate: newAmcForm.dueDate,
                             taxableAmount,
-                            cgstRate: Number(newAmcForm.cgstRate || 0),
-                            sgstRate: Number(newAmcForm.sgstRate || 0),
-                            igstRate: Number(newAmcForm.igstRate || 0),
+                            cgstRate: gstPreview.cgstRate,
+                            sgstRate: gstPreview.sgstRate,
+                            igstRate: gstPreview.igstRate,
                             assignedEmployeeId: newAmcForm.assignedEmployeeId || "",
                             notes: newAmcForm.notes.trim(),
                         }),
@@ -1506,21 +1695,88 @@ export default function AmcBilling() {
                         "Unable to create AMC contract."
                     );
                 }
-                const createdRecord =
-                    normalizeAmcContractFromApi(
-                        result.data
-                    );
-                setRecords(
-                    (current) => [
-                        createdRecord,
-                        ...current,
-                    ]
-                );
-                closeNewAmcDrawer();
-                await loadAmcContracts();
-                alert(
-                    "AMC contract created successfully."
-                );
+          const createdContract =
+    result.data?.contract ||
+    result.data;
+
+const createdRecord =
+    normalizeAmcContractFromApi(
+        createdContract
+    );
+
+const contractId =
+    createdContract?._id ||
+    createdContract?.id ||
+    createdRecord.id;
+
+if (!contractId) {
+    throw new Error(
+        "AMC was created but contract ID was not returned."
+    );
+}
+
+/*
+ * If user selected Upload Own Invoice,
+ * save that actual file in backend documents.
+ */
+if (
+    newAmcForm.invoiceSource ===
+        "UPLOAD" &&
+    ownInvoiceFile
+) {
+    const formData =
+        new FormData();
+
+    formData.append(
+        "documentType",
+        "Own Invoice / Bill"
+    );
+
+    formData.append(
+        "documents",
+        ownInvoiceFile
+    );
+
+    const uploadResponse =
+        await fetch(
+            `${API_URL}/api/admin/amc/contract/${contractId}/documents`,
+            {
+                method: "POST",
+
+                headers: {
+                    Authorization:
+                        `Bearer ${getAuthToken()}`,
+                },
+
+                body:
+                    formData,
+            }
+        );
+
+    const uploadResult =
+        await uploadResponse.json();
+
+    if (
+        !uploadResponse.ok ||
+        !uploadResult.success
+    ) {
+        throw new Error(
+            uploadResult.message ||
+            "AMC created, but own invoice upload failed."
+        );
+    }
+}
+
+closeNewAmcDrawer();
+
+await loadAmcContracts();
+
+alert(
+    newAmcForm.invoiceSource ===
+        "UPLOAD"
+        ? "AMC contract and own invoice saved successfully."
+        : "AMC contract created successfully."
+);
             } catch (error) {
                 console.error(
                     "Create AMC contract error:",
@@ -1695,12 +1951,536 @@ export default function AmcBilling() {
             }
         };
 
+    const formatFileSize = (bytes) => {
+        const value = Number(bytes || 0);
+        if (!value) return "—";
+        if (value < 1024) return `${value} B`;
+        if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+        return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+    };
+
+    const getRecordDocuments = (record) => {
+        if (!record) return [];
+
+        const backendDocuments = Array.isArray(record.documents)
+            ? record.documents
+            : [];
+
+        const frontendDocuments =
+            localDocuments[String(record.id)] || [];
+
+        const systemInvoiceDocument =
+            record.invoiceNo
+                ? [{
+                    id: `system-invoice-${record.id}`,
+                    type: "System Generated Invoice",
+                    name: `${record.invoiceNo}.pdf`,
+                    mimeType: "application/pdf",
+                    size: 0,
+                    url: "",
+                    source: "System Generated",
+                    status: "Ready",
+                    uploadedAt: record.invoiceDate || null,
+                    uploadedBy: "System",
+                    systemInvoice: true,
+                    localOnly: true,
+                }]
+                : [];
+
+        return [
+            ...systemInvoiceDocument,
+            ...backendDocuments,
+            ...frontendDocuments,
+        ];
+    };
+
+const handleDocumentUpload =
+    async (event) => {
+        const files =
+            Array.from(
+                event.target.files ||
+                []
+            );
+
+        event.target.value =
+            "";
+
+        if (
+            !selectedRecord ||
+            files.length === 0
+        ) {
+            return;
+        }
+
+        const allowedTypes = [
+            "application/pdf",
+            "image/jpeg",
+            "image/png",
+        ];
+
+        const invalidFile =
+            files.find(
+                (file) =>
+                    (
+                        !allowedTypes.includes(
+                            file.type
+                        ) &&
+                        !/\.(pdf|jpe?g|png)$/i.test(
+                            file.name
+                        )
+                    ) ||
+                    file.size >
+                        10 *
+                        1024 *
+                        1024
+            );
+
+        if (invalidFile) {
+            setDocumentError(
+                "Only PDF, JPG, JPEG and PNG documents up to 10 MB are allowed."
+            );
+            return;
+        }
+
+        try {
+            setUploadingDocument(
+                true
+            );
+
+            setDocumentError(
+                ""
+            );
+
+            const token =
+                getAuthToken();
+
+            if (!token) {
+                throw new Error(
+                    "Login token was not found. Please login again."
+                );
+            }
+
+            const contractId =
+                selectedRecord.mongoId ||
+                selectedRecord.id;
+
+            if (!contractId) {
+                throw new Error(
+                    "AMC contract ID was not found."
+                );
+            }
+
+            const formData =
+                new FormData();
+
+            formData.append(
+                "documentType",
+                documentType
+            );
+
+            files.forEach(
+                (file) => {
+                    formData.append(
+                        "documents",
+                        file
+                    );
+                }
+            );
+
+            const response =
+                await fetch(
+                    `${API_URL}/api/admin/amc/contract/${contractId}/documents`,
+                    {
+                        method:
+                            "POST",
+
+                        headers: {
+                            Authorization:
+                                `Bearer ${token}`,
+                        },
+
+                        body:
+                            formData,
+                    }
+                );
+
+            const result =
+                await response.json();
+
+            if (
+                !response.ok ||
+                !result.success
+            ) {
+                throw new Error(
+                    result.message ||
+                    "Unable to upload AMC document."
+                );
+            }
+
+            const backendContract =
+                result.data?.contract ||
+                result.data;
+
+            if (backendContract) {
+                const updatedRecord =
+                    normalizeAmcContractFromApi(
+                        backendContract
+                    );
+
+                setSelectedRecord(
+                    updatedRecord
+                );
+
+                setRecords(
+                    (current) =>
+                        current.map(
+                            (record) =>
+                                record.id ===
+                                updatedRecord.id
+                                    ? updatedRecord
+                                    : record
+                        )
+                );
+            } else {
+                await loadAmcContracts();
+            }
+
+            alert(
+                files.length === 1
+                    ? "Document uploaded successfully."
+                    : `${files.length} documents uploaded successfully.`
+            );
+        } catch (error) {
+            console.error(
+                "AMC document upload error:",
+                error
+            );
+
+            setDocumentError(
+                error.message ||
+                "Unable to upload document."
+            );
+        } finally {
+            setUploadingDocument(
+                false
+            );
+        }
+    };
+
+   const handlePreviewDocument =
+    async (document) => {
+        if (
+            document.systemInvoice
+        ) {
+            handleOpenInvoicePreview(
+                selectedRecord
+            );
+
+            return;
+        }
+
+        try {
+            const token =
+                getAuthToken();
+
+            if (!token) {
+                throw new Error(
+                    "Login token was not found."
+                );
+            }
+
+            const contractId =
+                selectedRecord.mongoId ||
+                selectedRecord.id;
+
+            const endpoint =
+                `${API_URL}/api/admin/amc/contract/${contractId}/document/${document.id}/view`;
+
+            const response =
+                await fetch(
+                    endpoint,
+                    {
+                        headers: {
+                            Authorization:
+                                `Bearer ${token}`,
+                        },
+                    }
+                );
+
+            if (!response.ok) {
+                let message =
+                    "Unable to preview document.";
+
+                try {
+                    const result =
+                        await response.json();
+
+                    message =
+                        result.message ||
+                        message;
+                } catch {
+                    // file response
+                }
+
+                throw new Error(
+                    message
+                );
+            }
+
+            const blob =
+                await response.blob();
+
+            const objectUrl =
+                URL.createObjectURL(
+                    blob
+                );
+
+            const newWindow =
+                window.open(
+                    objectUrl,
+                    "_blank"
+                );
+
+            if (!newWindow) {
+                URL.revokeObjectURL(
+                    objectUrl
+                );
+
+                throw new Error(
+                    "Popup blocked. Please allow popups."
+                );
+            }
+
+            setTimeout(
+                () => {
+                    URL.revokeObjectURL(
+                        objectUrl
+                    );
+                },
+                60000
+            );
+        } catch (error) {
+            console.error(
+                "Preview document error:",
+                error
+            );
+
+            alert(
+                error.message ||
+                "Unable to preview document."
+            );
+        }
+    };
+   const handleDownloadDocument =
+    async (document) => {
+        if (
+            document.systemInvoice
+        ) {
+            handleOpenInvoicePreview(
+                selectedRecord
+            );
+
+            return;
+        }
+
+        try {
+            const token =
+                getAuthToken();
+
+            const contractId =
+                selectedRecord.mongoId ||
+                selectedRecord.id;
+
+            const endpoint =
+                `${API_URL}/api/admin/amc/contract/${contractId}/document/${document.id}/download`;
+
+            const response =
+                await fetch(
+                    endpoint,
+                    {
+                        headers: {
+                            Authorization:
+                                `Bearer ${token}`,
+                        },
+                    }
+                );
+
+            if (!response.ok) {
+                throw new Error(
+                    "Unable to download document."
+                );
+            }
+
+            const blob =
+                await response.blob();
+
+            const objectUrl =
+                URL.createObjectURL(
+                    blob
+                );
+
+            const anchor =
+                window.document.createElement(
+                    "a"
+                );
+
+            anchor.href =
+                objectUrl;
+
+            anchor.download =
+                document.fileName ||
+                document.name ||
+                "document";
+
+            window.document.body.appendChild(
+                anchor
+            );
+
+            anchor.click();
+
+            anchor.remove();
+
+            setTimeout(
+                () =>
+                    URL.revokeObjectURL(
+                        objectUrl
+                    ),
+                1000
+            );
+        } catch (error) {
+            console.error(
+                "Download document error:",
+                error
+            );
+
+            alert(
+                error.message ||
+                "Unable to download document."
+            );
+        }
+    };
+
+  const handleRemoveLocalDocument =
+    async (document) => {
+        if (
+            !selectedRecord ||
+            !document?.id ||
+            document.systemInvoice
+        ) {
+            return;
+        }
+
+        const confirmed =
+            window.confirm(
+                `Remove "${document.fileName || document.name}"?`
+            );
+
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            const token =
+                getAuthToken();
+
+            const contractId =
+                selectedRecord.mongoId ||
+                selectedRecord.id;
+
+            const response =
+                await fetch(
+                    `${API_URL}/api/admin/amc/contract/${contractId}/document/${document.id}`,
+                    {
+                        method:
+                            "DELETE",
+
+                        headers: {
+                            Accept:
+                                "application/json",
+
+                            Authorization:
+                                `Bearer ${token}`,
+                        },
+                    }
+                );
+
+            const result =
+                await response.json();
+
+            if (
+                !response.ok ||
+                !result.success
+            ) {
+                throw new Error(
+                    result.message ||
+                    "Unable to remove document."
+                );
+            }
+
+            const backendContract =
+                result.data?.contract ||
+                result.data;
+
+            if (backendContract) {
+                const updatedRecord =
+                    normalizeAmcContractFromApi(
+                        backendContract
+                    );
+
+                setSelectedRecord(
+                    updatedRecord
+                );
+
+                setRecords(
+                    (current) =>
+                        current.map(
+                            (record) =>
+                                record.id ===
+                                updatedRecord.id
+                                    ? updatedRecord
+                                    : record
+                        )
+                );
+            } else {
+                setSelectedRecord(
+                    (current) => ({
+                        ...current,
+
+                        documents:
+                            (
+                                current.documents ||
+                                []
+                            ).filter(
+                                (item) =>
+                                    item.id !==
+                                    document.id
+                            ),
+                    })
+                );
+            }
+
+            alert(
+                "Document removed successfully."
+            );
+        } catch (error) {
+            console.error(
+                "Remove document error:",
+                error
+            );
+
+            alert(
+                error.message ||
+                "Unable to remove document."
+            );
+        }
+    };
+
     // Render the detail view when a record is selected
     if (selectedRecord) {
         return (
             <>
                 {/* Detail View - Full Page */}
-                <div className="enterprise-page space-y-6">
+                <div className="enterprise-page space-y-6 bg-[radial-gradient(circle_at_top_right,rgba(124,58,237,0.055),transparent_28%)]">
                     {/* Back button */}
                     <button
                         type="button"
@@ -2128,10 +2908,220 @@ export default function AmcBilling() {
                         )}
 
                         {activeTab === "Documents" && (
-                            <div className="enterprise-empty-state p-6 text-center">
-                                <FileText size={32} className="mx-auto text-slate-300" />
-                                <h3 className="mt-4 text-sm font-semibold text-slate-700">No documents uploaded</h3>
-                                <p className="mt-1 text-xs text-slate-400">Contract documents and invoices will appear here.</p>
+                            <div className="space-y-5">
+                                <div className="rounded-2xl border border-slate-200 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.04)]">
+                                    <div className="flex flex-col gap-4 border-b border-slate-200 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <FolderOpen size={18} className="text-violet-600" />
+                                                <h3 className="text-sm font-semibold text-slate-950">
+                                                    AMC Documents
+                                                </h3>
+                                            </div>
+                                            <p className="mt-1 text-xs text-slate-500">
+                                                Keep invoices, agreements, payment receipts and supporting documents with this AMC contract.
+                                            </p>
+                                        </div>
+
+                                        <div className="flex flex-col gap-2 sm:flex-row">
+                                            <select
+                                                value={documentType}
+                                                onChange={(event) => {
+                                                    setDocumentType(event.target.value);
+                                                    setDocumentError("");
+                                                }}
+                                                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                            >
+                                                <option>AMC Agreement</option>
+                                                <option>Own Invoice / Bill</option>
+                                                <option>Payment Receipt</option>
+                                                <option>Quotation</option>
+                                                <option>Purchase Order</option>
+                                                <option>Other Document</option>
+                                            </select>
+
+                                            <label className="flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white shadow-lg shadow-violet-600/20 transition hover:bg-violet-700">
+                                                <Upload size={15} />
+                                               {uploadingDocument
+    ? "Uploading..."
+    : "Upload Document"}
+                                               <input
+    type="file"
+    accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+    multiple
+    disabled={
+        uploadingDocument
+    }
+    onChange={
+        handleDocumentUpload
+    }
+    className="hidden"
+/>
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    {documentError && (
+                                        <div className="mx-6 mt-5 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
+                                            <AlertCircle size={15} className="mt-0.5 shrink-0" />
+                                            <span>{documentError}</span>
+                                        </div>
+                                    )}
+
+                                    <div className="mx-6 mt-5 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+                                        <div className="flex items-start gap-3">
+                                            <Paperclip size={16} className="mt-0.5 shrink-0 text-blue-600" />
+                                            <div>
+                                                <p className="text-xs font-semibold text-blue-900">
+                                                    Frontend document workspace is ready
+                                                </p>
+                                                <p className="mt-1 text-[10px] leading-5 text-blue-700">
+                                                    Files selected here can be previewed during this browser session. They are marked
+                                                    "Pending Backend Save" until the document upload/storage API is connected.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {getRecordDocuments(selectedRecord).length === 0 ? (
+                                        <div className="flex min-h-[220px] flex-col items-center justify-center px-6 py-10 text-center">
+                                            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+                                                <FileText size={26} />
+                                            </div>
+                                            <h4 className="mt-4 text-sm font-semibold text-slate-700">
+                                                No documents available
+                                            </h4>
+                                            <p className="mt-1 max-w-md text-xs leading-5 text-slate-400">
+                                                Upload an AMC agreement, your own bill, receipt or another supporting document.
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <div className="grid gap-4 p-6 md:grid-cols-2 xl:grid-cols-3">
+                                            {getRecordDocuments(selectedRecord).map((document) => {
+                                                const isImage =
+                                                    document.mimeType?.startsWith("image/") ||
+                                                    /\.(jpg|jpeg|png)$/i.test(document.name || "");
+
+                                                return (
+                                                    <article
+                                                        key={document.id}
+                                                        className="group rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-violet-200 hover:shadow-[0_12px_35px_rgba(15,23,42,0.07)]"
+                                                    >
+                                                        <div className="flex items-start gap-3">
+                                                            <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
+                                                                isImage
+                                                                    ? "bg-cyan-50 text-cyan-700"
+                                                                    : document.systemInvoice
+                                                                        ? "bg-violet-50 text-violet-700"
+                                                                        : "bg-blue-50 text-blue-700"
+                                                            }`}>
+                                                                {isImage ? (
+                                                                    <FileImage size={20} />
+                                                                ) : (
+                                                                    <FileText size={20} />
+                                                                )}
+                                                            </div>
+
+                                                            <div className="min-w-0 flex-1">
+                                                                <p className="truncate text-xs font-semibold text-slate-900">
+                                                                    {document.name}
+                                                                </p>
+                                                                <p className="mt-1 text-[10px] font-medium text-slate-500">
+                                                                    {document.type}
+                                                                </p>
+                                                            </div>
+
+                                                            {document.localOnly && !document.systemInvoice && (
+                                                                <button
+                                                                    type="button"
+                                                                    title="Remove document"
+                                                                    onClick={() => handleRemoveLocalDocument(document)}
+                                                                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                                                                >
+                                                                    <Trash2 size={15} />
+                                                                </button>
+                                                            )}
+                                                        </div>
+
+                                                        <div className="mt-4 grid grid-cols-2 gap-2 text-[10px]">
+                                                            <div className="rounded-lg bg-slate-50 px-3 py-2">
+                                                                <p className="text-slate-400">Size</p>
+                                                                <p className="mt-1 font-semibold text-slate-700">
+                                                                    {document.systemInvoice
+                                                                        ? "Generated PDF"
+                                                                        : formatFileSize(document.size)}
+                                                                </p>
+                                                            </div>
+
+                                                            <div className="rounded-lg bg-slate-50 px-3 py-2">
+                                                                <p className="text-slate-400">Source</p>
+                                                                <p className="mt-1 truncate font-semibold text-slate-700">
+                                                                    {document.source}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="mt-3 flex items-center justify-between gap-2">
+                                                            <span className={`rounded-full px-2.5 py-1 text-[9px] font-bold ${
+                                                                document.status === "Pending Backend Save"
+                                                                    ? "bg-amber-50 text-amber-700"
+                                                                    : "bg-emerald-50 text-emerald-700"
+                                                            }`}>
+                                                                {document.status}
+                                                            </span>
+
+                                                            <span className="truncate text-[9px] text-slate-400">
+                                                                {document.uploadedBy || "System"}
+                                                            </span>
+                                                        </div>
+
+                                                        <div className="mt-4 grid grid-cols-2 gap-2 border-t border-slate-100 pt-4">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handlePreviewDocument(document)}
+                                                                className="flex h-9 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-[10px] font-semibold text-slate-600 transition hover:bg-slate-50"
+                                                            >
+                                                                <Eye size={14} />
+                                                                Preview
+                                                            </button>
+
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleDownloadDocument(document)}
+                                                                className="flex h-9 items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 text-[10px] font-semibold text-violet-700 transition hover:bg-violet-100"
+                                                            >
+                                                                <Download size={14} />
+                                                                {document.systemInvoice ? "Open Invoice" : "Download"}
+                                                            </button>
+                                                        </div>
+                                                    </article>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                                    {[
+                                        ["System Invoice", selectedRecord.invoiceNo ? "Available" : "Not Generated"],
+                                        ["Own Bill / Receipt", getRecordDocuments(selectedRecord).some((item) => item.type === "Own Invoice / Bill") ? "Added" : "Not Added"],
+                                        ["AMC Agreement", getRecordDocuments(selectedRecord).some((item) => item.type === "AMC Agreement") ? "Added" : "Not Added"],
+                                        ["Payment Receipt", getRecordDocuments(selectedRecord).some((item) => item.type === "Payment Receipt") ? "Added" : "Not Added"],
+                                    ].map(([label, value]) => (
+                                        <div key={label} className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                                            <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-slate-400">
+                                                {label}
+                                            </p>
+                                            <p className={`mt-2 text-xs font-semibold ${
+                                                ["Available", "Added"].includes(value)
+                                                    ? "text-emerald-700"
+                                                    : "text-slate-500"
+                                            }`}>
+                                                {value}
+                                            </p>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         )}
 
@@ -2441,23 +3431,23 @@ export default function AmcBilling() {
                 )}
 
                 {newAmcOpen && (
-                    <div className="fixed inset-0 z-[110]">
+                    <div className="fixed inset-0 z-[110] flex items-center justify-end p-3 sm:p-5 lg:p-7">
                         <button
                             type="button"
                             aria-label="Close new AMC drawer"
                             onClick={closeNewAmcDrawer}
-                            className="enterprise-backdrop absolute inset-0 bg-slate-950/45 backdrop-blur-sm"
+                            className="enterprise-backdrop absolute inset-0 bg-slate-950/55 backdrop-blur-[3px]"
                         />
-                        <div className="enterprise-drawer absolute inset-y-0 right-0 flex w-full max-w-[720px] flex-col bg-white shadow-2xl">
-                            <div className="flex h-[78px] shrink-0 items-center justify-between border-b border-slate-200 px-6">
+                        <div className="enterprise-drawer relative z-10 flex h-[calc(100vh-24px)] w-full max-w-[980px] flex-col overflow-hidden rounded-[26px] border border-white/70 bg-[#f8fafc] shadow-[0_32px_100px_rgba(15,23,42,0.30)] sm:h-[calc(100vh-40px)] lg:h-[calc(100vh-56px)]">
+                            <div className="relative flex min-h-[92px] shrink-0 items-center justify-between overflow-hidden border-b border-violet-100 bg-gradient-to-r from-violet-700 via-violet-600 to-indigo-600 px-7 text-white">
                                 <div>
-                                    <h2 className="text-lg font-semibold text-slate-950">New AMC Contract</h2>
-                                    <p className="mt-1 text-xs text-slate-500">Create an annual maintenance contract for a client product.</p>
+                                    <h2 className="text-xl font-bold tracking-[-0.02em] text-white">New AMC Contract</h2>
+                                    <p className="mt-1.5 text-xs font-medium text-violet-100">Create, bill and assign a complete annual maintenance contract.</p>
                                 </div>
                                 <button
                                     type="button"
                                     onClick={closeNewAmcDrawer}
-                                    className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-50"
+                                    className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-white transition hover:bg-white/20"
                                 >
                                     <X size={18} />
                                 </button>
@@ -2466,16 +3456,16 @@ export default function AmcBilling() {
                                 onSubmit={handleCreateAmcContract}
                                 className="flex min-h-0 flex-1 flex-col"
                             >
-                                <div className="flex-1 overflow-y-auto px-8 py-6">
-                                    <div className="space-y-6">
-                                        <section>
-                                            <div className="mb-4">
-                                                <h3 className="text-sm font-semibold text-slate-950">Client Information</h3>
-                                                <p className="mt-1 text-xs text-slate-500">Select the client and primary contact details.</p>
+                                <div className="flex-1 overflow-y-auto bg-slate-50/70 px-5 py-5 sm:px-7 sm:py-6">
+                                    <div className="space-y-5">
+                                        <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.045)] sm:p-6">
+                                            <div className="mb-5 flex items-start gap-3 border-b border-slate-100 pb-4">
+                                                <h3 className="text-sm font-bold tracking-[-0.01em] text-slate-950">Client Information</h3>
+                                                <p className="mt-1 text-[11px] leading-5 text-slate-500">Select the client and primary contact details.</p>
                                             </div>
-                                            <div className="grid gap-5 sm:grid-cols-2">
+                                            <div className="grid gap-x-5 gap-y-4 md:grid-cols-2">
                                                 <div>
-                                                    <label className="mb-2 block text-xs font-semibold text-slate-700">Client <span className="ml-1 text-rose-500">*</span></label>
+                                                    <label className="mb-1.5 block text-[11px] font-bold text-slate-700">Client <span className="ml-1 text-rose-500">*</span></label>
                                                     <select
                                                         name="clientId"
                                                         value={newAmcForm.clientId}
@@ -2503,7 +3493,7 @@ export default function AmcBilling() {
                                                             }));
                                                             setNewAmcError("");
                                                         }}
-                                                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100 disabled:opacity-60"
+                                                        className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-60"
                                                     >
                                                         <option value="">
                                                             {mastersLoading ? "Loading clients..." : "Select client"}
@@ -2517,35 +3507,35 @@ export default function AmcBilling() {
                                                     </select>
                                                 </div>
                                                 <div>
-                                                    <label className="mb-2 block text-xs font-semibold text-slate-700">Contact Person</label>
+                                                    <label className="mb-1.5 block text-[11px] font-bold text-slate-700">Contact Person</label>
                                                     <input
                                                         type="text"
                                                         value={newAmcForm.contactPerson}
                                                         readOnly
                                                         placeholder="From Client Master"
-                                                        className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600 outline-none"
+                                                        className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 text-sm font-medium text-slate-500 outline-none"
                                                     />
                                                 </div>
                                                 <div>
-                                                    <label className="mb-2 block text-xs font-semibold text-slate-700">Mobile</label>
+                                                    <label className="mb-1.5 block text-[11px] font-bold text-slate-700">Mobile</label>
                                                     <input
                                                         type="text"
                                                         value={newAmcForm.contactMobile}
                                                         readOnly
                                                         placeholder="From Client Master"
-                                                        className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600 outline-none"
+                                                        className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 text-sm font-medium text-slate-500 outline-none"
                                                     />
                                                 </div>
                                             </div>
                                         </section>
-                                        <section className="border-t border-slate-200 pt-6">
-                                            <div className="mb-4">
-                                                <h3 className="text-sm font-semibold text-slate-950">Product & Plan</h3>
-                                                <p className="mt-1 text-xs text-slate-500">Configure the software product and AMC plan.</p>
+                                        <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.045)] sm:p-6">
+                                            <div className="mb-5 flex items-start gap-3 border-b border-slate-100 pb-4">
+                                                <h3 className="text-sm font-bold tracking-[-0.01em] text-slate-950">Product & Plan</h3>
+                                                <p className="mt-1 text-[11px] leading-5 text-slate-500">Configure the software product and AMC plan.</p>
                                             </div>
-                                            <div className="grid gap-5 sm:grid-cols-2">
+                                            <div className="grid gap-x-5 gap-y-4 md:grid-cols-2">
                                                 <div>
-                                                    <label className="mb-2 block text-xs font-semibold text-slate-700">Client Product <span className="ml-1 text-rose-500">*</span></label>
+                                                    <label className="mb-1.5 block text-[11px] font-bold text-slate-700">Client Product <span className="ml-1 text-rose-500">*</span></label>
                                                     <select
                                                         name="clientProductId"
                                                         value={newAmcForm.clientProductId}
@@ -2569,7 +3559,7 @@ export default function AmcBilling() {
                                                             }));
                                                             setNewAmcError("");
                                                         }}
-                                                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100 disabled:opacity-60"
+                                                        className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-60"
                                                     >
                                                         <option value="">
                                                             {!newAmcForm.clientId
@@ -2588,22 +3578,22 @@ export default function AmcBilling() {
                                                     </select>
                                                 </div>
                                                 <div>
-                                                    <label className="mb-2 block text-xs font-semibold text-slate-700">Product Version</label>
+                                                    <label className="mb-1.5 block text-[11px] font-bold text-slate-700">Product Version</label>
                                                     <input
                                                         type="text"
                                                         value={newAmcForm.productVersion}
                                                         readOnly
                                                         placeholder="From Client Product"
-                                                        className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600 outline-none"
+                                                        className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 text-sm font-medium text-slate-500 outline-none"
                                                     />
                                                 </div>
                                                 <div>
-                                                    <label className="mb-2 block text-xs font-semibold text-slate-700">AMC plan</label>
+                                                    <label className="mb-1.5 block text-[11px] font-bold text-slate-700">AMC plan</label>
                                                     <select
                                                         name="plan"
                                                         value={newAmcForm.plan}
                                                         onChange={handleNewAmcChange}
-                                                        className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm text-slate-700 outline-none"
+                                                        className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                                                     >
                                                         <option>Premium</option>
                                                         <option>Standard</option>
@@ -2611,58 +3601,185 @@ export default function AmcBilling() {
                                                     </select>
                                                 </div>
                                                 <div>
-                                                    <label className="mb-2 block text-xs font-semibold text-slate-700">Number of users <span className="text-rose-500">*</span></label>
+                                                    <label className="mb-1.5 block text-[11px] font-bold text-slate-700">Number of users <span className="text-rose-500">*</span></label>
                                                     <input
                                                         type="number"
                                                         name="licensedUsers"
                                                         min="1"
                                                         value={newAmcForm.licensedUsers}
                                                         onChange={handleNewAmcChange}
-                                                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                        className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                                                     />
                                                 </div>
                                             </div>
                                         </section>
-                                        <section className="border-t border-slate-200 pt-6">
-                                            <div className="mb-4">
-                                                <h3 className="text-sm font-semibold text-slate-950">AMC Period & Billing</h3>
-                                                <p className="mt-1 text-xs text-slate-500">Set the AMC duration, amount and due date.</p>
+                                        <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.045)] sm:p-6">
+                                            <div className="mb-5 flex items-start gap-3 border-b border-slate-100 pb-4">
+                                                <h3 className="text-sm font-bold tracking-[-0.01em] text-slate-950">AMC Period & Billing</h3>
+                                                <p className="mt-1 text-[11px] leading-5 text-slate-500">Set the AMC duration, amount and due date.</p>
                                             </div>
-                                            <div className="grid gap-5 sm:grid-cols-3">
+                                            <div className="grid gap-x-5 gap-y-4 md:grid-cols-3">
                                                 <div>
-                                                    <label className="mb-2 block text-xs font-semibold text-slate-700">Start date <span className="text-rose-500">*</span></label>
+                                                    <label className="mb-1.5 block text-[11px] font-bold text-slate-700">Start date <span className="text-rose-500">*</span></label>
                                                     <input
                                                         type="date"
                                                         name="startDate"
                                                         value={newAmcForm.startDate}
                                                         onChange={handleNewAmcChange}
-                                                        className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                        className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                                                     />
                                                 </div>
                                                 <div>
-                                                    <label className="mb-2 block text-xs font-semibold text-slate-700">Expiry date <span className="text-rose-500">*</span></label>
+                                                    <label className="mb-1.5 block text-[11px] font-bold text-slate-700">Expiry date <span className="text-rose-500">*</span></label>
                                                     <input
                                                         type="date"
                                                         name="expiryDate"
                                                         value={newAmcForm.expiryDate}
                                                         onChange={handleNewAmcChange}
-                                                        className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                        className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                                                     />
                                                 </div>
                                                 <div>
-                                                    <label className="mb-2 block text-xs font-semibold text-slate-700">Due date <span className="text-rose-500">*</span></label>
+                                                    <label className="mb-1.5 block text-[11px] font-bold text-slate-700">Due date <span className="text-rose-500">*</span></label>
                                                     <input
                                                         type="date"
                                                         name="dueDate"
                                                         value={newAmcForm.dueDate}
                                                         onChange={handleNewAmcChange}
-                                                        className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                        className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                                                     />
                                                 </div>
                                             </div>
-                                            <div className="mt-5 grid gap-5 sm:grid-cols-2">
+
+                                            <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                                                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                                    <div>
+                                                        <h4 className="text-sm font-bold text-slate-900">Invoice & GST</h4>
+                                                        <p className="mt-1 text-[11px] text-slate-500">Choose invoice source and GST treatment for this AMC.</p>
+                                                    </div>
+                                                    <div className="rounded-lg bg-violet-50 px-3 py-2 text-right">
+                                                        <p className="text-[9px] font-bold uppercase tracking-wider text-violet-500">Invoice Total</p>
+                                                        <p className="mt-0.5 text-base font-extrabold text-violet-700">{formatCurrency(gstPreview.grandTotal)}</p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="mt-5 grid gap-4 md:grid-cols-2">
+                                                    <div>
+                                                        <label className="mb-2 block text-[11px] font-bold text-slate-700">Invoice source</label>
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setNewAmcForm((current) => ({ ...current, invoiceSource: "SYSTEM" }));
+                                                                    setNewAmcError("");
+                                                                }}
+                                                                className={`rounded-xl border px-3 py-3 text-left transition ${newAmcForm.invoiceSource === "SYSTEM" ? "border-violet-400 bg-violet-50 ring-2 ring-violet-100" : "border-slate-200 bg-white hover:bg-slate-50"}`}
+                                                            >
+                                                                <p className="text-xs font-bold text-slate-900">System Invoice</p>
+                                                                <p className="mt-1 text-[10px] text-slate-500">Generate from this AMC.</p>
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setNewAmcForm((current) => ({ ...current, invoiceSource: "UPLOAD" }));
+                                                                    setNewAmcError("");
+                                                                }}
+                                                                className={`rounded-xl border px-3 py-3 text-left transition ${newAmcForm.invoiceSource === "UPLOAD" ? "border-violet-400 bg-violet-50 ring-2 ring-violet-100" : "border-slate-200 bg-white hover:bg-slate-50"}`}
+                                                            >
+                                                                <p className="text-xs font-bold text-slate-900">Upload Own Bill</p>
+                                                                <p className="mt-1 text-[10px] text-slate-500">PDF / JPG / PNG receipt.</p>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="mb-2 block text-[11px] font-bold text-slate-700">GST applicable?</label>
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setNewAmcForm((current) => ({ ...current, gstApplicable: "YES" }))}
+                                                                className={`h-12 rounded-xl border text-xs font-bold transition ${newAmcForm.gstApplicable === "YES" ? "border-emerald-400 bg-emerald-50 text-emerald-700 ring-2 ring-emerald-100" : "border-slate-200 bg-white text-slate-600"}`}
+                                                            >
+                                                                Yes, Apply GST
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setNewAmcForm((current) => ({ ...current, gstApplicable: "NO", cgstRate: "0", sgstRate: "0", igstRate: "0" }))}
+                                                                className={`h-12 rounded-xl border text-xs font-bold transition ${newAmcForm.gstApplicable === "NO" ? "border-slate-400 bg-slate-100 text-slate-800 ring-2 ring-slate-100" : "border-slate-200 bg-white text-slate-600"}`}
+                                                            >
+                                                                No / N.A.
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {newAmcForm.gstApplicable === "YES" && (
+                                                    <div className="mt-4 grid gap-4 md:grid-cols-3">
+                                                        <div>
+                                                            <label className="mb-1.5 block text-[11px] font-bold text-slate-700">GST rate</label>
+                                                            <select name="gstRate" value={newAmcForm.gstRate} onChange={handleNewAmcChange} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100">
+                                                                <option value="5">5%</option>
+                                                                <option value="12">12%</option>
+                                                                <option value="18">18%</option>
+                                                                <option value="28">28%</option>
+                                                                <option value="CUSTOM">Custom</option>
+                                                            </select>
+                                                        </div>
+                                                        <div>
+                                                            <label className="mb-1.5 block text-[11px] font-bold text-slate-700">Tax type</label>
+                                                            <select name="taxType" value={newAmcForm.taxType} onChange={handleNewAmcChange} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100">
+                                                                <option value="CGST_SGST">CGST + SGST</option>
+                                                                <option value="IGST">IGST</option>
+                                                            </select>
+                                                        </div>
+                                                        {newAmcForm.gstRate === "CUSTOM" ? (
+                                                            <div>
+                                                                <label className="mb-1.5 block text-[11px] font-bold text-slate-700">Custom GST %</label>
+                                                                <input type="number" name="customGstRate" min="0" max="100" step="0.01" value={newAmcForm.customGstRate} onChange={handleNewAmcChange} placeholder="e.g. 18" className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100" />
+                                                            </div>
+                                                        ) : (
+                                                            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                                                                <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Applied split</p>
+                                                                <p className="mt-1 text-xs font-bold text-slate-700">{newAmcForm.taxType === "IGST" ? `IGST ${gstPreview.igstRate}%` : `CGST ${gstPreview.cgstRate}% + SGST ${gstPreview.sgstRate}%`}</p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {newAmcForm.invoiceSource === "UPLOAD" && (
+                                                    <div className="mt-4 rounded-xl border border-dashed border-violet-300 bg-violet-50/50 p-4">
+                                                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                                            <div>
+                                                                <p className="text-xs font-bold text-slate-800">Self-made bill / receipt</p>
+                                                                <p className="mt-1 text-[10px] text-slate-500">PDF, JPG, JPEG or PNG · maximum 10 MB. Document storage will be connected with the backend next.</p>
+                                                            </div>
+                                                            <label className="inline-flex h-10 cursor-pointer items-center justify-center rounded-xl bg-violet-600 px-4 text-xs font-bold text-white hover:bg-violet-700">
+                                                                Choose File
+                                                                <input type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={handleOwnInvoiceFileChange} className="hidden" />
+                                                            </label>
+                                                        </div>
+                                                        {ownInvoiceFile && (
+                                                            <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-violet-200 bg-white px-3 py-3">
+                                                                <div className="min-w-0">
+                                                                    <p className="truncate text-xs font-bold text-slate-800">{ownInvoiceFile.name}</p>
+                                                                    <p className="mt-0.5 text-[10px] text-slate-500">{(ownInvoiceFile.size / 1024 / 1024).toFixed(2)} MB</p>
+                                                                </div>
+                                                                <button type="button" onClick={() => setOwnInvoiceFile(null)} className="rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-bold text-rose-600 hover:bg-rose-50">Remove</button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                <div className="mt-4 grid gap-2 rounded-xl bg-slate-950 p-4 text-white sm:grid-cols-4">
+                                                    <div><p className="text-[9px] uppercase tracking-wider text-slate-400">Taxable</p><p className="mt-1 text-xs font-bold">{formatCurrency(gstPreview.taxableAmount)}</p></div>
+                                                    <div><p className="text-[9px] uppercase tracking-wider text-slate-400">CGST</p><p className="mt-1 text-xs font-bold">{formatCurrency(gstPreview.cgstAmount)}</p></div>
+                                                    <div><p className="text-[9px] uppercase tracking-wider text-slate-400">SGST / IGST</p><p className="mt-1 text-xs font-bold">{formatCurrency(gstPreview.sgstAmount + gstPreview.igstAmount)}</p></div>
+                                                    <div><p className="text-[9px] uppercase tracking-wider text-violet-300">Grand Total</p><p className="mt-1 text-sm font-extrabold text-violet-200">{formatCurrency(gstPreview.grandTotal)}</p></div>
+                                                </div>
+                                            </div>
+                                            <div className="mt-4 grid gap-x-5 gap-y-4 md:grid-cols-2">
                                                 <div>
-                                                    <label className="mb-2 block text-xs font-semibold text-slate-700">AMC amount <span className="text-rose-500">*</span></label>
+                                                    <label className="mb-1.5 block text-[11px] font-bold text-slate-700">AMC amount <span className="text-rose-500">*</span></label>
                                                     <div className="relative">
                                                         <IndianRupee
                                                             size={16}
@@ -2676,12 +3793,12 @@ export default function AmcBilling() {
                                                             value={newAmcForm.taxableAmount}
                                                             onChange={handleNewAmcChange}
                                                             placeholder="Enter taxable amount"
-                                                            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 pl-8 text-sm text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                            className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3.5 pl-9 text-sm font-semibold text-slate-800 shadow-sm outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                                                         />
                                                     </div>
                                                 </div>
                                                 <div>
-                                                    <label className="mb-2 block text-xs font-semibold text-slate-700">Assigned Employee</label>
+                                                    <label className="mb-1.5 block text-[11px] font-bold text-slate-700">Assigned Employee</label>
                                                     <select
                                                         name="assignedEmployeeId"
                                                         value={newAmcForm.assignedEmployeeId}
@@ -2699,7 +3816,7 @@ export default function AmcBilling() {
                                                             }));
                                                             setNewAmcError("");
                                                         }}
-                                                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100 disabled:opacity-60"
+                                                        className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-60"
                                                     >
                                                         <option value="">Keep unassigned</option>
                                                         {employees.map((employee) => (
@@ -2714,19 +3831,19 @@ export default function AmcBilling() {
                                                 </div>
                                             </div>
                                             <div className="mt-5">
-                                                <label className="mb-2 block text-xs font-semibold text-slate-700">Notes</label>
+                                                <label className="mb-1.5 block text-[11px] font-bold text-slate-700">Notes</label>
                                                 <textarea
                                                     name="notes"
                                                     value={newAmcForm.notes}
                                                     onChange={handleNewAmcChange}
                                                     rows={4}
                                                     placeholder="Add contract notes, support terms or special conditions..."
-                                                    className="w-full resize-none rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                    className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm leading-6 text-slate-700 shadow-sm outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                                                 />
                                             </div>
                                         </section>
                                         {newAmcError && (
-                                            <div className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+                                            <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3.5 shadow-sm">
                                                 <AlertCircle size={17} className="mt-0.5 shrink-0 text-rose-600" />
                                                 <div>
                                                     <p className="text-xs font-semibold text-rose-800">Unable to create AMC contract</p>
@@ -2736,18 +3853,18 @@ export default function AmcBilling() {
                                         )}
                                     </div>
                                 </div>
-                                <div className="flex shrink-0 items-center justify-end gap-3 border-t border-slate-200 bg-white px-6 py-4">
+                                <div className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-white/95 px-5 py-4 backdrop-blur sm:px-7">
                                     <button
                                         type="button"
                                         onClick={closeNewAmcDrawer}
-                                        className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                                        className="h-11 rounded-xl border border-slate-200 bg-white px-5 text-xs font-bold text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
                                     >
                                         Cancel
                                     </button>
                                     <button
                                         type="submit"
                                         disabled={savingAmc}
-                                        className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-5 text-xs font-semibold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                        className="flex h-11 items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-6 text-xs font-bold text-white shadow-[0_10px_24px_rgba(124,58,237,0.28)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_30px_rgba(124,58,237,0.34)] disabled:cursor-not-allowed disabled:opacity-60"
                                     >
                                         <FileText size={15} />
                                         {savingAmc ? "Creating..." : "Create AMC Contract"}
@@ -3700,6 +4817,133 @@ export default function AmcBilling() {
                                                 />
                                             </div>
                                         </div>
+
+                                            <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                                                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                                    <div>
+                                                        <h4 className="text-sm font-bold text-slate-900">Invoice & GST</h4>
+                                                        <p className="mt-1 text-[11px] text-slate-500">Choose invoice source and GST treatment for this AMC.</p>
+                                                    </div>
+                                                    <div className="rounded-lg bg-violet-50 px-3 py-2 text-right">
+                                                        <p className="text-[9px] font-bold uppercase tracking-wider text-violet-500">Invoice Total</p>
+                                                        <p className="mt-0.5 text-base font-extrabold text-violet-700">{formatCurrency(gstPreview.grandTotal)}</p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="mt-5 grid gap-4 md:grid-cols-2">
+                                                    <div>
+                                                        <label className="mb-2 block text-[11px] font-bold text-slate-700">Invoice source</label>
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setNewAmcForm((current) => ({ ...current, invoiceSource: "SYSTEM" }));
+                                                                    setNewAmcError("");
+                                                                }}
+                                                                className={`rounded-xl border px-3 py-3 text-left transition ${newAmcForm.invoiceSource === "SYSTEM" ? "border-violet-400 bg-violet-50 ring-2 ring-violet-100" : "border-slate-200 bg-white hover:bg-slate-50"}`}
+                                                            >
+                                                                <p className="text-xs font-bold text-slate-900">System Invoice</p>
+                                                                <p className="mt-1 text-[10px] text-slate-500">Generate from this AMC.</p>
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setNewAmcForm((current) => ({ ...current, invoiceSource: "UPLOAD" }));
+                                                                    setNewAmcError("");
+                                                                }}
+                                                                className={`rounded-xl border px-3 py-3 text-left transition ${newAmcForm.invoiceSource === "UPLOAD" ? "border-violet-400 bg-violet-50 ring-2 ring-violet-100" : "border-slate-200 bg-white hover:bg-slate-50"}`}
+                                                            >
+                                                                <p className="text-xs font-bold text-slate-900">Upload Own Bill</p>
+                                                                <p className="mt-1 text-[10px] text-slate-500">PDF / JPG / PNG receipt.</p>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="mb-2 block text-[11px] font-bold text-slate-700">GST applicable?</label>
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setNewAmcForm((current) => ({ ...current, gstApplicable: "YES" }))}
+                                                                className={`h-12 rounded-xl border text-xs font-bold transition ${newAmcForm.gstApplicable === "YES" ? "border-emerald-400 bg-emerald-50 text-emerald-700 ring-2 ring-emerald-100" : "border-slate-200 bg-white text-slate-600"}`}
+                                                            >
+                                                                Yes, Apply GST
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setNewAmcForm((current) => ({ ...current, gstApplicable: "NO", cgstRate: "0", sgstRate: "0", igstRate: "0" }))}
+                                                                className={`h-12 rounded-xl border text-xs font-bold transition ${newAmcForm.gstApplicable === "NO" ? "border-slate-400 bg-slate-100 text-slate-800 ring-2 ring-slate-100" : "border-slate-200 bg-white text-slate-600"}`}
+                                                            >
+                                                                No / N.A.
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {newAmcForm.gstApplicable === "YES" && (
+                                                    <div className="mt-4 grid gap-4 md:grid-cols-3">
+                                                        <div>
+                                                            <label className="mb-1.5 block text-[11px] font-bold text-slate-700">GST rate</label>
+                                                            <select name="gstRate" value={newAmcForm.gstRate} onChange={handleNewAmcChange} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100">
+                                                                <option value="5">5%</option>
+                                                                <option value="12">12%</option>
+                                                                <option value="18">18%</option>
+                                                                <option value="28">28%</option>
+                                                                <option value="CUSTOM">Custom</option>
+                                                            </select>
+                                                        </div>
+                                                        <div>
+                                                            <label className="mb-1.5 block text-[11px] font-bold text-slate-700">Tax type</label>
+                                                            <select name="taxType" value={newAmcForm.taxType} onChange={handleNewAmcChange} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100">
+                                                                <option value="CGST_SGST">CGST + SGST</option>
+                                                                <option value="IGST">IGST</option>
+                                                            </select>
+                                                        </div>
+                                                        {newAmcForm.gstRate === "CUSTOM" ? (
+                                                            <div>
+                                                                <label className="mb-1.5 block text-[11px] font-bold text-slate-700">Custom GST %</label>
+                                                                <input type="number" name="customGstRate" min="0" max="100" step="0.01" value={newAmcForm.customGstRate} onChange={handleNewAmcChange} placeholder="e.g. 18" className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100" />
+                                                            </div>
+                                                        ) : (
+                                                            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                                                                <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Applied split</p>
+                                                                <p className="mt-1 text-xs font-bold text-slate-700">{newAmcForm.taxType === "IGST" ? `IGST ${gstPreview.igstRate}%` : `CGST ${gstPreview.cgstRate}% + SGST ${gstPreview.sgstRate}%`}</p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {newAmcForm.invoiceSource === "UPLOAD" && (
+                                                    <div className="mt-4 rounded-xl border border-dashed border-violet-300 bg-violet-50/50 p-4">
+                                                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                                            <div>
+                                                                <p className="text-xs font-bold text-slate-800">Self-made bill / receipt</p>
+                                                                <p className="mt-1 text-[10px] text-slate-500">PDF, JPG, JPEG or PNG · maximum 10 MB. Document storage will be connected with the backend next.</p>
+                                                            </div>
+                                                            <label className="inline-flex h-10 cursor-pointer items-center justify-center rounded-xl bg-violet-600 px-4 text-xs font-bold text-white hover:bg-violet-700">
+                                                                Choose File
+                                                                <input type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={handleOwnInvoiceFileChange} className="hidden" />
+                                                            </label>
+                                                        </div>
+                                                        {ownInvoiceFile && (
+                                                            <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-violet-200 bg-white px-3 py-3">
+                                                                <div className="min-w-0">
+                                                                    <p className="truncate text-xs font-bold text-slate-800">{ownInvoiceFile.name}</p>
+                                                                    <p className="mt-0.5 text-[10px] text-slate-500">{(ownInvoiceFile.size / 1024 / 1024).toFixed(2)} MB</p>
+                                                                </div>
+                                                                <button type="button" onClick={() => setOwnInvoiceFile(null)} className="rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-bold text-rose-600 hover:bg-rose-50">Remove</button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                <div className="mt-4 grid gap-2 rounded-xl bg-slate-950 p-4 text-white sm:grid-cols-4">
+                                                    <div><p className="text-[9px] uppercase tracking-wider text-slate-400">Taxable</p><p className="mt-1 text-xs font-bold">{formatCurrency(gstPreview.taxableAmount)}</p></div>
+                                                    <div><p className="text-[9px] uppercase tracking-wider text-slate-400">CGST</p><p className="mt-1 text-xs font-bold">{formatCurrency(gstPreview.cgstAmount)}</p></div>
+                                                    <div><p className="text-[9px] uppercase tracking-wider text-slate-400">SGST / IGST</p><p className="mt-1 text-xs font-bold">{formatCurrency(gstPreview.sgstAmount + gstPreview.igstAmount)}</p></div>
+                                                    <div><p className="text-[9px] uppercase tracking-wider text-violet-300">Grand Total</p><p className="mt-1 text-sm font-extrabold text-violet-200">{formatCurrency(gstPreview.grandTotal)}</p></div>
+                                                </div>
+                                            </div>
                                         <div className="mt-5 grid gap-5 sm:grid-cols-2">
                                             <div>
                                                 <label className="mb-2 block text-xs font-semibold text-slate-700">AMC amount <span className="text-rose-500">*</span></label>

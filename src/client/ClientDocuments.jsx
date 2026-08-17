@@ -19,13 +19,54 @@ import {
 } from "lucide-react";
 
 const API_URL = "http://localhost:5000";
+function getApiFileUrl(url) {
+    if (!url) {
+        return "";
+    }
+
+    if (
+        url.startsWith("http://") ||
+        url.startsWith("https://")
+    ) {
+        return url;
+    }
+
+    return `${API_URL}${
+        url.startsWith("/")
+            ? url
+            : `/${url}`
+    }`;
+}
+
 
 function bytesToSize(bytes) {
-    if (bytes === 0) return "0 B";
+    const value = Number(bytes || 0);
 
-    const sizes = ["B", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return `${parseFloat((bytes / Math.pow(1024, i)).toFixed(1))} ${sizes[i]}`;
+    if (!value || value <= 0) {
+        return "0 B";
+    }
+
+    const sizes = [
+        "B",
+        "KB",
+        "MB",
+        "GB",
+    ];
+
+    const i = Math.min(
+        Math.floor(
+            Math.log(value) /
+            Math.log(1024)
+        ),
+        sizes.length - 1
+    );
+
+    return `${parseFloat(
+        (
+            value /
+            Math.pow(1024, i)
+        ).toFixed(1)
+    )} ${sizes[i]}`;
 }
 
 function formatDocumentDate(value) {
@@ -41,33 +82,93 @@ function formatDocumentDate(value) {
     });
 }
 
-function getDocumentIcon(type) {
-    if (type === "Excel") {
+function getDocumentIcon(document) {
+    const mimeType =
+        String(
+            document?.mimeType || ""
+        ).toLowerCase();
+
+    const fileName =
+        String(
+            document?.fileName ||
+            document?.name ||
+            ""
+        ).toLowerCase();
+
+    if (
+        mimeType.includes(
+            "image"
+        ) ||
+        /\.(jpg|jpeg|png|webp)$/i.test(
+            fileName
+        )
+    ) {
+        return Image;
+    }
+
+    if (
+        mimeType.includes(
+            "spreadsheet"
+        ) ||
+        /\.(xls|xlsx|csv)$/i.test(
+            fileName
+        )
+    ) {
         return FileSpreadsheet;
     }
 
-    if (type === "ZIP") {
+    if (
+        mimeType.includes(
+            "zip"
+        ) ||
+        /\.zip$/i.test(
+            fileName
+        )
+    ) {
         return FileArchive;
-    }
-
-    if (type === "Image") {
-        return Image;
     }
 
     return FileText;
 }
 
-function getDocumentIconClasses(type) {
-    if (type === "Excel") {
+function getDocumentIconClasses(document) {
+    const mimeType =
+        String(
+            document?.mimeType || ""
+        ).toLowerCase();
+
+    const fileName =
+        String(
+            document?.fileName ||
+            document?.name ||
+            ""
+        ).toLowerCase();
+
+    if (
+        mimeType.includes(
+            "image"
+        ) ||
+        /\.(jpg|jpeg|png|webp)$/i.test(
+            fileName
+        )
+    ) {
+        return "bg-blue-50 text-blue-700";
+    }
+
+    if (
+        /\.(xls|xlsx|csv)$/i.test(
+            fileName
+        )
+    ) {
         return "bg-emerald-50 text-emerald-700";
     }
 
-    if (type === "ZIP") {
+    if (
+        /\.zip$/i.test(
+            fileName
+        )
+    ) {
         return "bg-violet-50 text-violet-700";
-    }
-
-    if (type === "Image") {
-        return "bg-blue-50 text-blue-700";
     }
 
     return "bg-rose-50 text-rose-700";
@@ -172,7 +273,7 @@ export default function ClientDocuments() {
                     "";
 
                 const response = await fetch(
-                    `${API_URL}/api/documents?status=All`,
+                    `${API_URL}/api/client/amc/documents`,
                     {
                         headers: {
                             Authorization: `Bearer ${token}`,
@@ -245,42 +346,220 @@ export default function ClientDocuments() {
         0
     );
 
-    const handleDownload = async (doc) => {
-        if (!doc?.downloadUrl) {
-            window.alert("Document download is not available yet.");
+   const handleDownload = async (doc) => {
+    if (!doc?.id) {
+        window.alert(
+            "Document information is not available."
+        );
+        return;
+    }
+
+    try {
+        const token =
+            localStorage.getItem(
+                "client-connect-token"
+            ) ||
+            sessionStorage.getItem(
+                "client-connect-token"
+            ) ||
+            "";
+
+        if (!token) {
+            throw new Error(
+                "Login token was not found. Please login again."
+            );
+        }
+
+        const endpoint =
+            getApiFileUrl(
+                doc.downloadUrl ||
+                `/api/client/amc/document/${doc.id}/download`
+            );
+
+        const response =
+            await fetch(
+                endpoint,
+                {
+                    method: "GET",
+
+                    headers: {
+                        Authorization:
+                            `Bearer ${token}`,
+                    },
+                }
+            );
+
+        if (!response.ok) {
+            let message =
+                "Unable to download document.";
+
+            try {
+                const result =
+                    await response.json();
+
+                message =
+                    result.message ||
+                    message;
+            } catch {
+                // File response may not contain JSON.
+            }
+
+            throw new Error(
+                message
+            );
+        }
+
+        const blob =
+            await response.blob();
+
+        const url =
+            window.URL.createObjectURL(
+                blob
+            );
+
+        const link =
+            window.document.createElement(
+                "a"
+            );
+
+        link.href = url;
+
+        link.download =
+            doc.fileName ||
+            doc.name ||
+            "document";
+
+        window.document.body.appendChild(
+            link
+        );
+
+        link.click();
+
+        link.remove();
+
+        setTimeout(() => {
+            window.URL.revokeObjectURL(
+                url
+            );
+        }, 1000);
+    } catch (error) {
+        console.error(
+            "Client document download error:",
+            error
+        );
+
+        window.alert(
+            error.message ||
+            "Unable to download document."
+        );
+    }
+};
+
+const handlePreviewDocument =
+    async (doc) => {
+        if (!doc?.id) {
+            window.alert(
+                "Document information is not available."
+            );
             return;
         }
 
         try {
             const token =
-                localStorage.getItem("client-connect-token") ||
-                sessionStorage.getItem("client-connect-token") ||
+                localStorage.getItem(
+                    "client-connect-token"
+                ) ||
+                sessionStorage.getItem(
+                    "client-connect-token"
+                ) ||
                 "";
 
-            const response = await fetch(doc.downloadUrl, {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                },
-            });
-
-            if (!response.ok) {
-                throw new Error("Unable to download document.");
+            if (!token) {
+                throw new Error(
+                    "Login token was not found. Please login again."
+                );
             }
 
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const link = window.document.createElement("a");
-            link.href = url;
-            link.download = doc.fileName || doc.name || "document";
-            window.document.body.appendChild(link);
-            link.click();
-            window.document.body.removeChild(link);
-            window.URL.revokeObjectURL(url);
+            const endpoint =
+                getApiFileUrl(
+                    doc.previewUrl ||
+                    `/api/client/amc/document/${doc.id}/view`
+                );
+
+            const response =
+                await fetch(
+                    endpoint,
+                    {
+                        method: "GET",
+
+                        headers: {
+                            Authorization:
+                                `Bearer ${token}`,
+                        },
+                    }
+                );
+
+            if (!response.ok) {
+                let message =
+                    "Unable to preview document.";
+
+                try {
+                    const result =
+                        await response.json();
+
+                    message =
+                        result.message ||
+                        message;
+                } catch {
+                    // Binary response.
+                }
+
+                throw new Error(
+                    message
+                );
+            }
+
+            const blob =
+                await response.blob();
+
+            const objectUrl =
+                window.URL.createObjectURL(
+                    blob
+                );
+
+            const previewWindow =
+                window.open(
+                    objectUrl,
+                    "_blank"
+                );
+
+            if (!previewWindow) {
+                window.URL.revokeObjectURL(
+                    objectUrl
+                );
+
+                throw new Error(
+                    "Popup was blocked. Please allow popups to preview documents."
+                );
+            }
+
+            setTimeout(() => {
+                window.URL.revokeObjectURL(
+                    objectUrl
+                );
+            }, 60000);
         } catch (error) {
-            window.alert(error.message || "Unable to download document.");
+            console.error(
+                "Client document preview error:",
+                error
+            );
+
+            window.alert(
+                error.message ||
+                "Unable to preview document."
+            );
         }
     };
-
     const handleUploadRequest = async () => {
         const description = window.prompt(
             "Describe the document you need from Total Solution:",
@@ -447,23 +726,26 @@ export default function ClientDocuments() {
                             ))}
                         </select>
 
-                        <select
-                            value={typeFilter}
-                            onChange={(event) =>
-                                setTypeFilter(
-                                    event.target.value
-                                )
-                            }
-                            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
-                        >
-                            <option value="All">
-                                All File Types
-                            </option>
-                            <option value="PDF">PDF</option>
-                            <option value="Excel">Excel</option>
-                            <option value="ZIP">ZIP</option>
-                            <option value="Image">Image</option>
-                        </select>
+                       <select
+    value={typeFilter}
+    onChange={(event) =>
+        setTypeFilter(
+            event.target.value
+        )
+    }
+    className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
+>
+    {types.map((type) => (
+        <option
+            key={type}
+            value={type}
+        >
+            {type === "All"
+                ? "All Document Types"
+                : type}
+        </option>
+    ))}
+</select>
                     </div>
                 </div>
 
@@ -515,7 +797,10 @@ export default function ClientDocuments() {
                                         </p>
 
                                         <p className="mt-1 text-[9px] text-slate-500">
-                                            {formatDocumentDate(document.requestedAt || document.createdAt)}
+                                            {formatDocumentDate(
+    document.uploadedAt ||
+    document.createdAt
+)}
                                         </p>
                                     </div>
 
@@ -639,16 +924,17 @@ export default function ClientDocuments() {
                                 <div className="flex items-start justify-between gap-4">
                                     <div className="flex items-start gap-4">
                                         {(() => {
-                                            const Icon =
-                                                getDocumentIcon(
-                                                    selectedDocument.documentType
-                                                );
-
+                                          const Icon =
+    getDocumentIcon(
+        document
+    );
                                             return (
                                                 <div
-                                                    className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${getDocumentIconClasses(
-                                                        selectedDocument.documentType
-                                                    )}`}
+                                                    className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl 
+                                                        ${
+                                                           getDocumentIconClasses(
+    document
+)}`}
                                                 >
                                                     <Icon size={22} />
                                                 </div>
@@ -699,10 +985,10 @@ export default function ClientDocuments() {
 
                                 <DetailItem
                                     label="Uploaded On"
-                                    value={formatDocumentDate(
-                                        selectedDocument.requestedAt ||
-                                            selectedDocument.createdAt
-                                    )}
+                                  value={formatDocumentDate(
+    selectedDocument.uploadedAt ||
+    selectedDocument.createdAt
+)}
                                     icon={CalendarDays}
                                 />
 
@@ -727,23 +1013,40 @@ export default function ClientDocuments() {
                                 </p>
                             </section>
 
-                            <section className="mt-5 flex min-h-[220px] items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50">
-                                <div className="text-center">
-                                    <FileText
-                                        size={32}
-                                        className="mx-auto text-slate-300"
-                                    />
+                   <section className="mt-5 flex min-h-[220px] items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50">
 
-                                    <p className="mt-3 text-sm font-semibold text-slate-700">
-                                        Document preview
-                                    </p>
+    <div className="px-6 text-center">
 
-                                    <p className="mt-1 text-xs text-slate-500">
-                                        Preview will appear after file
-                                        storage is connected.
-                                    </p>
-                                </div>
-                            </section>
+        <FileText
+            size={32}
+            className="mx-auto text-slate-300"
+        />
+
+        <p className="mt-3 text-sm font-semibold text-slate-700">
+            Document Preview
+        </p>
+
+        <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-slate-500">
+            Open this document securely in a new tab to view its contents.
+        </p>
+
+        <button
+            type="button"
+            onClick={() =>
+                handlePreviewDocument(
+                    selectedDocument
+                )
+            }
+            className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-cyan-600 px-4 text-xs font-semibold text-white transition hover:bg-cyan-700"
+        >
+            <Eye size={15} />
+
+            Preview Document
+        </button>
+
+    </div>
+
+</section>
                         </div>
 
                         <div className="grid gap-3 border-t border-slate-200 p-5 sm:grid-cols-2 sm:px-6">

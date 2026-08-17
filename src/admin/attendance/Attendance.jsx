@@ -27,78 +27,7 @@ import {
 
 
 
-const monthlyAttendance = {
-    1: {
-        "2026-07-01": "Present",
-        "2026-07-02": "Present",
-        "2026-07-03": "Present",
-        "2026-07-04": "Half Day",
-        "2026-07-06": "Present",
-        "2026-07-07": "Present",
-        "2026-07-08": "Late",
-        "2026-07-09": "Present",
-        "2026-07-10": "Present",
-        "2026-07-11": "Present",
-        "2026-07-13": "Present",
-        "2026-07-14": "Present",
-    },
-    2: {
-        "2026-07-01": "Present",
-        "2026-07-02": "Late",
-        "2026-07-03": "Present",
-        "2026-07-04": "Present",
-        "2026-07-06": "Present",
-        "2026-07-07": "Present",
-        "2026-07-08": "Present",
-        "2026-07-09": "Half Day",
-        "2026-07-10": "Present",
-        "2026-07-11": "Present",
-        "2026-07-13": "Present",
-        "2026-07-14": "Late",
-    },
-    3: {
-        "2026-07-01": "Present",
-        "2026-07-02": "Present",
-        "2026-07-03": "Present",
-        "2026-07-04": "Present",
-        "2026-07-06": "Present",
-        "2026-07-07": "Absent",
-        "2026-07-08": "Present",
-        "2026-07-09": "Present",
-        "2026-07-10": "Present",
-        "2026-07-11": "Present",
-        "2026-07-13": "Present",
-        "2026-07-14": "Present",
-    },
-    4: {
-        "2026-07-01": "Present",
-        "2026-07-02": "Present",
-        "2026-07-03": "Half Day",
-        "2026-07-04": "Present",
-        "2026-07-06": "Present",
-        "2026-07-07": "Present",
-        "2026-07-08": "Present",
-        "2026-07-09": "Present",
-        "2026-07-10": "Present",
-        "2026-07-11": "Late",
-        "2026-07-13": "Present",
-        "2026-07-14": "Late",
-    },
-    5: {
-        "2026-07-01": "Present",
-        "2026-07-02": "Present",
-        "2026-07-03": "Present",
-        "2026-07-04": "Present",
-        "2026-07-06": "Present",
-        "2026-07-07": "Present",
-        "2026-07-08": "Present",
-        "2026-07-09": "Present",
-        "2026-07-10": "Present",
-        "2026-07-11": "Present",
-        "2026-07-13": "Present",
-        "2026-07-14": "On Leave",
-    },
-};
+
 
 const officeSettings = {
     startTime: "09:00",
@@ -173,12 +102,33 @@ function calculateWorkingMinutes(record) {
 
 function getStatusClasses(status) {
     const styles = {
-        Present: "bg-emerald-50 text-emerald-700 ring-emerald-600/10",
-        Late: "bg-amber-50 text-amber-700 ring-amber-600/10",
-        "Half Day": "bg-blue-50 text-blue-700 ring-blue-600/10",
-        Absent: "bg-rose-50 text-rose-700 ring-rose-600/10",
-        "On Leave": "bg-violet-50 text-violet-700 ring-violet-600/10",
-    };
+    Present:
+        "bg-emerald-50 text-emerald-700 ring-emerald-600/10",
+
+    Late:
+        "bg-amber-50 text-amber-700 ring-amber-600/10",
+
+    "Half Day":
+        "bg-blue-50 text-blue-700 ring-blue-600/10",
+
+    Absent:
+        "bg-rose-50 text-rose-700 ring-rose-600/10",
+
+    "On Leave":
+        "bg-violet-50 text-violet-700 ring-violet-600/10",
+
+    Holiday:
+        "bg-cyan-50 text-cyan-700 ring-cyan-600/10",
+
+    "Weekly Off":
+        "bg-slate-100 text-slate-700 ring-slate-500/10",
+
+    "Missed Punch":
+        "bg-orange-50 text-orange-700 ring-orange-600/10",
+
+    "Not Checked In":
+        "bg-yellow-50 text-yellow-700 ring-yellow-600/10",
+};
 
     return (
         styles[status] ||
@@ -217,16 +167,43 @@ function getLeaveStatusClasses(status) {
 
 
 function getCalendarDays(year, month) {
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
+    const firstDay =
+        new Date(year, month, 1);
+
+    const lastDay =
+        new Date(year, month + 1, 0);
+
     const days = [];
 
-    for (let index = 0; index < firstDay.getDay(); index += 1) {
+    // Empty cells before the first day
+    for (
+        let index = 0;
+        index < firstDay.getDay();
+        index += 1
+    ) {
         days.push(null);
     }
 
-    for (let day = 1; day <= lastDay.getDate(); day += 1) {
-        days.push(new Date(year, month, day));
+    // Actual dates
+    for (
+        let day = 1;
+        day <= lastDay.getDate();
+        day += 1
+    ) {
+        days.push(
+            new Date(
+                year,
+                month,
+                day
+            )
+        );
+    }
+
+    // Empty cells after the last day
+    while (
+        days.length % 7 !== 0
+    ) {
+        days.push(null);
     }
 
     return days;
@@ -276,22 +253,61 @@ export default function Attendance() {
 
 
 
-    const [attendanceSummary, setAttendanceSummary] = useState({
-        total: 0,
-        present: 0,
-        absent: 0,
-        late: 0,
-        halfDay: 0,
-        leave: 0,
-        working: 0,
-        break: 0,
-        free: 0,
-        loggedOut: 0,
-    });
+const [attendanceSummary, setAttendanceSummary] = useState({
+    total: 0,
+    present: 0,
+    absent: 0,
+    late: 0,
+    halfDay: 0,
+    leave: 0,
+    working: 0,
+    break: 0,
+    free: 0,
+    loggedOut: 0,
+
+    holiday: 0,
+    weeklyOff: 0,
+    missedPunch: 0,
+    notCheckedIn: 0,
+});
 
     const [loading, setLoading] = useState(true);
 
     const [error, setError] = useState("");
+
+    const [holidays, setHolidays] = useState([]);
+const [holidayLoading, setHolidayLoading] = useState(false);
+const [holidayDrawerOpen, setHolidayDrawerOpen] = useState(false);
+const [editingHoliday, setEditingHoliday] = useState(null);
+const [regularizations, setRegularizations] = useState([]);
+const [regularizationLoading, setRegularizationLoading] = useState(false);
+
+const [selectedRegularization, setSelectedRegularization] = useState(null);
+const [regularizationReviewNote, setRegularizationReviewNote] = useState("");
+
+const [regularizationStatusFilter, setRegularizationStatusFilter] =
+    useState("Pending");
+
+const [regularizationTypeFilter, setRegularizationTypeFilter] =
+    useState("All");
+    const [absenceAnalysis, setAbsenceAnalysis] = useState([]);
+const [absenceSummary, setAbsenceSummary] = useState({
+    employeesWithAbsence: 0,
+    employeesWith3DayStreak: 0,
+    totalAbsentDays: 0,
+});
+
+const [absenceDays, setAbsenceDays] = useState(30);
+const [absenceLoading, setAbsenceLoading] = useState(false);
+const [selectedAbsenceEmployee, setSelectedAbsenceEmployee] = useState(null);
+
+const [holidayForm, setHolidayForm] = useState({
+    date: "",
+    name: "",
+    type: "Company",
+    note: "",
+    isActive: true,
+});
 
     const getAuthToken = () => {
         return (
@@ -332,6 +348,157 @@ export default function Attendance() {
         status: employee.status || "Free",
     });
 
+    const loadAbsenceAnalysis = async () => {
+    try {
+        setAbsenceLoading(true);
+
+        const response = await fetch(
+            `${API_URL}/api/attendance/admin/absence-analysis?days=${absenceDays}`,
+            {
+                headers: {
+                    Authorization: `Bearer ${getAuthToken()}`,
+                    "Content-Type": "application/json",
+                },
+            }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            throw new Error(
+                result.message ||
+                "Failed to load absence analysis."
+            );
+        }
+
+        setAbsenceAnalysis(result.data || []);
+
+        setAbsenceSummary({
+            employeesWithAbsence:
+                result.summary?.employeesWithAbsence || 0,
+
+            employeesWith3DayStreak:
+                result.summary?.employeesWith3DayStreak || 0,
+
+            totalAbsentDays:
+                result.summary?.totalAbsentDays || 0,
+        });
+    } catch (err) {
+        console.error(
+            "Load Absence Analysis:",
+            err
+        );
+
+        setError(err.message);
+    } finally {
+        setAbsenceLoading(false);
+    }
+};
+    const loadRegularizations = async () => {
+    try {
+        setRegularizationLoading(true);
+
+        const params = new URLSearchParams();
+
+        if (
+            regularizationStatusFilter &&
+            regularizationStatusFilter !== "All"
+        ) {
+            params.set(
+                "status",
+                regularizationStatusFilter
+            );
+        }
+
+        if (
+            regularizationTypeFilter &&
+            regularizationTypeFilter !== "All"
+        ) {
+            params.set(
+                "requestType",
+                regularizationTypeFilter
+            );
+        }
+
+        const queryString =
+            params.toString();
+
+        const response = await fetch(
+            `${API_URL}/api/attendance/admin/regularizations${
+                queryString
+                    ? `?${queryString}`
+                    : ""
+            }`,
+            {
+                headers: {
+                    Authorization:
+                        `Bearer ${getAuthToken()}`,
+
+                    "Content-Type":
+                        "application/json",
+                },
+            }
+        );
+
+        const result =
+            await response.json();
+
+        if (
+            !response.ok ||
+            !result.success
+        ) {
+            throw new Error(
+                result.message ||
+                "Failed to load regularization requests."
+            );
+        }
+
+        setRegularizations(
+            result.data || []
+        );
+    } catch (err) {
+        console.error(
+            "Load Regularizations:",
+            err
+        );
+
+        setError(err.message);
+    } finally {
+        setRegularizationLoading(false);
+    }
+};
+        const loadHolidays = async () => {
+    try {
+        setHolidayLoading(true);
+
+        const response = await fetch(
+            `${API_URL}/api/attendance/admin/holidays`,
+            {
+                headers: {
+                    Authorization: `Bearer ${getAuthToken()}`,
+                    "Content-Type": "application/json",
+                },
+            }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            throw new Error(
+                result.message ||
+                "Failed to load holidays."
+            );
+        }
+
+        setHolidays(result.data || []);
+    } catch (err) {
+        console.error("Load Holidays:", err);
+        setError(err.message);
+    } finally {
+        setHolidayLoading(false);
+    }
+};
+
     const loadEmployees = async () => {
         try {
             const response = await fetch(
@@ -355,121 +522,196 @@ export default function Attendance() {
             const employeeData = (result.data || []).map(normalizeEmployee);
 
             setEmployees(employeeData);
+            if (
+    employeeData.length > 0 &&
+    !selectedEmployeeId
+) {
+    setSelectedEmployeeId(
+        employeeData[0].id
+    );
+}
         } catch (err) {
             console.error("Load Employees:", err);
             setError(err.message);
         }
     };
 
-    const loadAttendance = async () => {
-        try {
-            const response = await fetch(
-                `${API_URL}/api/admin/attendance`,
-                {
-                    headers: {
-                        Authorization: `Bearer ${getAuthToken()}`,
-                        "Content-Type": "application/json",
-                    },
-                }
+
+
+
+
+const loadTodayAttendance = async (date = "") => {
+    try {
+        const url = date
+            ? `${API_URL}/api/attendance/admin/today?date=${encodeURIComponent(date)}`
+            : `${API_URL}/api/attendance/admin/today`;
+
+        const response = await fetch(url, {
+            headers: {
+                Authorization: `Bearer ${getAuthToken()}`,
+                "Content-Type": "application/json",
+            },
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            throw new Error(
+                result.message ||
+                "Failed to load today's attendance."
             );
-
-            const result = await response.json();
-
-            if (!response.ok || !result.success) {
-                throw new Error(
-                    result.message || "Failed to load attendance."
-                );
-            }
-
-            setAttendance(result.data || []);
-        } catch (err) {
-            console.error("Load Attendance:", err);
-            setError(err.message);
         }
-    };
 
+        setAttendance(result.data || []);
 
-    const loadSummary = async () => {
-        try {
-            const response = await fetch(
-                `${API_URL}/api/admin/attendance-summary`,
-                {
-                    headers: {
-                        Authorization: `Bearer ${getAuthToken()}`,
-                        "Content-Type": "application/json",
-                    },
-                }
+        setAttendanceSummary({
+            total:
+                result.summary?.totalEmployees || 0,
+
+            present:
+                result.summary?.present || 0,
+
+            absent:
+                result.summary?.absent || 0,
+
+            late:
+                result.summary?.late || 0,
+
+            halfDay:
+                result.summary?.halfDay || 0,
+
+            leave:
+                result.summary?.leave || 0,
+
+            working:
+                result.summary?.working || 0,
+
+            break:
+                result.summary?.break || 0,
+
+            free: 0,
+
+            loggedOut:
+                result.summary?.loggedOut || 0,
+
+            holiday:
+                result.summary?.holiday || 0,
+
+            weeklyOff:
+                result.summary?.weeklyOff || 0,
+
+            missedPunch:
+                result.summary?.missedPunch || 0,
+
+            notCheckedIn:
+                result.summary?.notCheckedIn || 0,
+        });
+
+    } catch (err) {
+        console.error(
+            "Load Today Attendance:",
+            err
+        );
+
+        setError(err.message);
+    }
+};
+
+const loadMonthlyRegister = async () => {
+    try {
+        setMonthlyLoading(true);
+
+        const month = getCalendarMonthKey();
+
+        const response = await fetch(
+            `${API_URL}/api/attendance/admin/month?month=${encodeURIComponent(
+                month
+            )}`,
+            {
+                headers: {
+                    Authorization: `Bearer ${getAuthToken()}`,
+                    "Content-Type": "application/json",
+                },
+            }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            throw new Error(
+                result.message ||
+                "Failed to load monthly attendance."
             );
-
-            const result = await response.json();
-
-            if (response.ok && result.success) {
-                setAttendanceSummary(result.data);
-            }
-        } catch (err) {
-            console.error("Load Summary:", err);
         }
-    };
-    const loadTodayAttendance = async () => {
-        try {
-            const response = await fetch(
-                `${API_URL}/api/admin/attendance/today/all`,
-                {
-                    headers: {
-                        Authorization: `Bearer ${getAuthToken()}`,
-                        "Content-Type": "application/json",
-                    },
-                }
-            );
 
-            const result = await response.json();
+        setMonthlyRegister(result.employees || []);
+        setMonthlyHolidays(result.holidays || []);
 
-            if (!response.ok || !result.success) {
-                throw new Error(
-                    result.message || "Failed to load attendance."
-                );
-            }
+    } catch (err) {
+        console.error(
+            "Load Monthly Attendance:",
+            err
+        );
 
-            setAttendance(result.data || []);
-
-            setAttendanceSummary(result.summary || {
-                total: 0,
-                present: 0,
-                absent: 0,
-                late: 0,
-                halfDay: 0,
-                leave: 0,
-                working: 0,
-                break: 0,
-                free: 0,
-                loggedOut: 0,
-            });
-
-        } catch (err) {
-            console.error(err);
-            setError(err.message);
-        }
-    };
-
+        setError(err.message);
+    } finally {
+        setMonthlyLoading(false);
+    }
+};
     const loadLeaveRequests = async () => {
-        try {
-            const response = await fetch(`${API_URL}/api/admin/leave`, {
-                headers: { Authorization: `Bearer ${getAuthToken()}` },
-            });
-            const result = await response.json();
-            if (!response.ok || !result.success) {
-                throw new Error(result.message || "Failed to load leave requests.");
+    try {
+        const response = await fetch(
+            `${API_URL}/api/attendance/admin/leaves`,
+            {
+                headers: {
+                    Authorization:
+                        `Bearer ${getAuthToken()}`,
+                    "Content-Type":
+                        "application/json",
+                },
             }
-            setLeaveRequests((result.data || []).map((leave) => ({
-                ...leave,
-                id: leave._id,
-                employeeId: String(leave.employeeId),
-            })));
-        } catch (err) {
-            setError(err.message);
-        }
-    };
+        );
 
+        const result =
+            await response.json();
+
+        if (
+            !response.ok ||
+            !result.success
+        ) {
+            throw new Error(
+                result.message ||
+                "Failed to load leave requests."
+            );
+        }
+
+        setLeaveRequests(
+            (result.data || []).map(
+                (leave) => ({
+                    ...leave,
+
+                    id:
+                        leave._id ||
+                        leave.id,
+
+                    employeeId:
+                        String(
+                            leave.employeeId ||
+                            ""
+                        ),
+                })
+            )
+        );
+
+    } catch (err) {
+        console.error(
+            "Load Leave Requests:",
+            err
+        );
+
+        setError(err.message);
+    }
+};
 
     const [activeTab, setActiveTab] = useState("today");
     const [attendance, setAttendance] = useState([]);
@@ -493,10 +735,17 @@ export default function Attendance() {
     const [selectedLeave, setSelectedLeave] = useState(null);
     const [reviewNote, setReviewNote] = useState("");
 
-    const [selectedEmployeeId, setSelectedEmployeeId] = useState(1);
-    const [calendarDate, setCalendarDate] = useState(
-        new Date("2026-07-01T00:00:00")
-    );
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
+const [calendarDate, setCalendarDate] = useState(
+    new Date(
+        new Date().getFullYear(),
+        new Date().getMonth(),
+        1
+    )
+);
+const [monthlyRegister, setMonthlyRegister] = useState([]);
+const [monthlyHolidays, setMonthlyHolidays] = useState([]);
+const [monthlyLoading, setMonthlyLoading] = useState(false);
 
     useEffect(() => {
         const init = async () => {
@@ -509,6 +758,278 @@ export default function Attendance() {
 
         init();
     }, []);
+    useEffect(() => {
+    loadMonthlyRegister();
+}, [calendarDate]);
+useEffect(() => {
+    if (activeTab === "holidays") {
+        loadHolidays();
+    }
+}, [activeTab]);
+useEffect(() => {
+    if (
+        activeTab ===
+        "regularization"
+    ) {
+        loadRegularizations();
+    }
+}, [
+    activeTab,
+    regularizationStatusFilter,
+    regularizationTypeFilter,
+]);
+useEffect(() => {
+    if (activeTab === "absence") {
+        loadAbsenceAnalysis();
+    }
+}, [activeTab, absenceDays]);
+function getWarningClasses(level) {
+    const styles = {
+        High:
+            "bg-rose-50 text-rose-700 ring-rose-600/10",
+
+        Medium:
+            "bg-amber-50 text-amber-700 ring-amber-600/10",
+
+        Low:
+            "bg-emerald-50 text-emerald-700 ring-emerald-600/10",
+    };
+
+    return (
+        styles[level] ||
+        "bg-slate-100 text-slate-600 ring-slate-500/10"
+    );
+}
+
+const handleRegularizationDecision =
+    async (status) => {
+        if (
+            !selectedRegularization
+        ) {
+            return;
+        }
+
+        try {
+            const response =
+                await fetch(
+                    `${API_URL}/api/attendance/admin/regularizations/${selectedRegularization._id}/review`,
+                    {
+                        method: "PUT",
+
+                        headers: {
+                            Authorization:
+                                `Bearer ${getAuthToken()}`,
+
+                            "Content-Type":
+                                "application/json",
+                        },
+
+                        body:
+                            JSON.stringify({
+                                status,
+
+                                reviewNote:
+                                    regularizationReviewNote.trim(),
+                            }),
+                    }
+                );
+
+            const result =
+                await response.json();
+
+            if (
+                !response.ok ||
+                !result.success
+            ) {
+                throw new Error(
+                    result.message ||
+                    "Unable to review regularization request."
+                );
+            }
+
+            await Promise.all([
+                loadRegularizations(),
+                loadTodayAttendance(),
+                loadMonthlyRegister(),
+            ]);
+
+            setSelectedRegularization(
+                null
+            );
+
+            setRegularizationReviewNote(
+                ""
+            );
+        } catch (err) {
+            alert(err.message);
+        }
+    };
+    function getRegularizationStatusClasses(status) {
+    const styles = {
+        Pending:
+            "bg-amber-50 text-amber-700 ring-amber-600/10",
+
+        Approved:
+            "bg-emerald-50 text-emerald-700 ring-emerald-600/10",
+
+        Rejected:
+            "bg-rose-50 text-rose-700 ring-rose-600/10",
+    };
+
+    return (
+        styles[status] ||
+        "bg-slate-100 text-slate-600 ring-slate-500/10"
+    );
+}
+const openNewHoliday = () => {
+    setEditingHoliday(null);
+
+    setHolidayForm({
+        date: "",
+        name: "",
+        type: "Company",
+        note: "",
+        isActive: true,
+    });
+
+    setHolidayDrawerOpen(true);
+};
+
+const openEditHoliday = (holiday) => {
+    setEditingHoliday(holiday);
+
+    setHolidayForm({
+        date: holiday.date || "",
+        name: holiday.name || "",
+        type: holiday.type || "Company",
+        note: holiday.note || "",
+        isActive: holiday.isActive !== false,
+    });
+
+    setHolidayDrawerOpen(true);
+};
+
+const closeHolidayDrawer = () => {
+    setHolidayDrawerOpen(false);
+    setEditingHoliday(null);
+
+    setHolidayForm({
+        date: "",
+        name: "",
+        type: "Company",
+        note: "",
+        isActive: true,
+    });
+};
+
+const handleHolidayChange = (event) => {
+    const { name, value, type, checked } = event.target;
+
+    setHolidayForm((current) => ({
+        ...current,
+        [name]:
+            type === "checkbox"
+                ? checked
+                : value,
+    }));
+};
+const saveHoliday = async (event) => {
+    event.preventDefault();
+
+    if (!holidayForm.date) {
+        alert("Please select holiday date.");
+        return;
+    }
+
+    if (!holidayForm.name.trim()) {
+        alert("Please enter holiday name.");
+        return;
+    }
+
+    try {
+        const isEdit = Boolean(editingHoliday?._id);
+
+        const response = await fetch(
+            isEdit
+                ? `${API_URL}/api/attendance/admin/holidays/${editingHoliday._id}`
+                : `${API_URL}/api/attendance/admin/holidays`,
+            {
+                method: isEdit ? "PUT" : "POST",
+
+                headers: {
+                    Authorization: `Bearer ${getAuthToken()}`,
+                    "Content-Type": "application/json",
+                },
+
+                body: JSON.stringify({
+                    date: holidayForm.date,
+                    name: holidayForm.name.trim(),
+                    type: holidayForm.type,
+                    note: holidayForm.note.trim(),
+                    isActive: holidayForm.isActive,
+                }),
+            }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            throw new Error(
+                result.message ||
+                "Unable to save holiday."
+            );
+        }
+
+        await Promise.all([
+            loadHolidays(),
+            loadMonthlyRegister(),
+            loadTodayAttendance(),
+        ]);
+
+        closeHolidayDrawer();
+    } catch (err) {
+        alert(err.message);
+    }
+};
+const deactivateHoliday = async (holiday) => {
+    const confirmed = window.confirm(
+        `Deactivate ${holiday.name}?`
+    );
+
+    if (!confirmed) return;
+
+    try {
+        const response = await fetch(
+            `${API_URL}/api/attendance/admin/holidays/${holiday._id}/deactivate`,
+            {
+                method: "PATCH",
+
+                headers: {
+                    Authorization: `Bearer ${getAuthToken()}`,
+                    "Content-Type": "application/json",
+                },
+            }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            throw new Error(
+                result.message ||
+                "Unable to deactivate holiday."
+            );
+        }
+
+        await Promise.all([
+            loadHolidays(),
+            loadMonthlyRegister(),
+            loadTodayAttendance(),
+        ]);
+    } catch (err) {
+        alert(err.message);
+    }
+};
+
     const attendanceRows = useMemo(() => {
         return attendance.filter((record) => {
             const search = searchValue.trim().toLowerCase();
@@ -569,28 +1090,79 @@ export default function Attendance() {
     const pendingLeaveCount = leaveRequests.filter(
         (request) => request.status === "Pending"
     ).length;
+    const calendarDays = useMemo(
+    () =>
+        getCalendarDays(
+            calendarDate.getFullYear(),
+            calendarDate.getMonth()
+        ),
+    [calendarDate]
+);
+const selectedEmployee =
+    getEmployee(selectedEmployeeId);
 
-    const selectedEmployee = getEmployee(selectedEmployeeId);
+const selectedMonthlyEmployee =
+    monthlyRegister.find(
+        (item) =>
+            String(item.employeeId) ===
+            String(selectedEmployeeId)
+    ) || null;
 
-    const calendarDays = getCalendarDays(
-        calendarDate.getFullYear(),
-        calendarDate.getMonth()
-    );
+const selectedMonthRecords = useMemo(() => {
+    const map = {};
 
-    const selectedMonthRecords =
-        monthlyAttendance[selectedEmployeeId] || {};
+    for (
+        const item of
+        selectedMonthlyEmployee?.calendar || []
+    ) {
+        map[item.date] = item;
+    }
 
-    const employeeMonthSummary = useMemo(() => {
-        const values = Object.values(selectedMonthRecords);
+    return map;
+}, [selectedMonthlyEmployee]);
 
-        return {
-            present: values.filter((status) => status === "Present").length,
-            late: values.filter((status) => status === "Late").length,
-            halfDay: values.filter((status) => status === "Half Day").length,
-            absent: values.filter((status) => status === "Absent").length,
-            leave: values.filter((status) => status === "On Leave").length,
-        };
-    }, [selectedMonthRecords]);
+const employeeMonthSummary = useMemo(() => {
+    const summary =
+        selectedMonthlyEmployee?.summary;
+
+    return {
+        present:
+            Number(summary?.present || 0),
+
+        late:
+            Number(summary?.late || 0),
+
+        halfDay:
+            Number(summary?.halfDay || 0),
+
+        absent:
+            Number(summary?.absent || 0),
+
+        leave:
+            Number(summary?.leave || 0),
+
+        holiday:
+            Number(summary?.holiday || 0),
+
+        weeklyOff:
+            Number(summary?.weeklyOff || 0),
+
+        missedPunch:
+            Number(summary?.missedPunch || 0),
+
+        workingDays:
+            Number(summary?.workingDays || 0),
+
+        attendanceRate:
+            Number(summary?.attendanceRate || 0),
+
+        totalWorkedMinutes:
+            Number(summary?.totalWorkedMinutes || 0),
+
+        overtimeMinutes:
+            Number(summary?.overtimeMinutes || 0),
+    };
+}, [selectedMonthlyEmployee]);
 
     const openAttendanceEditor = (record) => {
         setSelectedAttendance(record);
@@ -648,17 +1220,24 @@ export default function Attendance() {
             return;
         }
         try {
-            const response = await fetch(`${API_URL}/api/admin/attendance/${selectedAttendance.attendanceId}`, {
+            const response = await fetch(`${API_URL}/api/attendance/admin/attendance/${selectedAttendance.attendanceId}`, {
                 method: "PUT",
                 headers: { Authorization: `Bearer ${getAuthToken()}`, "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    loginTime: ["Absent", "On Leave"].includes(attendanceForm.status) ? null : attendanceForm.loginTime,
-                    logoutTime: ["Absent", "On Leave"].includes(attendanceForm.status) ? null : attendanceForm.logoutTime,
-                    breakMinutes: ["Absent", "On Leave"].includes(attendanceForm.status) ? 0 : Number(attendanceForm.breakMinutes || 0),
-                    status: attendanceForm.status,
-                    workStatus: attendanceForm.status === "On Leave" ? "On Leave" : attendanceForm.status === "Absent" ? "Logged Out" : attendanceForm.workStatus,
-                    note: attendanceForm.note.trim(),
-                }),
+             body: JSON.stringify({
+    loginTime:
+        attendanceForm.loginTime || null,
+
+    logoutTime:
+        attendanceForm.logoutTime || null,
+
+    breakMinutes:
+        Number(
+            attendanceForm.breakMinutes || 0
+        ),
+
+    note:
+        attendanceForm.note.trim(),
+}),
             });
             const result = await response.json();
             if (!response.ok || !result.success) throw new Error(result.message || "Unable to save attendance.");
@@ -671,7 +1250,7 @@ export default function Attendance() {
         if (!selectedLeave) return;
 
         try {
-            const response = await fetch(`${API_URL}/api/admin/leave/${selectedLeave.id}/review`, {
+            const response = await fetch(`${API_URL}/api/attendance/admin/leaves/${selectedLeave.id}/review`, {
                 method: "PUT",
                 headers: { Authorization: `Bearer ${getAuthToken()}`, "Content-Type": "application/json" },
                 body: JSON.stringify({ status, reviewNote }),
@@ -683,7 +1262,11 @@ export default function Attendance() {
             setReviewNote("");
         } catch (error) { alert(error.message); }
     };
-
+const getCalendarMonthKey = () => {
+    return `${calendarDate.getFullYear()}-${String(
+        calendarDate.getMonth() + 1
+    ).padStart(2, "0")}`;
+};
     const changeCalendarMonth = (direction) => {
         setCalendarDate(
             (current) =>
@@ -837,24 +1420,42 @@ return (
        <div className="enterprise-surface mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white">
                 <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
                    <div className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-slate-50 p-1">
-                        {[
-                            {
-                                id: "today",
-                                label: "Today",
-                            },
-                            {
-                                id: "calendar",
-                                label: "Monthly Calendar",
-                            },
-                            {
-                                id: "leaves",
-                                label: "Leave Requests",
-                            },
-                            {
-                                id: "summary",
-                                label: "Summary",
-                            },
-                        ].map((tab) => (
+               {[
+    {
+        id: "today",
+        label: "Today",
+    },
+
+    {
+        id: "calendar",
+        label: "Monthly Calendar",
+    },
+
+    {
+        id: "leaves",
+        label: "Leave Requests",
+    },
+
+    {
+        id: "holidays",
+        label: "Holidays",
+    },
+
+    {
+        id: "regularization",
+        label: "Regularization",
+    },
+
+    {
+        id: "absence",
+        label: "Absence Analysis",
+    },
+
+    {
+        id: "summary",
+        label: "Summary",
+    },
+].map((tab) => (
                             <button
                                 key={tab.id}
                                 type="button"
@@ -925,12 +1526,16 @@ return (
                                             }
                                             className="enterprise-input h-10 min-w-44 rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                                         >
-                                            <option>All</option>
-                                            <option>Present</option>
-                                            <option>Late</option>
-                                            <option>Half Day</option>
-                                            <option>Absent</option>
-                                            <option>On Leave</option>
+                                       <option>All</option>
+<option>Present</option>
+<option>Late</option>
+<option>Half Day</option>
+<option>Absent</option>
+<option>On Leave</option>
+<option>Holiday</option>
+<option>Weekly Off</option>
+<option>Missed Punch</option>
+<option>Not Checked In</option>
                                         </select>
                                     </div>
 
@@ -1008,10 +1613,7 @@ return (
                                                                 record.employeeCode
                                                             }{" "}
                                                             ·{" "}
-                                                            {
-                                                                record.employee
-                                                                    ?.role
-                                                            }
+                                                      {record.role}
                                                         </p>
                                                     </div>
                                                 </div>
@@ -1136,6 +1738,7 @@ return (
                 )}
 
                 {activeTab === "calendar" && (
+                    
                     <div className="p-5">
                         <div className="grid gap-5 xl:grid-cols-[280px_minmax(0,1fr)]">
                            <div className="rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 shadow-[0_8px_28px_rgba(15,23,42,0.04)]">
@@ -1234,56 +1837,87 @@ return (
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-5 gap-3 border-b border-slate-200 bg-slate-50/70 p-4 sm:grid-cols-5">
-                                    {[
-                                        {
-                                            label: "Present",
-                                            value:
-                                                employeeMonthSummary.present,
-                                            className:
-                                                "text-emerald-700 bg-emerald-50",
-                                        },
-                                        {
-                                            label: "Late",
-                                            value: employeeMonthSummary.late,
-                                            className:
-                                                "text-amber-700 bg-amber-50",
-                                        },
-                                        {
-                                            label: "Half Day",
-                                            value:
-                                                employeeMonthSummary.halfDay,
-                                            className:
-                                                "text-blue-700 bg-blue-50",
-                                        },
-                                        {
-                                            label: "Absent",
-                                            value:
-                                                employeeMonthSummary.absent,
-                                            className:
-                                                "text-rose-700 bg-rose-50",
-                                        },
-                                        {
-                                            label: "Leave",
-                                            value: employeeMonthSummary.leave,
-                                            className:
-                                                "text-violet-700 bg-violet-50",
-                                        },
-                                    ].map((item) => (
-                                        <div
-                                            key={item.label}
-                                            className={`rounded-xl px-3 py-3 text-center ${item.className}`}
-                                        >
-                                            <p className="text-lg font-semibold">
-                                                {item.value}
-                                            </p>
+                              <div className="grid gap-3 border-b border-slate-200 bg-slate-50/70 p-4 sm:grid-cols-4 xl:grid-cols-8">
 
-                                            <p className="mt-1 text-[9px] font-semibold uppercase tracking-[0.12em]">
-                                                {item.label}
-                                            </p>
-                                        </div>
-                                    ))}
-                                </div>
+    {[
+        {
+            label: "Present",
+            value:
+                employeeMonthSummary.present,
+            className:
+                "text-emerald-700 bg-emerald-50",
+        },
+
+        {
+            label: "Late",
+            value:
+                employeeMonthSummary.late,
+            className:
+                "text-amber-700 bg-amber-50",
+        },
+
+        {
+            label: "Half Day",
+            value:
+                employeeMonthSummary.halfDay,
+            className:
+                "text-blue-700 bg-blue-50",
+        },
+
+        {
+            label: "Absent",
+            value:
+                employeeMonthSummary.absent,
+            className:
+                "text-rose-700 bg-rose-50",
+        },
+
+        {
+            label: "Leave",
+            value:
+                employeeMonthSummary.leave,
+            className:
+                "text-violet-700 bg-violet-50",
+        },
+
+        {
+            label: "Holiday",
+            value:
+                employeeMonthSummary.holiday,
+            className:
+                "text-cyan-700 bg-cyan-50",
+        },
+
+        {
+            label: "Weekly Off",
+            value:
+                employeeMonthSummary.weeklyOff,
+            className:
+                "text-slate-700 bg-slate-100",
+        },
+
+        {
+            label: "Attendance",
+            value:
+                `${employeeMonthSummary.attendanceRate}%`,
+            className:
+                "text-indigo-700 bg-indigo-50",
+        },
+    ].map((item) => (
+        <div
+            key={item.label}
+            className={`rounded-xl px-3 py-3 text-center ${item.className}`}
+        >
+            <p className="text-lg font-semibold">
+                {item.value}
+            </p>
+
+            <p className="mt-1 text-[9px] font-semibold uppercase tracking-[0.12em]">
+                {item.label}
+            </p>
+        </div>
+    ))}
+</div>
 
                                 <div className="p-4">
                                     <div className="grid grid-cols-7">
@@ -1304,56 +1938,391 @@ return (
                                             </div>
                                         ))}
 
-                                        {calendarDays.map((date, index) => {
-                                            if (!date) {
-                                                return (
-                                                    <div
-                                                        key={`empty-${index}`}
-                                                        className="min-h-24 border border-slate-100 bg-slate-50/40"
-                                                    />
-                                                );
-                                            }
+                                      {calendarDays.map((date, index) => {
+    if (!date) {
+        return (
+            <div
+                key={`empty-${index}`}
+                className="min-h-24 border border-slate-100 bg-slate-50/40"
+            />
+        );
+    }
 
-                                            const dateKey = [
-                                                date.getFullYear(),
-                                                String(
-                                                    date.getMonth() + 1
-                                                ).padStart(2, "0"),
-                                                String(
-                                                    date.getDate()
-                                                ).padStart(2, "0"),
-                                            ].join("-");
+    const dateKey =
+        `${date.getFullYear()}-${String(
+            date.getMonth() + 1
+        ).padStart(2, "0")}-${String(
+            date.getDate()
+        ).padStart(2, "0")}`;
 
-                                            const status =
-                                                selectedMonthRecords[dateKey];
+    const record =
+        selectedMonthRecords[dateKey];
 
-                                            return (
-                                                <div
-                                                    key={dateKey}
-                                                   className="group min-h-24 border border-slate-100 bg-white p-2 transition hover:bg-violet-50/30"
-                                                >
-                                                    <span className="text-[10px] font-bold text-slate-500">
-                                                        {date.getDate()}
-                                                    </span>
+    const status =
+        record?.status || "";
 
-                                                    {status && (
-                                                        <span
-                                                            className={`mt-3 block rounded-lg px-2 py-1.5 text-center text-[9px] font-bold ring-1 ring-inset ${getStatusClasses(
-                                                                status
-                                                            )}`}
-                                                        >
-                                                            {status}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
+    return (
+        <div
+            key={dateKey}
+            className={`group min-h-24 border border-slate-100 p-2 transition ${
+                record?.isFuture
+                    ? "bg-slate-50/40"
+                    : "bg-white hover:bg-violet-50/30"
+            }`}
+        >
+            <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-600">
+                    {date.getDate()}
+                </span>
+
+                <span className="text-[9px] font-medium text-slate-400">
+                    {date.toLocaleDateString(
+                        "en-IN",
+                        {
+                            weekday: "short",
+                        }
+                    )}
+                </span>
+            </div>
+
+            {status && (
+                <span
+                    className={`mt-3 block rounded-lg px-2 py-1.5 text-center text-[9px] font-bold ring-1 ring-inset ${getStatusClasses(
+                        status
+                    )}`}
+                    title={status}
+                >
+                    {record?.code || status}
+                </span>
+            )}
+
+            {record?.holidayName && (
+                <p
+                    title={record.holidayName}
+                    className="mt-2 truncate text-[9px] font-medium text-cyan-700"
+                >
+                    {record.holidayName}
+                </p>
+            )}
+
+            {record?.leaveType && (
+                <p
+                    title={record.leaveType}
+                    className="mt-2 truncate text-[9px] font-medium text-violet-700"
+                >
+                    {record.leaveType}
+                </p>
+            )}
+
+            {Number(record?.totalWorkedMinutes || 0) > 0 && (
+                <p className="mt-2 text-[9px] font-medium text-slate-500">
+                    {formatDuration(
+                        Number(
+                            record.totalWorkedMinutes || 0
+                        )
+                    )}
+                </p>
+            )}
+
+            {record?.missedPunch && (
+                <p className="mt-2 text-[9px] font-semibold text-orange-600">
+                    Punch incomplete
+                </p>
+            )}
+        </div>
+    );
+})}
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 )}
+{holidayLoading && (
+    <div className="border-b border-violet-100 bg-violet-50 px-5 py-3">
+        <p className="text-xs font-medium text-violet-700">
+            Loading holidays...
+        </p>
+    </div>
+)}
+                {activeTab === "holidays" && (
+    <div className="p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+                <h3 className="text-sm font-semibold text-slate-950">
+                    Holiday Master
+                </h3>
+
+                <p className="mt-1 text-xs text-slate-500">
+                    Manage company, national and optional holidays.
+                </p>
+            </div>
+
+            <button
+                type="button"
+                onClick={openNewHoliday}
+                className="flex h-10 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700"
+            >
+                <CalendarDays size={15} />
+                Add Holiday
+            </button>
+        </div>
+
+        <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200">
+            <div className="overflow-x-auto">
+                <table className="w-full min-w-[850px]">
+                    <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50">
+                            <th className="px-5 py-3 text-left text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                                Date
+                            </th>
+
+                            <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                                Holiday
+                            </th>
+
+                            <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                                Type
+                            </th>
+
+                            <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                                Note
+                            </th>
+
+                            <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                                Status
+                            </th>
+
+                            <th className="px-5 py-3 text-right text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                                Actions
+                            </th>
+                        </tr>
+                    </thead>
+
+                    <tbody className="divide-y divide-slate-100">
+                        {holidays.map((holiday) => (
+                            <tr
+                                key={holiday._id}
+                                className="transition hover:bg-violet-50/30"
+                            >
+                                <td className="px-5 py-4 text-xs font-semibold text-slate-700">
+                                    {holiday.date}
+                                </td>
+
+                                <td className="px-4 py-4">
+                                    <p className="text-xs font-semibold text-slate-900">
+                                        {holiday.name}
+                                    </p>
+                                </td>
+
+                                <td className="px-4 py-4">
+                                    <span
+                                        className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ${
+                                            holiday.type === "National"
+                                                ? "bg-rose-50 text-rose-700"
+                                                : holiday.type === "Optional"
+                                                  ? "bg-amber-50 text-amber-700"
+                                                  : "bg-violet-50 text-violet-700"
+                                        }`}
+                                    >
+                                        {holiday.type}
+                                    </span>
+                                </td>
+
+                                <td className="px-4 py-4 text-xs text-slate-600">
+                                    {holiday.note || "—"}
+                                </td>
+
+                                <td className="px-4 py-4">
+                                    <span
+                                        className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ${
+                                            holiday.isActive
+                                                ? "bg-emerald-50 text-emerald-700"
+                                                : "bg-slate-100 text-slate-500"
+                                        }`}
+                                    >
+                                        {holiday.isActive
+                                            ? "Active"
+                                            : "Inactive"}
+                                    </span>
+                                </td>
+
+                                <td className="px-5 py-4">
+                                    <div className="flex justify-end gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                openEditHoliday(
+                                                    holiday
+                                                )
+                                            }
+                                            className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-semibold text-slate-600 hover:bg-slate-50"
+                                        >
+                                            Edit
+                                        </button>
+
+                                        {holiday.isActive && (
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    deactivateHoliday(
+                                                        holiday
+                                                    )
+                                                }
+                                                className="h-9 rounded-lg border border-rose-200 bg-rose-50 px-3 text-[10px] font-semibold text-rose-700 hover:bg-rose-100"
+                                            >
+                                                Deactivate
+                                            </button>
+                                        )}
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+
+            {!holidayLoading &&
+                holidays.length === 0 && (
+                    <div className="flex min-h-56 flex-col items-center justify-center text-center">
+                        <CalendarDays
+                            size={28}
+                            className="text-slate-300"
+                        />
+
+                        <p className="mt-3 text-sm font-semibold text-slate-900">
+                            No holidays configured
+                        </p>
+
+                        <p className="mt-1 text-xs text-slate-500">
+                            Add your first holiday.
+                        </p>
+                    </div>
+                )}
+        </div>
+    </div>
+)}
+{holidayDrawerOpen && (
+    <>
+        <button
+            type="button"
+            aria-label="Close holiday drawer"
+            onClick={closeHolidayDrawer}
+            className="fixed inset-0 z-[70] bg-slate-950/40 backdrop-blur-[2px]"
+        />
+
+        <aside className="fixed inset-y-0 right-0 z-[80] flex w-full max-w-[520px] flex-col bg-white shadow-[-30px_0_90px_rgba(15,23,42,0.20)]">
+            <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
+                <div>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-violet-600">
+                        Holiday Master
+                    </p>
+
+                    <h2 className="mt-2 text-xl font-semibold text-slate-950">
+                        {editingHoliday
+                            ? "Edit Holiday"
+                            : "Add Holiday"}
+                    </h2>
+                </div>
+
+                <button
+                    type="button"
+                    onClick={closeHolidayDrawer}
+                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500"
+                >
+                    <X size={16} />
+                </button>
+            </div>
+
+            <form
+                onSubmit={saveHoliday}
+                className="flex min-h-0 flex-1 flex-col"
+            >
+                <div className="flex-1 space-y-5 overflow-y-auto p-6">
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold text-slate-700">
+                            Holiday Date
+                        </label>
+
+                        <input
+                            type="date"
+                            name="date"
+                            value={holidayForm.date}
+                            onChange={handleHolidayChange}
+                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold text-slate-700">
+                            Holiday Name
+                        </label>
+
+                        <input
+                            type="text"
+                            name="name"
+                            value={holidayForm.name}
+                            onChange={handleHolidayChange}
+                            placeholder="e.g. Independence Day"
+                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold text-slate-700">
+                            Holiday Type
+                        </label>
+
+                        <select
+                            name="type"
+                            value={holidayForm.type}
+                            onChange={handleHolidayChange}
+                            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                        >
+                            <option>Company</option>
+                            <option>National</option>
+                            <option>Optional</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold text-slate-700">
+                            Note
+                        </label>
+
+                        <textarea
+                            name="note"
+                            value={holidayForm.note}
+                            onChange={handleHolidayChange}
+                            rows={4}
+                            placeholder="Optional note..."
+                            className="w-full resize-none rounded-xl border border-slate-200 px-3 py-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                        />
+                    </div>
+                </div>
+
+                <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">
+                    <button
+                        type="button"
+                        onClick={closeHolidayDrawer}
+                        className="h-10 rounded-xl border border-slate-200 px-4 text-xs font-semibold text-slate-600"
+                    >
+                        Cancel
+                    </button>
+
+                    <button
+                        type="submit"
+                        className="h-10 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white hover:bg-violet-700"
+                    >
+                        {editingHoliday
+                            ? "Update Holiday"
+                            : "Save Holiday"}
+                    </button>
+                </div>
+            </form>
+        </aside>
+    </>
+)}
 
                 {activeTab === "leaves" && (
                     <div>
@@ -1536,6 +2505,919 @@ return (
                         </div>
                     </div>
                 )}
+                {activeTab === "regularization" && (
+    <div>
+        <div className="flex flex-col gap-4 border-b border-slate-200 bg-slate-50/60 p-5 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+                <h3 className="text-sm font-semibold text-slate-950">
+                    Attendance Regularization
+                </h3>
+
+                <p className="mt-1 text-xs text-slate-500">
+                    Review employee requests for missed punches and attendance corrections.
+                </p>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+                <div>
+                    <label className="mb-1.5 block text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                        Status
+                    </label>
+
+                    <select
+                        value={
+                            regularizationStatusFilter
+                        }
+                        onChange={(event) =>
+                            setRegularizationStatusFilter(
+                                event.target.value
+                            )
+                        }
+                        className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                    >
+                        <option>All</option>
+                        <option>Pending</option>
+                        <option>Approved</option>
+                        <option>Rejected</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label className="mb-1.5 block text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                        Correction Type
+                    </label>
+
+                    <select
+                        value={
+                            regularizationTypeFilter
+                        }
+                        onChange={(event) =>
+                            setRegularizationTypeFilter(
+                                event.target.value
+                            )
+                        }
+                        className="h-10 min-w-48 rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                    >
+                        <option>All</option>
+                        <option>Missing Login</option>
+                        <option>Missing Logout</option>
+                        <option>Incorrect Time</option>
+                        <option>Absent Correction</option>
+                        <option>Work From Home</option>
+                        <option>Client Site</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div className="grid gap-4 border-b border-slate-200 p-5 sm:grid-cols-3">
+            <div className="rounded-xl border border-amber-100 bg-amber-50 p-4">
+                <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-amber-700">
+                    Pending
+                </p>
+
+                <p className="mt-2 text-2xl font-bold text-amber-800">
+                    {
+                        regularizations.filter(
+                            (item) =>
+                                item.status ===
+                                "Pending"
+                        ).length
+                    }
+                </p>
+            </div>
+
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
+                <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-emerald-700">
+                    Approved
+                </p>
+
+                <p className="mt-2 text-2xl font-bold text-emerald-800">
+                    {
+                        regularizations.filter(
+                            (item) =>
+                                item.status ===
+                                "Approved"
+                        ).length
+                    }
+                </p>
+            </div>
+
+            <div className="rounded-xl border border-rose-100 bg-rose-50 p-4">
+                <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-rose-700">
+                    Rejected
+                </p>
+
+                <p className="mt-2 text-2xl font-bold text-rose-800">
+                    {
+                        regularizations.filter(
+                            (item) =>
+                                item.status ===
+                                "Rejected"
+                        ).length
+                    }
+                </p>
+            </div>
+        </div>
+
+        <div className="overflow-x-auto">
+            <table className="w-full min-w-[1150px]">
+                <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50">
+                        <th className="px-5 py-3 text-left text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                            Employee
+                        </th>
+
+                        <th className="px-4 py-3 text-left text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                            Date
+                        </th>
+
+                        <th className="px-4 py-3 text-left text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                            Type
+                        </th>
+
+                        <th className="px-4 py-3 text-left text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                            Requested Time
+                        </th>
+
+                        <th className="px-4 py-3 text-left text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                            Reason
+                        </th>
+
+                        <th className="px-4 py-3 text-left text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                            Status
+                        </th>
+
+                        <th className="px-5 py-3 text-right text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                            Action
+                        </th>
+                    </tr>
+                </thead>
+
+                <tbody className="divide-y divide-slate-100">
+                    {regularizations.map(
+                        (request) => (
+                            <tr
+                                key={request._id}
+                                className="transition hover:bg-violet-50/30"
+                            >
+                                <td className="px-5 py-4">
+                                    <p className="text-xs font-semibold text-slate-900">
+                                        {
+                                            request.employeeName
+                                        }
+                                    </p>
+
+                                    <p className="mt-1 text-[10px] text-slate-500">
+                                        {
+                                            request.employeeCode
+                                        }
+                                    </p>
+                                </td>
+
+                                <td className="px-4 py-4 text-xs font-semibold text-slate-700">
+                                    {request.date}
+                                </td>
+
+                                <td className="px-4 py-4">
+                                    <span className="inline-flex rounded-full bg-violet-50 px-2.5 py-1 text-[10px] font-semibold text-violet-700">
+                                        {
+                                            request.requestType
+                                        }
+                                    </span>
+                                </td>
+
+                                <td className="px-4 py-4">
+                                    <p className="text-xs text-slate-700">
+                                        Login:{" "}
+                                        <span className="font-semibold">
+                                            {
+                                                request.requestedLoginTime ||
+                                                "—"
+                                            }
+                                        </span>
+                                    </p>
+
+                                    <p className="mt-1 text-xs text-slate-700">
+                                        Logout:{" "}
+                                        <span className="font-semibold">
+                                            {
+                                                request.requestedLogoutTime ||
+                                                "—"
+                                            }
+                                        </span>
+                                    </p>
+                                </td>
+
+                                <td className="max-w-72 px-4 py-4">
+                                    <p className="text-xs leading-5 text-slate-600">
+                                        {
+                                            request.reason
+                                        }
+                                    </p>
+                                </td>
+
+                                <td className="px-4 py-4">
+                                    <span
+                                        className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ring-1 ring-inset ${getRegularizationStatusClasses(
+                                            request.status
+                                        )}`}
+                                    >
+                                        {
+                                            request.status
+                                        }
+                                    </span>
+                                </td>
+
+                                <td className="px-5 py-4">
+                                    <div className="flex justify-end">
+                                        {request.status ===
+                                        "Pending" ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setSelectedRegularization(
+                                                        request
+                                                    );
+
+                                                    setRegularizationReviewNote(
+                                                        ""
+                                                    );
+                                                }}
+                                                className="h-9 rounded-lg border border-violet-200 bg-violet-50 px-3 text-[10px] font-semibold text-violet-700 hover:bg-violet-100"
+                                            >
+                                                Review
+                                            </button>
+                                        ) : (
+                                            <span className="text-[10px] text-slate-400">
+                                                {
+                                                    request.reviewedBy ||
+                                                    "Reviewed"
+                                                }
+                                            </span>
+                                        )}
+                                    </div>
+                                </td>
+                            </tr>
+                        )
+                    )}
+                </tbody>
+            </table>
+        </div>
+
+        {!regularizationLoading &&
+            regularizations.length === 0 && (
+                <div className="flex min-h-56 flex-col items-center justify-center text-center">
+                    <CheckCircle2
+                        size={28}
+                        className="text-slate-300"
+                    />
+
+                    <p className="mt-3 text-sm font-semibold text-slate-900">
+                        No regularization requests
+                    </p>
+
+                    <p className="mt-1 text-xs text-slate-500">
+                        There are no requests matching the selected filters.
+                    </p>
+                </div>
+            )}
+    </div>
+)}
+{selectedRegularization && (
+    <>
+        <button
+            type="button"
+            aria-label="Close regularization review"
+            onClick={() => {
+                setSelectedRegularization(
+                    null
+                );
+
+                setRegularizationReviewNote(
+                    ""
+                );
+            }}
+            className="fixed inset-0 z-[90] bg-slate-950/40 backdrop-blur-[2px]"
+        />
+
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+                <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
+                    <div>
+                        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-violet-600">
+                            Attendance Correction
+                        </p>
+
+                        <h2 className="mt-2 text-lg font-semibold text-slate-950">
+                            {
+                                selectedRegularization.employeeName
+                            }
+                        </h2>
+
+                        <p className="mt-1 text-xs text-slate-500">
+                            {
+                                selectedRegularization.requestType
+                            }{" "}
+                            ·{" "}
+                            {
+                                selectedRegularization.date
+                            }
+                        </p>
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setSelectedRegularization(
+                                null
+                            );
+
+                            setRegularizationReviewNote(
+                                ""
+                            );
+                        }}
+                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500"
+                    >
+                        <X size={16} />
+                    </button>
+                </div>
+
+                <div className="space-y-4 p-6">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-xl bg-slate-50 p-4">
+                            <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                                Requested Login
+                            </p>
+
+                            <p className="mt-2 text-sm font-semibold text-slate-900">
+                                {
+                                    selectedRegularization.requestedLoginTime ||
+                                    "—"
+                                }
+                            </p>
+                        </div>
+
+                        <div className="rounded-xl bg-slate-50 p-4">
+                            <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                                Requested Logout
+                            </p>
+
+                            <p className="mt-2 text-sm font-semibold text-slate-900">
+                                {
+                                    selectedRegularization.requestedLogoutTime ||
+                                    "—"
+                                }
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="rounded-xl bg-slate-50 p-4">
+                        <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                            Employee Reason
+                        </p>
+
+                        <p className="mt-2 text-xs leading-5 text-slate-700">
+                            {
+                                selectedRegularization.reason
+                            }
+                        </p>
+                    </div>
+
+                    <div>
+                        <label className="mb-2 block text-xs font-semibold text-slate-700">
+                            Review Note
+                        </label>
+
+                        <textarea
+                            value={
+                                regularizationReviewNote
+                            }
+                            onChange={(event) =>
+                                setRegularizationReviewNote(
+                                    event.target.value
+                                )
+                            }
+                            rows={4}
+                            placeholder="Add approval/rejection note..."
+                            className="w-full resize-none rounded-xl border border-slate-200 px-3 py-3 text-xs leading-5 text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                        />
+                    </div>
+
+                    {selectedRegularization.requestType ===
+                        "Absent Correction" && (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                            <p className="text-xs font-semibold text-amber-800">
+                                Approval will create the missing attendance record.
+                            </p>
+                        </div>
+                    )}
+
+                    {[
+                        "Work From Home",
+                        "Client Site",
+                    ].includes(
+                        selectedRegularization.requestType
+                    ) && (
+                        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                            <p className="text-xs font-semibold text-blue-800">
+                                Approval will record this as valid attendance and preserve the work mode in the attendance note.
+                            </p>
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">
+                    <button
+                        type="button"
+                        onClick={() =>
+                            handleRegularizationDecision(
+                                "Rejected"
+                            )
+                        }
+                        className="flex h-10 items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                    >
+                        <XCircle size={15} />
+                        Reject
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() =>
+                            handleRegularizationDecision(
+                                "Approved"
+                            )
+                        }
+                        className="flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-xs font-semibold text-white hover:bg-emerald-700"
+                    >
+                        <CheckCircle2 size={15} />
+                        Approve & Apply
+                    </button>
+                </div>
+            </div>
+        </div>
+    </>
+)}
+{activeTab === "absence" && (
+    <div>
+        <div className="flex flex-col gap-4 border-b border-slate-200 bg-slate-50/60 p-5 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+                <h3 className="text-sm font-semibold text-slate-950">
+                    Absence Analysis
+                </h3>
+
+                <p className="mt-1 text-xs text-slate-500">
+                    Detect repeated absence, consecutive absence streaks and attendance risk.
+                </p>
+            </div>
+
+            <div>
+                <label className="mb-1.5 block text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                    Analysis Period
+                </label>
+
+                <select
+                    value={absenceDays}
+                    onChange={(event) =>
+                        setAbsenceDays(
+                            Number(event.target.value)
+                        )
+                    }
+                    className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                >
+                    <option value={7}>
+                        Last 7 Days
+                    </option>
+
+                    <option value={15}>
+                        Last 15 Days
+                    </option>
+
+                    <option value={30}>
+                        Last 30 Days
+                    </option>
+
+                    <option value={60}>
+                        Last 60 Days
+                    </option>
+
+                    <option value={90}>
+                        Last 90 Days
+                    </option>
+                </select>
+            </div>
+        </div>
+
+        <div className="grid gap-4 border-b border-slate-200 p-5 sm:grid-cols-3">
+            <div className="rounded-xl border border-rose-100 bg-rose-50 p-4">
+                <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-rose-600">
+                    Employees With Absence
+                </p>
+
+                <p className="mt-2 text-2xl font-bold text-rose-800">
+                    {
+                        absenceSummary.employeesWithAbsence
+                    }
+                </p>
+            </div>
+
+            <div className="rounded-xl border border-amber-100 bg-amber-50 p-4">
+                <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-amber-600">
+                    3+ Day Streak
+                </p>
+
+                <p className="mt-2 text-2xl font-bold text-amber-800">
+                    {
+                        absenceSummary.employeesWith3DayStreak
+                    }
+                </p>
+            </div>
+
+            <div className="rounded-xl border border-violet-100 bg-violet-50 p-4">
+                <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-violet-600">
+                    Total Absent Days
+                </p>
+
+                <p className="mt-2 text-2xl font-bold text-violet-800">
+                    {
+                        absenceSummary.totalAbsentDays
+                    }
+                </p>
+            </div>
+        </div>
+
+        <div className="overflow-x-auto">
+            <table className="w-full min-w-[1000px]">
+                <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50">
+                        <th className="px-5 py-3 text-left text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                            Employee
+                        </th>
+
+                        <th className="px-4 py-3 text-center text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                            Absent Days
+                        </th>
+
+                        <th className="px-4 py-3 text-center text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                            Longest Streak
+                        </th>
+
+                        <th className="px-4 py-3 text-left text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                            Recent Absent Dates
+                        </th>
+
+                        <th className="px-4 py-3 text-left text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                            Risk
+                        </th>
+
+                        <th className="px-5 py-3 text-right text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                            Details
+                        </th>
+                    </tr>
+                </thead>
+
+                <tbody className="divide-y divide-slate-100">
+                    {absenceAnalysis.map(
+                        (item) => (
+                            <tr
+                                key={item.employeeId}
+                                className="transition hover:bg-violet-50/30"
+                            >
+                                <td className="px-5 py-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 text-[10px] font-bold text-white">
+                                            {item.employeeName
+                                                ?.split(" ")
+                                                .map(
+                                                    (part) =>
+                                                        part[0]
+                                                )
+                                                .join("")
+                                                .substring(
+                                                    0,
+                                                    2
+                                                )
+                                                .toUpperCase()}
+                                        </div>
+
+                                        <div>
+                                            <p className="text-xs font-semibold text-slate-900">
+                                                {
+                                                    item.employeeName
+                                                }
+                                            </p>
+
+                                            <p className="mt-1 text-[10px] text-slate-500">
+                                                {
+                                                    item.employeeCode
+                                                }
+                                                {item.department
+                                                    ? ` · ${item.department}`
+                                                    : ""}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </td>
+
+                                <td className="px-4 py-4 text-center">
+                                    <span className="text-lg font-bold text-rose-700">
+                                        {
+                                            item.totalAbsentDays
+                                        }
+                                    </span>
+                                </td>
+
+                                <td className="px-4 py-4 text-center">
+                                    <span
+                                        className={`font-bold ${
+                                            item.longestStreak >=
+                                            3
+                                                ? "text-rose-700"
+                                                : item.longestStreak >=
+                                                    2
+                                                  ? "text-amber-700"
+                                                  : "text-slate-700"
+                                        }`}
+                                    >
+                                        {
+                                            item.longestStreak
+                                        }{" "}
+                                        day
+                                        {item.longestStreak ===
+                                        1
+                                            ? ""
+                                            : "s"}
+                                    </span>
+                                </td>
+
+                                <td className="px-4 py-4">
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {(item.absentDates ||
+                                            [])
+                                            .slice(-5)
+                                            .map(
+                                                (date) => (
+                                                    <span
+                                                        key={
+                                                            date
+                                                        }
+                                                        className="rounded-lg bg-rose-50 px-2 py-1 text-[9px] font-semibold text-rose-700"
+                                                    >
+                                                        {
+                                                            date
+                                                        }
+                                                    </span>
+                                                )
+                                            )}
+
+                                        {(item.absentDates ||
+                                            []).length >
+                                            5 && (
+                                            <span className="rounded-lg bg-slate-100 px-2 py-1 text-[9px] font-semibold text-slate-600">
+                                                +
+                                                {(item.absentDates ||
+                                                    [])
+                                                    .length -
+                                                    5}
+                                            </span>
+                                        )}
+                                    </div>
+                                </td>
+
+                                <td className="px-4 py-4">
+                                    <span
+                                        className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ring-inset ${getWarningClasses(
+                                            item.warningLevel
+                                        )}`}
+                                    >
+                                        {
+                                            item.warningLevel
+                                        }
+                                    </span>
+                                </td>
+
+                                <td className="px-5 py-4">
+                                    <div className="flex justify-end">
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                setSelectedAbsenceEmployee(
+                                                    item
+                                                )
+                                            }
+                                            className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-semibold text-slate-600 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
+                                        >
+                                            View Details
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        )
+                    )}
+                </tbody>
+            </table>
+        </div>
+
+        {!absenceLoading &&
+            absenceAnalysis.length === 0 && (
+                <div className="flex min-h-60 flex-col items-center justify-center text-center">
+                    <CheckCircle2
+                        size={30}
+                        className="text-emerald-400"
+                    />
+
+                    <p className="mt-3 text-sm font-semibold text-slate-900">
+                        No absence issues found
+                    </p>
+
+                    <p className="mt-1 text-xs text-slate-500">
+                        No employees have unexcused absence in this period.
+                    </p>
+                </div>
+            )}
+    </div>
+)}
+{selectedAbsenceEmployee && (
+    <>
+        <button
+            type="button"
+            aria-label="Close absence details"
+            onClick={() =>
+                setSelectedAbsenceEmployee(
+                    null
+                )
+            }
+            className="fixed inset-0 z-[90] bg-slate-950/40 backdrop-blur-[2px]"
+        />
+
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+                <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
+                    <div>
+                        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-rose-600">
+                            Absence Details
+                        </p>
+
+                        <h2 className="mt-2 text-lg font-semibold text-slate-950">
+                            {
+                                selectedAbsenceEmployee.employeeName
+                            }
+                        </h2>
+
+                        <p className="mt-1 text-xs text-slate-500">
+                            {
+                                selectedAbsenceEmployee.employeeCode
+                            }
+                            {" · "}
+                            {
+                                selectedAbsenceEmployee.totalAbsentDays
+                            }{" "}
+                            absent day(s)
+                        </p>
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={() =>
+                            setSelectedAbsenceEmployee(
+                                null
+                            )
+                        }
+                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500"
+                    >
+                        <X size={16} />
+                    </button>
+                </div>
+
+                <div className="max-h-[70vh] space-y-5 overflow-y-auto p-6">
+                    <div className="grid gap-3 sm:grid-cols-3">
+                        <div className="rounded-xl bg-rose-50 p-4">
+                            <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-rose-600">
+                                Total Absent
+                            </p>
+
+                            <p className="mt-2 text-xl font-bold text-rose-800">
+                                {
+                                    selectedAbsenceEmployee.totalAbsentDays
+                                }
+                            </p>
+                        </div>
+
+                        <div className="rounded-xl bg-amber-50 p-4">
+                            <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-amber-600">
+                                Longest Streak
+                            </p>
+
+                            <p className="mt-2 text-xl font-bold text-amber-800">
+                                {
+                                    selectedAbsenceEmployee.longestStreak
+                                }
+                            </p>
+                        </div>
+
+                        <div className="rounded-xl bg-slate-50 p-4">
+                            <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-500">
+                                Warning Level
+                            </p>
+
+                            <span
+                                className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ring-inset ${getWarningClasses(
+                                    selectedAbsenceEmployee.warningLevel
+                                )}`}
+                            >
+                                {
+                                    selectedAbsenceEmployee.warningLevel
+                                }
+                            </span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3 className="text-xs font-semibold text-slate-900">
+                            Absence Periods
+                        </h3>
+
+                        <div className="mt-3 space-y-2">
+                            {(selectedAbsenceEmployee.streaks ||
+                                []).map(
+                                (streak, index) => (
+                                    <div
+                                        key={`${streak.fromDate}-${index}`}
+                                        className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+                                    >
+                                        <div>
+                                            <p className="text-xs font-semibold text-slate-800">
+                                                {
+                                                    streak.fromDate
+                                                }{" "}
+                                                to{" "}
+                                                {
+                                                    streak.toDate
+                                                }
+                                            </p>
+                                        </div>
+
+                                        <span
+                                            className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
+                                                streak.days >=
+                                                3
+                                                    ? "bg-rose-100 text-rose-700"
+                                                    : "bg-amber-100 text-amber-700"
+                                            }`}
+                                        >
+                                            {
+                                                streak.days
+                                            }{" "}
+                                            day
+                                            {streak.days ===
+                                            1
+                                                ? ""
+                                                : "s"}
+                                        </span>
+                                    </div>
+                                )
+                            )}
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3 className="text-xs font-semibold text-slate-900">
+                            All Absent Dates
+                        </h3>
+
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            {(selectedAbsenceEmployee.absentDates ||
+                                []).map(
+                                (date) => (
+                                    <span
+                                        key={date}
+                                        className="rounded-lg border border-rose-100 bg-rose-50 px-2.5 py-1.5 text-[10px] font-semibold text-rose-700"
+                                    >
+                                        {date}
+                                    </span>
+                                )
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex justify-end border-t border-slate-200 px-6 py-4">
+                    <button
+                        type="button"
+                        onClick={() =>
+                            setSelectedAbsenceEmployee(
+                                null
+                            )
+                        }
+                        className="h-10 rounded-xl bg-slate-900 px-4 text-xs font-semibold text-white hover:bg-slate-800"
+                    >
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </>
+)}
 
                 {activeTab === "summary" && (
                     <div className="p-5">
@@ -1578,115 +3460,88 @@ return (
                                         </tr>
                                     </thead>
 
-                                    <tbody className="divide-y divide-slate-100">
-                                        {employees.map((employee) => {
-                                            const employeeRecords = attendance.filter(
-                                                (record) =>
-                                                    record.employeeCode === employee.employeeCode ||
-                                                    record.employeeName === employee.name
-                                            );
+                                   <tbody className="divide-y divide-slate-100">
+    {monthlyRegister.map((employee) => {
+        const summary =
+            employee.summary || {};
 
-                                            const present = employeeRecords.filter(
-                                                (record) => record.attendanceStatus === "Present"
-                                            ).length;
+        const attendanceRate =
+            Number(
+                summary.attendanceRate || 0
+            );
 
-                                            const late = employeeRecords.filter(
-                                                (record) => record.attendanceStatus === "Late"
-                                            ).length;
+        return (
+            <tr
+                key={employee.employeeId}
+                className="transition hover:bg-slate-50/70"
+            >
+                <td className="px-5 py-4">
+                    <div className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-900 text-[10px] font-bold text-white">
+                            {employee.employeeName
+                                ?.split(" ")
+                                .map((part) => part[0])
+                                .join("")
+                                .substring(0, 2)
+                                .toUpperCase()}
+                        </div>
 
-                                            const halfDay = employeeRecords.filter(
-                                                (record) => record.attendanceStatus === "Half Day"
-                                            ).length;
+                        <div>
+                            <p className="text-xs font-semibold text-slate-900">
+                                {employee.employeeName}
+                            </p>
 
-                                            const absent = employeeRecords.filter(
-                                                (record) => record.attendanceStatus === "Absent"
-                                            ).length;
+                            <p className="mt-1 text-[10px] text-slate-500">
+                                {employee.department}
+                            </p>
+                        </div>
+                    </div>
+                </td>
 
-                                            const leave = employeeRecords.filter(
-                                                (record) => record.attendanceStatus === "On Leave"
-                                            ).length;
+                <td className="px-4 py-4 text-center text-xs font-semibold text-emerald-700">
+                    {summary.present || 0}
+                </td>
 
-                                            const workingDays = employeeRecords.length || 1;
+                <td className="px-4 py-4 text-center text-xs font-semibold text-amber-700">
+                    {summary.late || 0}
+                </td>
 
-                                            const attendanceRate = Math.round(
-                                                ((present + late + halfDay * 0.5) / workingDays) * 100
-                                            );
+                <td className="px-4 py-4 text-center text-xs font-semibold text-blue-700">
+                    {summary.halfDay || 0}
+                </td>
 
-                                            return (
-                                                <tr
-                                                    key={employee.id}
-                                                    className="transition hover:bg-slate-50/70"
-                                                >
-                                                    <td className="px-5 py-4">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-900 text-[10px] font-bold text-white">
-                                                                {
-                                                                    employee.initials
-                                                                }
-                                                            </div>
+                <td className="px-4 py-4 text-center text-xs font-semibold text-rose-700">
+                    {summary.absent || 0}
+                </td>
 
-                                                            <div>
-                                                                <p className="text-xs font-semibold text-slate-900">
-                                                                    {
-                                                                        employee.name
-                                                                    }
-                                                                </p>
+                <td className="px-4 py-4 text-center text-xs font-semibold text-violet-700">
+                    {summary.leave || 0}
+                </td>
 
-                                                                <p className="mt-1 text-[10px] text-slate-500">
-                                                                    {
-                                                                        employee.department
-                                                                    }
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                    </td>
+                <td className="px-5 py-4">
+                    <div className="flex items-center gap-3">
+                        <div className="h-2 w-32 overflow-hidden rounded-full bg-slate-100">
+                            <div
+                                className="h-full rounded-full bg-emerald-500"
+                                style={{
+                                    width:
+                                        `${Math.min(
+                                            attendanceRate,
+                                            100
+                                        )}%`,
+                                }}
+                            />
+                        </div>
 
-                                                    <td className="px-4 py-4 text-center text-xs font-semibold text-emerald-700">
-                                                        {present}
-                                                    </td>
-
-                                                    <td className="px-4 py-4 text-center text-xs font-semibold text-amber-700">
-                                                        {late}
-                                                    </td>
-
-                                                    <td className="px-4 py-4 text-center text-xs font-semibold text-blue-700">
-                                                        {halfDay}
-                                                    </td>
-
-                                                    <td className="px-4 py-4 text-center text-xs font-semibold text-rose-700">
-                                                        {absent}
-                                                    </td>
-
-                                                    <td className="px-4 py-4 text-center text-xs font-semibold text-violet-700">
-                                                        {leave}
-                                                    </td>
-
-                                                    <td className="px-5 py-4">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="h-2 w-32 overflow-hidden rounded-full bg-slate-100">
-                                                                <div
-                                                                    className="h-full rounded-full bg-emerald-500"
-                                                                    style={{
-                                                                        width: `${Math.min(
-                                                                            attendanceRate,
-                                                                            100
-                                                                        )}%`,
-                                                                    }}
-                                                                />
-                                                            </div>
-
-                                                            <span className="text-xs font-semibold text-slate-700">
-                                                                {
-                                                                    attendanceRate
-                                                                }
-                                                                %
-                                                            </span>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
+                        <span className="text-xs font-semibold text-slate-700">
+                            {attendanceRate}%
+                        </span>
+                    </div>
+                </td>
+            </tr>
+        );
+    })}
+</tbody>
                                 </table>
                             </div>
                         </div>
@@ -1740,26 +3595,28 @@ return (
                         >
                             <div className="flex-1 space-y-6 overflow-y-auto p-6">
                                 <div className="grid gap-4 sm:grid-cols-2">
-                                    <div>
-                                        <label className="mb-2 block text-xs font-semibold text-slate-700">
-                                            Attendance status
-                                        </label>
+                                  <div>
+    <label className="mb-2 block text-xs font-semibold text-slate-700">
+        Attendance Status
+    </label>
 
-                                        <select
-                                            name="status"
-                                            value={attendanceForm.status}
-                                            onChange={
-                                                handleAttendanceChange
-                                            }
-                                            className="enterprise-input h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                        >
-                                            <option>Present</option>
-                                            <option>Late</option>
-                                            <option>Half Day</option>
-                                            <option>Absent</option>
-                                            <option>On Leave</option>
-                                        </select>
-                                    </div>
+    <div className="flex h-11 items-center rounded-xl border border-slate-200 bg-slate-50 px-3">
+        <span
+            className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ring-1 ring-inset ${getStatusClasses(
+                selectedAttendance?.attendanceStatus ||
+                    selectedAttendance?.status
+            )}`}
+        >
+            {selectedAttendance?.attendanceStatus ||
+                selectedAttendance?.status ||
+                "—"}
+        </span>
+    </div>
+
+    <p className="mt-1.5 text-[10px] text-slate-400">
+        Status is calculated automatically from attendance timings.
+    </p>
+</div>
 
                                     <div>
                                         <label className="mb-2 block text-xs font-semibold text-slate-700">

@@ -2,11 +2,12 @@ import { useRef, useState } from "react";
 import jsPDF from "jspdf";
 import {
   Building2,
-  CalendarDays,
   Download,
   FileText,
   IndianRupee,
   Printer,
+  QrCode,
+  Smartphone,
   X,
 } from "lucide-react";
 
@@ -116,6 +117,50 @@ function safeFileName(value) {
     .replace(/^-|-$/g, "");
 }
 
+function getNumber(...values) {
+  for (const value of values) {
+    const parsed = Number(value);
+
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return 0;
+}
+
+async function loadImageAsDataUrl(source) {
+  if (!source) return "";
+
+  if (String(source).startsWith("data:image/")) {
+    return source;
+  }
+
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+
+    image.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = image.naturalWidth || image.width;
+        canvas.height = image.naturalHeight || image.height;
+
+        const context = canvas.getContext("2d");
+        context.drawImage(image, 0, 0);
+
+        resolve(canvas.toDataURL("image/png"));
+      } catch (error) {
+        console.warn("Unable to convert PhonePe QR image:", error);
+        resolve("");
+      }
+    };
+
+    image.onerror = () => resolve("");
+    image.src = source;
+  });
+}
+
 export default function AmcInvoice({
   record,
   onClose,
@@ -133,6 +178,12 @@ export default function AmcInvoice({
     accountNo: "12345678901",
     ifsc: "SBIN0001234",
     branch: "Pune Main Branch",
+
+    // FRONTEND READY:
+    // Later these should come from Company / Payment Settings.
+    phonePeQrImage: "",
+    phonePeUpiId: "",
+    phonePePayeeName: "Total Solution",
   },
 }) {
   const invoiceRef = useRef(null);
@@ -151,13 +202,75 @@ export default function AmcInvoice({
       year: "numeric",
     });
 
-  const taxableAmount = Number(record.amount || 0);
-  const cgstRate = 9;
-  const sgstRate = 9;
-  const cgstAmount = taxableAmount * (cgstRate / 100);
-  const sgstAmount = taxableAmount * (sgstRate / 100);
-  const totalTax = cgstAmount + sgstAmount;
-  const grandTotal = taxableAmount + totalTax;
+  /*
+   * IMPORTANT:
+   * Do NOT use record.amount as taxable amount.
+   * AmcBilling normalizes taxableAmount, tax rates and totalAmount separately.
+   */
+  const taxableAmount = getNumber(record.taxableAmount, record.amount);
+
+  const cgstRate = getNumber(record.cgstRate);
+  const sgstRate = getNumber(record.sgstRate);
+  const igstRate = getNumber(record.igstRate);
+
+  const gstApplicable =
+    cgstRate > 0 ||
+    sgstRate > 0 ||
+    igstRate > 0 ||
+    getNumber(record.totalTaxAmount) > 0;
+
+  const calculatedCgstAmount = taxableAmount * (cgstRate / 100);
+  const calculatedSgstAmount = taxableAmount * (sgstRate / 100);
+  const calculatedIgstAmount = taxableAmount * (igstRate / 100);
+
+  const cgstAmount =
+    record.cgstAmount !== undefined && record.cgstAmount !== null
+      ? getNumber(record.cgstAmount)
+      : calculatedCgstAmount;
+
+  const sgstAmount =
+    record.sgstAmount !== undefined && record.sgstAmount !== null
+      ? getNumber(record.sgstAmount)
+      : calculatedSgstAmount;
+
+  const igstAmount =
+    record.igstAmount !== undefined && record.igstAmount !== null
+      ? getNumber(record.igstAmount)
+      : calculatedIgstAmount;
+
+  const calculatedTax =
+    cgstAmount +
+    sgstAmount +
+    igstAmount;
+
+  const totalTax =
+    record.totalTaxAmount !== undefined &&
+    record.totalTaxAmount !== null
+      ? getNumber(record.totalTaxAmount)
+      : calculatedTax;
+
+  const calculatedGrandTotal = taxableAmount + totalTax;
+
+  const savedTotal = getNumber(record.totalAmount);
+
+  const grandTotal =
+    savedTotal > 0
+      ? savedTotal
+      : calculatedGrandTotal;
+
+  const paidAmount = getNumber(record.paidAmount);
+  const pendingAmount =
+    record.pendingAmount !== undefined &&
+    record.pendingAmount !== null
+      ? getNumber(record.pendingAmount)
+      : Math.max(grandTotal - paidAmount, 0);
+
+  const taxType =
+    igstRate > 0
+      ? "IGST"
+      : cgstRate > 0 || sgstRate > 0
+        ? "CGST + SGST"
+        : "N.A.";
 
   const handlePrint = () => {
     window.print();
@@ -379,36 +492,63 @@ export default function AmcInvoice({
         pdf.text(value, valueX, y, { align: "right" });
       };
 
+      let currentTotalY = totalsTop;
+
       totalLine(
         "Taxable Amount",
         taxableAmount.toFixed(2),
-        totalsTop
+        currentTotalY
       );
 
-      totalLine(
-        `CGST @ ${cgstRate}%`,
-        cgstAmount.toFixed(2),
-        totalsTop + 7
-      );
+      currentTotalY += 7;
 
-      totalLine(
-        `SGST @ ${sgstRate}%`,
-        sgstAmount.toFixed(2),
-        totalsTop + 14
-      );
+      if (!gstApplicable) {
+        totalLine("GST", "N.A.", currentTotalY);
+        currentTotalY += 7;
+      } else if (igstRate > 0) {
+        totalLine(
+          `IGST @ ${igstRate}%`,
+          igstAmount.toFixed(2),
+          currentTotalY
+        );
+        currentTotalY += 7;
+      } else {
+        if (cgstRate > 0) {
+          totalLine(
+            `CGST @ ${cgstRate}%`,
+            cgstAmount.toFixed(2),
+            currentTotalY
+          );
+          currentTotalY += 7;
+        }
+
+        if (sgstRate > 0) {
+          totalLine(
+            `SGST @ ${sgstRate}%`,
+            sgstAmount.toFixed(2),
+            currentTotalY
+          );
+          currentTotalY += 7;
+        }
+      }
 
       pdf.setDrawColor(203, 213, 225);
-      pdf.line(labelX, totalsTop + 18, valueX, totalsTop + 18);
+      pdf.line(
+        labelX,
+        currentTotalY + 1,
+        valueX,
+        currentTotalY + 1
+      );
 
       totalLine(
         "Grand Total",
         grandTotal.toFixed(2),
-        totalsTop + 26,
+        currentTotalY + 9,
         true
       );
 
       // Amount in words
-      const wordsTop = totalsTop + 39;
+      const wordsTop = currentTotalY + 22;
 
       pdf.setFillColor(248, 250, 252);
       pdf.roundedRect(margin, wordsTop, contentWidth, 18, 2, 2, "F");
@@ -429,11 +569,11 @@ export default function AmcInvoice({
 
       pdf.text(wordLines, margin + 5, wordsTop + 13);
 
-      // Bank details
+      // Payment / Bank details
       const bankTop = wordsTop + 25;
 
       pdf.setDrawColor(226, 232, 240);
-      pdf.roundedRect(margin, bankTop, 105, 45, 2, 2, "D");
+      pdf.roundedRect(margin, bankTop, 105, 51, 2, 2, "D");
 
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(9);
@@ -457,23 +597,78 @@ export default function AmcInvoice({
       pdf.text(`IFSC: ${company.ifsc}`, margin + 5, bankTop + 34);
       pdf.text(`Branch: ${company.branch}`, margin + 5, bankTop + 40);
 
-      // Signature
+      if (company.phonePeUpiId) {
+        pdf.setFont("helvetica", "bold");
+        pdf.setTextColor(79, 70, 229);
+        pdf.text(
+          `PhonePe / UPI: ${company.phonePeUpiId}`,
+          margin + 5,
+          bankTop + 47
+        );
+      }
+
+      // PhonePe QR
       pdf.setDrawColor(226, 232, 240);
-      pdf.roundedRect(124, bankTop, 72, 45, 2, 2, "D");
+      pdf.roundedRect(124, bankTop, 72, 51, 2, 2, "D");
 
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(9);
       pdf.setTextColor(15, 23, 42);
-      pdf.text(`For ${company.name}`, 160, bankTop + 8, {
+      pdf.text("SCAN & PAY", 160, bankTop + 7, {
         align: "center",
       });
 
-      pdf.setFont("helvetica", "normal");
+      const qrDataUrl = await loadImageAsDataUrl(
+        company.phonePeQrImage
+      );
+
+      if (qrDataUrl) {
+        try {
+          pdf.addImage(
+            qrDataUrl,
+            "PNG",
+            145,
+            bankTop + 10,
+            30,
+            30
+          );
+        } catch (qrError) {
+          console.warn("Unable to add PhonePe QR to PDF:", qrError);
+        }
+      } else {
+        pdf.setDrawColor(203, 213, 225);
+        pdf.rect(147, bankTop + 12, 26, 24, "D");
+
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(6.5);
+        pdf.setTextColor(100, 116, 139);
+        pdf.text("PHONEPE QR", 160, bankTop + 22, {
+          align: "center",
+        });
+        pdf.text("Configure in settings", 160, bankTop + 27, {
+          align: "center",
+        });
+      }
+
+      pdf.setFont("helvetica", "bold");
       pdf.setFontSize(8);
+      pdf.setTextColor(79, 70, 229);
+      pdf.text(
+        `Payable: ${pendingAmount.toFixed(2)}`,
+        160,
+        bankTop + 44,
+        { align: "center" }
+      );
+
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(6.5);
       pdf.setTextColor(100, 116, 139);
-      pdf.text("Authorized Signatory", 160, bankTop + 38, {
-        align: "center",
-      });
+      pdf.text(
+        "Scan using PhonePe or any UPI app",
+        160,
+        bankTop + 49,
+        { align: "center" }
+      );
 
       // Footer
       pdf.setFont("helvetica", "normal");
@@ -789,14 +984,41 @@ export default function AmcInvoice({
                   <span>{formatCurrency(taxableAmount)}</span>
                 </div>
 
-                <div className="flex items-center justify-between text-sm text-slate-600">
-                  <span>CGST @ {cgstRate}%</span>
-                  <span>{formatCurrency(cgstAmount)}</span>
-                </div>
+                {!gstApplicable ? (
+                  <div className="flex items-center justify-between text-sm text-slate-600">
+                    <span>GST</span>
+                    <span className="font-semibold text-slate-700">
+                      N.A.
+                    </span>
+                  </div>
+                ) : igstRate > 0 ? (
+                  <div className="flex items-center justify-between text-sm text-slate-600">
+                    <span>IGST @ {igstRate}%</span>
+                    <span>{formatCurrency(igstAmount)}</span>
+                  </div>
+                ) : (
+                  <>
+                    {cgstRate > 0 && (
+                      <div className="flex items-center justify-between text-sm text-slate-600">
+                        <span>CGST @ {cgstRate}%</span>
+                        <span>{formatCurrency(cgstAmount)}</span>
+                      </div>
+                    )}
 
-                <div className="flex items-center justify-between text-sm text-slate-600">
-                  <span>SGST @ {sgstRate}%</span>
-                  <span>{formatCurrency(sgstAmount)}</span>
+                    {sgstRate > 0 && (
+                      <div className="flex items-center justify-between text-sm text-slate-600">
+                        <span>SGST @ {sgstRate}%</span>
+                        <span>{formatCurrency(sgstAmount)}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                  <span>Tax Type</span>
+                  <span className="font-semibold text-slate-700">
+                    {taxType}
+                  </span>
                 </div>
 
                 <div className="border-t border-slate-200 pt-4">
@@ -815,18 +1037,18 @@ export default function AmcInvoice({
 
                   <div className="mt-3 flex justify-between text-xs text-violet-700">
                     <span>Paid</span>
-                    <span>{formatCurrency(record.paidAmount)}</span>
+                    <span>{formatCurrency(paidAmount)}</span>
                   </div>
 
                   <div className="mt-2 flex justify-between text-xs font-semibold text-violet-900">
                     <span>Pending</span>
-                    <span>{formatCurrency(record.pendingAmount)}</span>
+                    <span>{formatCurrency(pendingAmount)}</span>
                   </div>
                 </div>
               </div>
             </section>
 
-            <section className="mt-10 grid gap-8 border-t border-slate-200 pt-8 md:grid-cols-2">
+            <section className="mt-10 grid gap-6 border-t border-slate-200 pt-8 lg:grid-cols-[1fr_260px_220px]">
               <div>
                 <h3 className="text-sm font-semibold text-slate-950">
                   Bank Details
@@ -838,13 +1060,64 @@ export default function AmcInvoice({
                   <p>Account No: {company.accountNo}</p>
                   <p>IFSC: {company.ifsc}</p>
                   <p>Branch: {company.branch}</p>
+
+                  {company.phonePeUpiId && (
+                    <p className="font-semibold text-violet-700">
+                      UPI ID: {company.phonePeUpiId}
+                    </p>
+                  )}
                 </div>
               </div>
 
-              <div className="flex min-h-32 flex-col items-center justify-between rounded-xl border border-slate-200 p-5 text-center">
+              <div className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-white p-4 text-center">
+                <div className="flex items-center justify-center gap-2 text-xs font-bold text-violet-700">
+                  <Smartphone size={15} />
+                  PhonePe / UPI Payment
+                </div>
+
+                <div className="mx-auto mt-3 flex h-32 w-32 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
+                  {company.phonePeQrImage ? (
+                    <img
+                      src={company.phonePeQrImage}
+                      alt="PhonePe payment QR"
+                      className="h-full w-full object-contain"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full flex-col items-center justify-center text-slate-400">
+                      <QrCode size={44} />
+                      <span className="mt-2 text-[9px] font-semibold">
+                        PHONEPE QR
+                      </span>
+                      <span className="mt-1 px-2 text-[8px] leading-3">
+                        Configure QR image in payment settings
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <p className="mt-3 text-[10px] font-semibold text-slate-700">
+                  Scan using PhonePe or any UPI app
+                </p>
+
+                <p className="mt-1 text-sm font-bold text-violet-700">
+                  {formatCurrency(pendingAmount)}
+                </p>
+
+                {company.phonePeUpiId && (
+                  <p className="mt-1 break-all text-[9px] text-slate-500">
+                    {company.phonePeUpiId}
+                  </p>
+                )}
+              </div>
+
+              <div className="flex min-h-44 flex-col items-center justify-between rounded-xl border border-slate-200 p-5 text-center">
                 <p className="text-xs font-semibold text-slate-900">
                   For {company.name}
                 </p>
+
+                <div className="text-[10px] text-slate-400">
+                  Authorized signature / stamp
+                </div>
 
                 <p className="text-xs text-slate-500">
                   Authorized Signatory

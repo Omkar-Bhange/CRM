@@ -226,11 +226,42 @@ function formatClientAmcInvoice(invoice) {
   const data = invoice.toObject ? invoice.toObject() : { ...invoice };
 
   return {
-    id: String(data._id || data.id || ""),
-    invoiceCode: data.invoiceCode || "",
-    invoiceDate: data.invoiceDate || null,
-    dueDate: data.dueDate || null,
-    contractCode: data.contractCode || "",
+ id: String(
+  data._id ||
+  data.id ||
+  ""
+),
+
+invoiceCode:
+  data.invoiceCode ||
+  "",
+
+invoiceDate:
+  data.invoiceDate ||
+  null,
+
+dueDate:
+  data.dueDate ||
+  null,
+
+/*
+ * REQUIRED FOR CUSTOM INVOICE MATCHING
+ */
+contractId: String(
+  data.amcContractId ||
+  data.contractId ||
+  ""
+),
+
+amcContractId: String(
+  data.amcContractId ||
+  data.contractId ||
+  ""
+),
+
+contractCode:
+  data.contractCode ||
+  "",
     contractStartDate: data.contractStartDate || null,
     contractExpiryDate: data.contractExpiryDate || null,
     productId: String(data.productId || ""),
@@ -238,9 +269,73 @@ function formatClientAmcInvoice(invoice) {
     productName: data.productName || "",
     productVersion: data.productVersion || "",
     invoiceType: data.invoiceType || "AMC",
-    amount: Number(data.totalAmount ?? data.amount ?? 0),
-    gstAmount: Number(data.totalTaxAmount ?? 0),
-    totalAmount: Number(data.totalAmount ?? data.amount ?? 0),
+ taxableAmount:
+  Number(
+    data.taxableAmount ??
+    0
+  ),
+
+cgstRate:
+  Number(
+    data.cgstRate ??
+    0
+  ),
+
+cgstAmount:
+  Number(
+    data.cgstAmount ??
+    0
+  ),
+
+sgstRate:
+  Number(
+    data.sgstRate ??
+    0
+  ),
+
+sgstAmount:
+  Number(
+    data.sgstAmount ??
+    0
+  ),
+
+igstRate:
+  Number(
+    data.igstRate ??
+    0
+  ),
+
+igstAmount:
+  Number(
+    data.igstAmount ??
+    0
+  ),
+
+gstAmount:
+  Number(
+    data.totalTaxAmount ??
+    0
+  ),
+
+totalTaxAmount:
+  Number(
+    data.totalTaxAmount ??
+    0
+  ),
+
+amount:
+  Number(
+    data.totalAmount ??
+    data.amount ??
+    0
+  ),
+
+totalAmount:
+  Number(
+    data.totalAmount ??
+    data.amount ??
+    0
+  ),
     paymentStatus: data.paymentStatus || "Pending",
     paidAmount: Number(data.paidAmount ?? 0),
     balanceAmount: Number(data.pendingAmount ?? 0),
@@ -255,6 +350,184 @@ function formatClientAmcInvoice(invoice) {
     updatedAt: data.updatedAt || null,
     contractStart: data.contractStartDate || null,
     contractEnd: data.contractExpiryDate || null,
+  };
+}
+function formatClientAmcDocument(
+  document,
+  contract
+) {
+  if (!document || !contract) {
+    return null;
+  }
+
+  const documentId = String(
+    document._id ||
+    document.id ||
+    ""
+  );
+
+  const contractId = String(
+    contract._id ||
+    contract.id ||
+    ""
+  );
+
+  return {
+    id: documentId,
+    _id: documentId,
+
+    contractId,
+    contractCode:
+      contract.contractCode ||
+      "",
+
+    productId: String(
+      contract.productId ||
+      ""
+    ),
+
+    productCode:
+      contract.productCode ||
+      "",
+
+    productName:
+      contract.productName ||
+      "",
+
+    name:
+      document.fileName ||
+      "Document",
+
+    fileName:
+      document.fileName ||
+      "Document",
+
+    documentType:
+      document.documentType ||
+      "Other Document",
+
+    type:
+      document.documentType ||
+      "Other Document",
+
+    category:
+      document.documentType ||
+      "Other Document",
+
+    mimeType:
+      document.mimeType ||
+      "",
+
+    size: Number(
+      document.fileSize ||
+      0
+    ),
+
+    fileSize: Number(
+      document.fileSize ||
+      0
+    ),
+
+    source:
+      document.source ||
+      "Uploaded",
+
+    status:
+      document.status ||
+      "Available",
+
+    uploadedAt:
+      document.uploadedAt ||
+      null,
+
+    uploadedByName:
+      document.uploadedByName ||
+      "Admin",
+
+    previewUrl:
+      `/api/client/amc/document/${documentId}/view`,
+
+    downloadUrl:
+      `/api/client/amc/document/${documentId}/download`,
+  };
+}
+async function findOwnAmcDocument(
+  clientId,
+  documentId
+) {
+  if (
+    !mongoose.Types.ObjectId.isValid(
+      documentId
+    )
+  ) {
+    return {
+      error: {
+        status: 400,
+        message:
+          "Invalid AMC document ID.",
+      },
+    };
+  }
+
+  /*
+   * Critical security:
+   * clientId is part of the query.
+   *
+   * Therefore Client A cannot access
+   * Client B's AMC document simply by
+   * knowing its document ID.
+   */
+  const contract =
+    await AmcContract.findOne({
+      clientId,
+      isDeleted: false,
+
+      documents: {
+        $elemMatch: {
+          _id: documentId,
+          isDeleted: {
+            $ne: true,
+          },
+          status: {
+            $ne: "Archived",
+          },
+        },
+      },
+    });
+
+  if (!contract) {
+    return {
+      error: {
+        status: 404,
+        message:
+          "AMC document was not found.",
+      },
+    };
+  }
+
+  const document =
+    contract.documents.id(
+      documentId
+    );
+
+  if (
+    !document ||
+    document.isDeleted ||
+    document.status ===
+      "Archived"
+  ) {
+    return {
+      error: {
+        status: 404,
+        message:
+          "AMC document was not found.",
+      },
+    };
+  }
+
+  return {
+    contract,
+    document,
   };
 }
 
@@ -507,7 +780,387 @@ router.get("/amc/invoices/:id", async (req, res, next) => {
     next(error);
   }
 });
+/* =========================================================
+   CLIENT AMC DOCUMENTS
+   GET /api/client/amc/documents
+========================================================= */
 
+router.get(
+  "/amc/documents",
+
+  async (
+    req,
+    res,
+    next
+  ) => {
+    try {
+      const {
+        client,
+        error,
+      } =
+        await findOwnClient(
+          req
+        );
+
+      if (error) {
+        return res
+          .status(
+            error.status
+          )
+          .json({
+            success: false,
+            message:
+              error.message,
+          });
+      }
+
+      /*
+       * Only this client's AMC contracts.
+       */
+      const contracts =
+        await AmcContract.find({
+          clientId:
+            client._id,
+
+          isDeleted:
+            false,
+        })
+          .sort({
+            createdAt: -1,
+          })
+          .lean();
+
+      const documents =
+        [];
+
+      for (
+        const contract
+        of contracts
+      ) {
+        for (
+          const document
+          of contract.documents ||
+          []
+        ) {
+          if (
+            document.isDeleted ||
+            document.status ===
+              "Archived"
+          ) {
+            continue;
+          }
+
+          const formatted =
+            formatClientAmcDocument(
+              document,
+              contract
+            );
+
+          if (formatted) {
+            documents.push(
+              formatted
+            );
+          }
+        }
+      }
+
+      /*
+       * Latest documents first.
+       */
+      documents.sort(
+        (a, b) =>
+          new Date(
+            b.uploadedAt ||
+            0
+          ) -
+          new Date(
+            a.uploadedAt ||
+            0
+          )
+      );
+
+      return res.json({
+        success: true,
+
+        data:
+          documents,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+/* =========================================================
+   PREVIEW CLIENT AMC DOCUMENT
+   GET /api/client/amc/document/:documentId/view
+========================================================= */
+
+router.get(
+  "/amc/document/:documentId/view",
+
+  async (
+    req,
+    res,
+    next
+  ) => {
+    try {
+      const {
+        client,
+        error,
+      } =
+        await findOwnClient(
+          req
+        );
+
+      if (error) {
+        return res
+          .status(
+            error.status
+          )
+          .json({
+            success: false,
+            message:
+              error.message,
+          });
+      }
+
+      const result =
+        await findOwnAmcDocument(
+          client._id,
+          req.params
+            .documentId
+        );
+
+      if (result.error) {
+        return res
+          .status(
+            result.error
+              .status
+          )
+          .json({
+            success: false,
+            message:
+              result.error
+                .message,
+          });
+      }
+
+      const {
+        document,
+      } = result;
+
+      const absolutePath =
+        path.resolve(
+          __dirname,
+          document.relativePath
+        );
+
+      /*
+       * Prevent path traversal / access
+       * outside the uploads directory.
+       */
+      const uploadsRoot =
+        path.resolve(
+          __dirname,
+          "uploads"
+        );
+
+      const relative =
+        path.relative(
+          uploadsRoot,
+          absolutePath
+        );
+
+      if (
+        relative.startsWith(
+          ".."
+        ) ||
+        path.isAbsolute(
+          relative
+        )
+      ) {
+        return res
+          .status(403)
+          .json({
+            success: false,
+
+            message:
+              "Invalid document path.",
+          });
+      }
+
+      if (
+        !fs.existsSync(
+          absolutePath
+        )
+      ) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+
+            message:
+              "Document file is not available.",
+          });
+      }
+
+      const safeName =
+        String(
+          document.fileName ||
+          "document"
+        ).replace(
+          /[\r\n"]/g,
+          "_"
+        );
+
+      res.setHeader(
+        "Content-Type",
+
+        document.mimeType ||
+        "application/octet-stream"
+      );
+
+      res.setHeader(
+        "Content-Disposition",
+
+        `inline; filename="${safeName}"`
+      );
+
+      res.setHeader(
+        "X-Content-Type-Options",
+        "nosniff"
+      );
+
+      return res.sendFile(
+        absolutePath
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+/* =========================================================
+   DOWNLOAD CLIENT AMC DOCUMENT
+   GET /api/client/amc/document/:documentId/download
+========================================================= */
+
+router.get(
+  "/amc/document/:documentId/download",
+
+  async (
+    req,
+    res,
+    next
+  ) => {
+    try {
+      const {
+        client,
+        error,
+      } =
+        await findOwnClient(
+          req
+        );
+
+      if (error) {
+        return res
+          .status(
+            error.status
+          )
+          .json({
+            success: false,
+            message:
+              error.message,
+          });
+      }
+
+      const result =
+        await findOwnAmcDocument(
+          client._id,
+          req.params
+            .documentId
+        );
+
+      if (result.error) {
+        return res
+          .status(
+            result.error
+              .status
+          )
+          .json({
+            success: false,
+
+            message:
+              result.error
+                .message,
+          });
+      }
+
+      const {
+        document,
+      } = result;
+
+      const absolutePath =
+        path.resolve(
+          __dirname,
+          document.relativePath
+        );
+
+      const uploadsRoot =
+        path.resolve(
+          __dirname,
+          "uploads"
+        );
+
+      const relative =
+        path.relative(
+          uploadsRoot,
+          absolutePath
+        );
+
+      if (
+        relative.startsWith(
+          ".."
+        ) ||
+        path.isAbsolute(
+          relative
+        )
+      ) {
+        return res
+          .status(403)
+          .json({
+            success: false,
+
+            message:
+              "Invalid document path.",
+          });
+      }
+
+      if (
+        !fs.existsSync(
+          absolutePath
+        )
+      ) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+
+            message:
+              "Document file is not available.",
+          });
+      }
+
+      return res.download(
+        absolutePath,
+
+        document.fileName ||
+        "document"
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 router.get("/amc/payments", async (req, res, next) => {
   try {
     const { client, error } = await findOwnClient(req);
@@ -891,7 +1544,12 @@ router.get("/dashboard", async (req, res, next) => {
       return res.status(error.status).json({ success: false, message: error.message });
     }
 
-    const [tickets, openTicketCount, activity] = await Promise.all([
+const [
+  tickets,
+  openTicketCount,
+  activity,
+  recentInvoices,
+] = await Promise.all([
       SupportTicket
         ? SupportTicket.find({ clientId: client._id, isDeleted: false })
             .sort({ createdAt: -1 })
@@ -913,6 +1571,20 @@ router.get("/dashboard", async (req, res, next) => {
             .limit(6)
             .lean()
         : [],
+        AmcInvoice
+  ? AmcInvoice.find({
+      clientId:
+        client._id,
+
+      isDeleted:
+        false,
+    })
+      .sort({
+        invoiceDate: -1,
+      })
+      .limit(5)
+      .lean()
+  : [],
     ]);
 
     const products = client.products || [];
@@ -940,9 +1612,10 @@ router.get("/dashboard", async (req, res, next) => {
         products,
         tickets,
         activity,
-        // No invoice/billing schema exists yet, so this stays empty
-        // until that's built. See note in ClientDashboard.jsx.
-        billingHistory: [],
+ billingHistory:
+  recentInvoices.map(
+    formatClientAmcInvoice
+  ),
       },
     });
   } catch (error) {

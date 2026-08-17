@@ -278,6 +278,182 @@ const uploadTaskAttachment = multer({
     : callback(new Error("Unsupported file type. Upload an image, PDF, Word, Excel, text, CSV or ZIP file.")),
 });
 
+/* =====================================================
+   AMC DOCUMENT FILE UPLOAD CONFIGURATION
+===================================================== */
+
+const amcUploadDirectory = path.join(
+  __dirname,
+  "uploads",
+  "amc"
+);
+
+if (!fs.existsSync(amcUploadDirectory)) {
+  fs.mkdirSync(amcUploadDirectory, {
+    recursive: true,
+  });
+}
+
+const allowedAmcDocumentTypes = [
+  "AMC Agreement",
+  "Own Invoice / Bill",
+  "Payment Receipt",
+  "Quotation",
+  "Purchase Order",
+  "Other Document",
+];
+
+const allowedAmcFileTypes = [
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+];
+
+const amcDocumentStorage =
+  multer.diskStorage({
+    destination: (
+      req,
+      file,
+      callback
+    ) => {
+      callback(
+        null,
+        amcUploadDirectory
+      );
+    },
+
+    filename: (
+      req,
+      file,
+      callback
+    ) => {
+      const extension =
+        path
+          .extname(
+            file.originalname || ""
+          )
+          .toLowerCase();
+
+      const baseName =
+        path
+          .basename(
+            file.originalname ||
+              "document",
+            extension
+          )
+          .replace(
+            /[^a-zA-Z0-9-_]/g,
+            "-"
+          )
+          .replace(
+            /-+/g,
+            "-"
+          )
+          .replace(
+            /^-|-$/g,
+            ""
+          )
+          .slice(
+            0,
+            80
+          ) ||
+        "document";
+
+      const uniqueName =
+        `${Date.now()}-${crypto
+          .randomBytes(6)
+          .toString(
+            "hex"
+          )}-${baseName}${extension}`;
+
+      callback(
+        null,
+        uniqueName
+      );
+    },
+  });
+
+const uploadAmcDocument =
+  multer({
+    storage:
+      amcDocumentStorage,
+
+    limits: {
+      fileSize:
+        10 *
+        1024 *
+        1024,
+
+      files:
+        10,
+    },
+
+    fileFilter: (
+      req,
+      file,
+      callback
+    ) => {
+      const extension =
+        path
+          .extname(
+            file.originalname ||
+              ""
+          )
+          .toLowerCase();
+
+      const validExtension =
+        [
+          ".pdf",
+          ".jpg",
+          ".jpeg",
+          ".png",
+        ].includes(
+          extension
+        );
+
+      if (
+        allowedAmcFileTypes.includes(
+          file.mimetype
+        ) &&
+        validExtension
+      ) {
+        callback(
+          null,
+          true
+        );
+
+        return;
+      }
+
+      callback(
+        new Error(
+          "Only PDF, JPG, JPEG and PNG files are allowed."
+        )
+      );
+    },
+  });
+
+function deleteAmcFile(
+  filePath
+) {
+  try {
+    if (
+      filePath &&
+      fs.existsSync(
+        filePath
+      )
+    ) {
+      fs.unlinkSync(
+        filePath
+      );
+    }
+  } catch (error) {
+    console.error(
+      "Delete AMC file error:",
+      error
+    );
+  }
+}
 router.use(authenticateUser);
 
 router.use((req, res, next) => {
@@ -2121,17 +2297,18 @@ const amcTimelineSchema =
     {
       type: {
         type: String,
-        enum: [
-          "created",
-          "updated",
-          "invoice",
-          "payment",
-          "reminder",
-          "renewal",
-          "assignment",
-          "status",
-          "deleted",
-        ],
+    enum: [
+  "created",
+  "updated",
+  "invoice",
+  "payment",
+  "reminder",
+  "renewal",
+  "assignment",
+  "status",
+  "document",
+  "deleted",
+],
         default: "updated",
       },
 
@@ -2177,6 +2354,142 @@ const amcTimelineSchema =
     },
     {
       _id: true,
+    }
+  );
+
+  /* =====================================================
+   AMC DOCUMENT SCHEMA
+===================================================== */
+
+const amcDocumentSchema =
+  new mongoose.Schema(
+    {
+      documentType: {
+        type: String,
+
+        enum: [
+          "AMC Agreement",
+          "Own Invoice / Bill",
+          "Payment Receipt",
+          "Quotation",
+          "Purchase Order",
+          "Other Document",
+        ],
+
+        default:
+          "Other Document",
+      },
+
+      fileName: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      storedFileName: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      mimeType: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      fileSize: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      relativePath: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      source: {
+        type: String,
+
+        enum: [
+          "Uploaded",
+          "Own Invoice",
+          "System",
+        ],
+
+        default:
+          "Uploaded",
+      },
+
+      status: {
+        type: String,
+
+        enum: [
+          "Available",
+          "Archived",
+        ],
+
+        default:
+          "Available",
+      },
+
+      uploadedBy: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+
+        ref:
+          "User",
+
+        default:
+          null,
+      },
+
+      uploadedByName: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      uploadedAt: {
+        type: Date,
+        default:
+          Date.now,
+      },
+
+      isDeleted: {
+        type: Boolean,
+        default:
+          false,
+      },
+
+      deletedAt: {
+        type: Date,
+        default:
+          null,
+      },
+
+      deletedBy: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+
+        ref:
+          "User",
+
+        default:
+          null,
+      },
+
+      deletedByName: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+    },
+    {
+      _id:
+        true,
     }
   );
 
@@ -2633,15 +2946,29 @@ const amcContractSchema =
         trim: true,
       },
 
-      renewalHistory: {
-        type: [amcRenewalHistorySchema],
-        default: [],
-      },
+ renewalHistory: {
+  type: [
+    amcRenewalHistorySchema
+  ],
 
-      timeline: {
-        type: [amcTimelineSchema],
-        default: [],
-      },
+  default: [],
+},
+
+documents: {
+  type: [
+    amcDocumentSchema
+  ],
+
+  default: [],
+},
+
+timeline: {
+  type: [
+    amcTimelineSchema
+  ],
+
+  default: [],
+},
 
       createdBy: {
         type: mongoose.Schema.Types.ObjectId,
@@ -4265,11 +4592,68 @@ function amcContractResponse(
     notes:
       contract.notes,
 
-    renewalHistory:
-      contract.renewalHistory,
+   renewalHistory:
+  contract.renewalHistory,
 
-    timeline:
-      contract.timeline,
+documents:
+  (contract.documents || [])
+    .filter(
+      (document) =>
+        !document.isDeleted &&
+        document.status !==
+          "Archived"
+    )
+    .map(
+      (document) => ({
+        id:
+          document._id,
+
+        _id:
+          document._id,
+
+        type:
+          document.documentType,
+
+        documentType:
+          document.documentType,
+
+        name:
+          document.fileName,
+
+        fileName:
+          document.fileName,
+
+        mimeType:
+          document.mimeType,
+
+        size:
+          document.fileSize,
+
+        fileSize:
+          document.fileSize,
+
+        source:
+          document.source,
+
+        status:
+          document.status,
+
+        uploadedByName:
+          document.uploadedByName,
+
+        uploadedAt:
+          document.uploadedAt,
+
+        previewUrl:
+          `/api/admin/amc/contract/${contract._id}/document/${document._id}/view`,
+
+        downloadUrl:
+          `/api/admin/amc/contract/${contract._id}/document/${document._id}/download`,
+      })
+    ),
+
+timeline:
+  contract.timeline,
 
     createdBy:
       contract.createdBy,
@@ -17789,9 +18173,1071 @@ router.post(
 );
 
 /* =====================================================
+   AMC DOCUMENT API
+===================================================== */
+
+
+/* =====================================================
+   UPLOAD AMC DOCUMENT
+===================================================== */
+
+router.post(
+  "/amc/contract/:id/documents",
+
+  uploadAmcDocument.array(
+    "documents",
+    10
+  ),
+
+  async (
+    req,
+    res
+  ) => {
+    try {
+      const {
+        id,
+      } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res
+          .status(
+            400
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Invalid AMC contract ID.",
+          });
+      }
+
+      const contract =
+        await AmcContract.findOne({
+          _id:
+            id,
+
+          isDeleted:
+            false,
+        });
+
+      if (!contract) {
+        return res
+          .status(
+            404
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "AMC contract was not found.",
+          });
+      }
+
+      if (
+        !req.files ||
+        req.files.length ===
+          0
+      ) {
+        return res
+          .status(
+            400
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Please select at least one document.",
+          });
+      }
+
+      const documentType =
+        String(
+          req.body
+            .documentType ||
+            "Other Document"
+        ).trim();
+
+      if (
+        !allowedAmcDocumentTypes.includes(
+          documentType
+        )
+      ) {
+        for (
+          const file
+          of req.files
+        ) {
+          deleteAmcFile(
+            file.path
+          );
+        }
+
+        return res
+          .status(
+            400
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Invalid AMC document type.",
+          });
+      }
+
+      const uploadedAt =
+        new Date();
+
+      const documents =
+        req.files.map(
+          (
+            file
+          ) => ({
+            documentType,
+
+            fileName:
+              file.originalname,
+
+            storedFileName:
+              file.filename,
+
+            mimeType:
+              file.mimetype,
+
+            fileSize:
+              file.size,
+
+            relativePath:
+              path.join(
+                "uploads",
+                "amc",
+                file.filename
+              ),
+
+            source:
+              documentType ===
+              "Own Invoice / Bill"
+                ? "Own Invoice"
+                : "Uploaded",
+
+            status:
+              "Available",
+
+            uploadedBy:
+              req.user
+                ._id,
+
+            uploadedByName:
+              req.user
+                .name ||
+              "Admin",
+
+            uploadedAt,
+          })
+        );
+
+      contract.documents.push(
+        ...documents
+      );
+
+      contract.timeline.push({
+        type:
+          "document",
+
+        title:
+          documents.length ===
+          1
+            ? "AMC document uploaded"
+            : `${documents.length} AMC documents uploaded`,
+
+        description:
+          `${documentType}: ${documents
+            .map(
+              (
+                document
+              ) =>
+                document.fileName
+            )
+            .join(
+              ", "
+            )}`,
+
+        performedBy:
+          req.user
+            ._id,
+
+        performedByName:
+          req.user
+            .name ||
+          "Admin",
+
+        performedByRole:
+          req.user
+            .role ||
+          "admin",
+
+        createdAt:
+          uploadedAt,
+      });
+
+      contract.updatedBy =
+        req.user._id;
+
+      contract.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      await contract.save();
+
+      await createActivityLog({
+        action:
+          "AMC Document Uploaded",
+
+        category:
+          "AMC",
+
+        description:
+          `${documents.length} document(s) uploaded for ${contract.contractCode}.`,
+
+        entityType:
+          "amc",
+
+        entityId:
+          contract._id,
+
+        entityCode:
+          contract.contractCode,
+
+        entityName:
+          `${contract.clientName} - ${contract.productName}`,
+
+        clientId:
+          contract.clientId,
+
+        clientName:
+          contract.clientName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          req.user.role ||
+          "admin",
+
+        metadata: {
+          documentType,
+
+          fileCount:
+            documents.length,
+        },
+      });
+
+      return res
+        .status(
+          201
+        )
+        .json({
+          success:
+            true,
+
+          message:
+            "AMC document uploaded successfully.",
+
+          data:
+            amcContractResponse(
+              contract
+            ),
+        });
+    } catch (
+      error
+    ) {
+      console.error(
+        "AMC document upload error:",
+        error
+      );
+
+      if (
+        req.files
+      ) {
+        for (
+          const file
+          of req.files
+        ) {
+          deleteAmcFile(
+            file.path
+          );
+        }
+      }
+
+      return res
+        .status(
+          500
+        )
+        .json({
+          success:
+            false,
+
+          message:
+            error.message ||
+            "Unable to upload AMC document.",
+        });
+    }
+  }
+);
+
+
+/* =====================================================
+   GET AMC DOCUMENTS
+===================================================== */
+
+router.get(
+  "/amc/contract/:id/documents",
+
+  async (
+    req,
+    res
+  ) => {
+    try {
+      const {
+        id,
+      } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res
+          .status(
+            400
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Invalid AMC contract ID.",
+          });
+      }
+
+      const contract =
+        await AmcContract.findOne({
+          _id:
+            id,
+
+          isDeleted:
+            false,
+        });
+
+      if (!contract) {
+        return res
+          .status(
+            404
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "AMC contract was not found.",
+          });
+      }
+
+      const documents =
+        (
+          contract.documents ||
+          []
+        )
+          .filter(
+            (
+              document
+            ) =>
+              !document.isDeleted &&
+              document.status !==
+                "Archived"
+          )
+          .map(
+            (
+              document
+            ) => ({
+              id:
+                document._id,
+
+              _id:
+                document._id,
+
+              type:
+                document.documentType,
+
+              documentType:
+                document.documentType,
+
+              name:
+                document.fileName,
+
+              fileName:
+                document.fileName,
+
+              mimeType:
+                document.mimeType,
+
+              size:
+                document.fileSize,
+
+              fileSize:
+                document.fileSize,
+
+              source:
+                document.source,
+
+              status:
+                document.status,
+
+              uploadedByName:
+                document.uploadedByName,
+
+              uploadedAt:
+                document.uploadedAt,
+
+              previewUrl:
+                `/api/admin/amc/contract/${contract._id}/document/${document._id}/view`,
+
+              downloadUrl:
+                `/api/admin/amc/contract/${contract._id}/document/${document._id}/download`,
+            })
+          );
+
+      return res.json({
+        success:
+          true,
+
+        data: {
+          documents,
+        },
+      });
+    } catch (
+      error
+    ) {
+      console.error(
+        "Load AMC documents error:",
+        error
+      );
+
+      return res
+        .status(
+          500
+        )
+        .json({
+          success:
+            false,
+
+          message:
+            error.message ||
+            "Unable to load AMC documents.",
+        });
+    }
+  }
+);
+
+
+/* =====================================================
+   PREVIEW AMC DOCUMENT
+===================================================== */
+
+router.get(
+  "/amc/contract/:id/document/:documentId/view",
+
+  async (
+    req,
+    res
+  ) => {
+    try {
+      const {
+        id,
+        documentId,
+      } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        ) ||
+        !mongoose.Types.ObjectId.isValid(
+          documentId
+        )
+      ) {
+        return res
+          .status(
+            400
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Invalid document ID.",
+          });
+      }
+
+      const contract =
+        await AmcContract.findOne({
+          _id:
+            id,
+
+          isDeleted:
+            false,
+        });
+
+      if (!contract) {
+        return res
+          .status(
+            404
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "AMC contract was not found.",
+          });
+      }
+
+      const document =
+        contract.documents.id(
+          documentId
+        );
+
+      if (
+        !document ||
+        document.isDeleted ||
+        document.status ===
+          "Archived"
+      ) {
+        return res
+          .status(
+            404
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Document was not found.",
+          });
+      }
+
+      const absolutePath =
+        path.resolve(
+          __dirname,
+          document.relativePath
+        );
+
+      const uploadsRoot =
+        path.resolve(
+          __dirname,
+          "uploads"
+        );
+
+      if (
+        !absolutePath.startsWith(
+          uploadsRoot
+        )
+      ) {
+        return res
+          .status(
+            403
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Invalid document path.",
+          });
+      }
+
+      if (
+        !fs.existsSync(
+          absolutePath
+        )
+      ) {
+        return res
+          .status(
+            404
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Document file was not found.",
+          });
+      }
+
+      res.setHeader(
+        "Content-Type",
+        document.mimeType ||
+          "application/octet-stream"
+      );
+
+      res.setHeader(
+        "Content-Disposition",
+        `inline; filename="${String(
+          document.fileName ||
+            "document"
+        ).replace(
+          /["\r\n]/g,
+          "_"
+        )}"`
+      );
+
+      res.setHeader(
+        "X-Content-Type-Options",
+        "nosniff"
+      );
+
+      return res.sendFile(
+        absolutePath
+      );
+    } catch (
+      error
+    ) {
+      console.error(
+        "AMC document preview error:",
+        error
+      );
+
+      return res
+        .status(
+          500
+        )
+        .json({
+          success:
+            false,
+
+          message:
+            "Unable to preview AMC document.",
+        });
+    }
+  }
+);
+
+
+/* =====================================================
+   DOWNLOAD AMC DOCUMENT
+===================================================== */
+
+router.get(
+  "/amc/contract/:id/document/:documentId/download",
+
+  async (
+    req,
+    res
+  ) => {
+    try {
+      const {
+        id,
+        documentId,
+      } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        ) ||
+        !mongoose.Types.ObjectId.isValid(
+          documentId
+        )
+      ) {
+        return res
+          .status(
+            400
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Invalid document ID.",
+          });
+      }
+
+      const contract =
+        await AmcContract.findOne({
+          _id:
+            id,
+
+          isDeleted:
+            false,
+        });
+
+      if (!contract) {
+        return res
+          .status(
+            404
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "AMC contract was not found.",
+          });
+      }
+
+      const document =
+        contract.documents.id(
+          documentId
+        );
+
+      if (
+        !document ||
+        document.isDeleted ||
+        document.status ===
+          "Archived"
+      ) {
+        return res
+          .status(
+            404
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Document was not found.",
+          });
+      }
+
+      const absolutePath =
+        path.resolve(
+          __dirname,
+          document.relativePath
+        );
+
+      const uploadsRoot =
+        path.resolve(
+          __dirname,
+          "uploads"
+        );
+
+      if (
+        !absolutePath.startsWith(
+          uploadsRoot
+        )
+      ) {
+        return res
+          .status(
+            403
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Invalid document path.",
+          });
+      }
+
+      if (
+        !fs.existsSync(
+          absolutePath
+        )
+      ) {
+        return res
+          .status(
+            404
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Document file was not found.",
+          });
+      }
+
+      return res.download(
+        absolutePath,
+        document.fileName
+      );
+    } catch (
+      error
+    ) {
+      console.error(
+        "AMC document download error:",
+        error
+      );
+
+      return res
+        .status(
+          500
+        )
+        .json({
+          success:
+            false,
+
+          message:
+            "Unable to download AMC document.",
+        });
+    }
+  }
+);
+
+
+/* =====================================================
+   DELETE AMC DOCUMENT
+===================================================== */
+
+router.delete(
+  "/amc/contract/:id/document/:documentId",
+
+  async (
+    req,
+    res
+  ) => {
+    try {
+      const {
+        id,
+        documentId,
+      } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        ) ||
+        !mongoose.Types.ObjectId.isValid(
+          documentId
+        )
+      ) {
+        return res
+          .status(
+            400
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Invalid document ID.",
+          });
+      }
+
+      const contract =
+        await AmcContract.findOne({
+          _id:
+            id,
+
+          isDeleted:
+            false,
+        });
+
+      if (!contract) {
+        return res
+          .status(
+            404
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "AMC contract was not found.",
+          });
+      }
+
+      const document =
+        contract.documents.id(
+          documentId
+        );
+
+      if (
+        !document ||
+        document.isDeleted
+      ) {
+        return res
+          .status(
+            404
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Document was not found.",
+          });
+      }
+
+      const absolutePath =
+        path.resolve(
+          __dirname,
+          document.relativePath
+        );
+
+      document.isDeleted =
+        true;
+
+      document.status =
+        "Archived";
+
+      document.deletedAt =
+        new Date();
+
+      document.deletedBy =
+        req.user._id;
+
+      document.deletedByName =
+        req.user.name ||
+        "Admin";
+
+      contract.timeline.push({
+        type:
+          "document",
+
+        title:
+          "AMC document removed",
+
+        description:
+          `${document.fileName} was removed.`,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          req.user.role ||
+          "admin",
+
+        createdAt:
+          new Date(),
+      });
+
+      contract.updatedBy =
+        req.user._id;
+
+      contract.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      await contract.save();
+
+      /*
+       * Database is updated first.
+       * Only after successful save do we remove physical file.
+       */
+      deleteAmcFile(
+        absolutePath
+      );
+
+      await createActivityLog({
+        action:
+          "AMC Document Removed",
+
+        category:
+          "AMC",
+
+        description:
+          `${document.fileName} was removed from ${contract.contractCode}.`,
+
+        entityType:
+          "amc",
+
+        entityId:
+          contract._id,
+
+        entityCode:
+          contract.contractCode,
+
+        entityName:
+          `${contract.clientName} - ${contract.productName}`,
+
+        clientId:
+          contract.clientId,
+
+        clientName:
+          contract.clientName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          req.user.role ||
+          "admin",
+
+        metadata: {
+          documentId:
+            document._id,
+
+          documentType:
+            document.documentType,
+
+          fileName:
+            document.fileName,
+        },
+      });
+
+      return res.json({
+        success:
+          true,
+
+        message:
+          "AMC document removed successfully.",
+
+        data:
+          amcContractResponse(
+            contract
+          ),
+      });
+    } catch (
+      error
+    ) {
+      console.error(
+        "Delete AMC document error:",
+        error
+      );
+
+      return res
+        .status(
+          500
+        )
+        .json({
+          success:
+            false,
+
+          message:
+            error.message ||
+            "Unable to delete AMC document.",
+        });
+    }
+  }
+);
+
+/* =====================================================
    CREATE AMC REMINDER
    POST /api/admin/amc/contract/:id/reminder
 ===================================================== */
+
+
 
 router.post(
   "/amc/contract/:id/reminder",
@@ -18678,4 +20124,93 @@ router.get("/team/:employeeCode/attendance", async (req, res) => {
     });
   }
 });
+/* =====================================================
+   AMC MULTER ERROR HANDLER
+===================================================== */
+
+router.use(
+  (
+    error,
+    req,
+    res,
+    next
+  ) => {
+    if (
+      error instanceof
+      multer.MulterError
+    ) {
+      if (
+        error.code ===
+        "LIMIT_FILE_SIZE"
+      ) {
+        return res
+          .status(
+            400
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Document cannot exceed 10 MB.",
+          });
+      }
+
+      if (
+        error.code ===
+        "LIMIT_FILE_COUNT"
+      ) {
+        return res
+          .status(
+            400
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Maximum 10 documents can be uploaded at once.",
+          });
+      }
+
+      return res
+        .status(
+          400
+        )
+        .json({
+          success:
+            false,
+
+          message:
+            error.message,
+        });
+    }
+
+    if (
+      error &&
+      String(
+        error.message ||
+          ""
+      ).includes(
+        "PDF, JPG"
+      )
+    ) {
+      return res
+        .status(
+          400
+        )
+        .json({
+          success:
+            false,
+
+          message:
+            error.message,
+        });
+    }
+
+    next(
+      error
+    );
+  }
+);
 module.exports = router;

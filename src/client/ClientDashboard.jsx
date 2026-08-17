@@ -42,7 +42,62 @@ function formatCurrency(amount) {
         maximumFractionDigits: 0,
     }).format(Number(amount || 0));
 }
+function formatDate(value) {
+    if (!value) return "Not available";
 
+    try {
+        const rawValue = String(value).trim();
+
+        const match = rawValue.match(
+            /^(\d{4})-(\d{2})-(\d{2})/
+        );
+
+        let date;
+
+        if (match) {
+            date = new Date(
+                Number(match[1]),
+                Number(match[2]) - 1,
+                Number(match[3])
+            );
+        } else {
+            date = new Date(value);
+        }
+
+        if (Number.isNaN(date.getTime())) {
+            return "Not available";
+        }
+
+        return date.toLocaleDateString(
+            "en-IN",
+            {
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+            }
+        );
+    } catch {
+        return "Not available";
+    }
+}
+
+function invoicePeriod(invoice) {
+    if (!invoice) return "Not available";
+
+    const start =
+        invoice.contractStartDate ||
+        invoice.contractStart;
+
+    const end =
+        invoice.contractExpiryDate ||
+        invoice.contractEnd;
+
+    if (!start && !end) {
+        return "Not available";
+    }
+
+    return `${formatDate(start)} — ${formatDate(end)}`;
+}
 function StatusBadge({ status }) {
     const statusClasses = {
         Active:
@@ -61,10 +116,9 @@ function StatusBadge({ status }) {
 
     return (
         <span
-            className={`inline-flex items-center rounded-full px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide ring-1 ring-inset ${
-                statusClasses[status] ||
+            className={`inline-flex items-center rounded-full px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide ring-1 ring-inset ${statusClasses[status] ||
                 "bg-slate-100 text-slate-600 ring-slate-500/10"
-            }`}
+                }`}
         >
             {status}
         </span>
@@ -84,10 +138,9 @@ function PriorityBadge({ priority }) {
 
     return (
         <span
-            className={`inline-flex items-center rounded-full px-2.5 py-1 text-[9px] font-bold uppercase ring-1 ring-inset ${
-                priorityClasses[priority] ||
+            className={`inline-flex items-center rounded-full px-2.5 py-1 text-[9px] font-bold uppercase ring-1 ring-inset ${priorityClasses[priority] ||
                 priorityClasses.Low
-            }`}
+                }`}
         >
             {priority}
         </span>
@@ -142,6 +195,13 @@ export default function ClientDashboard({ onNavigate }) {
     const [products, setProducts] = useState([]);
     const [supportTickets, setSupportTickets] = useState([]);
     const [billingHistory, setBillingHistory] = useState([]);
+    const [amcBilling, setAmcBilling] = useState({
+        totalBilled: 0,
+        totalPaid: 0,
+        pendingAmount: 0,
+        nextDueDate: null,
+        latestInvoice: null,
+    });
     const [recentActivity, setRecentActivity] = useState([]);
 
     const getAuthToken = () => {
@@ -155,17 +215,108 @@ export default function ClientDashboard({ onNavigate }) {
     useEffect(() => {
         const loadDashboard = async () => {
             try {
-                const response = await fetch(`${API_URL}/api/client/dashboard`, {
-                    headers: { Authorization: `Bearer ${getAuthToken()}` },
-                });
+                const token = getAuthToken();
 
-                const result = await response.json();
+                const [
+                    response,
+                    amcResponse,
+                    invoiceResponse,
+                ] = await Promise.all([
+                    fetch(
+                        `${API_URL}/api/client/dashboard`,
+                        {
+                            headers: {
+                                Authorization: `Bearer ${token}`,
+                            },
+                        }
+                    ),
+
+                    fetch(
+                        `${API_URL}/api/client/amc/dashboard`,
+                        {
+                            headers: {
+                                Authorization: `Bearer ${token}`,
+                            },
+                        }
+                    ),
+
+                    fetch(
+                        `${API_URL}/api/client/amc/invoices`,
+                        {
+                            headers: {
+                                Authorization: `Bearer ${token}`,
+                            },
+                        }
+                    ),
+                ]);
+
+                const [
+                    result,
+                    amcResult,
+                    invoiceResult,
+                ] = await Promise.all([
+                    response.json(),
+                    amcResponse.json(),
+                    invoiceResponse.json(),
+                ]);
 
                 if (!response.ok || !result.success) {
-                    throw new Error(result.message || "Unable to load dashboard.");
+                    throw new Error(
+                        result.message ||
+                        "Unable to load dashboard."
+                    );
+                }
+
+                if (!amcResponse.ok || !amcResult.success) {
+                    throw new Error(
+                        amcResult.message ||
+                        "Unable to load AMC billing."
+                    );
+                }
+
+                if (
+                    !invoiceResponse.ok ||
+                    !invoiceResult.success
+                ) {
+                    throw new Error(
+                        invoiceResult.message ||
+                        "Unable to load AMC invoices."
+                    );
                 }
 
                 const data = result.data;
+
+                setAmcBilling({
+                    totalBilled:
+                        Number(
+                            amcResult.data?.totalBilled ||
+                            0
+                        ),
+
+                    totalPaid:
+                        Number(
+                            amcResult.data?.totalPaid ||
+                            0
+                        ),
+
+                    pendingAmount:
+                        Number(
+                            amcResult.data?.pendingAmount ||
+                            0
+                        ),
+
+                    nextDueDate:
+                        amcResult.data?.nextDueDate ||
+                        null,
+
+                    latestInvoice:
+                        amcResult.data?.latestInvoice ||
+                        null,
+                });
+
+                setBillingHistory(
+                    invoiceResult.data || []
+                );
 
                 setClient(data.client);
                 setSummary(data.summary);
@@ -228,7 +379,37 @@ export default function ClientDashboard({ onNavigate }) {
 
         loadDashboard();
     }, []);
+const currentInvoice =
+    amcBilling.latestInvoice ||
+    billingHistory[0] ||
+    null;
 
+const pendingAmount =
+    Number(
+        currentInvoice?.balanceAmount ??
+        currentInvoice?.pendingAmount ??
+        amcBilling.pendingAmount ??
+        0
+    );
+
+const paidAmount =
+    Number(
+        currentInvoice?.paidAmount ??
+        0
+    );
+
+const invoiceAmount =
+    Number(
+        currentInvoice?.totalAmount ??
+        currentInvoice?.amount ??
+        0
+    );
+
+const paymentStatus =
+    currentInvoice?.paymentStatus ||
+    currentInvoice?.status ||
+    summary.amcStatus ||
+    "Pending";
     const handleDownloadBill = () => {
         alert(
             "The AMC invoice PDF will be connected when the billing backend is added."
@@ -413,85 +594,216 @@ export default function ClientDashboard({ onNavigate }) {
                     </div>
                 </article>
 
-                <article className="overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-                    <div className="border-b border-amber-100 bg-gradient-to-r from-amber-50 to-white px-5 py-4">
-                        <div className="flex items-center gap-2 text-amber-700">
-                            <BellRing size={16} />
+                <article className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_35px_rgba(15,23,42,0.06)]">
 
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.15em]">
-                                Annual charges due
-                            </p>
-                        </div>
-                    </div>
+    {/* Header */}
+    <div className="flex items-center justify-between border-b border-slate-200 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-800 px-5 py-4">
 
-                    <div className="p-5 sm:p-6">
-                        <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-                            <div>
-                                <p className="text-3xl font-semibold tracking-[-0.04em] text-slate-950">
-                                    {summary.amcStatus || "Not Started"}
-                                </p>
+        <div className="flex items-center gap-3">
 
-                                <p className="mt-2 text-xs text-slate-500">
-                                    {summary.nextRenewal
-                                        ? (
-                                            <>
-                                                Next renewal due on{" "}
-                                                <span className="font-semibold text-slate-800">
-                                                    {summary.nextRenewal}
-                                                </span>
-                                            </>
-                                        )
-                                        : "No renewal date on file yet."}
-                                </p>
-                            </div>
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-400/15 text-amber-300">
+                <BellRing size={17} />
+            </div>
 
-                            <button
-                                type="button"
-                                onClick={() => onNavigate("billing")}
-                                className="flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 text-xs font-semibold text-slate-950 transition hover:bg-cyan-400"
-                            >
-                                <Download size={16} />
-                                View Billing Page
-                            </button>
-                        </div>
+            <div>
+                <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-amber-300">
+                    AMC Billing
+                </p>
 
-                        <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                            <div className="rounded-xl bg-slate-50 p-3">
-                                <CalendarDays
-                                    size={16}
-                                    className="text-slate-500"
-                                />
+                <h2 className="mt-0.5 text-sm font-semibold text-white">
+                    Annual Maintenance Charges
+                </h2>
+            </div>
 
-                                <p className="mt-2 text-[9px] uppercase tracking-wide text-slate-400">
-                                    Next renewal
-                                </p>
+        </div>
 
-                                <p className="mt-1 text-xs font-semibold text-slate-800">
-                                    {summary.nextRenewal || "—"}
-                                </p>
-                            </div>
+        <StatusBadge
+            status={paymentStatus}
+        />
 
-                            <div className="rounded-xl bg-slate-50 p-3">
-                                <CreditCard
-                                    size={16}
-                                    className="text-cyan-600"
-                                />
+    </div>
 
-                                <p className="mt-2 text-[9px] uppercase tracking-wide text-slate-400">
-                                    Status
-                                </p>
+    <div className="p-5 sm:p-6">
 
-                                <div className="mt-1">
-                                    <StatusBadge status={summary.amcStatus} />
-                                </div>
-                            </div>
-                        </div>
+        {/* Main Amount */}
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
 
-                        <p className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-[10px] leading-4 text-slate-500">
-                            Detailed invoice amounts and due dates will appear here once the billing module is connected.
-                        </p>
-                    </div>
-                </article>
+            <div>
+
+                <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    Amount Pending
+                </p>
+
+                <p className="mt-2 text-4xl font-semibold tracking-[-0.05em] text-slate-950">
+                    {formatCurrency(
+                        pendingAmount
+                    )}
+                </p>
+
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+
+                    <span className="text-[10px] font-semibold text-slate-700">
+                        {currentInvoice?.productName ||
+                            "AMC"}
+                    </span>
+
+                    <span className="text-slate-300">
+                        •
+                    </span>
+
+                    <span className="text-[10px] text-slate-500">
+                        {invoicePeriod(
+                            currentInvoice
+                        )}
+                    </span>
+
+                </div>
+
+            </div>
+
+            <button
+                type="button"
+                onClick={() =>
+                    onNavigate("billing")
+                }
+                className="flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 text-xs font-semibold text-slate-950 shadow-sm transition hover:-translate-y-0.5 hover:bg-cyan-400"
+            >
+                <ReceiptText size={15} />
+                Open Billing
+                <ArrowRight size={14} />
+            </button>
+
+        </div>
+
+        {/* Amount Breakdown */}
+        <div className="mt-6 grid grid-cols-3 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+
+            <div className="border-r border-slate-200 p-4">
+
+                <p className="text-[8px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                    Invoice
+                </p>
+
+                <p className="mt-2 text-sm font-semibold text-slate-900">
+                    {formatCurrency(
+                        invoiceAmount
+                    )}
+                </p>
+
+            </div>
+
+            <div className="border-r border-slate-200 p-4">
+
+                <p className="text-[8px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                    Paid
+                </p>
+
+                <p className="mt-2 text-sm font-semibold text-emerald-600">
+                    {formatCurrency(
+                        paidAmount
+                    )}
+                </p>
+
+            </div>
+
+            <div className="p-4">
+
+                <p className="text-[8px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                    Balance
+                </p>
+
+                <p className="mt-2 text-sm font-semibold text-amber-600">
+                    {formatCurrency(
+                        pendingAmount
+                    )}
+                </p>
+
+            </div>
+
+        </div>
+
+        {/* Invoice Details */}
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+
+            <div className="rounded-xl border border-slate-200 bg-white p-3.5">
+
+                <div className="flex items-center gap-2 text-slate-400">
+                    <FileText size={14} />
+
+                    <span className="text-[8px] font-semibold uppercase tracking-[0.14em]">
+                        Invoice Number
+                    </span>
+                </div>
+
+                <p className="mt-2 truncate text-[11px] font-semibold text-slate-800">
+                    {currentInvoice?.invoiceCode ||
+                        currentInvoice?.invoiceNo ||
+                        "Not available"}
+                </p>
+
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-white p-3.5">
+
+                <div className="flex items-center gap-2 text-slate-400">
+                    <CalendarDays size={14} />
+
+                    <span className="text-[8px] font-semibold uppercase tracking-[0.14em]">
+                        Due Date
+                    </span>
+                </div>
+
+                <p className="mt-2 text-[11px] font-semibold text-amber-700">
+                    {currentInvoice?.dueDate
+                        ? formatDate(
+                            currentInvoice.dueDate
+                        )
+                        : amcBilling.nextDueDate
+                            ? formatDate(
+                                amcBilling.nextDueDate
+                            )
+                            : "Not available"}
+                </p>
+
+            </div>
+
+        </div>
+
+        {/* AMC Period */}
+        <div className="mt-4 flex items-center justify-between rounded-xl border border-cyan-100 bg-cyan-50/60 px-4 py-3">
+
+            <div className="flex items-center gap-3">
+
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-cyan-600 shadow-sm">
+                    <ShieldCheck size={15} />
+                </div>
+
+                <div>
+
+                    <p className="text-[8px] font-semibold uppercase tracking-[0.14em] text-cyan-700">
+                        AMC Coverage Period
+                    </p>
+
+                    <p className="mt-1 text-[10px] font-semibold text-slate-700">
+                        {invoicePeriod(
+                            currentInvoice
+                        )}
+                    </p>
+
+                </div>
+
+            </div>
+
+            <CheckCircle2
+                size={17}
+                className="text-cyan-600"
+            />
+
+        </div>
+
+    </div>
+
+</article>
             </section>
 
             <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)]">
@@ -542,50 +854,110 @@ export default function ClientDashboard({ onNavigate }) {
                                 </tr>
                             </thead>
 
-                            <tbody>
-                                {billingHistory.length === 0 && (
-                                    <tr>
-                                        <td colSpan={5} className="px-5 py-8 text-center text-xs text-slate-400">
-                                            No invoices yet — this will populate once billing is connected.
-                                        </td>
-                                    </tr>
-                                )}
+                           <tbody>
 
-                                {billingHistory.map((bill) => (
-                                    <tr
-                                        key={bill.id}
-                                        className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/60"
-                                    >
-                                        <td className="px-5 py-4 text-xs font-semibold text-slate-950">
-                                            {bill.invoiceNo}
-                                        </td>
+    {billingHistory.length === 0 && (
+        <tr>
+            <td
+                colSpan={5}
+                className="px-5 py-8 text-center"
+            >
+                <ReceiptText
+                    size={24}
+                    className="mx-auto text-slate-300"
+                />
 
-                                        <td className="px-4 py-4 text-xs text-slate-500">
-                                            {bill.period}
-                                        </td>
+                <p className="mt-3 text-xs font-semibold text-slate-600">
+                    No AMC invoices available
+                </p>
+            </td>
+        </tr>
+    )}
 
-                                        <td className="px-4 py-4 text-xs font-semibold text-slate-800">
-                                            {bill.amount}
-                                        </td>
+    {billingHistory
+        .slice(0, 5)
+        .map((bill) => (
 
-                                        <td className="px-4 py-4">
-                                            <StatusBadge
-                                                status={bill.status}
-                                            />
-                                        </td>
+            <tr
+                key={bill.id}
+                className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/60"
+            >
 
-                                        <td className="px-5 py-4 text-right">
-                                            <button
-                                                type="button"
-                                                onClick={handleDownloadBill}
-                                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-700"
-                                            >
-                                                <FileText size={14} />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
+                <td className="px-5 py-4">
+
+                    <p className="text-xs font-semibold text-slate-950">
+                        {bill.invoiceCode ||
+                            bill.invoiceNo ||
+                            "-"}
+                    </p>
+
+                    <p className="mt-1 text-[9px] text-slate-400">
+                        {bill.invoiceDate
+                            ? formatDate(
+                                bill.invoiceDate
+                            )
+                            : "-"}
+                    </p>
+
+                </td>
+
+                <td className="px-4 py-4">
+
+                    <p className="text-[10px] font-medium text-slate-600">
+                        {invoicePeriod(
+                            bill
+                        )}
+                    </p>
+
+                    <p className="mt-1 text-[9px] text-slate-400">
+                        {bill.productName ||
+                            ""}
+                    </p>
+
+                </td>
+
+                <td className="px-4 py-4 text-xs font-semibold text-slate-900">
+                    {formatCurrency(
+                        bill.totalAmount ??
+                        bill.amount ??
+                        0
+                    )}
+                </td>
+
+                <td className="px-4 py-4">
+                    <StatusBadge
+                        status={
+                            bill.paymentStatus ||
+                            bill.status ||
+                            "Pending"
+                        }
+                    />
+                </td>
+
+                <td className="px-5 py-4 text-right">
+
+                    <button
+                        type="button"
+                        onClick={() =>
+                            onNavigate(
+                                "billing"
+                            )
+                        }
+                        title="Open invoice"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-700"
+                    >
+                        <ArrowRight
+                            size={14}
+                        />
+                    </button>
+
+                </td>
+
+            </tr>
+
+        ))}
+
+</tbody>
                         </table>
                     </div>
                 </article>
