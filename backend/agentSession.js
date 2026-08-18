@@ -96,6 +96,11 @@ taskTitle: {
   default: "",
 },
 
+taskStatus: {
+  type: String,
+  default: "",
+},
+
 ticketId: {
   type: mongoose.Schema.Types.ObjectId,
   default: null,
@@ -110,8 +115,28 @@ collection: "agent_daily_summary",
 );
 
 agentDailySummarySchema.index(
-  { employeeCode: 1, application: 1, date: 1 },
-  { unique: true }
+  {
+    employeeCode: 1,
+    application: 1,
+    date: 1,
+    taskId: 1,
+  },
+  {
+    unique: true,
+    name: "employee_application_date_task_unique",
+  }
+);
+
+// Serves the employee activity feed's same-day newest-first query.
+agentDailySummarySchema.index(
+  {
+    employeeCode: 1,
+    date: 1,
+    lastSeen: -1,
+  },
+  {
+    name: "employee_date_last_seen",
+  }
 );
 
 module.exports =

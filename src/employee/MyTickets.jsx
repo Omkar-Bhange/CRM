@@ -554,7 +554,15 @@ useEffect(() => {
 }, []);
 
     const filteredTickets = useMemo(() => {
-        return tickets.filter((ticket) => {
+    const priorityRank = {
+        Critical: 4,
+        High: 3,
+        Medium: 2,
+        Low: 1,
+    };
+
+    return tickets
+        .filter((ticket) => {
             const search = searchValue.trim().toLowerCase();
 
             const matchesSearch =
@@ -601,14 +609,48 @@ useEffect(() => {
                 matchesPriority &&
                 matchesDue
             );
-        });
-    }, [
-        tickets,
-        searchValue,
-        statusFilter,
-        priorityFilter,
-        dueFilter,
-    ]);
+        })
+      .sort((a, b) => {
+    const completedStatuses = ["Resolved", "Closed"];
+
+    const aCompleted =
+        completedStatuses.includes(a.status);
+
+    const bCompleted =
+        completedStatuses.includes(b.status);
+
+    // Active tickets always before completed tickets
+    if (aCompleted !== bCompleted) {
+        return aCompleted ? 1 : -1;
+    }
+
+    // Higher priority first
+    const priorityDifference =
+        (priorityRank[b.priority] || 0) -
+        (priorityRank[a.priority] || 0);
+
+    if (priorityDifference !== 0) {
+        return priorityDifference;
+    }
+
+    // Newest first within same priority
+    const aDate = new Date(
+        a.createdAt || a.createdOn || 0
+    ).getTime();
+
+    const bDate = new Date(
+        b.createdAt || b.createdOn || 0
+    ).getTime();
+
+    return bDate - aDate;
+});
+}, [
+    tickets,
+    searchValue,
+    statusFilter,
+    priorityFilter,
+    dueFilter,
+]);
 
     const openCount = tickets.filter(
         (ticket) => !["Resolved", "Closed"].includes(ticket.status)

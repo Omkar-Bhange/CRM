@@ -265,7 +265,44 @@ const loadTodayAttendance = async () => {
     setAttendanceStatus(result.data?.workStatus || result.data?.status || "Absent");
     setLoginTime(result.data?.loginTime ? new Date(result.data.loginTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—");
 };
+const mapTask = (task, formatDate) => {
+    if (!task) return null;
 
+    return {
+        id: task._id,
+        taskNo: task.taskCode || "",
+        ticketNo: task.ticketCode || "",
+        title: task.title || "Untitled Task",
+        client: task.clientName || "Internal",
+        project:
+            task.projectName ||
+            task.productName ||
+            task.project ||
+            "General",
+
+        priority: task.priority || "Low",
+        status: task.status || "Assigned",
+
+        dueDate: formatDate
+            ? formatDate(task.dueDate)
+            : "—",
+
+        estimatedMinutes:
+            Number(task.estimatedMinutes || 0),
+
+        elapsedSeconds:
+            Number(
+                task.elapsedSeconds ??
+                (Number(task.spentMinutes || 0) * 60)
+            ),
+
+        startedAt:
+            task.startedAt || null,
+
+        progress:
+            Number(task.progress || 0),
+    };
+};
 const loadDashboard = async () => {
     const response = await fetch(`${API_URL}/api/employee/dashboard`, {
         headers: {
@@ -287,20 +324,12 @@ const loadDashboard = async () => {
               })
             : "—";
 
-    const mappedTasks = (data.tasks || []).map((task) => ({
-        id: task._id,
-        taskNo: task.taskCode,
-        ticketNo: task.ticketCode,
-        title: task.title,
-        client: task.clientName,
-        project: task.productName,
-        priority: task.priority,
-        status: task.status,
-        dueDate: formatDate(task.dueDate),
-        estimatedMinutes: task.estimatedMinutes,
-        spentSeconds: Number(task.spentMinutes || 0) * 60,
-        progress: task.progress,
-    }));
+ const mappedTasks = (data.tasks || [])
+    .map((task) => mapTask(task, formatDate))
+    .filter(Boolean);
+
+const mappedActiveTask =
+    mapTask(data.activeTask, formatDate);
 
     setEmployee(data.employee);
     setTodayAttendance(data.attendance || null);
@@ -314,9 +343,8 @@ const loadDashboard = async () => {
             : "—"
     );
     setDashboardSummary(data.summary || { activeTaskCount: 0, dueTodayCount: 0, ticketCount: 0, solvedThisWeek: 0 });
-    setTasks(mappedTasks);
-    setActiveTaskId(data.activeTask?._id || null);
-    setTimerRunning(data.activeTask?.status === "In Progress");
+setTasks(mappedTasks);
+setActiveTaskData(mappedActiveTask);
     setAssignedTickets(
         (data.tickets || []).map((ticket) => ({
             id: ticket._id,
@@ -344,25 +372,82 @@ const loadDashboard = async () => {
     const [tasks, setTasks] = useState([]);
     const [assignedTickets, setAssignedTickets] = useState([]);
     const [workLogs, setWorkLogs] = useState([]);
-    const [activeTaskId, setActiveTaskId] = useState(null);
-    const [timerRunning, setTimerRunning] = useState(true);
+   const [activeTaskData, setActiveTaskData] = useState(null);
+const [liveTaskSeconds, setLiveTaskSeconds] = useState(0);
     const [attendanceStatus, setAttendanceStatus] =
         useState("Absent");
     const [loginTime, setLoginTime] = useState("—");
 
-    const activeTask =
-        tasks.find((task) => task.id === activeTaskId) || null;
+const activeTask = activeTaskData;
     const hour = new Date().getHours();
     const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
-    useEffect(() => {
-        loadDashboard()
-            .catch((err) => {
-                console.error("Dashboard:", err);
-                setError(err.message);
-            })
-            .finally(() => setLoading(false));
-    }, []);
+useEffect(() => {
+    loadDashboard()
+        .catch((err) => {
+            console.error("Dashboard:", err);
+            setError(err.message);
+        })
+        .finally(() => setLoading(false));
+}, []);
+
+useEffect(() => {
+    if (!activeTask) {
+        setLiveTaskSeconds(0);
+        return;
+    }
+
+    const backendSeconds =
+        Number(activeTask.elapsedSeconds || 0);
+
+    if (
+        activeTask.status !== "In Progress" ||
+        !activeTask.startedAt
+    ) {
+        setLiveTaskSeconds(backendSeconds);
+        return;
+    }
+
+    /*
+     * IMPORTANT:
+     *
+     * /api/employee/dashboard already returns elapsedSeconds
+     * including the running portion at fetch time.
+     *
+     * Therefore we use that returned value as the base and
+     * only count forward from when THIS page received it.
+     */
+    const receivedAt = Date.now();
+
+    const tick = () => {
+        const sinceFetch = Math.max(
+            0,
+            Math.floor(
+                (Date.now() - receivedAt) / 1000
+            )
+        );
+
+        setLiveTaskSeconds(
+            backendSeconds + sinceFetch
+        );
+    };
+
+    tick();
+
+    const timer = window.setInterval(
+        tick,
+        1000
+    );
+
+    return () => {
+        window.clearInterval(timer);
+    };
+}, [
+    activeTask?.id,
+    activeTask?.status,
+    activeTask?.elapsedSeconds,
+    activeTask?.startedAt,
+]);
 
 
     const activeTaskCount = dashboardSummary.activeTaskCount;
@@ -401,24 +486,104 @@ const loadDashboard = async () => {
         await loadDashboard();
     };
 
-    const handlePauseResume = async () => {
-        if (!activeTask) return;
-        try { await updateTaskStatus(activeTask.id, timerRunning ? "Paused" : "In Progress", activeTask.progress); setTimerRunning(!timerRunning); } catch (error) { alert(error.message); }
-    };
+const handlePauseResume = async () => {
+    if (!activeTask) return;
 
-    const handleStartTask = async (taskId) => {
-        const task = tasks.find((item) => item.id === taskId);
+    const action =
+        activeTask.status === "Paused"
+            ? "resume"
+            : "pause";
 
-        if (!task) return;
+    try {
+        const response = await fetch(
+            `${API_URL}/api/employee/tasks/${activeTask.id}/${action}`,
+            {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${getAuthToken()}`,
+                    "Content-Type": "application/json",
+                },
+            }
+        );
 
-        try { await updateTaskStatus(taskId, "In Progress", Math.max(Number(task.progress || 0), 10)); setTimerRunning(true); } catch (error) { alert(error.message); }
-    };
+        const result = await response.json();
 
-    const handleCompleteTask = async () => {
-        if (!activeTask) return;
+        if (!response.ok || !result.success) {
+            throw new Error(
+                result.message ||
+                    `Unable to ${action} task.`
+            );
+        }
 
-        try { await updateTaskStatus(activeTask.id, "Completed", 100); setTimerRunning(false); } catch (error) { alert(error.message); }
-    };
+        await loadDashboard();
+    } catch (error) {
+        console.error(`${action} task:`, error);
+        alert(error.message);
+    }
+};
+
+  const handleStartTask = async (taskId) => {
+    try {
+        const response = await fetch(
+            `${API_URL}/api/employee/tasks/${taskId}/start`,
+            {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${getAuthToken()}`,
+                    "Content-Type": "application/json",
+                },
+            }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            throw new Error(
+                result.message || "Unable to start task."
+            );
+        }
+
+        await loadDashboard();
+    } catch (error) {
+        console.error("Start task:", error);
+        alert(error.message);
+    }
+};
+
+const handleCompleteTask = async () => {
+    if (!activeTask) return;
+
+    try {
+        const response = await fetch(
+            `${API_URL}/api/employee/tasks/${activeTask.id}/end`,
+            {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${getAuthToken()}`,
+                    "Content-Type": "application/json",
+                },
+            }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            throw new Error(
+                result.message ||
+                    "Unable to complete task."
+            );
+        }
+
+        await loadDashboard();
+    } catch (error) {
+        console.error(
+            "Complete task:",
+            error
+        );
+
+        alert(error.message);
+    }
+};
 
     const handleAttendanceToggle = async () => {
         const isWorking = todayAttendance?.workStatus === "Working" || todayAttendance?.workStatus === "Break";
@@ -595,9 +760,7 @@ if (error) {
                                 </div>
 
                                 <p className="mt-6 font-mono text-4xl font-semibold tracking-[-0.04em] text-slate-950">
-                                    {formatTimer(
-                                        activeTask.spentSeconds
-                                    )}
+                                 {formatTimer(liveTaskSeconds)}
                                 </p>
 
                                 <div className="mt-4">
@@ -627,15 +790,15 @@ if (error) {
                                         onClick={handlePauseResume}
                                         className="flex h-11 items-center justify-center gap-2 rounded-xl bg-violet-600 text-xs font-semibold text-white transition hover:bg-violet-700"
                                     >
-                                        {timerRunning ? (
-                                            <Pause size={15} />
-                                        ) : (
-                                            <Play size={15} />
-                                        )}
+                                      {activeTask?.status === "Paused" ? (
+    <Play size={15} />
+) : (
+    <Pause size={15} />
+)}
 
-                                        {timerRunning
-                                            ? "Pause"
-                                            : "Resume"}
+{activeTask?.status === "Paused"
+    ? "Resume"
+    : "Pause"}
                                     </button>
 
                                     <button

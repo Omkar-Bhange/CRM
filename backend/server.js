@@ -38,15 +38,7 @@ async function authenticateAgent(req, res, next) {
   }
 }
 
-const AgentUploadedSessionSchema = new mongoose.Schema({
-  sessionId: { type: String, required: true, unique: true },
-  employeeCode: String,
-  uploadedAt: { type: Date, default: Date.now },
-});
 
-const AgentUploadedSession =
-  mongoose.models.AgentUploadedSession ||
-  mongoose.model("AgentUploadedSession", AgentUploadedSessionSchema);
 const { getISTDateBucket } = require("./utils/dateUtils");
 
 dotenv.config();
@@ -230,11 +222,29 @@ app.post("/api/agent/upload", async (req, res) => {
 const AgentDailySummary = mongoose.models.AgentDailySummary;
 const processedSessionSchema = new mongoose.Schema(
   {
-    sessionId: { type: String, required: true, unique: true, index: true },
-    employeeCode: { type: String, required: true, index: true },
-    createdAt: { type: Date, default: Date.now, expires: 60 * 60 * 24 * 30 },
+    sessionId: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true,
+    },
+
+    employeeCode: {
+      type: String,
+      required: true,
+      index: true,
+    },
+
+    createdAt: {
+      type: Date,
+      default: Date.now,
+      expires: 60 * 60 * 24 * 30,
+    },
   },
-  { collection: "agent_processed_sessions" }
+  {
+    collection: "agent_processed_sessions",
+    versionKey: false,
+  }
 );
 
 const ProcessedSession =
@@ -255,15 +265,49 @@ app.post("/api/agent/events", async (req, res) => {
   try {
     const { employeeCode, pcName, sessions } = req.body;
 
-    if (!employeeCode || !Array.isArray(sessions)) {
+    // =====================================================
+    // BASIC REQUEST VALIDATION
+    // =====================================================
+
+    if (
+      !employeeCode ||
+      !Array.isArray(sessions)
+    ) {
       return res.status(400).json({
         success: false,
-        message: "employeeCode and sessions are required.",
+        message:
+          "employeeCode and sessions are required.",
       });
     }
+
+    if (sessions.length === 0) {
+      return res.json({
+        success: true,
+        processed: 0,
+        processedIds: [],
+        failed: [],
+      });
+    }
+
+    // Protect backend from accidentally huge payloads.
+    if (sessions.length > 200) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Maximum 200 sessions allowed per batch.",
+      });
+    }
+
+    // =====================================================
+    // EMPLOYEE
+    // =====================================================
+
+    const normalizedEmployeeCode =
+      employeeCode.toUpperCase();
+
     const employee = await Employee.findOne({
-      employeeCode: employeeCode.toUpperCase(),
-    });
+      employeeCode: normalizedEmployeeCode,
+    }).lean();
 
     if (!employee) {
       return res.status(404).json({
@@ -274,110 +318,414 @@ app.post("/api/agent/events", async (req, res) => {
 
     const processedIds = [];
     const failed = [];
+    const validSessions = [];
+
+    // =====================================================
+    // VALIDATE ALL SESSIONS FIRST
+    // =====================================================
 
     for (const session of sessions) {
-      try {
-        const today = getISTDateBucket(new Date(session.startTime));
+      if (
+        !session ||
+        !session.id ||
+        !session.application ||
+        !session.startTime ||
+        !session.endTime ||
+        !Number.isFinite(
+          Number(session.durationSeconds)
+        ) ||
+        Number(session.durationSeconds) <= 0
+      ) {
+        failed.push({
+          id: session?.id || null,
+          application:
+            session?.application || "",
+          error: "Invalid session payload",
+        });
 
-        // Prevent duplicate processing of the same session
-        try {
-          await ProcessedSession.create({
-            sessionId: session.id,
-            employeeCode: employee.employeeCode,
-          });
-        } catch (dupErr) {
-          // Mongo duplicate key error = already processed
-          if (dupErr.code === 11000) {
-            console.log("Duplicate session skipped:", session.id);
-            continue;
-          }
-          throw dupErr;
-        }
+        continue;
+      }
 
-        console.log(
-          "EVENT",
-          session.application,
-          "|",
-          session.windowTitle,
-          "|",
-          session.durationSeconds
+      const start = new Date(
+        session.startTime
+      );
+
+      const end = new Date(
+        session.endTime
+      );
+
+      if (
+        Number.isNaN(start.getTime()) ||
+        Number.isNaN(end.getTime()) ||
+        end <= start
+      ) {
+        failed.push({
+          id: session.id,
+          application:
+            session.application,
+          error: "Invalid session timestamps",
+        });
+
+        continue;
+      }
+
+      validSessions.push(session);
+    }
+
+    if (validSessions.length === 0) {
+      return res.json({
+        success: true,
+        processed: 0,
+        processedIds,
+        failed,
+      });
+    }
+
+    // =====================================================
+    // REMOVE DUPLICATES INSIDE THIS REQUEST
+    // =====================================================
+
+    const uniqueSessionMap = new Map();
+
+    for (const session of validSessions) {
+      if (!uniqueSessionMap.has(session.id)) {
+        uniqueSessionMap.set(
+          session.id,
+          session
         );
-        const activeTask =
-          employee.currentTaskId
-            ? await mongoose.models.Task.findById(employee.currentTaskId).lean()
-            : null;
-//             console.log("AGENT TASK CONTEXT", {
-//   employee: employee.employeeCode,
-//   currentTaskId: employee.currentTaskId,
-//   currentTaskCode: employee.currentTaskCode,
-//   currentTaskTitle: employee.currentTaskTitle,
-//   activeTask: activeTask?.title,
-// });
-
- await AgentDailySummary.findOneAndUpdate(
-  {
-    employeeCode: employee.employeeCode,
-    application: session.application,
-    date: today,
-  },
-  {
-    $inc: {
-      totalSeconds: session.durationSeconds,
-      sessionCount: 1,
-    },
-    $set: {
-      employeeId: employee._id,
-      employeeName: employee.name,
-      pcName,
-
-      application: session.application,
-      lastWindowTitle: session.windowTitle,
-      lastSeen: new Date(session.endTime),
-
-      category: session.category || "Other",
-      activity: session.activity || "",
-
-      // Keep one record per application, but update task info
-      project: employee.currentProject || "",
-      client: employee.currentClient || "",
-
-      taskId: employee.currentTaskId || null,
-      taskCode: employee.currentTaskCode || "",
-      taskTitle: employee.currentTaskTitle || "",
-
-      ticketId: activeTask?.ticketId || null,
-      ticketCode: activeTask?.ticketCode || "",
-    },
-    $setOnInsert: {
-      firstSeen: new Date(session.startTime),
-      date: today,
-    },
-  },
-  {
-    upsert: true,
-    returnDocument: "after",
-  }
-);
-
-        processedIds.push(session.id);
-      } catch (sessionErr) {
-        // Don't let one bad session take the whole batch down.
-        console.error(
-          `Failed to upsert session [${session.application} | ${session.windowTitle}]:`,
-          sessionErr.message
-        );
-        failed.push({ id: session.id, application: session.application, error: sessionErr.message });
       }
     }
 
+    const uniqueSessions = [
+      ...uniqueSessionMap.values(),
+    ];
+
+    const incomingIds = uniqueSessions.map(
+      (session) => session.id
+    );
+
+    // =====================================================
+    // ONE DB QUERY FOR PREVIOUSLY PROCESSED IDS
+    // =====================================================
+
+    const existingProcessed =
+      await ProcessedSession.find(
+        {
+          sessionId: {
+            $in: incomingIds,
+          },
+        },
+        {
+          sessionId: 1,
+          _id: 0,
+        }
+      ).lean();
+
+    const existingIdSet = new Set(
+      existingProcessed.map(
+        (item) => item.sessionId
+      )
+    );
+
+    // Already processed = ACK immediately.
+    for (const id of existingIdSet) {
+      processedIds.push(id);
+    }
+
+    const newSessions =
+      uniqueSessions.filter(
+        (session) =>
+          !existingIdSet.has(
+            session.id
+          )
+      );
+
+    if (newSessions.length === 0) {
+      return res.json({
+        success: true,
+        processed:
+          processedIds.length,
+        processedIds,
+        failed,
+      });
+    }
+
+    // =====================================================
+    // LOAD TASKS ONCE FOR THE WHOLE BATCH
+    // =====================================================
+
+    const taskIds = [
+      ...new Set(
+        newSessions
+          .map(
+            (session) =>
+              session.taskId ||
+              employee.currentTaskId ||
+              null
+          )
+          .filter(Boolean)
+          .map(String)
+      ),
+    ];
+
+    const Task = mongoose.models.Task;
+
+    let taskMap = new Map();
+
+    if (taskIds.length > 0) {
+      const tasks = await Task.find({
+        _id: {
+          $in: taskIds,
+        },
+      }).lean();
+
+      taskMap = new Map(
+        tasks.map((task) => [
+          String(task._id),
+          task,
+        ])
+      );
+    }
+
+    // =====================================================
+    // PROCESS NEW SESSIONS
+    // =====================================================
+
+    for (const session of newSessions) {
+      let reservationCreated = false;
+
+      try {
+        // -----------------------------------------------
+        // ATOMIC IDEMPOTENCY RESERVATION
+        // -----------------------------------------------
+
+        try {
+          await ProcessedSession.create({
+            sessionId: session.id,
+            employeeCode:
+              employee.employeeCode,
+          });
+
+          reservationCreated = true;
+        } catch (dupErr) {
+          if (dupErr.code === 11000) {
+            // Another request processed/reserved this
+            // session after our batch lookup.
+            processedIds.push(
+              session.id
+            );
+
+            continue;
+          }
+
+          throw dupErr;
+        }
+
+        const today =
+          getISTDateBucket(
+            new Date(
+              session.startTime
+            )
+          );
+
+        const summaryTaskId =
+          session.taskId ||
+          employee.currentTaskId ||
+          null;
+
+        const taskKey =
+          summaryTaskId
+            ? String(summaryTaskId)
+            : null;
+
+        const activeTask =
+          taskKey
+            ? taskMap.get(taskKey) ||
+              null
+            : null;
+
+        const summaryTaskCode =
+          session.taskCode ||
+          employee.currentTaskCode ||
+          "";
+
+        const summaryTaskTitle =
+          session.taskTitle ||
+          employee.currentTaskTitle ||
+          "";
+
+        const summaryTaskStatus =
+          session.taskStatus ||
+          activeTask?.status ||
+          "";
+
+        // -----------------------------------------------
+        // DAILY SUMMARY
+        // -----------------------------------------------
+
+        await AgentDailySummary.findOneAndUpdate(
+          {
+            employeeCode:
+              employee.employeeCode,
+
+            application:
+              session.application,
+
+            date: today,
+
+            taskId:
+              summaryTaskId,
+          },
+          {
+            $set: {
+              employeeId:
+                employee._id,
+
+              employeeName:
+                employee.name,
+
+              pcName:
+                pcName || "",
+
+              lastWindowTitle:
+                session.windowTitle ||
+                "",
+
+              project:
+                session.project ||
+                employee.currentProject ||
+                "",
+
+              client:
+                session.client ||
+                employee.currentClient ||
+                "",
+
+              category:
+                session.category ||
+                "Other",
+
+              activity:
+                session.activity ||
+                "",
+
+              taskId:
+                summaryTaskId,
+
+              taskCode:
+                summaryTaskCode,
+
+              taskTitle:
+                summaryTaskTitle,
+
+              taskStatus:
+                summaryTaskStatus,
+
+              ticketId:
+                activeTask?.ticketId ||
+                null,
+
+              ticketCode:
+                activeTask?.ticketCode ||
+                "",
+
+              lastSeen:
+                new Date(
+                  session.endTime
+                ),
+            },
+
+            $setOnInsert: {
+              firstSeen:
+                new Date(
+                  session.startTime
+                ),
+            },
+
+            $inc: {
+              totalSeconds:
+                Number(
+                  session.durationSeconds
+                ),
+
+              sessionCount: 1,
+            },
+          },
+       {
+  upsert: true,
+  returnDocument: "after",
+}
+        );
+
+        processedIds.push(
+          session.id
+        );
+      } catch (sessionErr) {
+        console.error(
+          `Failed session [${session.application} | ${session.windowTitle}]:`,
+          sessionErr.message
+        );
+
+        // =================================================
+        // CRITICAL:
+        // Summary failed after reservation.
+        //
+        // Remove reservation so the agent can retry later.
+        // Otherwise the session would be considered processed
+        // even though its summary was never updated.
+        // =================================================
+
+        if (reservationCreated) {
+          try {
+            await ProcessedSession.deleteOne({
+              sessionId:
+                session.id,
+            });
+          } catch (cleanupErr) {
+            console.error(
+              "Processed-session cleanup failed:",
+              session.id,
+              cleanupErr.message
+            );
+          }
+        }
+
+        failed.push({
+          id: session.id,
+
+          application:
+            session.application,
+
+          error:
+            sessionErr.message,
+        });
+      }
+    }
+
+    // =====================================================
+    // RESPONSE
+    // =====================================================
+    console.log(
+  `[AGENT EVENTS] ${employee.employeeCode} | PC: ${pcName || "Unknown"} | Received: ${sessions.length} | Processed: ${processedIds.length} | Failed: ${failed.length}`
+);
     return res.json({
       success: true,
-      processed: processedIds.length,
-      processedIds,
+
+      processed:
+        processedIds.length,
+
+      processedIds:
+        [...new Set(processedIds)],
+
       failed,
     });
+
   } catch (error) {
-    console.error(error);
+    console.error(
+      "Agent events error:",
+      error
+    );
+
     return res.status(500).json({
       success: false,
       message: "Server error.",
@@ -420,7 +768,7 @@ app.post("/api/agent/register", async (req, res) => {
         lastSeen: new Date(),
         isActive: true,
       },
-      {
+      { 
         upsert: true,
         returnDocument: "after",
       }
@@ -489,8 +837,12 @@ app.get("/api/agent/online", async (req, res) => {
       const diffSeconds = Math.floor((now - lastSeen) / 1000);
 
       let status = "Offline";
-      if (diffSeconds <= 60) status = "Working";
-      else if (diffSeconds <= 180) status = "Idle";
+
+      if (diffSeconds <= 180) {
+        status = "Working";
+      } else if (diffSeconds <= 360) {
+        status = "Idle";
+      }
 
       return {
         employeeCode: device.employeeCode,
@@ -599,9 +951,22 @@ app.post("/api/agent/heartbeat", async (req, res) => {
       }
     );
 
+    let currentTaskData = null;
+
+    if (employee.currentTaskId) {
+      const currentTaskRecord = await Task.findById(
+        employee.currentTaskId
+      ).lean();
+
+      if (currentTaskRecord) {
+        currentTaskData = currentTaskRecord;
+      }
+    }
+
     return res.json({
       success: true,
       serverTime: now,
+      currentTask: currentTaskData,
     });
   } catch (error) {
     console.error(error);

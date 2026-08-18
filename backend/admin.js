@@ -5847,7 +5847,325 @@ async function updateEmployeeTaskSummary(
       changes
     );
 }
+/* =====================================================
+   SMART EMPLOYEE AUTO ASSIGNMENT
+===================================================== */
 
+async function findBestEmployeeForTask({
+  clientId = null,
+  preferredEmployeeId = null,
+} = {}) {
+  /*
+   * Assignment order:
+   *
+   * 1. Client's assigned employee if FREE
+   * 2. Any other FREE employee with least workload
+   * 3. If nobody FREE -> employee with least workload
+   *
+   * Employees on Leave / Break / Offline / Inactive
+   * are not automatically assigned.
+   */
+
+  const employeesCollection =
+    mongoose.connection.collection("employees");
+
+  /* =========================================
+     FIND CLIENT'S PREFERRED EMPLOYEE
+  ========================================= */
+
+  let clientPreferredEmployeeId =
+    preferredEmployeeId || null;
+
+  if (
+    !clientPreferredEmployeeId &&
+    clientId &&
+    mongoose.Types.ObjectId.isValid(clientId)
+  ) {
+    const client = await Client.findById(clientId)
+      .select("assignedEmployeeId")
+      .lean();
+
+    if (client?.assignedEmployeeId) {
+      clientPreferredEmployeeId =
+        client.assignedEmployeeId;
+    }
+  }
+
+  /* =========================================
+     LOAD ELIGIBLE EMPLOYEES
+  ========================================= */
+
+  const employees = await employeesCollection
+    .find({
+      isActive: {
+        $ne: false,
+      },
+
+      status: {
+        $nin: [
+          "Leave",
+          "Break",
+          "Offline",
+          "Inactive",
+        ],
+      },
+    })
+    .toArray();
+
+  if (!employees.length) {
+    return null;
+  }
+
+  /* =========================================
+     GET REAL ACTIVE TASK COUNTS
+  ========================================= */
+
+  const employeeIds = employees.map(
+    (employee) => employee._id
+  );
+
+  const taskCounts = await Task.aggregate([
+    {
+      $match: {
+        assignedEmployeeId: {
+          $in: employeeIds,
+        },
+
+        isDeleted: false,
+
+        status: {
+          $nin: [
+            "Completed",
+            "Closed",
+            "Cancelled",
+          ],
+        },
+      },
+    },
+
+    {
+      $group: {
+        _id: "$assignedEmployeeId",
+        activeTasks: {
+          $sum: 1,
+        },
+      },
+    },
+  ]);
+
+  const taskCountMap = new Map(
+    taskCounts.map((item) => [
+      String(item._id),
+      Number(item.activeTasks || 0),
+    ])
+  );
+
+  /* =========================================
+     GET ACTIVE TICKET COUNTS
+  ========================================= */
+
+  const ticketCounts =
+    await SupportTicket.aggregate([
+      {
+        $match: {
+          assignedEmployeeId: {
+            $in: employeeIds,
+          },
+
+          isDeleted: false,
+
+          status: {
+            $nin: [
+              "Resolved",
+              "Verified",
+              "Closed",
+              "Cancelled",
+            ],
+          },
+        },
+      },
+
+      {
+        $group: {
+          _id: "$assignedEmployeeId",
+
+          activeTickets: {
+            $sum: 1,
+          },
+        },
+      },
+    ]);
+
+  const ticketCountMap = new Map(
+    ticketCounts.map((item) => [
+      String(item._id),
+      Number(item.activeTickets || 0),
+    ])
+  );
+
+  /* =========================================
+     BUILD WORKLOAD INFORMATION
+  ========================================= */
+
+  const rankedEmployees = employees.map(
+    (employee) => {
+      const activeTasks =
+        taskCountMap.get(
+          String(employee._id)
+        ) || 0;
+
+      const activeTickets =
+        ticketCountMap.get(
+          String(employee._id)
+        ) || 0;
+
+      return {
+        employee,
+
+        activeTasks,
+
+        activeTickets,
+
+        workload:
+          activeTasks + activeTickets,
+      };
+    }
+  );
+
+  /* =========================================
+     RULE 1:
+     CLIENT ASSIGNED EMPLOYEE IF FREE
+  ========================================= */
+
+  if (
+    clientPreferredEmployeeId &&
+    mongoose.Types.ObjectId.isValid(
+      clientPreferredEmployeeId
+    )
+  ) {
+    const preferred =
+      rankedEmployees.find(
+        (item) =>
+          String(item.employee._id) ===
+          String(clientPreferredEmployeeId)
+      );
+
+    if (
+      preferred &&
+      preferred.employee.status === "Free"
+    ) {
+      return {
+        employee: preferred.employee,
+
+        reason:
+          "CLIENT_ASSIGNED_EMPLOYEE_FREE",
+
+        workload:
+          preferred.workload,
+
+        activeTasks:
+          preferred.activeTasks,
+
+        activeTickets:
+          preferred.activeTickets,
+      };
+    }
+  }
+
+  /* =========================================
+     RULE 2:
+     FIND OTHER FREE EMPLOYEE
+  ========================================= */
+
+  const freeEmployees =
+    rankedEmployees
+      .filter(
+        (item) =>
+          item.employee.status === "Free"
+      )
+      .sort((a, b) => {
+        if (a.workload !== b.workload) {
+          return (
+            a.workload - b.workload
+          );
+        }
+
+        return (
+          a.activeTasks -
+          b.activeTasks
+        );
+      });
+
+  if (freeEmployees.length) {
+    const selected =
+      freeEmployees[0];
+
+    return {
+      employee:
+        selected.employee,
+
+      reason:
+        "FREE_EMPLOYEE_LEAST_WORKLOAD",
+
+      workload:
+        selected.workload,
+
+      activeTasks:
+        selected.activeTasks,
+
+      activeTickets:
+        selected.activeTickets,
+    };
+  }
+
+  /* =========================================
+     RULE 3:
+     NOBODY FREE -> LEAST WORKLOAD
+  ========================================= */
+
+  const workingEmployees =
+    rankedEmployees
+      .filter(
+        (item) =>
+          item.employee.status === "Working"
+      )
+      .sort((a, b) => {
+        if (a.workload !== b.workload) {
+          return (
+            a.workload - b.workload
+          );
+        }
+
+        return (
+          a.activeTasks -
+          b.activeTasks
+        );
+      });
+
+  if (!workingEmployees.length) {
+    return null;
+  }
+
+  const selected =
+    workingEmployees[0];
+
+  return {
+    employee:
+      selected.employee,
+
+    reason:
+      "WORKING_EMPLOYEE_LEAST_WORKLOAD",
+
+    workload:
+      selected.workload,
+
+    activeTasks:
+      selected.activeTasks,
+
+    activeTickets:
+      selected.activeTickets,
+  };
+}
 async function normalizeEmployeeTaskCounts(
   employeeId
 ) {
@@ -11634,24 +11952,129 @@ router.post("/task", async (req, res) => {
        EMPLOYEE VALIDATION
     ========================================= */
 
-    if (!assignedEmployeeId) {
-      return res.status(400).json({
-        success: false,
-        message: "Please select an employee.",
-      });
-    }
+ /* =========================================
+   EMPLOYEE ASSIGNMENT
+   Manual selection OR Smart Auto Assignment
+========================================= */
 
-    const employee = await findEmployeeById(
-      assignedEmployeeId
-    );
+let employee = null;
 
-    if (!employee) {
-      return res.status(404).json({
-        success: false,
-        message:
-          "Selected employee was not found or is inactive.",
-      });
+let assignmentMode = "MANUAL";
+
+let assignmentReason =
+  "ADMIN_SELECTED_EMPLOYEE";
+
+let assignmentWorkload = null;
+
+/*
+ * =====================================================
+ * OPTION 1:
+ * ADMIN MANUALLY SELECTED AN EMPLOYEE
+ * =====================================================
+ *
+ * Manual selection always gets first preference.
+ * Auto-assignment does NOT override Admin's choice.
+ */
+if (
+  assignedEmployeeId &&
+  String(assignedEmployeeId).trim()
+) {
+  employee = await findEmployeeById(
+    assignedEmployeeId
+  );
+
+  if (!employee) {
+    return res.status(404).json({
+      success: false,
+      message:
+        "Selected employee was not found or is inactive.",
+    });
+  }
+
+  assignmentMode = "MANUAL";
+
+  assignmentReason =
+    "ADMIN_SELECTED_EMPLOYEE";
+}
+
+/*
+ * =====================================================
+ * OPTION 2:
+ * NO EMPLOYEE SELECTED
+ * USE SMART AUTO ASSIGNMENT
+ * =====================================================
+ */
+else {
+  const autoAssignment =
+    await findBestEmployeeForTask({
+      clientId:
+        resolvedClientId || null,
+    });
+
+  if (
+    !autoAssignment ||
+    !autoAssignment.employee
+  ) {
+    return res.status(409).json({
+      success: false,
+      message:
+        "No employee is currently available for automatic assignment. Please select an employee manually.",
+    });
+  }
+
+  employee =
+    autoAssignment.employee;
+
+  assignmentMode =
+    "AUTO";
+
+  assignmentReason =
+    autoAssignment.reason;
+
+  assignmentWorkload = {
+    workload:
+      Number(
+        autoAssignment.workload || 0
+      ),
+
+    activeTasks:
+      Number(
+        autoAssignment.activeTasks || 0
+      ),
+
+    activeTickets:
+      Number(
+        autoAssignment.activeTickets || 0
+      ),
+  };
+
+  console.log(
+    "[AUTO TASK ASSIGNMENT]",
+    {
+      employeeId:
+        String(employee._id),
+
+      employeeCode:
+        employee.employeeCode,
+
+      employeeName:
+        employee.name,
+
+      clientId:
+        resolvedClientId
+          ? String(
+              resolvedClientId
+            )
+          : null,
+
+      reason:
+        assignmentReason,
+
+      workload:
+        assignmentWorkload,
     }
+  );
+}
 
     /* =========================================
        DUE DATE VALIDATION
@@ -11810,34 +12233,64 @@ router.post("/task", async (req, res) => {
       spentMinutes:
         0,
 
-      timeline: [
+ timeline: [
+  {
+    action:
+      "Task Created",
+
+    description:
+      normalizedTaskFor === "Project"
+        ? `Task created under project ${resolvedProject.projectName} and assigned to ${employee.name}.`
+        : normalizedTaskFor === "Product"
+          ? `Task created for product ${resolvedProductName} and assigned to ${employee.name}.`
+          : `General internal task created and assigned to ${employee.name}.`,
+
+    performedBy:
+      req.user._id,
+
+    performedByName:
+      req.user.name ||
+      "Admin",
+
+    performedByRole:
+      "admin",
+
+    createdAt:
+      new Date(),
+  },
+
+  ...(assignmentMode === "AUTO"
+    ? [
         {
           action:
-            "Task Created",
+            "Auto Assigned",
 
           description:
-            normalizedTaskFor ===
-              "Project"
-              ? `Task created under project ${resolvedProject.projectName} and assigned to ${employee.name}.`
-              : normalizedTaskFor ===
-                "Product"
-                ? `Task created for product ${resolvedProductName} and assigned to ${employee.name}.`
-                : `General internal task created and assigned to ${employee.name}.`,
+            assignmentReason ===
+            "CLIENT_ASSIGNED_EMPLOYEE_FREE"
+              ? `${employee.name} was automatically selected because this employee is assigned to the client and is currently free.`
+
+              : assignmentReason ===
+                "FREE_EMPLOYEE_LEAST_WORKLOAD"
+                ? `${employee.name} was automatically selected as the free employee with the lowest workload (${assignmentWorkload?.activeTasks || 0} active tasks, ${assignmentWorkload?.activeTickets || 0} active tickets).`
+
+                : `${employee.name} was automatically selected because no employee was free and this employee had the lowest workload (${assignmentWorkload?.activeTasks || 0} active tasks, ${assignmentWorkload?.activeTickets || 0} active tickets).`,
 
           performedBy:
-            req.user._id,
+            null,
 
           performedByName:
-            req.user.name ||
-            "Admin",
+            "System",
 
           performedByRole:
-            "admin",
+            "system",
 
           createdAt:
             new Date(),
         },
-      ],
+      ]
+    : []),
+],
     });
 
     await updateEmployeeTaskSummary(employee._id, {

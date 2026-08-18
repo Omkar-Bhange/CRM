@@ -6,10 +6,15 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 require("./admin");
 const authenticateUser = require("./authMiddleware");
-const { User } = require("./auth");
-const Task = mongoose.model("Task");
+
+const User =
+  mongoose.models.User ||
+  mongoose.model("User");
+
+const Task =
+  mongoose.models.Task ||
+  mongoose.model("Task");
 const { getISTDateBucket, getISTDateString } = require("./utils/dateUtils");
-const ActivityLog = mongoose.models.ActivityLog || mongoose.model("ActivityLog");
 const router = express.Router();
 require("./agentSession"); // register models
 
@@ -601,14 +606,13 @@ if (attendance && !attendance.logoutTime) {
       data: {
         employee: employeeResponse(employee),
         attendance: attendance
-  ? attendance: attendance
-  ? {
-      ...attendance,
-      workStatus: employee.status,
-    }
-  : {
-      workStatus: employee.status,
-    },
+          ? {
+              ...attendance,
+              workStatus: employee.status,
+            }
+          : {
+              workStatus: employee.status,
+            },
         summary: {
           hoursToday,
           activeTaskCount,
@@ -1331,18 +1335,43 @@ router.post("/tasks/:id/start", authenticateUser, async (req, res, next) => {
     }
 
     // Pause any currently running task
-    await Task.updateMany(
-      {
-        assignedEmployeeId: employee._id,
-        status: "In Progress",
-      },
-      {
-        $set: {
-          status: "Paused",
-          pausedAt: new Date(),
-        },
-      }
+   const now = new Date();
+
+const runningTasks = await Task.find({
+  assignedEmployeeId: employee._id,
+  status: "In Progress",
+  _id: { $ne: req.params.id },
+  isDeleted: false,
+});
+
+for (const runningTask of runningTasks) {
+  if (runningTask.startedAt) {
+    const elapsed = Math.max(
+      0,
+      Math.floor(
+        (
+          now.getTime() -
+          new Date(
+            runningTask.startedAt
+          ).getTime()
+        ) / 1000
+      )
     );
+
+    runningTask.elapsedSeconds =
+      Number(
+        runningTask.elapsedSeconds ||
+        0
+      ) + elapsed;
+  }
+
+  runningTask.status = "Paused";
+  runningTask.pausedAt = now;
+  runningTask.startedAt = null;
+  runningTask.lastUpdated = now;
+
+  await runningTask.save();
+}
 
 const task = await Task.findOne({
   _id: req.params.id,
@@ -1359,10 +1388,11 @@ if (!task) {
 // If the task is already running, keep the original startedAt
 if (task.status !== "In Progress") {
   task.status = "In Progress";
-  task.startedAt = new Date();
+  task.startedAt = now;
+  task.pausedAt = null;
 }
 
-task.lastUpdated = new Date();
+task.lastUpdated = now;
 
 await task.save();
 
@@ -1372,6 +1402,39 @@ await task.save();
         message: "Task not found",
       });
     }
+    employee.currentTask =
+  task.title;
+
+employee.currentTaskId =
+  task._id;
+
+employee.currentTaskCode =
+  task.taskCode || "";
+
+employee.currentTaskTitle =
+  task.title || "";
+
+employee.currentTicketId =
+  task.ticketId || null;
+
+employee.currentClient =
+  task.clientName || "—";
+
+employee.currentProject =
+  task.projectName ||
+  task.project ||
+  "—";
+
+employee.currentTaskStartedAt =
+  task.startedAt;
+
+employee.status =
+  "Working";
+
+employee.lastActivityAt =
+  new Date();
+
+await employee.save();
     // Store active task on employee profile
     employee.currentTaskId = task._id;
     employee.currentTaskCode = task.taskCode;
@@ -2202,30 +2265,38 @@ router.get("/time-log/activity", authenticateUser, async (req, res, next) => {
       return res.status(404).json({ success: false, message: "Employee not found" });
     }
 
-    const today = getISTDateBucket(new Date());
+    const todayBucket = getISTDateBucket(new Date());
 
-    const logs = await ActivityLog.find({
+    const logs = await AgentDailySummary.find({
+      employeeId: employee._id,
       employeeCode: employee.employeeCode,
-      date: today,
+      date: todayBucket,
     })
-      .sort({ startTime: -1 })
+      .sort({ lastSeen: -1 })
       .lean();
 
     res.json({
       success: true,
       data: logs.map((log) => ({
         id: log._id,
-        capturedAt: log.startTime,
+        capturedAt: log.lastSeen || log.firstSeen || null,
         application: log.application,
-        windowTitle: log.windowTitle,
-        durationSeconds: log.durationSeconds,
+        windowTitle: log.lastWindowTitle || "",
+        durationSeconds: Number(log.totalSeconds || 0),
+        sessionCount: Number(log.sessionCount || 0),
         category: log.category,
         activity: log.activity,
         project: log.project,
         client: log.client,
+        taskId: log.taskId || null,
         taskCode: log.taskCode || "",
+        taskTitle: log.taskTitle || "",
+        taskStatus: log.taskStatus || "",
+        ticketId: log.ticketId || null,
         ticketCode: log.ticketCode || "",
-        uploaded: !!log.uploaded,
+        firstSeen: log.firstSeen || null,
+        lastSeen: log.lastSeen || null,
+        pcName: log.pcName || "",
       })),
     });
   } catch (err) {

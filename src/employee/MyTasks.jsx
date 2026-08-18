@@ -526,9 +526,23 @@ export default function MyTasks() {
         return () => window.clearInterval(intervalId);
     }, []);
 
-    const filteredTasks = useMemo(() => {
-        return tasks.filter((task) => {
-            const search = searchValue.trim().toLowerCase();
+const filteredTasks = useMemo(() => {
+    const priorityRank = {
+        Critical: 4,
+        High: 3,
+        Medium: 2,
+        Low: 1,
+    };
+
+    const completedStatuses = [
+        "Completed",
+        "Resolved",
+    ];
+
+    return tasks
+        .filter((task) => {
+            const search =
+                searchValue.trim().toLowerCase();
 
             const matchesSearch =
                 !search ||
@@ -566,7 +580,7 @@ export default function MyTasks() {
                 matchesDue =
                     !isTaskOverdue(task) &&
                     !isTaskDueToday(task) &&
-                    !["Completed", "Resolved"].includes(
+                    !completedStatuses.includes(
                         task.status
                     );
             }
@@ -577,14 +591,64 @@ export default function MyTasks() {
                 matchesPriority &&
                 matchesDue
             );
+        })
+        .sort((a, b) => {
+            /*
+             * RULE 1:
+             * Active tasks always appear
+             * before completed tasks.
+             */
+            const aCompleted =
+                completedStatuses.includes(a.status);
+
+            const bCompleted =
+                completedStatuses.includes(b.status);
+
+            if (aCompleted !== bCompleted) {
+                return aCompleted ? 1 : -1;
+            }
+
+            /*
+             * RULE 2:
+             * Higher priority first.
+             *
+             * Critical
+             * High
+             * Medium
+             * Low
+             */
+            const priorityDifference =
+                (priorityRank[b.priority] || 0) -
+                (priorityRank[a.priority] || 0);
+
+            if (priorityDifference !== 0) {
+                return priorityDifference;
+            }
+
+            /*
+             * RULE 3:
+             * Same priority =
+             * newest task first.
+             */
+            const aCreatedAt =
+                new Date(
+                    a.createdAt || 0
+                ).getTime();
+
+            const bCreatedAt =
+                new Date(
+                    b.createdAt || 0
+                ).getTime();
+
+            return bCreatedAt - aCreatedAt;
         });
-    }, [
-        tasks,
-        searchValue,
-        statusFilter,
-        priorityFilter,
-        dueFilter,
-    ]);
+}, [
+    tasks,
+    searchValue,
+    statusFilter,
+    priorityFilter,
+    dueFilter,
+]);
 
     const activeCount = summary.active;
     const inProgressCount = summary.inProgress;

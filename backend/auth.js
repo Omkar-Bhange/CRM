@@ -4,10 +4,11 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const authenticateUser = require("./authMiddleware");
 const axios = require("axios");
+const crypto = require("crypto");
+const AuthSession = require("./models/AuthSession");
 
 const router = express.Router();
-require("./employee"); // registers the Employee model
-const Employee = mongoose.model("Employee");
+
 /* =========================================================
    USER SCHEMA
    Admin, Employee and Client use the same users collection
@@ -142,6 +143,19 @@ const AgentDailyLogin =
    TOKEN GENERATOR
    ========================================================= */
 
+/* =========================================================
+   AUTH TOKEN + SESSION HELPERS
+========================================================= */
+
+const ACCESS_TOKEN_EXPIRES_IN = "30m";
+const REFRESH_SESSION_DAYS = 7;
+
+/*
+  Kept only for backward compatibility with the
+  first-admin registration API during this migration.
+
+  Normal /login now uses session-based access tokens.
+*/
 function generateToken(user) {
   return jwt.sign(
     {
@@ -149,18 +163,188 @@ function generateToken(user) {
       role: user.role,
       email: user.email,
       employeeCode: user.employeeCode || "",
-
-      clientId:
-        user.clientId || null,
-
-      clientCode:
-        user.clientCode || "",
+      clientId: user.clientId || null,
+      clientCode: user.clientCode || "",
     },
     process.env.JWT_SECRET,
     {
       expiresIn: "7d",
     }
   );
+}
+
+/* =========================================================
+   ACCESS TOKEN
+
+   Short-lived JWT used for normal API requests.
+========================================================= */
+
+function generateAccessToken(
+  user,
+  sessionId
+) {
+  return jwt.sign(
+    {
+      userId: user._id,
+      role: user.role,
+      email: user.email,
+
+      employeeCode:
+        user.employeeCode || "",
+
+      clientId:
+        user.clientId || null,
+
+      clientCode:
+        user.clientCode || "",
+
+      /*
+        sid connects this JWT with the MongoDB AuthSession.
+      */
+      sid: sessionId,
+    },
+    process.env.JWT_SECRET,
+    {
+      expiresIn:
+        ACCESS_TOKEN_EXPIRES_IN,
+    }
+  );
+}
+
+/* =========================================================
+   REFRESH TOKEN
+
+   Refresh token is an opaque random secret.
+
+   It is NOT a JWT and the raw value must never be stored
+   in MongoDB.
+========================================================= */
+
+function generateRefreshToken() {
+  return crypto
+    .randomBytes(48)
+    .toString("hex");
+}
+
+/* =========================================================
+   REFRESH TOKEN HASH
+
+   MongoDB stores only this hash.
+========================================================= */
+
+function hashRefreshToken(
+  refreshToken
+) {
+  return crypto
+    .createHash("sha256")
+    .update(
+      String(refreshToken)
+    )
+    .digest("hex");
+}
+
+/* =========================================================
+   SESSION ID
+========================================================= */
+
+function generateSessionId() {
+  return crypto.randomUUID();
+}
+
+/* =========================================================
+   SESSION EXPIRY
+========================================================= */
+
+function createSessionExpiry() {
+  return new Date(
+    Date.now() +
+      REFRESH_SESSION_DAYS *
+        24 *
+        60 *
+        60 *
+        1000
+  );
+}
+
+/* =========================================================
+   CLIENT IP
+========================================================= */
+
+function getRequestIp(req) {
+  const forwarded =
+    req.headers["x-forwarded-for"];
+
+  if (forwarded) {
+    return String(forwarded)
+      .split(",")[0]
+      .trim();
+  }
+
+  return (
+    req.ip ||
+    req.socket?.remoteAddress ||
+    ""
+  );
+}
+
+/* =========================================================
+   CREATE AUTH SESSION
+========================================================= */
+
+async function createAuthSession(
+  user,
+  req
+) {
+  const sessionId =
+    generateSessionId();
+
+  const refreshToken =
+    generateRefreshToken();
+
+  const refreshTokenHash =
+    hashRefreshToken(
+      refreshToken
+    );
+
+  const expiresAt =
+    createSessionExpiry();
+
+  await AuthSession.create({
+    userId:
+      user._id,
+
+    sessionId,
+
+    refreshTokenHash,
+
+    userAgent:
+      String(
+        req.headers[
+          "user-agent"
+        ] || ""
+      ).slice(0, 500),
+
+    ipAddress:
+      getRequestIp(req),
+
+    lastUsedAt:
+      new Date(),
+
+    expiresAt,
+  });
+
+  const accessToken =
+    generateAccessToken(
+      user,
+      sessionId
+    );
+
+  return {
+    sessionId,
+    accessToken,
+    refreshToken,
+    expiresAt,
+  };
 }
 function getISTDateString() {
   const now = new Date();
@@ -346,11 +530,37 @@ router.post("/login", async (req, res, next) => {
       });
     }
 
-    user.lastLoginAt = new Date();
-    await user.save();
+   user.lastLoginAt =
+  new Date();
 
-    const token = generateToken(user);
-   const employee = await Employee.findOne({ userId: user._id });
+await user.save();
+
+/*
+  Create one server-side session for this browser/device.
+*/
+const authSession =
+  await createAuthSession(
+    user,
+    req
+  );
+
+/*
+  Keep the variable name `token`
+  because your CURRENT frontend expects result.token.
+
+  token = short-lived access token.
+*/
+const token =
+  authSession.accessToken;
+
+const Employee =
+  mongoose.models.Employee;
+
+const employee = Employee
+  ? await Employee.findOne({
+      userId: user._id,
+    })
+  : null;
 
 
 if (employee && employee.employeeCode) {
@@ -389,6 +599,22 @@ if (employee && employee.employeeCode) {
       success: true,
       message: "Login successful.",
       token,
+      /*
+  New explicit name used by Stage 3 frontend.
+*/
+accessToken:
+  token,
+
+refreshToken:
+  authSession.refreshToken,
+
+session: {
+  id:
+    authSession.sessionId,
+
+  expiresAt:
+    authSession.expiresAt,
+},
       user: {
   id: user._id,
   name: user.name,
@@ -422,7 +648,321 @@ if (employee && employee.employeeCode) {
     next(error);
   }
 });
+/* =========================================================
+   REFRESH ACCESS TOKEN
 
+   POST /api/auth/refresh
+
+   Body:
+   {
+     refreshToken
+   }
+
+   Refresh-token rotation is used:
+   old refresh token -> invalid
+   new refresh token -> saved
+========================================================= */
+
+router.post(
+  "/refresh",
+  async (req, res, next) => {
+    try {
+      const {
+        refreshToken,
+      } = req.body;
+
+      if (!refreshToken) {
+        return res
+          .status(401)
+          .json({
+            success: false,
+            code:
+              "REFRESH_TOKEN_REQUIRED",
+            message:
+              "Refresh token is required.",
+          });
+      }
+
+      const refreshTokenHash =
+        hashRefreshToken(
+          refreshToken
+        );
+
+      /*
+        refreshTokenHash has select:false in the schema,
+        so explicitly request it here.
+      */
+      const session =
+        await AuthSession.findOne({
+          refreshTokenHash,
+        }).select(
+          "+refreshTokenHash"
+        );
+
+      if (!session) {
+        return res
+          .status(401)
+          .json({
+            success: false,
+            code:
+              "INVALID_REFRESH_TOKEN",
+            message:
+              "Your session is invalid. Please sign in again.",
+          });
+      }
+
+      if (
+        session.revokedAt
+      ) {
+        return res
+          .status(401)
+          .json({
+            success: false,
+            code:
+              "SESSION_REVOKED",
+            message:
+              "Your session has ended. Please sign in again.",
+          });
+      }
+
+      if (
+        !session.expiresAt ||
+        session.expiresAt.getTime() <=
+          Date.now()
+      ) {
+        return res
+          .status(401)
+          .json({
+            success: false,
+            code:
+              "SESSION_EXPIRED",
+            message:
+              "Your session has expired. Please sign in again.",
+          });
+      }
+
+      const user =
+        await User.findById(
+          session.userId
+        );
+
+      if (!user) {
+        session.revokedAt =
+          new Date();
+
+        session.revokedReason =
+          "User account not found";
+
+        await session.save();
+
+        return res
+          .status(401)
+          .json({
+            success: false,
+            code:
+              "USER_NOT_FOUND",
+            message:
+              "Your account no longer exists.",
+          });
+      }
+
+      if (
+        user.status !==
+        "Active"
+      ) {
+        session.revokedAt =
+          new Date();
+
+        session.revokedReason =
+          `Account ${user.status}`;
+
+        await session.save();
+
+        return res
+          .status(403)
+          .json({
+            success: false,
+            code:
+              "ACCOUNT_DISABLED",
+            message:
+              "Your account is not active. Please contact the administrator.",
+          });
+      }
+
+      /*
+        ROTATE REFRESH TOKEN
+
+        The token presented by the browser becomes invalid
+        immediately after successful refresh.
+      */
+      const newRefreshToken =
+        generateRefreshToken();
+
+      session.refreshTokenHash =
+        hashRefreshToken(
+          newRefreshToken
+        );
+
+      session.lastUsedAt =
+        new Date();
+
+      /*
+        Do NOT extend expiresAt here.
+
+        The session has a fixed seven-day maximum life
+        measured from login.
+      */
+      await session.save();
+
+      const accessToken =
+        generateAccessToken(
+          user,
+          session.sessionId
+        );
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          message:
+            "Session refreshed successfully.",
+
+          token:
+            accessToken,
+
+          accessToken,
+
+          refreshToken:
+            newRefreshToken,
+
+          session: {
+            id:
+              session.sessionId,
+
+            expiresAt:
+              session.expiresAt,
+          },
+        });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+/* =========================================================
+   LOGOUT CURRENT SESSION
+
+   POST /api/auth/logout
+
+   Body:
+   {
+     refreshToken
+   }
+
+   This deliberately affects ONLY authentication.
+   It does NOT end employee attendance/workday.
+========================================================= */
+
+router.post(
+  "/logout",
+  async (req, res, next) => {
+    try {
+      const {
+        refreshToken,
+      } = req.body || {};
+
+      /*
+        Logout should be idempotent.
+
+        If the frontend has already lost the refresh token,
+        we still return success because its local credentials
+        can simply be cleared.
+      */
+      if (!refreshToken) {
+        return res
+          .status(200)
+          .json({
+            success: true,
+            message:
+              "Logged out successfully.",
+          });
+      }
+
+      const refreshTokenHash =
+        hashRefreshToken(
+          refreshToken
+        );
+
+      await AuthSession.findOneAndUpdate(
+        {
+          refreshTokenHash,
+          revokedAt: null,
+        },
+        {
+          $set: {
+            revokedAt:
+              new Date(),
+
+            revokedReason:
+              "User logout",
+          },
+        }
+      );
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+          message:
+            "Logged out successfully.",
+        });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+/* =========================================================
+   LOGOUT FROM ALL DEVICES
+
+   POST /api/auth/logout-all
+========================================================= */
+
+router.post(
+  "/logout-all",
+  authenticateUser,
+  async (req, res, next) => {
+    try {
+      await AuthSession.updateMany(
+        {
+          userId:
+            req.user._id,
+
+          revokedAt:
+            null,
+        },
+        {
+          $set: {
+            revokedAt:
+              new Date(),
+
+            revokedReason:
+              "Logout from all devices",
+          },
+        }
+      );
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+          message:
+            "All sessions have been signed out successfully.",
+        });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 /* =========================================================
    CURRENT USER
 
@@ -584,12 +1124,38 @@ router.post(
       user.mustChangePassword =
         false;
 
-      user.passwordChangedAt =
-        new Date();
+user.passwordChangedAt =
+  new Date();
 
-      await user.save();
+await user.save();
 
-      return res
+/*
+  Security rule:
+
+  Password change invalidates every active login session.
+
+  User must sign in again using the new password.
+*/
+await AuthSession.updateMany(
+  {
+    userId:
+      user._id,
+
+    revokedAt:
+      null,
+  },
+  {
+    $set: {
+      revokedAt:
+        new Date(),
+
+      revokedReason:
+        "Password changed",
+    },
+  }
+);
+
+return res
         .status(200)
         .json({
           success: true,

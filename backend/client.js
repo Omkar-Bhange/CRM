@@ -1385,6 +1385,273 @@ router.put("/tickets/:id", upload.single("attachment"), async (req, res, next) =
     next(error);
   }
 });
+async function findBestEmployeeForTicket(client) {
+  const Employee =
+    mongoose.models.Employee;
+
+  const Task =
+    mongoose.models.Task;
+
+  const SupportTicket =
+    mongoose.models.SupportTicket;
+
+  if (!Employee) {
+    throw new Error(
+      "Employee model is not available."
+    );
+  }
+
+  /*
+   * Eligible employees:
+   * Free or Working only.
+   *
+   * Never auto-assign:
+   * Break
+   * Leave
+   * Offline
+   * Inactive
+   */
+  const employees =
+    await Employee.find({
+      isActive: {
+        $ne: false,
+      },
+
+      status: {
+        $in: [
+          "Free",
+          "Working",
+        ],
+      },
+    }).lean();
+
+  if (!employees.length) {
+    return null;
+  }
+
+  const employeeIds =
+    employees.map(
+      (employee) =>
+        employee._id
+    );
+
+  /*
+   * Count active tasks.
+   */
+  const taskCounts = Task
+    ? await Task.aggregate([
+        {
+          $match: {
+            assignedEmployeeId: {
+              $in: employeeIds,
+            },
+
+            isDeleted: false,
+
+            status: {
+              $nin: [
+                "Completed",
+                "Closed",
+                "Cancelled",
+              ],
+            },
+          },
+        },
+
+        {
+          $group: {
+            _id:
+              "$assignedEmployeeId",
+
+            count: {
+              $sum: 1,
+            },
+          },
+        },
+      ])
+    : [];
+
+  const taskMap =
+    new Map(
+      taskCounts.map(
+        (item) => [
+          String(item._id),
+          Number(item.count || 0),
+        ]
+      )
+    );
+
+  /*
+   * Count active tickets.
+   */
+  const ticketCounts =
+    SupportTicket
+      ? await SupportTicket.aggregate([
+          {
+            $match: {
+              assignedEmployeeId: {
+                $in: employeeIds,
+              },
+
+              isDeleted: false,
+
+              status: {
+                $nin: [
+                  "Resolved",
+                  "Verified",
+                  "Closed",
+                  "Cancelled",
+                ],
+              },
+            },
+          },
+
+          {
+            $group: {
+              _id:
+                "$assignedEmployeeId",
+
+              count: {
+                $sum: 1,
+              },
+            },
+          },
+        ])
+      : [];
+
+  const ticketMap =
+    new Map(
+      ticketCounts.map(
+        (item) => [
+          String(item._id),
+          Number(item.count || 0),
+        ]
+      )
+    );
+
+  const ranked =
+    employees.map(
+      (employee) => {
+        const activeTasks =
+          taskMap.get(
+            String(employee._id)
+          ) || 0;
+
+        const activeTickets =
+          ticketMap.get(
+            String(employee._id)
+          ) || 0;
+
+        return {
+          employee,
+
+          activeTasks,
+
+          activeTickets,
+
+          workload:
+            activeTasks +
+            activeTickets,
+        };
+      }
+    );
+
+  /*
+   * ==========================================
+   * RULE 1
+   * Client's assigned employee ONLY if FREE.
+   * ==========================================
+   */
+
+  if (
+    client.assignedEmployeeId
+  ) {
+    const preferred =
+      ranked.find(
+        (item) =>
+          String(
+            item.employee._id
+          ) ===
+          String(
+            client.assignedEmployeeId
+          )
+      );
+
+    if (
+      preferred &&
+      preferred.employee.status ===
+        "Free"
+    ) {
+      return {
+        ...preferred,
+
+        reason:
+          "CLIENT_EMPLOYEE_FREE",
+      };
+    }
+  }
+
+  /*
+   * ==========================================
+   * RULE 2
+   * Any FREE employee with least workload.
+   * ==========================================
+   */
+
+  const freeEmployees =
+    ranked
+      .filter(
+        (item) =>
+          item.employee.status ===
+          "Free"
+      )
+      .sort(
+        (a, b) =>
+          a.workload -
+          b.workload
+      );
+
+  if (freeEmployees.length) {
+    return {
+      ...freeEmployees[0],
+
+      reason:
+        "FREE_EMPLOYEE_LEAST_WORKLOAD",
+    };
+  }
+
+  /*
+   * ==========================================
+   * RULE 3
+   * Nobody Free -> Working employee
+   * with least workload.
+   * ==========================================
+   */
+
+  const workingEmployees =
+    ranked
+      .filter(
+        (item) =>
+          item.employee.status ===
+          "Working"
+      )
+      .sort(
+        (a, b) =>
+          a.workload -
+          b.workload
+      );
+
+  if (workingEmployees.length) {
+    return {
+      ...workingEmployees[0],
+
+      reason:
+        "WORKING_EMPLOYEE_LEAST_WORKLOAD",
+    };
+  }
+
+  return null;
+}
 
 router.post("/tickets", upload.single("attachment"), async (req, res, next) => {
   try {
@@ -1416,9 +1683,59 @@ router.post("/tickets", upload.single("attachment"), async (req, res, next) => {
       (p) => p.productName === productName
     );
 
-    const ticketCode = await generateTicketCode();
+ const ticketCode =
+  await generateTicketCode();
 
-    const ticket = await SupportTicket.create({
+/*
+ * Smart employee selection
+ */
+const autoAssignment =
+  await findBestEmployeeForTicket(
+    client
+  );
+
+const assignedEmployee =
+  autoAssignment?.employee ||
+  null;
+
+console.log(
+  "[AUTO TICKET ASSIGNMENT]",
+  {
+    ticketCode,
+
+    client:
+      client.companyName,
+
+    employee:
+      assignedEmployee
+        ? assignedEmployee.name
+        : "Unassigned",
+
+    employeeCode:
+      assignedEmployee
+        ? assignedEmployee.employeeCode
+        : "",
+
+    reason:
+      autoAssignment?.reason ||
+      "NO_AVAILABLE_EMPLOYEE",
+
+    workload:
+      autoAssignment?.workload ??
+      null,
+
+    activeTasks:
+      autoAssignment?.activeTasks ??
+      null,
+
+    activeTickets:
+      autoAssignment?.activeTickets ??
+      null,
+  }
+);
+
+const ticket =
+  await SupportTicket.create({
       ticketCode,
       title: String(title).trim(),
       description: String(description).trim(),
@@ -1439,11 +1756,25 @@ router.post("/tickets", upload.single("attachment"), async (req, res, next) => {
       priority: priority || "Medium",
       source: "Client Portal",
 
-      assignedEmployeeId: client.assignedEmployeeId || null,
-      assignedEmployeeCode: client.assignedEmployeeCode || "",
-      assignedEmployeeName:
-        client.assignedEmployeeName || "Unassigned",
-      assignedAt: client.assignedEmployeeId ? new Date() : null,
+assignedEmployeeId:
+  assignedEmployee
+    ? assignedEmployee._id
+    : null,
+
+assignedEmployeeCode:
+  assignedEmployee
+    ? assignedEmployee.employeeCode || ""
+    : "",
+
+assignedEmployeeName:
+  assignedEmployee
+    ? assignedEmployee.name
+    : "Unassigned",
+
+assignedAt:
+  assignedEmployee
+    ? new Date()
+    : null,
 
       createdBy: req.user._id,
       createdByName:

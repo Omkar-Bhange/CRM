@@ -518,7 +518,96 @@ export default function TimeLog() {
     const [dashboardData, setDashboardData] = useState(null);
     const [taskSessions, setTaskSessions] = useState([]);
 
-    const applicationUsage = apiApplications;
+    const applicationUsage = useMemo(() => {
+    const applicationMap = new Map();
+
+    for (const app of apiApplications) {
+        const applicationName =
+            app.applicationName ||
+            app.application ||
+            "Unknown Application";
+
+        // Normalize name so "Google Chrome" and "google chrome"
+        // are treated as the same application.
+        const key = applicationName.trim().toLowerCase();
+
+        if (!applicationMap.has(key)) {
+            applicationMap.set(key, {
+                ...app,
+                applicationName,
+                totalSeconds: 0,
+                sessionCount: 0,
+            });
+        }
+
+        const merged = applicationMap.get(key);
+
+        merged.totalSeconds += Number(app.totalSeconds || 0);
+        merged.sessionCount += Number(app.sessionCount || 0);
+
+        // Keep most recent application/window information.
+        const oldTime = merged.lastSeen
+            ? new Date(merged.lastSeen).getTime()
+            : 0;
+
+        const newTime = app.lastSeen
+            ? new Date(app.lastSeen).getTime()
+            : 0;
+
+        if (newTime >= oldTime) {
+            merged.lastSeen = app.lastSeen || merged.lastSeen;
+
+            merged.lastWindowTitle =
+                app.lastWindowTitle ||
+                merged.lastWindowTitle;
+
+            merged.category =
+                app.category ||
+                merged.category;
+        }
+
+        // Productive takes priority if application has mixed task records.
+        if (app.productivity === "Productive") {
+            merged.productivity = "Productive";
+        } else if (
+            app.productivity === "Unproductive" &&
+            merged.productivity !== "Productive"
+        ) {
+            merged.productivity = "Unproductive";
+        } else if (!merged.productivity) {
+            merged.productivity = "Neutral";
+        }
+    }
+
+    const mergedApplications = Array.from(
+        applicationMap.values()
+    );
+
+    const totalSeconds = mergedApplications.reduce(
+        (sum, app) =>
+            sum + Number(app.totalSeconds || 0),
+        0
+    );
+
+    return mergedApplications
+        .map((app) => ({
+            ...app,
+
+            percentage:
+                totalSeconds > 0
+                    ? Math.round(
+                          (Number(app.totalSeconds || 0) /
+                              totalSeconds) *
+                              100
+                      )
+                    : 0,
+        }))
+        .sort(
+            (a, b) =>
+                Number(b.totalSeconds || 0) -
+                Number(a.totalSeconds || 0)
+        );
+}, [apiApplications]);
 
     const timeDistribution = useMemo(() => {
         const total = apiApplications.reduce(
@@ -552,24 +641,83 @@ export default function TimeLog() {
 
             if (!token) return;
 
-            const [timeRes, dashboardRes, sessionsRes] = await Promise.all([
-                fetch(`${API_BASE_URL}/api/employee/time-log/today`, {
-                    headers: { Authorization: `Bearer ${token}` },
-                }),
-                fetch(`${API_BASE_URL}/api/employee/tasks/dashboard`, {
-                    headers: { Authorization: `Bearer ${token}` },
-                }),
-                fetch(`${API_BASE_URL}/api/employee/time-log/sessions`, {
-                    headers: { Authorization: `Bearer ${token}` },
-                }),
-            ]);
+            const [timeRes, dashboardRes, sessionsRes, activityRes] =
+                await Promise.all([
+                    fetch(`${API_BASE_URL}/api/employee/time-log/today`, {
+                        headers: { Authorization: `Bearer ${token}` },
+                    }),
+                    fetch(`${API_BASE_URL}/api/employee/tasks/dashboard`, {
+                        headers: { Authorization: `Bearer ${token}` },
+                    }),
+                    fetch(`${API_BASE_URL}/api/employee/time-log/sessions`, {
+                        headers: { Authorization: `Bearer ${token}` },
+                    }),
+                    fetch(`${API_BASE_URL}/api/employee/time-log/activity`, {
+                        headers: { Authorization: `Bearer ${token}` },
+                    }),
+                ]);
 
             const timeResult = await timeRes.json();
             const dashboardResult = await dashboardRes.json();
             const sessionsResult = await sessionsRes.json();
+            const activityResult = await activityRes.json();
+
 
             if (sessionsResult.success) {
                 setTaskSessions(sessionsResult.data);
+            }
+            if (activityResult.success) {
+                const mappedEvents = (activityResult.data || []).map((log) => {
+                    const category = log.category || "Other";
+                    const productivity =
+                        log.productivity ||
+                        (category === "Development" ||
+                        category === "Database" ||
+                        category === "Design" ||
+                        category === "Documentation" ||
+                        category === "Office"
+                            ? "Productive"
+                            : category === "Entertainment" ||
+                              category === "Social Media" ||
+                              category === "Games"
+                            ? "Unproductive"
+                            : "Neutral");
+
+                    return {
+                        id: log.id || log._id,
+                        capturedAt:
+                            log.capturedAt || log.lastSeen || log.firstSeen || null,
+                        applicationName:
+                            log.applicationName ||
+                            log.application ||
+                            "Unknown Application",
+                        windowTitle:
+                            log.windowTitle || log.lastWindowTitle || "",
+                        category,
+                        productivity,
+                        activityStatus: log.activity || "Active",
+                        durationSeconds: Number(
+                            log.durationSeconds ?? log.totalSeconds ?? 0
+                        ),
+                        sessionCount: Number(log.sessionCount ?? 0),
+                        taskId: log.taskCode || "",
+                        taskCode: log.taskCode || "",
+                        taskTitle: log.taskTitle || "",
+                        taskStatus: log.taskStatus || "",
+                        ticketId: log.ticketCode || "",
+                        ticketCode: log.ticketCode || "",
+                        project: log.project || "",
+                        client: log.client || "",
+                        pcName: log.pcName || "",
+                    };
+                });
+
+                setAgentEvents(mappedEvents);
+            } else {
+                console.error(
+                    "Failed to load agent activity:",
+                    activityResult?.message || "The server did not return activity data."
+                );
             }
 
             if (timeResult.success) {
@@ -584,20 +732,19 @@ export default function TimeLog() {
                 }));
             }
 
-           if (dashboardResult.success) {
-              setDashboardData(dashboardResult.data);
-  setDashboardMetrics({
-    
-    tasksCompleted: dashboardResult.data.tasksCompleted || 0,
-    ticketsSolved: dashboardResult.data.ticketsSolved || 0,
-    supportCalls: dashboardResult.data.supportCalls || 0,
-  });
+            if (dashboardResult.success) {
+                setDashboardData(dashboardResult.data);
+                setDashboardMetrics({
+                    tasksCompleted: dashboardResult.data.tasksCompleted || 0,
+                    ticketsSolved: dashboardResult.data.ticketsSolved || 0,
+                    supportCalls: dashboardResult.data.supportCalls || 0,
+                });
 
-  setAttendanceStatus(
-    dashboardResult.data.attendanceStatus || "Present"
-  );
-}
-            
+                setAttendanceStatus(
+                    dashboardResult.data.attendanceStatus || "Present"
+                );
+            }
+
         } catch (error) {
             console.error("Failed to load time log/dashboard:", error);
         } finally {
@@ -606,27 +753,7 @@ export default function TimeLog() {
     };
 
 
-    useEffect(() => {
-        // If there is no active task, reset timer
-        if (!dashboardData?.activeTimer) {
-            setLiveTaskSeconds(0);
-            return;
-        }
 
-        // Initialize timer from backend
-        setLiveTaskSeconds(dashboardData.activeTimer.elapsedSeconds || 0);
-
-        // Only run the timer when task is In Progress
-        if (dashboardData.activeTimer.status !== "In Progress") {
-            return;
-        }
-
-        const interval = setInterval(() => {
-            setLiveTaskSeconds((prev) => prev + 1);
-        }, 1000);
-
-        return () => clearInterval(interval);
-    }, [dashboardData?.activeTimer]);
     useEffect(() => {
         fetchTimeLog();
 
@@ -730,37 +857,64 @@ export default function TimeLog() {
         }
     };
     const activeTaskSeconds = liveTaskSeconds;
-    useEffect(() => {
-        const active = dashboardData?.activeTimer;
+useEffect(() => {
+    const active = dashboardData?.activeTimer;
 
-        if (!active) {
-            setLiveTaskSeconds(0);
-            return;
-        }
+    if (!active) {
+        setLiveTaskSeconds(0);
+        return;
+    }
 
-        const baseSeconds = Number(active.elapsedSeconds || 0);
+    const savedSeconds = Number(active.elapsedSeconds || 0);
 
-        setLiveTaskSeconds(baseSeconds);
+    // Paused / completed / not running:
+    // just show the saved backend value.
+    if (
+        active.status !== "In Progress" ||
+        !active.startedAt
+    ) {
+        setLiveTaskSeconds(savedSeconds);
+        return;
+    }
 
-        if (active.status !== "In Progress") return;
+    const startedAtMs =
+        new Date(active.startedAt).getTime();
 
-        const startedAt = new Date(active.startedAt).getTime();
+    if (Number.isNaN(startedAtMs)) {
+        setLiveTaskSeconds(savedSeconds);
+        return;
+    }
 
-        const tick = () => {
-            const running = Math.max(
-                0,
-                Math.floor((Date.now() - startedAt) / 1000)
-            );
+    const updateTimer = () => {
+        const runningSeconds = Math.max(
+            0,
+            Math.floor(
+                (Date.now() - startedAtMs) / 1000
+            )
+        );
 
-            setLiveTaskSeconds(baseSeconds + running);
-        };
+        setLiveTaskSeconds(
+            savedSeconds + runningSeconds
+        );
+    };
 
-        tick();
+    // Update immediately
+    updateTimer();
 
-        const interval = setInterval(tick, 1000);
+    const interval = window.setInterval(
+        updateTimer,
+        1000
+    );
 
-        return () => clearInterval(interval);
-    }, [dashboardData?.activeTimer]);
+    return () => {
+        window.clearInterval(interval);
+    };
+}, [
+    dashboardData?.activeTimer?._id,
+    dashboardData?.activeTimer?.status,
+    dashboardData?.activeTimer?.startedAt,
+    dashboardData?.activeTimer?.elapsedSeconds,
+]);
     const endCurrentSession = async () => {
         if (!dashboardData?.activeTimer) return;
 
@@ -988,7 +1142,7 @@ export default function TimeLog() {
 
                 <MetricCard
                     label="Applications"
-                    value={apiApplications.length}
+                    value={applicationUsage.length}
                     description="Applications used today"
                     icon={AppWindow}
                     iconClass="bg-blue-100 text-blue-700"
@@ -1238,7 +1392,7 @@ export default function TimeLog() {
                                 </div>
 
                                 <div className="divide-y divide-slate-100">
-                                    {apiApplications.slice(0, 5).map((app) => (
+                                   {applicationUsage.slice(0, 5).map((app) => (
                                         <div key={app.applicationName} className="flex items-start gap-3 px-5 py-4">
                                             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
                                                 <AppWindow size={17} />
@@ -1409,7 +1563,7 @@ export default function TimeLog() {
                                         </th>
 
                                         <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                            Input Activity
+                                            Sessions
                                         </th>
 
                                         <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
@@ -1423,62 +1577,102 @@ export default function TimeLog() {
                                 </thead>
 
                                 <tbody className="divide-y divide-slate-100">
-                                    {apiApplications.map((app, index) => (
-                                        <tr
-                                            key={`${app.applicationName}-${index}`}
-                                            className="transition hover:bg-slate-50/70"
-                                        >
-                                            <td className="px-5 py-4 text-xs font-semibold text-slate-700">
-                                                {app.lastSeen ? formatAgentTime(app.lastSeen) : "--"}
-                                            </td>
-
-                                            <td className="px-4 py-4">
-                                                <p className="text-xs font-semibold text-slate-900">
-                                                    {app.applicationName}
-                                                </p>
-                                                <p className="mt-1 text-[10px] text-slate-500">
-                                                    {app.category}
-                                                </p>
-                                            </td>
-
-                                            <td className="max-w-80 px-4 py-4">
-                                                <p className="truncate text-xs text-slate-700">
-                                                    {app.lastWindowTitle || "--"}
-                                                </p>
-                                            </td>
-
-                                            <td className="px-4 py-4">
-                                                <p className="text-xs font-semibold text-violet-700">
-                                                    {app.project || "--"}
-                                                </p>
-                                                <p className="mt-1 text-[10px] text-blue-600">
-                                                    {app.client || ""}
-                                                </p>
-                                            </td>
-
-                                            <td className="px-4 py-4">
-                                                <span className="text-xs text-slate-700">
-                                                    {app.sessionCount} sessions
-                                                </span>
-                                            </td>
-
-                                            <td className="px-4 py-4">
-                                                <span
-                                                    className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ring-1 ring-inset ${getProductivityClasses(
-                                                        app.productivity
-                                                    )}`}
-                                                >
-                                                    {app.productivity}
-                                                </span>
-                                            </td>
-
-                                            <td className="px-5 py-4">
-                                                <span className="inline-flex rounded-full bg-green-100 px-2.5 py-1 text-[10px] font-semibold text-green-700 ring-1 ring-inset ring-green-200">
-                                                    Synced
-                                                </span>
+                                    {filteredEvents.length === 0 ? (
+                                        <tr>
+                                            <td
+                                                colSpan={7}
+                                                className="px-5 py-10 text-center text-xs text-slate-500"
+                                            >
+                                                {agentEvents.length === 0
+                                                    ? "No agent activity recorded yet today."
+                                                    : "No agent activity matches the current filters."}
                                             </td>
                                         </tr>
-                                    ))}
+                                    ) : (
+                                        filteredEvents.map((event) => (
+                                            <tr
+                                                key={event.id}
+                                                className="transition hover:bg-slate-50/70"
+                                            >
+                                                <td className="px-5 py-4 text-xs font-semibold text-slate-700">
+                                                    {event.capturedAt
+                                                        ? formatAgentTime(event.capturedAt)
+                                                        : "--"}
+                                                </td>
+
+                                                <td className="px-4 py-4">
+                                                    <p className="text-xs font-semibold text-slate-900">
+                                                        {event.applicationName}
+                                                    </p>
+                                                    <p className="mt-1 text-[10px] text-slate-500">
+                                                        {event.category}
+                                                    </p>
+                                                </td>
+
+                                                <td className="max-w-80 px-4 py-4">
+                                                    <p className="truncate text-xs text-slate-700">
+                                                        {event.windowTitle || "--"}
+                                                    </p>
+                                                </td>
+
+                                                <td className="px-4 py-4">
+                                                    <p className="text-xs font-semibold text-violet-700">
+                                                        {event.taskTitle ||
+                                                            event.taskId ||
+                                                            "No task assigned"}
+                                                    </p>
+                                                    {[
+                                                        event.taskTitle ? event.taskId : "",
+                                                        event.taskStatus,
+                                                        event.ticketId,
+                                                        event.project,
+                                                        event.client,
+                                                    ].some(Boolean) ? (
+                                                        <p className="mt-1 truncate text-[10px] text-slate-500">
+                                                            {[
+                                                                event.taskTitle
+                                                                    ? event.taskId
+                                                                    : "",
+                                                                event.taskStatus,
+                                                                event.ticketId,
+                                                                event.project,
+                                                                event.client,
+                                                            ]
+                                                                .filter(Boolean)
+                                                                .join(" / ")}
+                                                        </p>
+                                                    ) : null}
+                                                </td>
+
+                                                <td className="px-4 py-4">
+                                                    <span className="text-xs text-slate-700">
+                                                        {event.sessionCount} sessions /{" "}
+                                                        {formatSeconds(event.durationSeconds)}
+                                                    </span>
+                                                </td>
+
+                                                <td className="px-4 py-4">
+                                                    <span
+                                                        className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ring-1 ring-inset ${getProductivityClasses(
+                                                            event.productivity
+                                                        )}`}
+                                                    >
+                                                        {event.productivity}
+                                                    </span>
+                                                </td>
+
+                                                <td className="px-5 py-4">
+                                                    <span
+                                                        className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ring-1 ring-inset ${getActivityClasses(
+                                                            event.activityStatus
+                                                        )}`}
+                                                    >
+                                                        {event.activityStatus}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
                                 </tbody>
                             </table>
                         </div>
@@ -1499,12 +1693,12 @@ export default function TimeLog() {
                                     </p>
                                 </div>
 
-                                <div className="divide-y divide-slate-100">
-                                    {apiApplications.map((application, index) => (
-                                        <div
-                                            key={application.applicationName || index}
-                                            className="px-5 py-4"
-                                        >
+                            <div className="divide-y divide-slate-100">
+    {applicationUsage.map((application, index) => (
+        <div
+            key={application.applicationName || index}
+            className="px-5 py-4"
+        >
                                             <div className="flex items-center gap-3">
                                                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
                                                     <AppWindow size={17} />

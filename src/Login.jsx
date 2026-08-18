@@ -14,7 +14,9 @@ import {
   UserRound,
   Users,
 } from "lucide-react";
-
+import {
+  saveAuthSession,
+} from "./auth/authClient";
 const API_URL = "http://localhost:5000";
 
 const roles = [
@@ -105,25 +107,20 @@ export default function Login({ onLogin }) {
         );
       }
 
-      const storage = keepSignedIn
-        ? localStorage
-        : sessionStorage;
+  saveAuthSession({
+  accessToken:
+    result.accessToken ||
+    result.token,
 
-      localStorage.removeItem("client-connect-token");
-      localStorage.removeItem("client-connect-user");
+  refreshToken:
+    result.refreshToken,
 
-      sessionStorage.removeItem("client-connect-token");
-      sessionStorage.removeItem("client-connect-user");
+  user:
+    result.user,
 
-      storage.setItem(
-        "client-connect-token",
-        result.token
-      );
-
-      storage.setItem(
-        "client-connect-user",
-        JSON.stringify(result.user)
-      );
+  persistent:
+    keepSignedIn,
+});
 
       if (result.user.role === "employee") {
         try {
