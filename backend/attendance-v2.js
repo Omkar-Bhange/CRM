@@ -76,11 +76,11 @@ const Attendance =
           default: 0,
           min: 0,
         },
-        shiftStart: {
-          type: String,
-          default: "09:00",
-          trim: true,
-        },
+     shiftStart: {
+  type: String,
+  default: "10:00",
+  trim: true,
+},
         shiftEnd: {
           type: String,
           default: "18:00",
@@ -585,10 +585,9 @@ appliedAt: {
 
 const router = express.Router();
 router.use(authenticateUser);
-
-const DEFAULT_SHIFT_START = "09:00";
+const DEFAULT_SHIFT_START = "10:00";
 const DEFAULT_SHIFT_END = "18:00";
-const GRACE_MINUTES = 10;
+const GRACE_MINUTES = 15;
 const FULL_DAY_MINUTES = 480;
 const HALF_DAY_THRESHOLD_MINUTES = 240;
 const REGULARIZATION_TYPES = [

@@ -1,3 +1,4 @@
+import NexoraLogo from "../assets/NexoraLogo.png";
 import { useEffect, useMemo, useState } from "react";
 import ClientProfile from "./ClientProfile";
 import ClientDocuments from "./ClientDocuments";
@@ -189,47 +190,47 @@ export default function ClientLayout({ onLogout }) {
         setNotificationOpen(false);
     };
 
-const renderPage = () => {
-    if (activeMenu === "overview") {
+    const renderPage = () => {
+        if (activeMenu === "overview") {
+            return (
+                <ClientDashboard
+                    onNavigate={handleNavigation}
+                />
+            );
+        }
+
+        if (activeMenu === "products") {
+            return (
+                <MyProducts
+                    onNavigate={handleNavigation}
+                />
+            );
+        }
+
+        if (activeMenu === "billing") {
+            return <ClientBilling />;
+        }
+
+        if (activeMenu === "tickets") {
+            return <ClientTickets client={client} />;
+        }
+
+        if (activeMenu === "documents") {
+            return <ClientDocuments />;
+        }
+
+        if (activeMenu === "profile") {
+            return <ClientProfile client={client} />;
+        }
+
         return (
-            <ClientDashboard
-                onNavigate={handleNavigation}
+            <ComingSoonPage
+                title={currentPage.title}
+                description={currentPage.description}
+                icon={activeItem.icon}
             />
         );
-    }
-
-    if (activeMenu === "products") {
-        return (
-            <MyProducts
-                onNavigate={handleNavigation}
-            />
-        );
-    }
-
-    if (activeMenu === "billing") {
-        return <ClientBilling />;
-    }
-
-    if (activeMenu === "tickets") {
-        return <ClientTickets client={client} />;
-    }
-
-    if (activeMenu === "documents") {
-        return <ClientDocuments />;
-    }
-
-if (activeMenu === "profile") {
-    return <ClientProfile client={client} />;
-}
-
-    return (
-        <ComingSoonPage
-            title={currentPage.title}
-            description={currentPage.description}
-            icon={activeItem.icon}
-        />
-    );
-};
+    };
 
     return (
         <div className="enterprise-shell min-h-screen bg-[#f4f6fa] text-slate-900">
@@ -243,33 +244,25 @@ if (activeMenu === "profile") {
             )}
 
             <aside
-                className={`enterprise-sidebar fixed inset-y-0 left-0 z-50 flex w-[260px] flex-col border-r border-white/10 bg-[#0f172a] text-white transition-transform duration-300 lg:translate-x-0 ${
-                    sidebarOpen
+                className={`enterprise-sidebar fixed inset-y-0 left-0 z-50 flex w-[260px] flex-col border-r border-white/10 bg-[#0f172a] text-white transition-transform duration-300 lg:translate-x-0 ${sidebarOpen
                         ? "translate-x-0"
                         : "-translate-x-full"
-                }`}
+                    }`}
             >
-                <div className="flex h-[76px] shrink-0 items-center justify-between border-b border-white/10 px-5">
-                    <div className="flex min-w-0 items-center gap-3">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400 to-teal-500 text-sm font-bold text-slate-950 shadow-lg shadow-cyan-950/20">
-                            CC
-                        </div>
-
-                        <div className="min-w-0">
-                            <h1 className="truncate text-sm font-semibold tracking-tight">
-                                Client Connect
-                            </h1>
-
-                            <p className="truncate text-[10px] font-medium uppercase tracking-[0.12em] text-cyan-300">
-                                Client Portal
-                            </p>
-                        </div>
+                {/* Client Portal Brand */}
+                <div className="relative flex h-[92px] shrink-0 items-center border-b border-white/10 px-5">
+                    <div className="flex w-full items-center justify-center overflow-hidden">
+                        <img
+                            src={NexoraLogo}
+                            alt="Total Solution Nexora"
+                            className="h-[72px] w-[225px] scale-[3.45] object-contain"
+                        />
                     </div>
 
                     <button
                         type="button"
                         onClick={() => setSidebarOpen(false)}
-                        className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white/10 hover:text-white lg:hidden"
+                        className="absolute right-3 top-4 flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white/10 hover:text-white lg:hidden"
                     >
                         <X size={19} />
                     </button>
@@ -313,11 +306,10 @@ if (activeMenu === "profile") {
                                         handleNavigation(item.id)
                                     }
                                     aria-current={isActive ? "page" : undefined}
-                                    className={`enterprise-sidebar-nav-item group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all ${
-                                        isActive
+                                    className={`enterprise-sidebar-nav-item group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all ${isActive
                                             ? "bg-cyan-400/10 text-cyan-300"
                                             : "text-slate-400 hover:bg-white/[0.06] hover:text-white"
-                                    }`}
+                                        }`}
                                 >
                                     <Icon
                                         size={18}
@@ -337,11 +329,10 @@ if (activeMenu === "profile") {
                                         </p>
 
                                         <p
-                                            className={`mt-0.5 truncate text-[9px] ${
-                                                isActive
+                                            className={`mt-0.5 truncate text-[9px] ${isActive
                                                     ? "text-cyan-300/70"
                                                     : "text-slate-600 group-hover:text-slate-400"
-                                            }`}
+                                                }`}
                                         >
                                             {item.description}
                                         </p>
@@ -349,11 +340,10 @@ if (activeMenu === "profile") {
 
                                     {item.badge ? (
                                         <span
-                                            className={`flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[9px] font-bold ${
-                                                isActive
+                                            className={`flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[9px] font-bold ${isActive
                                                     ? "bg-cyan-300 text-slate-950"
                                                     : "bg-rose-500/15 text-rose-300"
-                                            }`}
+                                                }`}
                                         >
                                             {item.badge}
                                         </span>

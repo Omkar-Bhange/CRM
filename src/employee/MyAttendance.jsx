@@ -21,7 +21,7 @@ import {
 const officeSettings = {
     startTime: "10:00",
     endTime: "18:00",
-    lateAfter: "10:10",
+    lateAfter: "10:15",
     fullDayMinutes: 480,
 };
 

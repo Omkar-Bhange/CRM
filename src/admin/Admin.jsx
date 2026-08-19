@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import SystemSettings from "./settings/SystemSettings";
 import Attendance from "./attendance/Attendance";
+import NexoraLogo from "../assets/NexoraLogo.png";
 import Tasks from "./tasks/Tasks";
 import AmcBilling from "./billing/AmcBilling";
 import Team from "./team/Team";
 
 
 import SupportTickets from "./tickets/SupportTickets";
+import ReportsDashboard from "./reports/ReportsDashboard";
 import {
     ArrowUpRight,
     Bell,
@@ -23,6 +25,7 @@ import {
     FileSpreadsheet,
     FileArchive,
     Shield,
+    BarChart3,
     CircleHelp,
     CreditCard,
     Download,
@@ -129,6 +132,11 @@ const menuItems = [
         id: "attendance",
         label: "Attendance & Leave",
         icon: CalendarDays,
+    },
+    {
+        id: "reports",
+        label: "Reports & Analytics",
+        icon: BarChart3,
     },
 ];
 
@@ -3189,58 +3197,56 @@ export default function Admin({ onLogout }) {
                     }`}
             >
                 {/* Sidebar Brand */}
-                <div className="flex h-[76px] shrink-0 items-center justify-between border-b border-white/10 px-5">
-                    <div className="flex min-w-0 items-center gap-3">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-cyan-400 shadow-lg shadow-violet-950/30">
-                            <span className="text-sm font-bold">CC</span>
-                        </div>
-
-                        <div className="min-w-0">
-                            <h1 className="truncate text-sm font-semibold tracking-tight">
-                                Client Connect
-                            </h1>
-                            <p className="truncate text-[11px] text-slate-400">
-                                Admin Workspace
-                            </p>
-                        </div>
+                <div className="relative flex h-[92px] shrink-0 items-center border-b border-white/10 px-5">
+                    <div className="flex w-full items-center justify-center overflow-hidden">
+                        <img
+                            src={NexoraLogo}
+                            alt="Total Solution Nexora"
+                            className="h-[72px] w-[225px] scale-[3.45] object-contain"
+                        />
                     </div>
 
                     <button
                         type="button"
                         onClick={() => setSidebarOpen(false)}
-                        className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white/10 hover:text-white lg:hidden"
+                        className="absolute right-3 top-4 flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white/10 hover:text-white lg:hidden"
                     >
                         <X size={19} />
                     </button>
                 </div>
 
                 {/* Workspace */}
-                <div className="px-4 pt-5">
+                <div className="px-4 pt-4">
                     <button
                         type="button"
-                        className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/[0.05] px-3 py-3 text-left transition hover:bg-white/[0.08]"
+                        className="group flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/[0.055] px-3 py-3 transition-all duration-200 hover:border-white/15 hover:bg-white/[0.08]"
                     >
                         <div className="flex min-w-0 items-center gap-3">
-                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-cyan-400/15 text-sm font-semibold text-cyan-300">
-                                TS
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#092744] ring-1 ring-inset ring-cyan-400/10">
+                                <span className="text-[11px] font-bold tracking-wide text-cyan-300">
+                                    NX
+                                </span>
                             </div>
 
-                            <div className="min-w-0">
-                                <p className="truncate text-xs font-semibold text-white">
-                                    Total Solution
+                            <div className="min-w-0 text-left">
+                                <p className="truncate text-[12px] font-semibold text-white">
+                                    Main Workspace
                                 </p>
-                                <p className="truncate text-[10px] text-slate-400">
-                                    Main workspace
+
+                                <p className="mt-0.5 truncate text-[10px] text-slate-400">
+                                    Business Operations
                                 </p>
                             </div>
                         </div>
 
-                        <ChevronDown size={15} className="text-slate-500" />
+                        <ChevronDown
+                            size={15}
+                            strokeWidth={1.8}
+                            className="shrink-0 text-slate-500 transition-colors group-hover:text-slate-300"
+                        />
                     </button>
-                </div>
-
-                {/* Navigation */}
-                <nav className="mt-6 flex-1 overflow-y-auto px-3">
+                </div>       {/* Navigation */}
+                <nav className="mt-5 flex-1 overflow-y-auto px-3">
                     <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                         Workspace
                     </p>
@@ -6598,7 +6604,13 @@ export default function Admin({ onLogout }) {
                         ) : activeMenu === "tasks" ? (
                             <div className="enterprise-page"><Tasks /></div>
                         ) : activeMenu === "attendance" ? (
-                            <div className="enterprise-page"><Attendance /></div>
+                            <div className="enterprise-page">
+                                <Attendance />
+                            </div>
+                        ) : activeMenu === "reports" ? (
+                            <div className="enterprise-page">
+                                <ReportsDashboard />
+                            </div>
                         ) : activeMenu === "settings" ? (
                             <div className="enterprise-page"><SystemSettings /></div>
                         ) : (
@@ -6803,8 +6815,8 @@ export default function Admin({ onLogout }) {
                                                 <div className="flex min-w-0 items-center gap-3">
                                                     <div
                                                         className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${clientForm.createLogin
-                                                                ? "bg-violet-600 text-white shadow-lg shadow-violet-200"
-                                                                : "bg-slate-100 text-slate-500"
+                                                            ? "bg-violet-600 text-white shadow-lg shadow-violet-200"
+                                                            : "bg-slate-100 text-slate-500"
                                                             }`}
                                                     >
                                                         <ShieldCheck size={19} />
@@ -6818,8 +6830,8 @@ export default function Admin({ onLogout }) {
 
                                                             <span
                                                                 className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${clientForm.createLogin
-                                                                        ? "bg-emerald-100 text-emerald-700"
-                                                                        : "bg-slate-100 text-slate-500"
+                                                                    ? "bg-emerald-100 text-emerald-700"
+                                                                    : "bg-slate-100 text-slate-500"
                                                                     }`}
                                                             >
                                                                 {clientForm.createLogin
@@ -6850,14 +6862,14 @@ export default function Admin({ onLogout }) {
                                                         }))
                                                     }
                                                     className={`relative h-7 w-12 shrink-0 rounded-full transition-all duration-200 ${clientForm.createLogin
-                                                            ? "bg-violet-600 shadow-inner"
-                                                            : "bg-slate-300"
+                                                        ? "bg-violet-600 shadow-inner"
+                                                        : "bg-slate-300"
                                                         }`}
                                                 >
                                                     <span
                                                         className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-md transition-all duration-200 ${clientForm.createLogin
-                                                                ? "left-6"
-                                                                : "left-1"
+                                                            ? "left-6"
+                                                            : "left-1"
                                                             }`}
                                                     />
                                                 </button>

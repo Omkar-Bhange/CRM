@@ -30,11 +30,11 @@ import {
 
 
 const officeSettings = {
-    startTime: "09:00",
+    startTime: "10:00",
     endTime: "18:00",
     fullDayMinutes: 8 * 60,
     halfDayMinutes: 4 * 60,
-    lateAfter: "09:10",
+    lateAfter: "10:15",
 };
 
 function formatTime(time) {

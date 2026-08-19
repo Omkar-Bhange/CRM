@@ -55,6 +55,7 @@ const clientRoutes = require("./client");
 const settingsRoutes = require("./settings");
 const attendanceRoutes = require("./attendance");
 const attendanceV2Routes = require("./attendance-v2");
+const reportRoutes = require("./reports");
 const documentsRoutes = require("./documents");
 console.log("========================================");
 console.log("SERVER FILE:", __filename);
@@ -169,6 +170,11 @@ app.use(
   attendanceV2Routes
 );
 
+
+app.use(
+  "/api/reports",
+  reportRoutes
+);
 app.use(
   "/api/client",
   clientRoutes

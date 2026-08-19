@@ -1,3 +1,4 @@
+import NexoraLogo from "../assets/NexoraLogo.png";
 import { useEffect, useState } from "react";
 import TimeLog from "./TimeLog";
 import MyAttendance from "./MyAttendance";
@@ -85,36 +86,36 @@ export default function EmployeeLayout({ onLogout }) {
     const [profileOpen, setProfileOpen] = useState(false);
     const API_URL = "http://localhost:5000";
 
-const [employee, setEmployee] = useState(null);
+    const [employee, setEmployee] = useState(null);
 
-const getAuthToken = () => {
-    return (
-        localStorage.getItem("client-connect-token") ||
-        sessionStorage.getItem("client-connect-token") ||
-        ""
-    );
-};
-useEffect(() => {
-    const loadEmployee = async () => {
-        try {
-            const response = await fetch(`${API_URL}/api/employee/me`, {
-                headers: {
-                    Authorization: `Bearer ${getAuthToken()}`,
-                },
-            });
-
-            const result = await response.json();
-
-            if (result.success) {
-                setEmployee(result.data);
-            }
-        } catch (error) {
-            console.error(error);
-        }
+    const getAuthToken = () => {
+        return (
+            localStorage.getItem("client-connect-token") ||
+            sessionStorage.getItem("client-connect-token") ||
+            ""
+        );
     };
+    useEffect(() => {
+        const loadEmployee = async () => {
+            try {
+                const response = await fetch(`${API_URL}/api/employee/me`, {
+                    headers: {
+                        Authorization: `Bearer ${getAuthToken()}`,
+                    },
+                });
 
-    loadEmployee();
-}, []);
+                const result = await response.json();
+
+                if (result.success) {
+                    setEmployee(result.data);
+                }
+            } catch (error) {
+                console.error(error);
+            }
+        };
+
+        loadEmployee();
+    }, []);
     const activeMenuData =
         employeeMenu.find((item) => item.id === activeMenu) ||
         employeeMenu[0];
@@ -130,23 +131,23 @@ useEffect(() => {
             return <EmployeeDashboard onNavigate={openMenu} />;
         }
 
-       if (activeMenu === "tasks") {
-    return <MyTasks />;
-}
+        if (activeMenu === "tasks") {
+            return <MyTasks />;
+        }
 
-    if (activeMenu === "tickets") {
-    return <MyTickets />;
-}
+        if (activeMenu === "tickets") {
+            return <MyTickets />;
+        }
 
-       if (activeMenu === "attendance") {
-    return <MyAttendance />;
-}
+        if (activeMenu === "attendance") {
+            return <MyAttendance />;
+        }
 
-       if (activeMenu === "time-log") {
-    return <TimeLog />;
-}
+        if (activeMenu === "time-log") {
+            return <TimeLog />;
+        }
 
-return <EmployeeDashboard onNavigate={openMenu} />;
+        return <EmployeeDashboard onNavigate={openMenu} />;
     };
 
     return (
@@ -161,33 +162,25 @@ return <EmployeeDashboard onNavigate={openMenu} />;
             )}
 
             <aside
-                className={`enterprise-sidebar fixed inset-y-0 left-0 z-50 flex w-[244px] flex-col border-r border-slate-800 bg-[#111827] transition-transform duration-300 lg:translate-x-0 ${
-                    sidebarOpen
+                className={`enterprise-sidebar fixed inset-y-0 left-0 z-50 flex w-[244px] flex-col border-r border-slate-800 bg-[#111827] transition-transform duration-300 lg:translate-x-0 ${sidebarOpen
                         ? "translate-x-0"
                         : "-translate-x-full"
-                }`}
+                    }`}
             >
-                <div className="flex h-[72px] items-center justify-between border-b border-white/10 px-5">
-                    <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-cyan-400 text-xs font-bold text-white shadow-lg shadow-violet-950/25">
-                            CC
-                        </div>
-
-                        <div>
-                            <p className="text-sm font-semibold text-white">
-                                Client Connect
-                            </p>
-
-                            <p className="mt-0.5 text-[9px] uppercase tracking-[0.14em] text-cyan-300">
-                                Employee Workspace
-                            </p>
-                        </div>
+                {/* Employee Workspace Brand */}
+                <div className="relative flex h-[92px] shrink-0 items-center border-b border-white/10 px-5">
+                    <div className="flex w-full items-center justify-center overflow-hidden">
+                        <img
+                            src={NexoraLogo}
+                            alt="Total Solution Nexora"
+                            className="h-[72px] w-[225px] scale-[3.45] object-contain"
+                        />
                     </div>
 
                     <button
                         type="button"
                         onClick={() => setSidebarOpen(false)}
-                        className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white/10 hover:text-white lg:hidden"
+                        className="absolute right-3 top-4 flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white/10 hover:text-white lg:hidden"
                     >
                         <X size={17} />
                     </button>
@@ -232,11 +225,10 @@ return <EmployeeDashboard onNavigate={openMenu} />;
                                     type="button"
                                     onClick={() => openMenu(item.id)}
                                     aria-current={active ? "page" : undefined}
-                                    className={`enterprise-sidebar-nav-item group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
-                                        active
+                                    className={`enterprise-sidebar-nav-item group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${active
                                             ? "bg-white text-slate-950 shadow-sm"
                                             : "text-slate-400 hover:bg-white/[0.06] hover:text-white"
-                                    }`}
+                                        }`}
                                 >
                                     <Icon
                                         size={18}
@@ -254,11 +246,10 @@ return <EmployeeDashboard onNavigate={openMenu} />;
                                         </p>
 
                                         <p
-                                            className={`mt-0.5 truncate text-[9px] ${
-                                                active
+                                            className={`mt-0.5 truncate text-[9px] ${active
                                                     ? "text-slate-400"
                                                     : "text-slate-600"
-                                            }`}
+                                                }`}
                                         >
                                             {item.description}
                                         </p>
@@ -288,13 +279,13 @@ return <EmployeeDashboard onNavigate={openMenu} />;
                 <div className="border-t border-white/10 p-3">
                     <div className="flex items-center gap-3 rounded-xl px-2 py-2">
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-[10px] font-bold text-white">
-                           {employee?.name
-    ? employee.name
-          .split(" ")
-          .map((word) => word[0])
-          .join("")
-          .toUpperCase()
-    : "E"}
+                            {employee?.name
+                                ? employee.name
+                                    .split(" ")
+                                    .map((word) => word[0])
+                                    .join("")
+                                    .toUpperCase()
+                                : "E"}
                         </div>
 
                         <div className="min-w-0 flex-1">
@@ -303,7 +294,7 @@ return <EmployeeDashboard onNavigate={openMenu} />;
                             </p>
 
                             <p className="mt-1 truncate text-[9px] text-slate-400">
-                               {employee?.designation || "Employee"}
+                                {employee?.designation || "Employee"}
                             </p>
                         </div>
 
@@ -373,24 +364,23 @@ return <EmployeeDashboard onNavigate={openMenu} />;
                                 className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
                             >
                                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-100 text-[9px] font-bold text-violet-700">
-                                   {employee?.name
-    ? employee.name
-          .split(" ")
-          .map((word) => word[0])
-          .join("")
-          .toUpperCase()
-    : "E"}
+                                    {employee?.name
+                                        ? employee.name
+                                            .split(" ")
+                                            .map((word) => word[0])
+                                            .join("")
+                                            .toUpperCase()
+                                        : "E"}
                                 </div>
 
                                 <span className="hidden sm:block">
-                                   {employee?.name || "Employee"}
+                                    {employee?.name || "Employee"}
                                 </span>
 
                                 <ChevronDown
                                     size={14}
-                                    className={`text-slate-400 transition ${
-                                        profileOpen ? "rotate-180" : ""
-                                    }`}
+                                    className={`text-slate-400 transition ${profileOpen ? "rotate-180" : ""
+                                        }`}
                                 />
                             </button>
 
@@ -408,11 +398,11 @@ return <EmployeeDashboard onNavigate={openMenu} />;
                                     <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-60 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.16)]">
                                         <div className="border-b border-slate-100 px-4 py-4">
                                             <p className="text-xs font-semibold text-slate-900">
-                                              {employee?.name || "Employee"}
+                                                {employee?.name || "Employee"}
                                             </p>
 
                                             <p className="mt-1 text-[10px] text-slate-500">
-                                               {employee?.designation || "Employee"}
+                                                {employee?.designation || "Employee"}
                                             </p>
                                         </div>
 

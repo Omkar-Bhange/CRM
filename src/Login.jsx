@@ -1,3 +1,4 @@
+import NexoraLogo from "./assets/NexoraLogo.png";
 import { useState } from "react";
 import {
   ArrowRight,
@@ -107,20 +108,20 @@ export default function Login({ onLogin }) {
         );
       }
 
-  saveAuthSession({
-  accessToken:
-    result.accessToken ||
-    result.token,
+      saveAuthSession({
+        accessToken:
+          result.accessToken ||
+          result.token,
 
-  refreshToken:
-    result.refreshToken,
+        refreshToken:
+          result.refreshToken,
 
-  user:
-    result.user,
+        user:
+          result.user,
 
-  persistent:
-    keepSignedIn,
-});
+        persistent:
+          keepSignedIn,
+      });
 
       if (result.user.role === "employee") {
         try {
@@ -143,7 +144,7 @@ export default function Login({ onLogin }) {
 
       setLoginError(
         error.message ||
-          "Unable to connect to the server. Please try again."
+        "Unable to connect to the server. Please try again."
       );
     } finally {
       setIsSubmitting(false);
@@ -160,23 +161,18 @@ export default function Login({ onLogin }) {
           <div className="absolute -right-20 bottom-12 h-80 w-80 rounded-full bg-cyan-400/15 blur-3xl" />
 
           <div className="relative z-10">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-cyan-400 shadow-lg shadow-violet-950/30">
-                <Sparkles size={21} />
-              </div>
-
-              <div>
-                <h1 className="text-lg font-semibold tracking-tight">
-                  Client Connect
-                </h1>
-
-                <p className="text-xs text-slate-400">
-                  Support and Work Management
-                </p>
+            {/* Nexora Brand */}
+            <div className="flex items-center">
+              <div className="flex h-[72px] w-[245px] items-center overflow-hidden">
+                <img
+                  src={NexoraLogo}
+                  alt="Total Solution Nexora"
+                  className="h-full w-full scale-[3.15] object-contain object-left origin-left"
+                />
               </div>
             </div>
 
-            <div className="mt-24 max-w-xl">
+            <div className="mt-20 max-w-xl">
               <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-300">
                 <Headphones
                   size={14}
@@ -187,14 +183,13 @@ export default function Login({ onLogin }) {
               </div>
 
               <h2 className="text-5xl font-semibold leading-[1.12] tracking-[-0.04em]">
-                Clients, support and employee work in one
-                place.
+                Clients, support and employee work in one place.
               </h2>
 
               <p className="mt-6 max-w-lg text-base leading-7 text-slate-400">
-                Manage software clients, AMC payments,
-                support issues, employee tasks and working
-                time from a single professional platform.
+                Manage software clients, AMC payments, support issues,
+                employee tasks and working time from a single
+                professional platform.
               </p>
 
               <div className="mt-10 space-y-4">
@@ -228,21 +223,19 @@ export default function Login({ onLogin }) {
         <section className="enterprise-workspace flex items-center justify-center px-5 py-8 sm:px-10 lg:px-14 xl:px-20">
           <div className="w-full max-w-[520px]">
             <div className="mb-9 lg:hidden">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-cyan-400 text-white">
-                  <Sparkles size={21} />
-                </div>
-
-                <div>
-                  <h1 className="font-semibold text-slate-900">
-                    Client Connect
-                  </h1>
-
-                  <p className="text-xs text-slate-500">
-                    Support and Work Management
-                  </p>
+              <div className="flex justify-center">
+                <div className="flex h-[70px] w-[240px] items-center justify-center overflow-hidden">
+                  <img
+                    src={NexoraLogo}
+                    alt="Total Solution Nexora"
+                    className="h-full w-full scale-[3.1] object-contain"
+                  />
                 </div>
               </div>
+
+              <p className="mt-1 text-center text-[11px] font-medium tracking-wide text-slate-500">
+                Business Operations Platform
+              </p>
             </div>
 
             <div>
@@ -284,28 +277,25 @@ export default function Login({ onLogin }) {
                           setSelectedRole(role.id);
                           setLoginError("");
                         }}
-                        className={`group rounded-2xl border p-4 text-left transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-70 ${
-                          isSelected
+                        className={`group rounded-2xl border p-4 text-left transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-70 ${isSelected
                             ? "border-violet-500 bg-violet-50 shadow-[0_8px_25px_rgba(109,40,217,0.10)]"
                             : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
-                        }`}
+                          }`}
                       >
                         <div
-                          className={`mb-3 flex h-9 w-9 items-center justify-center rounded-xl ${
-                            isSelected
+                          className={`mb-3 flex h-9 w-9 items-center justify-center rounded-xl ${isSelected
                               ? "bg-violet-600 text-white"
                               : "bg-slate-100 text-slate-600 group-hover:bg-slate-200"
-                          }`}
+                            }`}
                         >
                           <Icon size={18} />
                         </div>
 
                         <p
-                          className={`text-sm font-semibold ${
-                            isSelected
+                          className={`text-sm font-semibold ${isSelected
                               ? "text-violet-700"
                               : "text-slate-800"
-                          }`}
+                            }`}
                         >
                           {role.label}
                         </p>
