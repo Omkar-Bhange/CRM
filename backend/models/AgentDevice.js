@@ -42,6 +42,32 @@ const agentDeviceSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    // ==========================================================
+// ADMIN DEVICE TRUST / APPROVAL
+// ==========================================================
+
+isApproved: {
+  type: Boolean,
+  default: false,
+  index: true,
+},
+
+approvedBy: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "User",
+  default: null,
+},
+
+approvedAt: {
+  type: Date,
+  default: null,
+},
+
+approvalNote: {
+  type: String,
+  default: "",
+  trim: true,
+},
   },
   {
     timestamps: true,

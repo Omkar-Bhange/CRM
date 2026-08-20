@@ -40,7 +40,7 @@ Layers3,
 Sparkles,
 } from "lucide-react";
 
-const API_URL = "http://localhost:5000";
+import API_URL from "../../config/api";
 
 function getStatusClasses(status) {
     if (status === "Completed") {

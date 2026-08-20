@@ -1,3 +1,4 @@
+import API_URL from "../config/api";
 import { useEffect, useMemo, useState } from "react";
 import {
     AlertCircle,
@@ -215,7 +216,7 @@ function SummaryCard({
 }
 
 export default function MyAttendance() {
-    const API_URL = "http://localhost:5000";
+    
     const getAuthToken = () =>
         localStorage.getItem("client-connect-token") ||
         sessionStorage.getItem("client-connect-token") ||
@@ -831,24 +832,208 @@ export default function MyAttendance() {
         leaveForm.duration,
     ]);
 
-    const handleAttendanceToggle = async () => {
-        const endpoint = attendanceStatus === "Working" || attendanceStatus === "Break" ? "logout" : "login";
-        try {
-            const response = await fetch(`${API_URL}/api/attendance/${endpoint}`, {
+ const handleAttendanceToggle = async () => {
+    const isEndingWorkday =
+        attendanceStatus === "Working" ||
+        attendanceStatus === "Break";
+
+    const endpoint = isEndingWorkday
+        ? "logout"
+        : "login";
+
+    try {
+        /*
+        =========================================================
+        1. UPDATE ATTENDANCE ON MAIN BACKEND FIRST
+        =========================================================
+
+        We only stop/start the local Windows agent AFTER the
+        attendance operation succeeds.
+        */
+
+        const response = await fetch(
+            `${API_URL}/api/attendance/${endpoint}`,
+            {
                 method: "POST",
-                headers: { Authorization: `Bearer ${getAuthToken()}`, "Content-Type": "application/json" },
-                body: JSON.stringify({ source: "web" }),
-            });
-            const result = await response.json();
-            if (!response.ok || !result.success) throw new Error(result.message || "Attendance update failed.");
-            await Promise.all([
-                loadData(),
-                loadMonthlyAttendance(),
-            ]);
-        } catch (error) {
-            alert(error.message);
+
+                headers: {
+                    Authorization:
+                        `Bearer ${getAuthToken()}`,
+
+                    "Content-Type":
+                        "application/json",
+                },
+
+                body: JSON.stringify({
+                    source: "web",
+                }),
+            }
+        );
+
+        const result =
+            await response.json();
+
+        if (
+            !response.ok ||
+            !result.success
+        ) {
+            throw new Error(
+                result.message ||
+                "Attendance update failed."
+            );
         }
-    };
+
+        /*
+        =========================================================
+        2. END WORKDAY -> STOP LOCAL AGENT
+        =========================================================
+        */
+
+        if (isEndingWorkday) {
+            try {
+                const agentResponse =
+                    await fetch(
+                        "http://127.0.0.1:4500/logout",
+                        {
+                            method: "POST",
+                            headers: {
+                                "Content-Type":
+                                    "application/json",
+                            },
+                        }
+                    );
+
+                const agentResult =
+                    await agentResponse.json();
+
+                if (
+                    !agentResponse.ok ||
+                    !agentResult.success
+                ) {
+                    console.warn(
+                        "ClientConnect Agent stop warning:",
+                        agentResult.message
+                    );
+                } else {
+                    console.log(
+                        "ClientConnect Agent stopped:",
+                        agentResult.message
+                    );
+                }
+            } catch (agentError) {
+                /*
+                 * IMPORTANT:
+                 *
+                 * Attendance End Workday has already succeeded.
+                 * Do NOT undo/fail attendance just because
+                 * the local agent is unavailable.
+                 */
+
+                console.warn(
+                    "ClientConnect Agent could not be stopped:",
+                    agentError
+                );
+            }
+        }
+
+        /*
+        =========================================================
+        3. START WORKDAY -> START LOCAL AGENT
+        =========================================================
+
+        This is also useful if the employee starts the workday
+        manually from this attendance screen.
+        */
+
+        if (!isEndingWorkday) {
+            try {
+                /*
+                 * Get current user stored by your login system.
+                 */
+
+                const storedUserRaw =
+                    localStorage.getItem(
+                        "client-connect-current-user"
+                    );
+
+                const storedUser =
+                    storedUserRaw
+                        ? JSON.parse(storedUserRaw)
+                        : null;
+
+                const employeeCode =
+                    storedUser?.employeeCode ||
+                    storedUser?.code ||
+                    "";
+
+                if (employeeCode) {
+                    const agentResponse =
+                        await fetch(
+                            "http://127.0.0.1:4500/login",
+                            {
+                                method: "POST",
+
+                                headers: {
+                                    "Content-Type":
+                                        "application/json",
+                                },
+
+                                body:
+                                    JSON.stringify({
+                                        employeeCode,
+                                    }),
+                            }
+                        );
+
+                    const agentResult =
+                        await agentResponse.json();
+
+                    if (
+                        !agentResponse.ok ||
+                        !agentResult.success
+                    ) {
+                        console.warn(
+                            "ClientConnect Agent start warning:",
+                            agentResult.message
+                        );
+                    } else {
+                        console.log(
+                            "ClientConnect Agent started:",
+                            agentResult.message
+                        );
+                    }
+                }
+            } catch (agentError) {
+                console.warn(
+                    "ClientConnect Agent could not be started:",
+                    agentError
+                );
+            }
+        }
+
+        /*
+        =========================================================
+        4. REFRESH ATTENDANCE UI
+        =========================================================
+        */
+
+        await Promise.all([
+            loadData(),
+            loadMonthlyAttendance(),
+        ]);
+
+    } catch (error) {
+        console.error(
+            "Attendance toggle error:",
+            error
+        );
+
+        alert(
+            error.message ||
+            "Unable to update attendance."
+        );
+    }
+};
 
     const handleBreakToggle = async () => {
         if (attendanceStatus !== "Working" && attendanceStatus !== "Break") return;

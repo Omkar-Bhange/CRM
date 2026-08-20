@@ -18,7 +18,7 @@ import {
 import {
   saveAuthSession,
 } from "./auth/authClient";
-const API_URL = "http://localhost:5000";
+import API_URL from "./config/api";
 
 const roles = [
   {
@@ -108,37 +108,385 @@ export default function Login({ onLogin }) {
         );
       }
 
-      saveAuthSession({
-        accessToken:
-          result.accessToken ||
-          result.token,
+    saveAuthSession({
+  accessToken:
+    result.accessToken ||
+    result.token,
 
-        refreshToken:
-          result.refreshToken,
+  refreshToken:
+    result.refreshToken,
 
-        user:
-          result.user,
+  user:
+    result.user,
 
-        persistent:
-          keepSignedIn,
-      });
+  persistent:
+    keepSignedIn,
+});
 
-      if (result.user.role === "employee") {
-        try {
-          await fetch(`${API_URL}/api/attendance/login`, {
+/*
+|--------------------------------------------------------------------------
+| EMPLOYEE LOGIN ACTIONS
+|--------------------------------------------------------------------------
+|
+| Only employee login should:
+|
+| 1. Start the local ClientConnect Agent
+| 2. Record attendance login
+|
+| Admin and Client login remain completely unchanged.
+|
+*/
+
+if (result.user.role === "employee") {
+  /*
+  ============================================================
+  1. AUTO START WORKDAY / ATTENDANCE
+  ============================================================
+  */
+
+  /*
+============================================================
+0. READ LOCAL AGENT / DEVICE IDENTITY
+============================================================
+*/
+
+let localAgent = null;
+
+try {
+  const healthResponse = await fetch(
+    "http://127.0.0.1:4500/health"
+  );
+
+  if (healthResponse.ok) {
+    const healthResult = await healthResponse.json();
+
+    if (healthResult.success) {
+      localAgent = {
+        deviceId: healthResult.deviceId || "",
+        pcName: healthResult.pcName || "",
+        employeeCode: healthResult.employeeCode || "",
+        registered: healthResult.registered === true,
+      };
+
+      console.log(
+        "Local ClientConnect Agent detected:",
+        localAgent
+      );
+    }
+  }
+} catch (agentHealthError) {
+  console.warn(
+    "Local ClientConnect Agent not detected:",
+    agentHealthError
+  );
+}
+  let attendanceStarted = false;
+  let attendancePending = false;
+
+  try {
+    const attendanceResponse = await fetch(
+      `${API_URL}/api/attendance/login`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${
+            result.accessToken || result.token
+          }`,
+          "Content-Type": "application/json",
+        },
+      body: JSON.stringify({
+  source: "web",
+
+  deviceId:
+    localAgent?.deviceId || null,
+
+  pcName:
+    localAgent?.pcName || null,
+
+  agentEmployeeCode:
+    localAgent?.employeeCode || null,
+
+  agentRegistered:
+    localAgent?.registered === true,
+}),
+      }
+    );
+
+    const attendanceResult =
+      await attendanceResponse.json();
+
+if (
+  attendanceResponse.ok &&
+  attendanceResult.allowAgentStart === true
+) {
+  attendanceStarted = true;
+  attendancePending = false;
+
+  console.log(
+    "Employee workday active:",
+    attendanceResult
+  );
+} else if (
+  attendanceResponse.ok &&
+  attendanceResult.attendancePending === true
+) {
+  attendanceStarted = false;
+  attendancePending = true;
+
+  console.log(
+    "Attendance approval pending:",
+    attendanceResult
+  );
+} else if (
+  attendanceResponse.ok &&
+  attendanceResult.workdayCompleted === true
+) {
+  attendanceStarted = false;
+  attendancePending = false;
+
+  console.log(
+    "Workday already completed. Agent will not restart."
+  );
+} else {
+  attendanceStarted = false;
+  attendancePending = false;
+
+  console.warn(
+    "Attendance auto-start warning:",
+    attendanceResult.message
+  );
+}
+  } catch (attendanceError) {
+    console.warn(
+      "Attendance auto-start failed:",
+      attendanceError
+    );
+  }
+
+  /*
+  ============================================================
+  2. START LOCAL WINDOWS AGENT
+  ============================================================
+
+  Start tracking only after attendance login succeeds.
+  */
+
+  if (attendanceStarted) {
+    const employeeCode =
+      result.user.employeeCode ||
+      result.user.code ||
+      "";
+
+    if (!employeeCode) {
+      console.warn(
+        "Agent auto-start skipped: employeeCode missing."
+      );
+    } else {
+      try {
+        const agentResponse = await fetch(
+          "http://127.0.0.1:4500/login",
+          {
             method: "POST",
             headers: {
-              Authorization: `Bearer ${result.token}`,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ source: "web" }),
-          });
-        } catch (attendanceError) {
-          console.warn("Attendance auto-start failed:", attendanceError);
+            body: JSON.stringify({
+              employeeCode,
+            }),
+          }
+        );
+
+        const agentResult =
+          await agentResponse.json();
+
+        if (
+          !agentResponse.ok ||
+          !agentResult.success
+        ) {
+          console.warn(
+            "ClientConnect Agent auto-start warning:",
+            agentResult.message
+          );
+        } else {
+          console.log(
+            "ClientConnect Agent auto-started:",
+            agentResult
+          );
         }
+      } catch (agentError) {
+        /*
+         * Do not block CRM login if agent isn't
+         * installed or isn't currently running.
+         */
+
+        console.warn(
+          "ClientConnect Agent unavailable:",
+          agentError
+        );
+      }
+    }
+  }
+  /*
+============================================================
+3. WAIT FOR ADMIN APPROVAL
+============================================================
+*/
+
+if (attendancePending) {
+  const accessToken =
+    result.accessToken ||
+    result.token;
+
+  const employeeCode =
+    result.user.employeeCode ||
+    result.user.code ||
+    "";
+
+  const pollApprovalStatus = async () => {
+    try {
+      const approvalResponse =
+        await fetch(
+          `${API_URL}/api/attendance/approval-status`,
+          {
+            headers: {
+              Authorization:
+                `Bearer ${accessToken}`,
+            },
+          }
+        );
+
+      const approvalResult =
+        await approvalResponse.json();
+
+      console.log(
+        "Attendance approval status:",
+        approvalResult
+      );
+
+      /*
+       * ADMIN APPROVED
+       */
+
+      if (
+        approvalResponse.ok &&
+        approvalResult.allowAgentStart === true &&
+        approvalResult.attendanceActive === true
+      ) {
+        clearInterval(
+          approvalInterval
+        );
+
+        if (!employeeCode) {
+          console.warn(
+            "Agent start skipped after approval: employeeCode missing."
+          );
+          return;
+        }
+
+        try {
+          const agentResponse =
+            await fetch(
+              "http://127.0.0.1:4500/login",
+              {
+                method: "POST",
+
+                headers: {
+                  "Content-Type":
+                    "application/json",
+                },
+
+                body:
+                  JSON.stringify({
+                    employeeCode,
+                  }),
+              }
+            );
+
+          const agentResult =
+            await agentResponse.json();
+
+          console.log(
+            "Agent started after attendance approval:",
+            agentResult
+          );
+        } catch (agentError) {
+          console.warn(
+            "Unable to start local agent after approval:",
+            agentError
+          );
+        }
+
+        return;
       }
 
-      onLogin(result.user.role, result.user);
+      /*
+       * ADMIN REJECTED
+       */
+
+      if (
+        approvalResponse.ok &&
+        approvalResult.status ===
+          "Rejected"
+      ) {
+        clearInterval(
+          approvalInterval
+        );
+
+        console.warn(
+          "Attendance request rejected:",
+          approvalResult.message
+        );
+      }
+
+      /*
+       * WORKDAY COMPLETED
+       */
+
+      if (
+        approvalResponse.ok &&
+        approvalResult.workdayCompleted ===
+          true
+      ) {
+        clearInterval(
+          approvalInterval
+        );
+      }
+    } catch (error) {
+      console.warn(
+        "Attendance approval polling failed:",
+        error
+      );
+    }
+  };
+
+  const approvalInterval =
+    setInterval(
+      pollApprovalStatus,
+      5000
+    );
+
+  /*
+   * Check once immediately.
+   */
+
+  pollApprovalStatus();
+
+  /*
+   * Stop polling after 30 minutes
+   * so a forgotten browser tab does not poll forever.
+   */
+
+  setTimeout(() => {
+    clearInterval(
+      approvalInterval
+    );
+  }, 30 * 60 * 1000);
+}
+}
+onLogin(
+  result.user.role,
+  result.user
+);
     } catch (error) {
       console.error("Login error:", error);
 

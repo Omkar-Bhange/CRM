@@ -19,17 +19,19 @@ async function authenticateAgent(req, res, next) {
       });
     }
 
-    const device = await AgentDevice.findOne({
-      token,
-      isActive: true,
-    });
+const device = await AgentDevice.findOne({
+  token,
+  isActive: true,
+  isApproved: true,
+});
 
     if (!device) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid device token",
-      });
-    }
+  return res.status(403).json({
+    success: false,
+    message:
+      "This agent device is not approved or is inactive.",
+  });
+}
 
     req.agentDevice = device;
     next();
@@ -39,7 +41,10 @@ async function authenticateAgent(req, res, next) {
 }
 
 
-const { getISTDateBucket } = require("./utils/dateUtils");
+const {
+  getISTDateBucket,
+  getISTDateString,
+} = require("./utils/dateUtils");
 
 dotenv.config();
 
@@ -267,9 +272,16 @@ app.post("/api/agent/session", async (req, res) => {
   });
 });
 
-app.post("/api/agent/events", async (req, res) => {
+app.post("/api/agent/events", authenticateAgent, async (req, res) => {
   try {
-    const { employeeCode, pcName, sessions } = req.body;
+
+   const { pcName, sessions } = req.body;
+
+// Never trust employeeCode supplied by the client.
+// The authenticated AgentDevice decides which employee
+// this agent belongs to.
+const employeeCode =
+  req.agentDevice.employeeCode;
 
     // =====================================================
     // BASIC REQUEST VALIDATION
@@ -386,6 +398,219 @@ app.post("/api/agent/events", async (req, res) => {
         failed,
       });
     }
+    // =====================================================
+// ATTENDANCE / WORKDAY SAFETY GUARD
+// =====================================================
+//
+// Important:
+//
+// We do NOT simply reject everything after End Workday.
+//
+// The agent's final session may start BEFORE End Workday
+// and finish a few seconds AFTER attendance logoutTime
+// because:
+//
+// Backend attendance logout
+//        ↓
+// Browser calls local agent /logout
+//        ↓
+// tracker.stop() saves final session
+//
+// Therefore:
+//
+// session STARTED before logoutTime = allow
+// session STARTED after logoutTime  = discard
+//
+// Discarded sessions are ACKNOWLEDGED so the Windows
+// agent does not keep retrying them forever.
+//
+
+const sessionDates = [
+  ...new Set(
+    validSessions.map((session) =>
+      getISTDateString(
+        new Date(
+          session.startTime
+        )
+      )
+    )
+  ),
+];
+
+const attendanceRecords =
+  AttendanceV2
+    ? await AttendanceV2.find({
+        employeeId:
+          employee._id,
+
+        date: {
+          $in: sessionDates,
+        },
+
+        isDeleted: {
+          $ne: true,
+        },
+      }).lean()
+    : [];
+
+const attendanceByDate =
+  new Map(
+    attendanceRecords.map(
+      (attendance) => [
+        attendance.date,
+        attendance,
+      ]
+    )
+  );
+
+const workdaySessions = [];
+const ignoredSessions = [];
+
+for (const session of validSessions) {
+  const sessionStart =
+    new Date(
+      session.startTime
+    );
+
+  const attendanceDate =
+    getISTDateString(
+      sessionStart
+    );
+
+  const attendance =
+    attendanceByDate.get(
+      attendanceDate
+    );
+
+  /*
+   * No attendance/workday for this date.
+   *
+   * Do not save PC tracking outside an
+   * authenticated workday.
+   */
+  if (
+    !attendance ||
+    !attendance.loginTime
+  ) {
+    processedIds.push(
+      session.id
+    );
+
+    ignoredSessions.push({
+      id:
+        session.id,
+
+      reason:
+        "No active attendance record.",
+    });
+
+    continue;
+  }
+
+  const loginAt =
+    new Date(
+      attendance.loginTime
+    );
+
+  /*
+   * Session started before employee workday.
+   */
+  if (
+    sessionStart.getTime() <
+    loginAt.getTime()
+  ) {
+    processedIds.push(
+      session.id
+    );
+
+    ignoredSessions.push({
+      id:
+        session.id,
+
+      reason:
+        "Session started before workday.",
+    });
+
+    continue;
+  }
+
+  /*
+   * WORKDAY COMPLETED
+   *
+   * Final session is still accepted when it
+   * started BEFORE logoutTime.
+   *
+   * But if the agent restarts after End Workday,
+   * all new sessions start AFTER logoutTime and
+   * are ignored.
+   */
+  if (attendance.logoutTime) {
+    const logoutAt =
+      new Date(
+        attendance.logoutTime
+      );
+
+    if (
+      sessionStart.getTime() >
+      logoutAt.getTime()
+    ) {
+      processedIds.push(
+        session.id
+      );
+
+      ignoredSessions.push({
+        id:
+          session.id,
+
+        reason:
+          "Workday already completed.",
+      });
+
+      continue;
+    }
+  }
+
+  workdaySessions.push(
+    session
+  );
+}
+
+if (
+  ignoredSessions.length >
+  0
+) {
+  console.log(
+    `[AGENT GUARD] ${employee.employeeCode} | Ignored outside-workday sessions: ${ignoredSessions.length}`
+  );
+}
+
+/*
+ * If nothing remains after attendance validation,
+ * ACK ignored IDs so SQLite can clear them.
+ */
+
+if (
+  workdaySessions.length ===
+  0
+) {
+  return res.json({
+    success: true,
+
+    processed:
+      processedIds.length,
+
+    processedIds: [
+      ...new Set(
+        processedIds
+      ),
+    ],
+
+    ignored:
+      ignoredSessions,
+
+    failed,
+  });
+}
 
     // =====================================================
     // REMOVE DUPLICATES INSIDE THIS REQUEST
@@ -393,7 +618,7 @@ app.post("/api/agent/events", async (req, res) => {
 
     const uniqueSessionMap = new Map();
 
-    for (const session of validSessions) {
+    for (const session of workdaySessions) {
       if (!uniqueSessionMap.has(session.id)) {
         uniqueSessionMap.set(
           session.id,
@@ -740,17 +965,36 @@ app.post("/api/agent/events", async (req, res) => {
 });
 app.post("/api/agent/register", async (req, res) => {
   try {
-    const { employeeCode, pcName, deviceId, deviceName, platform, appVersion } = req.body;
+    const {
+      employeeCode,
+      pcName,
+      deviceId,
+      deviceName,
+      platform,
+      appVersion,
+    } = req.body;
+
+    // =====================================================
+    // BASIC VALIDATION
+    // =====================================================
 
     if (!employeeCode || !deviceId) {
       return res.status(400).json({
         success: false,
-        message: "employeeCode and deviceId are required.",
+        message:
+          "employeeCode and deviceId are required.",
       });
     }
 
+    const normalizedEmployeeCode =
+      employeeCode.toUpperCase().trim();
+
+    // =====================================================
+    // VERIFY EMPLOYEE
+    // =====================================================
+
     const employee = await Employee.findOne({
-      employeeCode: employeeCode.toUpperCase(),
+      employeeCode: normalizedEmployeeCode,
     });
 
     if (!employee) {
@@ -760,37 +1004,207 @@ app.post("/api/agent/register", async (req, res) => {
       });
     }
 
-    const token = crypto.randomBytes(32).toString("hex");
+    // =====================================================
+    // CHECK WHETHER DEVICE ALREADY EXISTS
+    // =====================================================
 
-    const device = await AgentDevice.findOneAndUpdate(
-      { deviceId },
-      {
-        employeeCode: employee.employeeCode,
-        pcName: pcName || "",
-        deviceName: deviceName || pcName || "",
-        platform: platform || "windows",
-        appVersion: appVersion || "1.0.0",
-        token,
-        lastSeen: new Date(),
-        isActive: true,
-      },
-      { 
-        upsert: true,
-        returnDocument: "after",
+    let device = await AgentDevice.findOne({
+      deviceId,
+    });
+
+    // =====================================================
+    // EXISTING DEVICE
+    // =====================================================
+
+    if (device) {
+      /*
+       * SECURITY:
+       *
+       * A registered device cannot silently move from one
+       * employee to another employee.
+       */
+
+      if (
+        device.employeeCode &&
+        device.employeeCode.toUpperCase() !==
+          normalizedEmployeeCode
+      ) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "This device is already registered to another employee.",
+        });
       }
-    );
 
-    return res.json({
+      /*
+       * Keep the SAME token whenever possible.
+       *
+       * Do not create a new identity every time the
+       * Windows agent restarts.
+       */
+
+      if (!device.token) {
+        device.token =
+          crypto.randomBytes(32).toString("hex");
+      }
+
+      device.employeeCode =
+        normalizedEmployeeCode;
+
+      device.pcName =
+        pcName || device.pcName || "";
+
+      device.deviceName =
+        deviceName ||
+        pcName ||
+        device.deviceName ||
+        "";
+
+      device.platform =
+        platform ||
+        device.platform ||
+        "windows";
+
+      device.appVersion =
+        appVersion ||
+        device.appVersion ||
+        "1.0.0";
+
+      device.lastSeen = new Date();
+
+      /*
+       * IMPORTANT:
+       *
+       * DO NOT modify:
+       *
+       * device.isApproved
+       * device.approvedBy
+       * device.approvedAt
+       * device.approvalNote
+       *
+       * Registration must never approve itself.
+       */
+
+      await device.save();
+
+      return res.json({
+        success: true,
+
+        deviceToken:
+          device.token,
+
+        deviceId:
+          device.deviceId,
+
+        employeeCode:
+          device.employeeCode,
+
+        isApproved:
+          device.isApproved === true,
+
+        deviceStatus:
+          device.isApproved === true
+            ? "approved"
+            : "pending",
+
+        message:
+          device.isApproved === true
+            ? "Device registered and approved."
+            : "Device registered. Waiting for admin approval.",
+      });
+    }
+
+    // =====================================================
+    // NEW / UNKNOWN DEVICE
+    // =====================================================
+
+    const token =
+      crypto.randomBytes(32).toString("hex");
+
+    /*
+     * SECURITY:
+     *
+     * Every NEW device starts UNAPPROVED.
+     *
+     * Installing the Windows agent must NOT automatically
+     * make a computer trusted.
+     */
+
+    device = await AgentDevice.create({
+      deviceId,
+
+      employeeCode:
+        normalizedEmployeeCode,
+
+      pcName:
+        pcName || "",
+
+      deviceName:
+        deviceName ||
+        pcName ||
+        "",
+
+      platform:
+        platform ||
+        "windows",
+
+      appVersion:
+        appVersion ||
+        "1.0.0",
+
+      token,
+
+      lastSeen:
+        new Date(),
+
+      isActive:
+        true,
+
+      // NEW DEVICE IS NEVER AUTO-APPROVED
+      isApproved:
+        false,
+
+      approvedBy:
+        null,
+
+      approvedAt:
+        null,
+
+      approvalNote:
+        "",
+    });
+
+    return res.status(201).json({
       success: true,
-      deviceToken: token,
-      deviceId: device.deviceId,
-      employeeCode: device.employeeCode,
+
+      deviceToken:
+        device.token,
+
+      deviceId:
+        device.deviceId,
+
+      employeeCode:
+        device.employeeCode,
+
+      isApproved:
+        false,
+
+      deviceStatus:
+        "pending",
+
+      message:
+        "New device registered. Waiting for admin approval.",
     });
   } catch (error) {
-    console.error(error);
+    console.error(
+      "Agent registration error:",
+      error
+    );
+
     return res.status(500).json({
       success: false,
-      message: "Registration failed.",
+      message:
+        "Registration failed.",
     });
   }
 });
@@ -879,18 +1293,26 @@ app.get("/api/agent/online", async (req, res) => {
 // WINDOWS AGENT HEARTBEAT
 // =========================================================
 const Employee = mongoose.models.Employee;
+const AttendanceV2 =
+  mongoose.models.AttendanceV2;
 
-
-app.post("/api/agent/heartbeat", async (req, res) => {
+app.post(
+  "/api/agent/heartbeat",
+  authenticateAgent,
+  async (req, res) => {
   try {
-    const {
-      employeeCode,
-      pcName,
-      status,
-      application,
-      task,
-      timestamp,
-    } = req.body;
+ const {
+  pcName,
+  status,
+  application,
+  task,
+  timestamp,
+} = req.body;
+
+// Employee identity comes from authenticated device,
+// never from request body.
+const employeeCode =
+  req.agentDevice.employeeCode;
 
     const now = new Date(timestamp || Date.now());
 
@@ -905,6 +1327,101 @@ app.post("/api/agent/heartbeat", async (req, res) => {
         message: "Employee not found.",
       });
     }
+    
+// =====================================================
+// WORKDAY SAFETY GUARD
+// =====================================================
+
+const today =
+  getISTDateString(now);
+
+const todayAttendance =
+  AttendanceV2
+    ? await AttendanceV2.findOne({
+        employeeId:
+          employee._id,
+
+        date:
+          today,
+
+        isDeleted: {
+          $ne: true,
+        },
+      }).lean()
+    : null;
+
+/*
+ * Heartbeat is useful only while today's
+ * workday is open.
+ *
+ * Normal CRM logout does NOT set attendance
+ * logoutTime, so tracking continues normally.
+ *
+ * End Workday DOES set logoutTime, therefore
+ * subsequent heartbeats cannot bring the
+ * employee back to Working/Free.
+ */
+
+if (
+  !todayAttendance ||
+  !todayAttendance.loginTime ||
+  todayAttendance.logoutTime
+) {
+  employee.status =
+    "Offline";
+
+  employee.lastActivityAt =
+    now;
+
+  await employee.save();
+
+  await AgentDevice.updateOne(
+    {
+      employeeCode:
+        employee.employeeCode,
+
+      pcName,
+    },
+    {
+      $set: {
+        lastSeen:
+          now,
+
+        updatedAt:
+          now,
+
+        isActive:
+          true,
+
+        application:
+          application || "",
+
+        status:
+          "Offline",
+      },
+    }
+  );
+
+  console.log(
+    `[AGENT GUARD] ${employee.employeeCode} heartbeat ignored — workday is not active`
+  );
+
+  return res.json({
+    success: true,
+
+    workdayActive:
+      false,
+
+    message:
+      "Workday is not active. Heartbeat ignored.",
+
+    serverTime:
+      now,
+
+    currentTask:
+      null,
+  });
+}
 
     // Recalculate status from actual work
     const Task = mongoose.models.Task;

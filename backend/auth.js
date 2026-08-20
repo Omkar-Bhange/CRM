@@ -3,7 +3,6 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const authenticateUser = require("./authMiddleware");
-const axios = require("axios");
 const crypto = require("crypto");
 const AuthSession = require("./models/AuthSession");
 
@@ -105,39 +104,9 @@ passwordChangedAt: {
 
 const User =
   mongoose.models.User || mongoose.model("User", userSchema);
-  const AgentDailyLoginSchema = new mongoose.Schema(
-  {
-    employeeCode: {
-      type: String,
-      required: true,
-      uppercase: true,
-      index: true,
-    },
-    date: {
-      type: String,
-      required: true,
-      index: true,
-    },
-    startedAt: {
-      type: Date,
-      default: Date.now,
-    },
-    endedAt: {
-      type: Date,
-      default: null,
-    },
-  },
-  { collection: "agent_daily_logins" }
-);
+ 
 
-AgentDailyLoginSchema.index(
-  { employeeCode: 1, date: 1 },
-  { unique: true }
-);
 
-const AgentDailyLogin =
-  mongoose.models.AgentDailyLogin ||
-  mongoose.model("AgentDailyLogin", AgentDailyLoginSchema);
 
 /* =========================================================
    TOKEN GENERATOR
@@ -346,21 +315,7 @@ async function createAuthSession(
     expiresAt,
   };
 }
-function getISTDateString() {
-  const now = new Date();
 
-  const ist = new Date(
-    now.toLocaleString("en-US", {
-      timeZone: "Asia/Kolkata",
-    })
-  );
-
-  const year = ist.getFullYear();
-  const month = String(ist.getMonth() + 1).padStart(2, "0");
-  const day = String(ist.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
-}
 
 /* =========================================================
    AUTHENTICATION MIDDLEWARE
@@ -552,47 +507,44 @@ const authSession =
 */
 const token =
   authSession.accessToken;
+  /*
+=========================================================
+RESOLVE EMPLOYEE CODE
 
-const Employee =
-  mongoose.models.Employee;
+Employee users may have their actual employeeCode
+inside the employees collection rather than users.
+=========================================================
+*/
 
-const employee = Employee
-  ? await Employee.findOne({
-      userId: user._id,
-    })
-  : null;
+let loginEmployeeCode =
+  user.employeeCode || "";
 
+if (
+  user.role === "employee"
+) {
+  const Employee =
+    mongoose.models.Employee;
 
-if (employee && employee.employeeCode) {
-  const employeeCode = employee.employeeCode.toUpperCase();
-  const today = getISTDateString();
+  if (Employee) {
+    const employee =
+      await Employee.findOne({
+        userId: user._id,
+      })
+        .select(
+          "employeeCode"
+        )
+        .lean();
 
-  const existing = await AgentDailyLogin.findOne({
-    employeeCode,
-    date: today,
-  });
-
-  if (!existing) {
-    try {
-      const agentPort = process.env.AGENT_API_PORT || 4500;
-      const agentHost = process.env.AGENT_API_HOST || "127.0.0.1";
-      const agentBaseUrl = `http://${agentHost}:${agentPort}`;
-
-      await axios.post(`${agentBaseUrl}/login`, {
-        employeeCode,
-      });
-
-      await AgentDailyLogin.create({
-        employeeCode,
-        date: today,
-      });
-
-      console.log("Agent daily login recorded for", employeeCode);
-    } catch (err) {
-      console.error("Agent login trigger failed:", err.message);
+    if (
+      employee?.employeeCode
+    ) {
+      loginEmployeeCode =
+        String(
+          employee.employeeCode
+        )
+          .trim()
+          .toUpperCase();
     }
-  } else {
-    console.log("Agent login already recorded today for", employeeCode);
   }
 }
     return res.status(200).json({
@@ -619,7 +571,7 @@ session: {
   id: user._id,
   name: user.name,
   email: user.email,
-  employeeCode: user.employeeCode || "",
+ employeeCode: loginEmployeeCode,
   role: user.role,
   status: user.status,
 

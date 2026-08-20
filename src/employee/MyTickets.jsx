@@ -4,8 +4,7 @@ import {
     useRef,
     useState,
 } from "react";
-const API_URL =
-    "http://localhost:5000/api";
+import API_URL from "../config/api";
 import {
     AlertCircle,
     ArrowLeft,
@@ -523,14 +522,14 @@ const selectedTicket =
     throw new Error("Please login again.");
 }
 
-        const response = await fetch(
-            `${API_URL}/employee/my-tickets`,
-            {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                },
-            }
-        );
+      const response = await fetch(
+    `${API_URL}/api/employee/my-tickets`,
+    {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+    }
+);
 
         const data = await response.json();
 
@@ -789,7 +788,7 @@ const handleStatusChange = async (event) => {
         const nextStatus = event.target.value;
 
         const response = await fetch(
-            `${API_URL}/employee/my-tickets/${selectedTicket._id}/status`,
+            `${API_URL}/api/employee/my-tickets/${selectedTicket._id}/status`,
             {
                 method: "PATCH",
                 headers: {
@@ -830,7 +829,7 @@ const handleStatusChange = async (event) => {
             sessionStorage.getItem("client-connect-token");
 
         const response = await fetch(
-            `${API_URL}/employee/my-tickets/${selectedTicket._id}/reply`,
+            `${API_URL}/api/employee/my-tickets/${selectedTicket._id}/reply`,
             {
                 method: "POST",
                 headers: {
@@ -870,7 +869,7 @@ const addInternalNote = async (event) => {
             sessionStorage.getItem("client-connect-token");
 
         const response = await fetch(
-            `${API_URL}/employee/my-tickets/${selectedTicket._id}/internal-note`,
+            `${API_URL}/api/employee/my-tickets/${selectedTicket._id}/internal-note`,
             {
                 method: "POST",
                 headers: {
@@ -981,7 +980,7 @@ const addInternalNote = async (event) => {
                 sessionStorage.getItem("client-connect-token");
 
             const response = await fetch(
-                `${API_URL}/employee/my-tickets/${selectedTicket._id}/call-log`,
+               `${API_URL}/api/employee/my-tickets/${selectedTicket._id}/call-log`,
                 {
                     method: "POST",
                     headers: {
@@ -1030,7 +1029,7 @@ const addInternalNote = async (event) => {
                 sessionStorage.getItem("client-connect-token");
 
             const response = await fetch(
-                `${API_URL}/employee/my-tickets/${selectedTicket._id}/status`,
+                `${API_URL}/api/employee/my-tickets/${selectedTicket._id}/status`,
                 {
                     method: "PATCH",
                     headers: {
@@ -1066,7 +1065,7 @@ const addInternalNote = async (event) => {
                 sessionStorage.getItem("client-connect-token");
 
             const response = await fetch(
-                `${API_URL}/employee/my-tickets/${selectedTicket._id}/status`,
+                `${API_URL}/api/employee/my-tickets/${selectedTicket._id}/status`,
                 {
                     method: "PATCH",
                     headers: {
@@ -1134,7 +1133,7 @@ const createLinkedTask = async (event) => {
             sessionStorage.getItem("client-connect-token");
 
         const response = await fetch(
-            `${API_URL}/employee/my-tickets/${selectedTicket._id}/create-task`,
+           `${API_URL}/api/employee/my-tickets/${selectedTicket._id}/create-task`,
             {
                 method: "POST",
                 headers: {
@@ -1733,11 +1732,11 @@ const createLinkedTask = async (event) => {
 
                                         {selectedTicket.attachments?.length > 0 && (
                                             <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-3">
-                                                <img
-                                                    src={`http://localhost:5000${selectedTicket.attachments[0].fileUrl}`}
-                                                    alt={selectedTicket.attachments[0].fileName}
-                                                    className="rounded-xl border border-slate-200 max-w-full"
-                                                />
+                                            <img
+    src={`${API_URL}${selectedTicket.attachments[0].fileUrl}`}
+    alt={selectedTicket.attachments[0].fileName}
+    className="rounded-xl border border-slate-200 max-w-full"
+/>
                                             </div>
                                         )}
                                     </div>

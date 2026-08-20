@@ -20,7 +20,7 @@ import {
     X,
 } from "lucide-react";
 
-const API_URL = "http://localhost:5000";
+import API_URL from "../config/api";
 
 function formatCurrency(amount) {
     return new Intl.NumberFormat("en-IN", {

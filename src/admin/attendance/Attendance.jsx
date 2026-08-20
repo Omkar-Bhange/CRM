@@ -1,3 +1,4 @@
+  import API_URL from "../../config/api";
 import { useEffect, useMemo, useState } from "react";
 import {
     AlertCircle,
@@ -247,7 +248,7 @@ function SummaryCard({
 }
 
 export default function Attendance() {
-    const API_URL = "http://localhost:5000";
+
 
     const [employees, setEmployees] = useState([]);
 

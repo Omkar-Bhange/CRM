@@ -18,7 +18,7 @@ import {
     X,
 } from "lucide-react";
 
-const API_URL = "http://localhost:5000";
+import API_URL from "../config/api";
 function getApiFileUrl(url) {
     if (!url) {
         return "";

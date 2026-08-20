@@ -1,3 +1,4 @@
+ import API_URL from "../config/api";
 import { useEffect, useMemo, useState } from "react";
 import {
     AlertCircle,
@@ -208,7 +209,7 @@ function DashboardCard({
 }
 
 export default function EmployeeDashboard({ onNavigate }) {
-    const API_URL = "http://localhost:5000";
+
 
 const [employee, setEmployee] = useState(null);
 
@@ -379,7 +380,15 @@ const [liveTaskSeconds, setLiveTaskSeconds] = useState(0);
     const [loginTime, setLoginTime] = useState("—");
 
 const activeTask = activeTaskData;
+const workdayStarted =
+    Boolean(todayAttendance?.loginTime) &&
+    !todayAttendance?.logoutTime;
+
+const workdayCompleted =
+    Boolean(todayAttendance?.loginTime) &&
+    Boolean(todayAttendance?.logoutTime);
     const hour = new Date().getHours();
+
     const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
 useEffect(() => {
@@ -585,22 +594,213 @@ const handleCompleteTask = async () => {
     }
 };
 
-    const handleAttendanceToggle = async () => {
-        const isWorking = todayAttendance?.workStatus === "Working" || todayAttendance?.workStatus === "Break";
-        try {
-            const response = await fetch(`${API_URL}/api/attendance/${isWorking ? "logout" : "login"}`, {
+const handleAttendanceToggle = async () => {
+const isWorking =
+    Boolean(todayAttendance?.loginTime) &&
+    !todayAttendance?.logoutTime;
+
+    const endpoint =
+        isWorking ? "logout" : "login";
+
+    try {
+        /*
+        =========================================================
+        1. UPDATE ATTENDANCE ON BACKEND
+        =========================================================
+        */
+
+        const response = await fetch(
+            `${API_URL}/api/attendance/${endpoint}`,
+            {
                 method: "POST",
-                headers: { Authorization: `Bearer ${getAuthToken()}`, "Content-Type": "application/json" },
-                body: JSON.stringify({ source: "web" }),
-            });
-            const result = await response.json();
-            if (!response.ok || !result.success) throw new Error(result.message || "Attendance update failed.");
-            await loadTodayAttendance();
-            addWorkLog(isWorking ? "Logged out" : "Logged in", `Attendance ${isWorking ? "logout" : "login"} recorded`, isWorking ? "logout" : "login");
-        } catch (err) {
-            alert(err.message);
+
+                headers: {
+                    Authorization:
+                        `Bearer ${getAuthToken()}`,
+
+                    "Content-Type":
+                        "application/json",
+                },
+
+                body: JSON.stringify({
+                    source: "web",
+                }),
+            }
+        );
+
+        const result =
+            await response.json();
+
+        if (
+            !response.ok ||
+            !result.success
+        ) {
+            throw new Error(
+                result.message ||
+                "Attendance update failed."
+            );
         }
-    };
+
+        /*
+        =========================================================
+        2. END WORKDAY -> STOP LOCAL AGENT
+        =========================================================
+        */
+
+        if (isWorking) {
+            try {
+                const agentResponse =
+                    await fetch(
+                        "http://127.0.0.1:4500/logout",
+                        {
+                            method: "POST",
+
+                            headers: {
+                                "Content-Type":
+                                    "application/json",
+                            },
+                        }
+                    );
+
+                const agentResult =
+                    await agentResponse.json();
+
+                if (
+                    !agentResponse.ok ||
+                    !agentResult.success
+                ) {
+                    console.warn(
+                        "ClientConnect Agent stop warning:",
+                        agentResult.message
+                    );
+                } else {
+                    console.log(
+                        "ClientConnect Agent stopped:",
+                        agentResult.message
+                    );
+                }
+            } catch (agentError) {
+                /*
+                 * Attendance logout already succeeded.
+                 * Do not fail End Workday if agent is unavailable.
+                 */
+
+                console.warn(
+                    "ClientConnect Agent could not be stopped:",
+                    agentError
+                );
+            }
+        }
+
+        /*
+        =========================================================
+        3. START WORKDAY -> START LOCAL AGENT
+        =========================================================
+        */
+
+        if (!isWorking) {
+            try {
+                const storedUserRaw =
+                    localStorage.getItem(
+                        "client-connect-current-user"
+                    );
+
+                const storedUser =
+                    storedUserRaw
+                        ? JSON.parse(storedUserRaw)
+                        : null;
+
+              const employeeCode =
+    employee?.employeeCode ||
+    employee?.code ||
+    storedUser?.employeeCode ||
+    storedUser?.code ||
+    "";
+
+                if (employeeCode) {
+                    const agentResponse =
+                        await fetch(
+                            "http://127.0.0.1:4500/login",
+                            {
+                                method: "POST",
+
+                                headers: {
+                                    "Content-Type":
+                                        "application/json",
+                                },
+
+                                body: JSON.stringify({
+                                    employeeCode,
+                                }),
+                            }
+                        );
+
+                    const agentResult =
+                        await agentResponse.json();
+
+                    if (
+                        !agentResponse.ok ||
+                        !agentResult.success
+                    ) {
+                        console.warn(
+                            "ClientConnect Agent start warning:",
+                            agentResult.message
+                        );
+                    } else {
+                        console.log(
+                            "ClientConnect Agent started:",
+                            agentResult.message
+                        );
+                    }
+                } else {
+                    console.warn(
+                        "Agent start skipped: employeeCode not found."
+                    );
+                }
+            } catch (agentError) {
+                console.warn(
+                    "ClientConnect Agent could not be started:",
+                    agentError
+                );
+            }
+        }
+
+        /*
+        =========================================================
+        4. REFRESH DASHBOARD
+        =========================================================
+        */
+
+        await loadTodayAttendance();
+
+        addWorkLog(
+            isWorking
+                ? "Logged out"
+                : "Logged in",
+
+            `Attendance ${
+                isWorking
+                    ? "logout"
+                    : "login"
+            } recorded`,
+
+            isWorking
+                ? "logout"
+                : "login"
+        );
+
+    } catch (err) {
+        console.error(
+            "Dashboard attendance toggle:",
+            err
+        );
+
+        alert(
+            err.message ||
+            "Unable to update attendance."
+        );
+    }
+};
     if (loading) {
     return (
         <div className="flex items-center justify-center h-96">
@@ -654,29 +854,32 @@ if (error) {
                         </span>
                     </div>
                 </div>
+<button
+    type="button"
+    onClick={handleAttendanceToggle}
+    disabled={workdayCompleted}
+    className={`flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-semibold transition ${
+        workdayStarted
+            ? "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+            : workdayCompleted
+              ? "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-500"
+              : "bg-violet-600 text-white hover:bg-violet-700"
+    }`}
+>
+    {workdayStarted ? (
+        <LogOut size={15} />
+    ) : workdayCompleted ? (
+        <CheckCircle2 size={15} />
+    ) : (
+        <LogIn size={15} />
+    )}
 
-                <button
-                    type="button"
-                    onClick={handleAttendanceToggle}
-                    disabled={attendanceStatus === "Logged Out"}
-                    className={`flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-semibold transition ${
-                        attendanceStatus === "Working" || attendanceStatus === "Break"
-                            ? "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-                            : "bg-violet-600 text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
-                    }`}
-                >
-                    {attendanceStatus === "Working" || attendanceStatus === "Break" ? (
-                        <LogOut size={15} />
-                    ) : (
-                        <LogIn size={15} />
-                    )}
-
-                    {attendanceStatus === "Working" || attendanceStatus === "Break"
-                        ? "End Workday"
-                        : attendanceStatus === "Logged Out"
-                          ? "Workday Completed"
-                          : "Start Workday"}
-                </button>
+    {workdayStarted
+        ? "End Workday"
+        : workdayCompleted
+          ? "Workday Completed"
+          : "Start Workday"}
+</button>
             </div>
 
             <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

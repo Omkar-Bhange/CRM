@@ -1,3 +1,4 @@
+    import API_URL from "../config/api";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
     AlertCircle,
@@ -448,7 +449,7 @@ function SummaryCard({
 
 export default function MyTasks() {
     const fileInputRef = useRef(null);
-    const API_URL = "http://localhost:5000";
+
     const getAuthToken = () => localStorage.getItem("client-connect-token") || sessionStorage.getItem("client-connect-token") || "";
     const [summary, setSummary] = useState({ active: 0, inProgress: 0, dueToday: 0, overdue: 0, completed: 0 });
     const loadTasksDashboard = async () => {

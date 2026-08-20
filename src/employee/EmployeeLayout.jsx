@@ -1,3 +1,4 @@
+ import API_URL from "../config/api";
 import NexoraLogo from "../assets/NexoraLogo.png";
 import { useEffect, useState } from "react";
 import TimeLog from "./TimeLog";
@@ -84,7 +85,7 @@ export default function EmployeeLayout({ onLogout }) {
     const [activeMenu, setActiveMenu] = useState("dashboard");
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [profileOpen, setProfileOpen] = useState(false);
-    const API_URL = "http://localhost:5000";
+   
 
     const [employee, setEmployee] = useState(null);
 

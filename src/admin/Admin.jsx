@@ -95,7 +95,7 @@ import {
     Users,
     X,
 } from "lucide-react";
-const API_URL = "http://localhost:5000";
+import API_URL from "../config/api";
 
 const menuItems = [
     {
@@ -750,6 +750,26 @@ export default function Admin({ onLogout }) {
     const [recentTickets, setRecentTickets] = useState([]);
     const [activeTasks, setActiveTasks] = useState([]);
     const [clientActivities, setClientActivities] = useState([]);
+    const [attendanceApprovalRequests, setAttendanceApprovalRequests] =
+        useState([]);
+
+    const [attendanceApprovalLoading, setAttendanceApprovalLoading] =
+        useState(false);
+
+    const [attendanceApprovalError, setAttendanceApprovalError] =
+        useState("");
+
+    const [attendanceApprovalOpen, setAttendanceApprovalOpen] =
+        useState(false);
+
+    const [attendanceApprovalActionId, setAttendanceApprovalActionId] =
+        useState(null);
+
+    const [attendanceApprovalType, setAttendanceApprovalType] =
+        useState("Work From Home");
+
+    const [attendanceApprovalNote, setAttendanceApprovalNote] =
+        useState("");
 
     // Loading & error states (per data set or a global loading flag)
     const [loading, setLoading] = useState(true);
@@ -947,6 +967,152 @@ export default function Admin({ onLogout }) {
             client.status ||
             "Active",
     });
+    const loadAttendanceApprovalRequests = async () => {
+        try {
+            setAttendanceApprovalLoading(true);
+            setAttendanceApprovalError("");
+
+            const response = await fetch(
+                `${API_URL}/api/attendance/admin/approval-requests?status=Pending`,
+                {
+                    headers: {
+                        Accept: "application/json",
+                        Authorization: `Bearer ${getAuthToken()}`,
+                    },
+                }
+            );
+
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(
+                    result.message ||
+                    "Unable to load attendance approval requests."
+                );
+            }
+
+            setAttendanceApprovalRequests(
+                Array.isArray(result.data)
+                    ? result.data
+                    : []
+            );
+        } catch (error) {
+            console.error(
+                "Load attendance approvals error:",
+                error
+            );
+
+            setAttendanceApprovalError(
+                error.message ||
+                "Unable to load attendance approval requests."
+            );
+
+            setAttendanceApprovalRequests([]);
+        } finally {
+            setAttendanceApprovalLoading(false);
+        }
+    };
+
+    const approveAttendanceRequest = async (requestId) => {
+        if (!requestId) return;
+
+        try {
+            setAttendanceApprovalActionId(requestId);
+
+            const response = await fetch(
+                `${API_URL}/api/attendance/admin/approval-requests/${requestId}/approve`,
+                {
+                    method: "PATCH",
+                    headers: {
+                        Accept: "application/json",
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${getAuthToken()}`,
+                    },
+                    body: JSON.stringify({
+                        approvalType:
+                            attendanceApprovalType,
+                        note:
+                            attendanceApprovalNote,
+                    }),
+                }
+            );
+
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(
+                    result.message ||
+                    "Unable to approve attendance request."
+                );
+            }
+
+            setAttendanceApprovalNote("");
+
+            await loadAttendanceApprovalRequests();
+        } catch (error) {
+            console.error(
+                "Approve attendance request error:",
+                error
+            );
+
+            alert(
+                error.message ||
+                "Unable to approve attendance request."
+            );
+        } finally {
+            setAttendanceApprovalActionId(null);
+        }
+    };
+    const rejectAttendanceRequest = async (requestId) => {
+        if (!requestId) return;
+
+        try {
+            setAttendanceApprovalActionId(requestId);
+
+            const response = await fetch(
+                `${API_URL}/api/attendance/admin/approval-requests/${requestId}/reject`,
+                {
+                    method: "PATCH",
+                    headers: {
+                        Accept: "application/json",
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${getAuthToken()}`,
+                    },
+                    body: JSON.stringify({
+                        note:
+                            attendanceApprovalNote ||
+                            "Attendance request rejected by admin.",
+                    }),
+                }
+            );
+
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(
+                    result.message ||
+                    "Unable to reject attendance request."
+                );
+            }
+
+            setAttendanceApprovalNote("");
+
+            await loadAttendanceApprovalRequests();
+        } catch (error) {
+            console.error(
+                "Reject attendance request error:",
+                error
+            );
+
+            alert(
+                error.message ||
+                "Unable to reject attendance request."
+            );
+        } finally {
+            setAttendanceApprovalActionId(null);
+        }
+    };
+
 
     const loadClients = async () => {
         try {
@@ -1741,7 +1907,19 @@ export default function Admin({ onLogout }) {
             setEmployeesLoading(false);
         }
     };
+    useEffect(() => {
+        loadAttendanceApprovalRequests();
 
+        const interval =
+            setInterval(
+                loadAttendanceApprovalRequests,
+                15000
+            );
+
+        return () => {
+            clearInterval(interval);
+        };
+    }, []);
     useEffect(() => {
         const loadAllData = async () => {
             try {
@@ -3407,12 +3585,28 @@ export default function Admin({ onLogout }) {
 
                         <button
                             type="button"
-                            aria-label="Notifications"
-                            className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
+                            aria-label="Attendance approval requests"
+                            onClick={() =>
+                                setAttendanceApprovalOpen(
+                                    (current) => !current
+                                )
+                            }
+                            className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
                         >
-                            <Bell size={18} />
+                            {attendanceApprovalRequests.length > 0 ? (
+                                <BellRing
+                                    size={18}
+                                    className="text-rose-600"
+                                />
+                            ) : (
+                                <Bell size={18} />
+                            )}
 
-                            <span className="absolute right-2 top-2 h-2 w-2 rounded-full border-2 border-white bg-rose-500" />
+                            {attendanceApprovalRequests.length > 0 && (
+                                <span className="absolute -right-1 -top-1 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-bold text-white">
+                                    {attendanceApprovalRequests.length}
+                                </span>
+                            )}
                         </button>
 
                         <button
@@ -3429,7 +3623,225 @@ export default function Admin({ onLogout }) {
                     </div>
                 </header>
 
-                {/* Page Content */}
+                {attendanceApprovalOpen && (
+                    <div className="fixed right-5 top-20 z-[80] w-[420px] max-w-[calc(100vw-40px)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+
+                        {attendanceApprovalOpen && (
+                            <div className="fixed right-5 top-20 z-[80] w-[420px] max-w-[calc(100vw-40px)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+                                <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+                                    <div>
+                                        <p className="text-sm font-semibold text-slate-950">
+                                            Attendance Approval
+                                        </p>
+
+                                        <p className="mt-0.5 text-xs text-slate-500">
+                                            Remote or unverified login requests
+                                        </p>
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            setAttendanceApprovalOpen(false)
+                                        }
+                                        className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                </div>
+
+                                <div className="max-h-[70vh] overflow-y-auto">
+                                    {attendanceApprovalLoading ? (
+                                        <div className="px-5 py-8 text-center text-sm text-slate-500">
+                                            Loading requests...
+                                        </div>
+                                    ) : attendanceApprovalError ? (
+                                        <div className="px-5 py-6 text-sm text-rose-600">
+                                            {attendanceApprovalError}
+                                        </div>
+                                    ) : attendanceApprovalRequests.length === 0 ? (
+                                        <div className="px-5 py-10 text-center">
+                                            <CheckCircle2
+                                                size={28}
+                                                className="mx-auto text-emerald-500"
+                                            />
+
+                                            <p className="mt-3 text-sm font-medium text-slate-700">
+                                                No pending attendance requests
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        attendanceApprovalRequests.map(
+                                            (request) => {
+                                                const requestId =
+                                                    request._id ||
+                                                    request.id;
+
+                                                const busy =
+                                                    attendanceApprovalActionId ===
+                                                    requestId;
+
+                                                return (
+                                                    <div
+                                                        key={requestId}
+                                                        className="border-b border-slate-100 px-5 py-5 last:border-b-0"
+                                                    >
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div>
+                                                                <p className="text-sm font-semibold text-slate-900">
+                                                                    {request.employeeName}
+                                                                </p>
+
+                                                                <p className="mt-1 text-xs text-slate-500">
+                                                                    {request.employeeCode} ·{" "}
+                                                                    {request.department || "—"}
+                                                                </p>
+                                                            </div>
+
+                                                            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                                                                Pending
+                                                            </span>
+                                                        </div>
+
+                                                        <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                                                            <div className="rounded-xl bg-slate-50 p-3">
+                                                                <p className="text-slate-400">
+                                                                    PC
+                                                                </p>
+
+                                                                <p className="mt-1 font-medium text-slate-700">
+                                                                    {request.pcName || "Unknown"}
+                                                                </p>
+                                                            </div>
+
+                                                            <div className="rounded-xl bg-slate-50 p-3">
+                                                                <p className="text-slate-400">
+                                                                    Network
+                                                                </p>
+
+                                                                <p className="mt-1 font-medium text-slate-700">
+                                                                    {request.networkType || "Unknown"}
+                                                                </p>
+                                                            </div>
+
+                                                            <div className="rounded-xl bg-slate-50 p-3">
+                                                                <p className="text-slate-400">
+                                                                    Date
+                                                                </p>
+
+                                                                <p className="mt-1 font-medium text-slate-700">
+                                                                    {request.date}
+                                                                </p>
+                                                            </div>
+
+                                                            <div className="rounded-xl bg-slate-50 p-3">
+                                                                <p className="text-slate-400">
+                                                                    Requested
+                                                                </p>
+
+                                                                <p className="mt-1 font-medium text-slate-700">
+                                                                    {request.requestedAt
+                                                                        ? new Date(
+                                                                            request.requestedAt
+                                                                        ).toLocaleTimeString([], {
+                                                                            hour: "2-digit",
+                                                                            minute: "2-digit",
+                                                                        })
+                                                                        : "—"}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="mt-4">
+                                                            <label className="mb-1.5 block text-xs font-medium text-slate-600">
+                                                                Approve as
+                                                            </label>
+
+                                                            <select
+                                                                value={attendanceApprovalType}
+                                                                onChange={(event) =>
+                                                                    setAttendanceApprovalType(
+                                                                        event.target.value
+                                                                    )
+                                                                }
+                                                                className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-violet-500"
+                                                            >
+                                                                <option>
+                                                                    Work From Home
+                                                                </option>
+
+                                                                <option>
+                                                                    Client Site
+                                                                </option>
+
+                                                                <option>
+                                                                    Office Exception
+                                                                </option>
+
+                                                                <option>
+                                                                    Late Arrival
+                                                                </option>
+                                                            </select>
+                                                        </div>
+
+                                                        <div className="mt-3">
+                                                            <label className="mb-1.5 block text-xs font-medium text-slate-600">
+                                                                Admin note
+                                                            </label>
+
+                                                            <textarea
+                                                                rows={2}
+                                                                value={attendanceApprovalNote}
+                                                                onChange={(event) =>
+                                                                    setAttendanceApprovalNote(
+                                                                        event.target.value
+                                                                    )
+                                                                }
+                                                                placeholder="Optional note..."
+                                                                className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-violet-500"
+                                                            />
+                                                        </div>
+
+                                                        <div className="mt-4 flex gap-2">
+                                                            <button
+                                                                type="button"
+                                                                disabled={busy}
+                                                                onClick={() =>
+                                                                    rejectAttendanceRequest(
+                                                                        requestId
+                                                                    )
+                                                                }
+                                                                className="flex h-10 flex-1 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
+                                                            >
+                                                                Reject
+                                                            </button>
+
+                                                            <button
+                                                                type="button"
+                                                                disabled={busy}
+                                                                onClick={() =>
+                                                                    approveAttendanceRequest(
+                                                                        requestId
+                                                                    )
+                                                                }
+                                                                className="flex h-10 flex-1 items-center justify-center rounded-xl bg-violet-600 text-sm font-semibold text-white transition hover:bg-violet-700 disabled:opacity-50"
+                                                            >
+                                                                {busy
+                                                                    ? "Processing..."
+                                                                    : "Approve"}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            }
+                                        )
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                    </div>
+                )}
                 {/* Page Content */}
                 <main className="enterprise-workspace p-4 sm:p-6 lg:p-8">
                     <div className="mx-auto max-w-[1600px]">

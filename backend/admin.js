@@ -477,7 +477,838 @@ router.use((req, res, next) => {
     message: "Admin access is required.",
   });
 });
+/* =====================================================
+   AGENT DEVICE MANAGEMENT
+   Admin only
+===================================================== */
 
+/*
+ * GET /api/admin/agent-devices
+ *
+ * Returns registered Windows agent devices.
+ *
+ * Optional:
+ * ?status=pending
+ * ?status=approved
+ */
+
+router.get(
+  "/agent-devices",
+  async (req, res) => {
+    try {
+      const status =
+        String(
+          req.query.status || ""
+        )
+          .trim()
+          .toLowerCase();
+
+      const query = {};
+
+      if (status === "pending") {
+        query.isApproved = {
+          $ne: true,
+        };
+      }
+
+      if (status === "approved") {
+        query.isApproved = true;
+      }
+
+      const devices =
+        await AgentDevice.find(
+          query
+        )
+          .sort({
+            isApproved: 1,
+            createdAt: -1,
+          })
+          .lean();
+
+      return res.json({
+        success: true,
+
+        count:
+          devices.length,
+
+        devices:
+          devices.map(
+            (device) => ({
+              id:
+                device._id,
+
+              deviceId:
+                device.deviceId,
+
+              employeeCode:
+                device.employeeCode,
+
+              pcName:
+                device.pcName ||
+                "",
+
+              deviceName:
+                device.deviceName ||
+                "",
+
+              platform:
+                device.platform ||
+                "windows",
+
+              appVersion:
+                device.appVersion ||
+                "",
+
+              isActive:
+                device.isActive !==
+                false,
+
+              isApproved:
+                device.isApproved ===
+                true,
+
+              approvedAt:
+                device.approvedAt ||
+                null,
+
+              approvedBy:
+                device.approvedBy ||
+                null,
+
+              approvalNote:
+                device.approvalNote ||
+                "",
+
+              lastSeen:
+                device.lastSeen ||
+                null,
+
+              createdAt:
+                device.createdAt ||
+                null,
+
+              updatedAt:
+                device.updatedAt ||
+                null,
+            })
+          ),
+      });
+    } catch (error) {
+      console.error(
+        "Agent device list error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Unable to load agent devices.",
+      });
+    }
+  }
+);
+
+
+/*
+ * PATCH /api/admin/agent-devices/:id/approve
+ *
+ * Approves a Windows PC as a trusted device.
+ */
+
+router.patch(
+  "/agent-devices/:id/approve",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid device ID.",
+        });
+      }
+
+      const device =
+        await AgentDevice.findById(
+          id
+        );
+
+      if (!device) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Agent device not found.",
+        });
+      }
+
+      const note =
+        String(
+          req.body?.note || ""
+        ).trim();
+
+      device.isApproved =
+        true;
+
+      device.approvedBy =
+        req.user._id;
+
+      device.approvedAt =
+        new Date();
+
+      device.approvalNote =
+        note;
+
+      device.isActive =
+        true;
+
+      await device.save();
+
+      return res.json({
+        success: true,
+
+        message:
+          "Agent device approved successfully.",
+
+        device: {
+          id:
+            device._id,
+
+          deviceId:
+            device.deviceId,
+
+          employeeCode:
+            device.employeeCode,
+
+          pcName:
+            device.pcName,
+
+          deviceName:
+            device.deviceName,
+
+          isApproved:
+            device.isApproved,
+
+          isActive:
+            device.isActive,
+
+          approvedAt:
+            device.approvedAt,
+
+          approvedBy:
+            device.approvedBy,
+
+          approvalNote:
+            device.approvalNote,
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Agent device approval error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Unable to approve agent device.",
+      });
+    }
+  }
+);
+
+
+/*
+ * PATCH /api/admin/agent-devices/:id/reject
+ *
+ * Rejects / disables a Windows agent device.
+ */
+
+router.patch(
+  "/agent-devices/:id/reject",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid device ID.",
+        });
+      }
+
+      const device =
+        await AgentDevice.findById(
+          id
+        );
+
+      if (!device) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Agent device not found.",
+        });
+      }
+
+      const note =
+        String(
+          req.body?.note ||
+          "Rejected by administrator."
+        ).trim();
+
+      device.isApproved =
+        false;
+
+      /*
+       * Rejecting also disables this token/device.
+       *
+       * authenticateAgent already requires
+       * isActive: true.
+       */
+
+      device.isActive =
+        false;
+
+      device.approvedBy =
+        null;
+
+      device.approvedAt =
+        null;
+
+      device.approvalNote =
+        note;
+
+      await device.save();
+
+      return res.json({
+        success: true,
+
+        message:
+          "Agent device rejected and disabled.",
+
+        device: {
+          id:
+            device._id,
+
+          deviceId:
+            device.deviceId,
+
+          employeeCode:
+            device.employeeCode,
+
+          pcName:
+            device.pcName,
+
+          deviceName:
+            device.deviceName,
+
+          isApproved:
+            false,
+
+          isActive:
+            false,
+
+          approvalNote:
+            device.approvalNote,
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Agent device rejection error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Unable to reject agent device.",
+      });
+    }
+  }
+);
+/* =====================================================
+   ATTENDANCE APPROVAL REQUESTS
+   Admin only
+===================================================== */
+
+router.get(
+  "/attendance-approval-requests",
+  async (req, res) => {
+    try {
+      const AttendanceApprovalRequest =
+        mongoose.models.AttendanceApprovalRequest;
+
+      if (!AttendanceApprovalRequest) {
+        return res.status(500).json({
+          success: false,
+          message:
+            "Attendance approval model is not available.",
+        });
+      }
+
+      const status =
+        String(
+          req.query.status || "Pending"
+        ).trim();
+
+      const query = {};
+
+      if (
+        ["Pending", "Approved", "Rejected"].includes(
+          status
+        )
+      ) {
+        query.status = status;
+      }
+
+      const requests =
+        await AttendanceApprovalRequest.find(
+          query
+        )
+          .sort({
+            requestedAt: -1,
+          })
+          .lean();
+
+      return res.json({
+        success: true,
+        count: requests.length,
+        requests,
+      });
+    } catch (error) {
+      console.error(
+        "Attendance approval list error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Unable to load attendance approval requests.",
+      });
+    }
+  }
+);
+
+
+/* =====================================================
+   APPROVE REMOTE ATTENDANCE REQUEST
+===================================================== */
+
+router.patch(
+  "/attendance-approval-requests/:id/approve",
+  async (req, res) => {
+    try {
+      const AttendanceApprovalRequest =
+        mongoose.models.AttendanceApprovalRequest;
+
+      const Attendance =
+        mongoose.models.AttendanceV2;
+
+      const Employee =
+        mongoose.models.Employee;
+
+      if (
+        !AttendanceApprovalRequest ||
+        !Attendance ||
+        !Employee
+      ) {
+        return res.status(500).json({
+          success: false,
+          message:
+            "Attendance models are not available.",
+        });
+      }
+
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid approval request ID.",
+        });
+      }
+
+      const request =
+        await AttendanceApprovalRequest.findById(
+          id
+        );
+
+      if (!request) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Attendance approval request not found.",
+        });
+      }
+
+      if (
+        request.status !==
+        "Pending"
+      ) {
+        return res.status(409).json({
+          success: false,
+          message:
+            `This request is already ${request.status.toLowerCase()}.`,
+        });
+      }
+
+      const approvalType =
+        String(
+          req.body?.approvalType ||
+          "Work From Home"
+        ).trim();
+
+      const allowedApprovalTypes = [
+        "Work From Home",
+        "Client Site",
+        "Office Exception",
+        "Late Arrival",
+      ];
+
+      if (
+        !allowedApprovalTypes.includes(
+          approvalType
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid approval type.",
+        });
+      }
+
+      const employee =
+        await Employee.findById(
+          request.employeeId
+        );
+
+      if (!employee) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Employee not found.",
+        });
+      }
+
+      /*
+       * Never create duplicate attendance.
+       */
+
+      let attendance =
+        await Attendance.findOne({
+          employeeId:
+            employee._id,
+
+          date:
+            request.date,
+
+          isDeleted: {
+            $ne: true,
+          },
+        });
+
+      if (!attendance) {
+        /*
+         * Use ORIGINAL request time,
+         * not admin approval time.
+         *
+         * Example:
+         * Requested at 10:22
+         * Approved at 11:00
+         *
+         * Attendance should still represent
+         * the 10:22 login request.
+         */
+
+        const loginTime =
+          new Date(
+            request.requestedAt
+          );
+
+        /*
+         * Shift = 10:00
+         * Grace = 15 minutes
+         */
+
+        const shiftStartAt =
+          new Date(
+            `${request.date}T10:00:00+05:30`
+          );
+
+        const difference =
+          Math.floor(
+            (
+              loginTime.getTime() -
+              shiftStartAt.getTime()
+            ) /
+              60000
+          );
+
+        const lateMinutes =
+          difference > 15
+            ? difference
+            : 0;
+
+        attendance =
+          await Attendance.create({
+            employeeId:
+              employee._id,
+
+            employeeCode:
+              employee.employeeCode,
+
+            employeeName:
+              employee.name,
+
+            department:
+              employee.department ||
+              "",
+
+            role:
+              employee.role ||
+              "",
+
+            date:
+              request.date,
+
+            loginTime,
+
+            logoutTime:
+              null,
+
+            breakStartedAt:
+              null,
+
+            breakMinutes:
+              0,
+
+            totalBreakMinutes:
+              0,
+
+            workingMinutes:
+              0,
+
+            totalWorkedMinutes:
+              0,
+
+            shiftStart:
+              "10:00",
+
+            shiftEnd:
+              "18:00",
+
+            lateMinutes,
+
+            earlyLogoutMinutes:
+              0,
+
+            overtimeMinutes:
+              0,
+
+            status:
+              lateMinutes > 0
+                ? "Late"
+                : "Present",
+
+            workStatus:
+              "Working",
+
+            isAutoClosed:
+              false,
+
+            autoClosedReason:
+              "",
+
+            note:
+              `${approvalType} approved by admin.`,
+
+            createdBy:
+              req.user._id,
+
+            updatedBy:
+              req.user._id,
+          });
+      }
+
+      request.status =
+        "Approved";
+
+      request.approvalType =
+        approvalType;
+
+      request.reviewedBy =
+        req.user._id;
+
+      request.reviewedAt =
+        new Date();
+
+      request.reviewNote =
+        String(
+          req.body?.note ||
+          ""
+        ).trim();
+
+      request.attendanceId =
+        attendance._id;
+
+      await request.save();
+
+      /*
+       * Mark employee as active/working.
+       */
+
+      employee.status =
+        "Working";
+
+      employee.lastActivityAt =
+        new Date();
+
+      await employee.save();
+
+      return res.json({
+        success: true,
+
+        message:
+          "Attendance request approved successfully.",
+
+        request,
+
+        attendance,
+      });
+    } catch (error) {
+      console.error(
+        "Attendance approval error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Unable to approve attendance request.",
+      });
+    }
+  }
+);
+
+
+/* =====================================================
+   REJECT REMOTE ATTENDANCE REQUEST
+===================================================== */
+
+router.patch(
+  "/attendance-approval-requests/:id/reject",
+  async (req, res) => {
+    try {
+      const AttendanceApprovalRequest =
+        mongoose.models.AttendanceApprovalRequest;
+
+      if (!AttendanceApprovalRequest) {
+        return res.status(500).json({
+          success: false,
+          message:
+            "Attendance approval model is not available.",
+        });
+      }
+
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid approval request ID.",
+        });
+      }
+
+      const request =
+        await AttendanceApprovalRequest.findById(
+          id
+        );
+
+      if (!request) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Attendance approval request not found.",
+        });
+      }
+
+      if (
+        request.status !==
+        "Pending"
+      ) {
+        return res.status(409).json({
+          success: false,
+          message:
+            `This request is already ${request.status.toLowerCase()}.`,
+        });
+      }
+
+      request.status =
+        "Rejected";
+
+      request.reviewedBy =
+        req.user._id;
+
+      request.reviewedAt =
+        new Date();
+
+      request.reviewNote =
+        String(
+          req.body?.note ||
+          "Attendance request rejected."
+        ).trim();
+
+      request.attendanceId =
+        null;
+
+      await request.save();
+
+      return res.json({
+        success: true,
+
+        message:
+          "Attendance request rejected.",
+
+        request,
+      });
+    } catch (error) {
+      console.error(
+        "Attendance rejection error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Unable to reject attendance request.",
+      });
+    }
+  }
+);
 /* =====================================================
    PRODUCT MASTER SCHEMA
 ===================================================== */

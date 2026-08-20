@@ -1,3 +1,4 @@
+import API_URL from "../config/api";
 import { useEffect, useMemo, useState } from "react";
 import {
     Activity,
@@ -55,8 +56,7 @@ import {
 */
 
 const DEMO_DATE = "2026-07-14";
-const API_BASE_URL =
-    import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+const API_BASE_URL =API_URL;
 
 const initialAgentStatus = {
     connected: true,

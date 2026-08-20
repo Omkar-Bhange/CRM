@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
-const API_URL = "http://localhost:5000";
+import API_URL from "../../config/api";
 
 const getAuthToken = () =>
     localStorage.getItem("client-connect-token") ||

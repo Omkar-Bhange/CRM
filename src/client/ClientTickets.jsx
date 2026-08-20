@@ -1,3 +1,4 @@
+import API_URL from "../config/api";
 import { useEffect, useMemo, useState } from "react";
 import {
     AlertTriangle,
@@ -373,13 +374,13 @@ export default function ClientTickets({ client }) {
                 sessionStorage.getItem("client-connect-token");
 
             const response = await fetch(
-                "http://localhost:5000/api/client/tickets",
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
-                }
-            );
+    `${API_URL}/api/client/tickets`,
+    {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+    }
+);
 
             const result = await response.json();
 
@@ -479,9 +480,9 @@ const handleSubmitTicket = async (event) => {
       formData.append("attachment", ticketForm.attachment);
     }
 
-    const endpoint = editingTicketId
-      ? `http://localhost:5000/api/client/tickets/${editingTicketId}`
-      : "http://localhost:5000/api/client/tickets";
+  const endpoint = editingTicketId
+    ? `${API_URL}/api/client/tickets/${editingTicketId}`
+    : `${API_URL}/api/client/tickets`;
 
     const response = await fetch(endpoint, {
       method: editingTicketId ? "PUT" : "POST",
@@ -1276,10 +1277,10 @@ const handleSubmitTicket = async (event) => {
 
                                                         <div className="flex flex-wrap gap-2">
                                                             <a
-                                                                href={
-                                                                    attachment.url ||
-                                                                    `http://localhost:5000${attachment.fileUrl}`
-                                                                }
+                                                             href={
+    attachment.url ||
+    `${API_URL}${attachment.fileUrl}`
+}
                                                                 target="_blank"
                                                                 rel="noreferrer"
                                                                 className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-50"
@@ -1287,10 +1288,10 @@ const handleSubmitTicket = async (event) => {
                                                                 View
                                                             </a>
                                                             <a
-                                                                href={
-                                                                    attachment.url ||
-                                                                    `http://localhost:5000${attachment.fileUrl}`
-                                                                }
+                                                              href={
+    attachment.url ||
+    `${API_URL}${attachment.fileUrl}`
+}
                                                                 download={
                                                                     attachment.originalName ||
                                                                     attachment.fileName
@@ -1306,10 +1307,10 @@ const handleSubmitTicket = async (event) => {
                                                         attachment.mimeType || attachment.fileType || ""
                                                     ) && (
                                                         <img
-                                                            src={
-                                                                attachment.url ||
-                                                                `http://localhost:5000${attachment.fileUrl}`
-                                                            }
+                                                         src={
+    attachment.url ||
+    `${API_URL}${attachment.fileUrl}`
+}
                                                             alt={
                                                                 attachment.originalName ||
                                                                 attachment.fileName

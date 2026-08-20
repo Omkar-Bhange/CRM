@@ -1,8 +1,8 @@
 const express = require("express");
 const mongoose = require("mongoose");
-const axios = require("axios");
 
 const authenticateUser = require("./authMiddleware");
+const AgentDevice = require("./models/AgentDevice");
 
 const Attendance =
   mongoose.models.AttendanceV2 ||
@@ -223,6 +223,7 @@ const AttendanceEvent =
   );
 
 const Employee = mongoose.models.Employee;
+
 
 /* =========================================================
    ADVANCED LEAVE REQUEST MODEL
@@ -582,9 +583,162 @@ appliedAt: {
       }
     )
   );
+/* =========================================================
+   REMOTE ATTENDANCE APPROVAL REQUEST
+========================================================= */
 
+const AttendanceApprovalRequest =
+  mongoose.models.AttendanceApprovalRequest ||
+  mongoose.model(
+    "AttendanceApprovalRequest",
+    new mongoose.Schema(
+      {
+        employeeId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Employee",
+          required: true,
+          index: true,
+        },
+
+        employeeCode: {
+          type: String,
+          required: true,
+          trim: true,
+          uppercase: true,
+          index: true,
+        },
+
+        employeeName: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+
+        department: {
+          type: String,
+          default: "",
+          trim: true,
+        },
+
+        date: {
+          type: String,
+          required: true,
+          index: true,
+        },
+
+        requestedAt: {
+          type: Date,
+          required: true,
+          default: Date.now,
+        },
+
+        requestType: {
+          type: String,
+          enum: [
+            "Remote Login",
+            "Work From Home",
+            "Client Site",
+            "Office Exception",
+          ],
+          default: "Remote Login",
+          index: true,
+        },
+
+        reason: {
+          type: String,
+          default: "",
+          trim: true,
+        },
+
+        pcName: {
+          type: String,
+          default: "",
+          trim: true,
+        },
+
+        deviceId: {
+          type: String,
+          default: "",
+          trim: true,
+        },
+
+        ipAddress: {
+          type: String,
+          default: "",
+          trim: true,
+        },
+
+        networkType: {
+          type: String,
+          enum: [
+            "Office",
+            "Outside Office",
+            "Unknown",
+          ],
+          default: "Unknown",
+        },
+
+        status: {
+          type: String,
+          enum: [
+            "Pending",
+            "Approved",
+            "Rejected",
+          ],
+          default: "Pending",
+          index: true,
+        },
+
+        approvalType: {
+          type: String,
+          enum: [
+            "",
+            "Work From Home",
+            "Client Site",
+            "Office Exception",
+            "Late Arrival",
+          ],
+          default: "",
+        },
+
+        reviewedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          default: null,
+        },
+
+        reviewedAt: {
+          type: Date,
+          default: null,
+        },
+
+        reviewNote: {
+          type: String,
+          default: "",
+          trim: true,
+        },
+
+        attendanceId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "AttendanceV2",
+          default: null,
+        },
+      },
+      {
+        timestamps: true,
+        collection: "attendanceApprovalRequests",
+      }
+    )
+  );
+
+AttendanceApprovalRequest.schema.index({
+  employeeId: 1,
+  date: 1,
+  status: 1,
+});
 const router = express.Router();
 router.use(authenticateUser);
+
 const DEFAULT_SHIFT_START = "10:00";
 const DEFAULT_SHIFT_END = "18:00";
 const GRACE_MINUTES = 15;
@@ -2094,6 +2248,724 @@ async function updateEmployeeStatus(employee, workStatus) {
   await employee.save();
 }
 
+function getRequestIp(req) {
+  const forwardedFor =
+    String(
+      req.headers["x-forwarded-for"] || ""
+    )
+      .split(",")[0]
+      .trim();
+
+  const rawIp =
+    forwardedFor ||
+    req.ip ||
+    req.socket?.remoteAddress ||
+    "";
+
+  return String(rawIp)
+    .replace(/^::ffff:/, "")
+    .trim();
+}
+/* =========================================================
+   ADMIN - REMOTE ATTENDANCE APPROVAL REQUESTS
+========================================================= */
+
+/*
+  GET /api/attendance/admin/approval-requests
+
+  Examples:
+  ?status=Pending
+  ?status=Approved
+  ?status=Rejected
+*/
+
+router.get(
+  "/admin/approval-requests",
+  async (req, res, next) => {
+    try {
+      if (!requireAdmin(req, res)) {
+        return;
+      }
+
+      const status =
+        String(
+          req.query.status || "Pending"
+        ).trim();
+
+      const query = {};
+
+      if (
+        [
+          "Pending",
+          "Approved",
+          "Rejected",
+        ].includes(status)
+      ) {
+        query.status = status;
+      }
+
+      const requests =
+        await AttendanceApprovalRequest.find(
+          query
+        )
+          .sort({
+            requestedAt: -1,
+          })
+          .lean();
+
+      return res.json({
+        success: true,
+        count: requests.length,
+        data: requests,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+
+/* =========================================================
+   ADMIN - APPROVE REMOTE ATTENDANCE
+========================================================= */
+
+router.patch(
+  "/admin/approval-requests/:id/approve",
+  async (req, res, next) => {
+    try {
+      if (!requireAdmin(req, res)) {
+        return;
+      }
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          req.params.id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid attendance approval request ID.",
+        });
+      }
+
+      const approvalRequest =
+        await AttendanceApprovalRequest.findById(
+          req.params.id
+        );
+
+      if (!approvalRequest) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Attendance approval request not found.",
+        });
+      }
+
+      if (
+        approvalRequest.status !==
+        "Pending"
+      ) {
+        return res.status(409).json({
+          success: false,
+          message:
+            `Request is already ${approvalRequest.status}.`,
+        });
+      }
+
+      const approvalType =
+        String(
+          req.body.approvalType ||
+          "Work From Home"
+        ).trim();
+
+      const allowedApprovalTypes = [
+        "Work From Home",
+        "Client Site",
+        "Office Exception",
+        "Late Arrival",
+      ];
+
+      if (
+        !allowedApprovalTypes.includes(
+          approvalType
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid approval type.",
+        });
+      }
+
+      const employee =
+        await Employee.findById(
+          approvalRequest.employeeId
+        );
+
+      if (!employee) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Employee profile not found.",
+        });
+      }
+
+      /*
+       * Never create duplicate attendance.
+       */
+
+      let attendance =
+        await Attendance.findOne({
+          employeeId:
+            employee._id,
+
+          date:
+            approvalRequest.date,
+
+          isDeleted: {
+            $ne: true,
+          },
+        });
+
+      if (!attendance) {
+        /*
+         * Use original employee request time,
+         * NOT the admin approval time.
+         */
+
+        const loginTime =
+          new Date(
+            approvalRequest.requestedAt
+          );
+
+        const shiftStartAt =
+          parseShiftDate(
+            approvalRequest.date,
+            DEFAULT_SHIFT_START
+          );
+
+        let lateMinutes = 0;
+
+        if (shiftStartAt) {
+          const difference =
+            Math.floor(
+              (
+                loginTime.getTime() -
+                shiftStartAt.getTime()
+              ) /
+                60000
+            );
+
+          lateMinutes =
+            difference >
+            GRACE_MINUTES
+              ? difference
+              : 0;
+        }
+
+        attendance =
+          await Attendance.create({
+            employeeId:
+              employee._id,
+
+            employeeCode:
+              employee.employeeCode,
+
+            employeeName:
+              employee.name,
+
+            department:
+              employee.department ||
+              "",
+
+            role:
+              employee.role ||
+              "",
+
+            date:
+              approvalRequest.date,
+
+            loginTime,
+
+            logoutTime:
+              null,
+
+            breakStartedAt:
+              null,
+
+            breakMinutes:
+              0,
+
+            totalBreakMinutes:
+              0,
+
+            workingMinutes:
+              0,
+
+            totalWorkedMinutes:
+              0,
+
+            shiftStart:
+              DEFAULT_SHIFT_START,
+
+            shiftEnd:
+              DEFAULT_SHIFT_END,
+
+            lateMinutes,
+
+            earlyLogoutMinutes:
+              0,
+
+            overtimeMinutes:
+              0,
+
+            status:
+              lateMinutes > 0
+                ? "Late"
+                : "Present",
+
+            workStatus:
+              "Working",
+
+            isAutoClosed:
+              false,
+
+            autoClosedReason:
+              "",
+
+            note:
+              `${approvalType} approved by admin.`,
+
+            createdBy:
+              req.user._id,
+
+            updatedBy:
+              req.user._id,
+          });
+
+        await createAttendanceEvent(
+          attendance._id,
+          employee._id,
+          "LOGIN",
+          "admin-approval",
+          approvalType
+        );
+      }
+
+      approvalRequest.status =
+        "Approved";
+
+      approvalRequest.approvalType =
+        approvalType;
+
+      approvalRequest.reviewedBy =
+        req.user._id;
+
+      approvalRequest.reviewedAt =
+        new Date();
+
+      approvalRequest.reviewNote =
+        String(
+          req.body.note || ""
+        ).trim();
+
+      approvalRequest.attendanceId =
+        attendance._id;
+
+      await approvalRequest.save();
+
+      await updateEmployeeStatus(
+        employee,
+        "Working"
+      );
+
+      return res.json({
+        success: true,
+
+        message:
+          "Attendance request approved successfully.",
+
+        data: {
+          request:
+            approvalRequest,
+
+          attendance:
+            formatAttendance(
+              attendance
+            ),
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+
+/* =========================================================
+   ADMIN - REJECT REMOTE ATTENDANCE
+========================================================= */
+
+router.patch(
+  "/admin/approval-requests/:id/reject",
+  async (req, res, next) => {
+    try {
+      if (!requireAdmin(req, res)) {
+        return;
+      }
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          req.params.id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid attendance approval request ID.",
+        });
+      }
+
+      const approvalRequest =
+        await AttendanceApprovalRequest.findById(
+          req.params.id
+        );
+
+      if (!approvalRequest) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Attendance approval request not found.",
+        });
+      }
+
+      if (
+        approvalRequest.status !==
+        "Pending"
+      ) {
+        return res.status(409).json({
+          success: false,
+          message:
+            `Request is already ${approvalRequest.status}.`,
+        });
+      }
+
+      approvalRequest.status =
+        "Rejected";
+
+      approvalRequest.reviewedBy =
+        req.user._id;
+
+      approvalRequest.reviewedAt =
+        new Date();
+
+      approvalRequest.reviewNote =
+        String(
+          req.body.note ||
+          "Attendance request rejected by admin."
+        ).trim();
+
+      approvalRequest.attendanceId =
+        null;
+
+      await approvalRequest.save();
+
+      /*
+       * IMPORTANT:
+       *
+       * Do NOT create attendance.
+       * Do NOT start agent.
+       * Employee may still remain logged into CRM.
+       */
+
+      return res.json({
+        success: true,
+
+        message:
+          "Attendance request rejected.",
+
+        data:
+          approvalRequest,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/* =========================================================
+   CURRENT EMPLOYEE ATTENDANCE APPROVAL STATUS
+
+   GET /api/attendance/approval-status
+========================================================= */
+
+router.get(
+  "/approval-status",
+  async (req, res, next) => {
+    try {
+      const employee =
+        await findEmployee(
+          req,
+          res
+        );
+
+      if (!employee) {
+        return;
+      }
+
+      const today =
+        getLocalDateString();
+
+      /*
+       * First check whether attendance already exists.
+       * This covers normal office attendance as well as
+       * admin-approved remote attendance.
+       */
+
+      const attendance =
+        await Attendance.findOne({
+          employeeId:
+            employee._id,
+
+          date:
+            today,
+
+          isDeleted: {
+            $ne: true,
+          },
+        })
+          .sort({
+            createdAt: -1,
+          })
+          .lean();
+
+      /*
+       * Get today's latest approval request, if any.
+       */
+
+      const approvalRequest =
+        await AttendanceApprovalRequest.findOne({
+          employeeId:
+            employee._id,
+
+          date:
+            today,
+        })
+          .sort({
+            requestedAt: -1,
+          })
+          .lean();
+
+      /*
+       * Workday already exists and is OPEN.
+       */
+
+      if (
+        attendance &&
+        attendance.loginTime &&
+        !attendance.logoutTime
+      ) {
+        return res.json({
+          success: true,
+
+          status:
+            approvalRequest?.status ||
+            "Active",
+
+          attendanceActive:
+            true,
+
+          allowAgentStart:
+            true,
+
+          workdayCompleted:
+            false,
+
+          approvalType:
+            approvalRequest?.approvalType ||
+            "",
+
+          message:
+            approvalRequest?.status ===
+            "Approved"
+              ? "Attendance request approved."
+              : "Workday is active.",
+
+          attendance,
+
+          request:
+            approvalRequest ||
+            null,
+        });
+      }
+
+      /*
+       * Workday exists but has already been completed.
+       */
+
+      if (
+        attendance &&
+        attendance.logoutTime
+      ) {
+        return res.json({
+          success: true,
+
+          status:
+            "Completed",
+
+          attendanceActive:
+            false,
+
+          allowAgentStart:
+            false,
+
+          workdayCompleted:
+            true,
+
+          message:
+            "Today's workday has already been completed.",
+
+          attendance,
+
+          request:
+            approvalRequest ||
+            null,
+        });
+      }
+
+      /*
+       * No attendance yet.
+       */
+
+      if (!approvalRequest) {
+        return res.json({
+          success: true,
+
+          status:
+            "None",
+
+          attendanceActive:
+            false,
+
+          allowAgentStart:
+            false,
+
+          workdayCompleted:
+            false,
+
+          message:
+            "No attendance approval request found.",
+
+          request:
+            null,
+        });
+      }
+
+      /*
+       * Request is waiting for admin.
+       */
+
+      if (
+        approvalRequest.status ===
+        "Pending"
+      ) {
+        return res.json({
+          success: true,
+
+          status:
+            "Pending",
+
+          attendancePending:
+            true,
+
+          attendanceActive:
+            false,
+
+          allowAgentStart:
+            false,
+
+          workdayCompleted:
+            false,
+
+          message:
+            "Attendance approval is pending.",
+
+          request:
+            approvalRequest,
+        });
+      }
+
+      /*
+       * Request rejected.
+       */
+
+      if (
+        approvalRequest.status ===
+        "Rejected"
+      ) {
+        return res.json({
+          success: true,
+
+          status:
+            "Rejected",
+
+          attendancePending:
+            false,
+
+          attendanceActive:
+            false,
+
+          allowAgentStart:
+            false,
+
+          workdayCompleted:
+            false,
+
+          message:
+            approvalRequest.reviewNote ||
+            "Attendance request was rejected.",
+
+          request:
+            approvalRequest,
+        });
+      }
+
+      /*
+       * Approved request but attendance is missing.
+       *
+       * This should normally never happen because admin
+       * approval creates attendance. Returning false is
+       * safer than starting the agent without attendance.
+       */
+
+      return res.json({
+        success: true,
+
+        status:
+          approvalRequest.status,
+
+        attendanceActive:
+          false,
+
+        allowAgentStart:
+          false,
+
+        workdayCompleted:
+          false,
+
+        message:
+          "Approval exists but attendance is not active.",
+
+        request:
+          approvalRequest,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 router.post("/login", async (req, res, next) => {
   try {
     const employee = await findEmployee(req, res);
@@ -2102,13 +2974,66 @@ router.post("/login", async (req, res, next) => {
     await closeOpenAttendanceForEmployee(employee._id);
 
     const today = getLocalDateString();
+    const {
+  deviceId,
+  pcName,
+  agentEmployeeCode,
+  agentRegistered,
+} = req.body || {};
+
+const requestIp =
+  getRequestIp(req);
+
+const configuredOfficeIp =
+  String(
+    process.env.OFFICE_PUBLIC_IP || ""
+  ).trim();
     const currentAttendance = await Attendance.findOne({ employeeId: employee._id, date: today });
-    if (currentAttendance) {
-      if (!currentAttendance.logoutTime) {
-        return res.status(200).json({ success: true, message: "You are already logged in.", data: formatAttendance(currentAttendance) });
-      }
-      return res.status(200).json({ success: true, message: "Today attendance is already completed.", data: formatAttendance(currentAttendance) });
-    }
+  if (currentAttendance) {
+  /*
+  ============================================================
+  WORKDAY ALREADY ACTIVE
+  ============================================================
+  CRM login is allowed and the local agent may run.
+  */
+
+  if (!currentAttendance.logoutTime) {
+    return res.status(200).json({
+      success: true,
+      message: "You are already logged in.",
+
+      allowAgentStart: true,
+      workdayCompleted: false,
+
+      data:
+        formatAttendance(
+          currentAttendance
+        ),
+    });
+  }
+
+  /*
+  ============================================================
+  WORKDAY ALREADY COMPLETED
+  ============================================================
+  Employee may still access CRM, but attendance must NOT
+  reopen and local Windows Agent must NOT start again today.
+  */
+
+  return res.status(200).json({
+    success: true,
+    message:
+      "Today attendance is already completed.",
+
+    allowAgentStart: false,
+    workdayCompleted: true,
+
+    data:
+      formatAttendance(
+        currentAttendance
+      ),
+  });
+}
 
 const leave =
   await getApprovedLeave(
@@ -2160,7 +3085,196 @@ if (isWeeklyOff(today)) {
       "Contact admin if you are required to work.",
   });
 }
+/* =========================================================
+   OFFICE DEVICE / REMOTE LOGIN VERIFICATION
+========================================================= */
 
+const normalizedEmployeeCode =
+  String(
+    employee.employeeCode || ""
+  )
+    .trim()
+    .toUpperCase();
+
+const normalizedAgentEmployeeCode =
+  String(
+    agentEmployeeCode || ""
+  )
+    .trim()
+    .toUpperCase();
+
+let approvedDevice =
+  null;
+
+if (
+  deviceId &&
+  agentRegistered === true &&
+  normalizedAgentEmployeeCode ===
+    normalizedEmployeeCode
+) {
+  approvedDevice =
+    await AgentDevice.findOne({
+      deviceId:
+        String(deviceId).trim(),
+
+      employeeCode:
+        normalizedEmployeeCode,
+
+      isActive:
+        true,
+
+      isApproved:
+        true,
+    }).lean();
+}
+
+/*
+ * Public IP is SECONDARY evidence only.
+ *
+ * The approved device is the primary identity.
+ */
+
+const officeIpMatches =
+  Boolean(
+    configuredOfficeIp &&
+    requestIp ===
+      configuredOfficeIp
+  );
+
+const isTrustedOfficeLogin =
+  Boolean(
+    approvedDevice &&
+    officeIpMatches
+  );
+
+/*
+ * If both approved device + office network match,
+ * continue with normal attendance creation.
+ */
+
+if (!isTrustedOfficeLogin) {
+  /*
+   * Avoid creating multiple Pending requests
+   * when employee repeatedly logs in.
+   */
+
+  let pendingRequest =
+    await AttendanceApprovalRequest.findOne({
+      employeeId:
+        employee._id,
+
+      date:
+        today,
+
+      status:
+        "Pending",
+    });
+
+  if (!pendingRequest) {
+    pendingRequest =
+      await AttendanceApprovalRequest.create({
+        employeeId:
+          employee._id,
+
+        employeeCode:
+          employee.employeeCode,
+
+        employeeName:
+          employee.name,
+
+        department:
+          employee.department || "",
+
+        date:
+          today,
+
+        requestedAt:
+          new Date(),
+
+        requestType:
+          "Remote Login",
+
+        reason:
+          "",
+
+        pcName:
+          String(
+            pcName ||
+            approvedDevice?.pcName ||
+            ""
+          ).trim(),
+
+        deviceId:
+          String(
+            deviceId || ""
+          ).trim(),
+
+        ipAddress:
+          requestIp,
+
+        networkType:
+          officeIpMatches
+            ? "Office"
+            : configuredOfficeIp
+              ? "Outside Office"
+              : "Unknown",
+
+        status:
+          "Pending",
+
+        approvalType:
+          "",
+
+        reviewedBy:
+          null,
+
+        reviewedAt:
+          null,
+
+        reviewNote:
+          "",
+
+        attendanceId:
+          null,
+      });
+  }
+
+  return res.status(202).json({
+    success:
+      true,
+
+    attendancePending:
+      true,
+
+    allowAgentStart:
+      false,
+
+    workdayCompleted:
+      false,
+
+    message:
+      approvedDevice
+        ? "You are outside the approved office network. Attendance approval has been sent to admin."
+        : "This device is not an approved office workstation. Attendance approval has been sent to admin.",
+
+    request: {
+      id:
+        pendingRequest._id,
+
+      status:
+        pendingRequest.status,
+
+      requestedAt:
+        pendingRequest.requestedAt,
+
+      networkType:
+        pendingRequest.networkType,
+
+      pcName:
+        pendingRequest.pcName,
+    },
+  });
+}
 const loginTime =
   new Date();
 
@@ -2223,7 +3337,19 @@ const attendance =
     await createAttendanceEvent(attendance._id, employee._id, "LOGIN", req.body.source || "web", req.body.notes || "");
     await updateEmployeeStatus(employee, "Working");
 
-    return res.status(201).json({ success: true, message: "Login recorded successfully.", data: formatAttendance(attendance) });
+   return res.status(201).json({
+  success: true,
+  message:
+    "Login recorded successfully.",
+
+  allowAgentStart: true,
+  workdayCompleted: false,
+
+  data:
+    formatAttendance(
+      attendance
+    ),
+});
   } catch (error) {
     next(error);
   }
@@ -2268,19 +3394,7 @@ router.post("/logout", async (req, res, next) => {
 
     // Update employee status to Offline
     await updateEmployeeStatus(employee, "Offline");
-    try {
-  const agentHost = process.env.AGENT_API_HOST || "127.0.0.1";
-  const agentPort = process.env.AGENT_API_PORT || 4500;
-  const agentBaseUrl = `http://${agentHost}:${agentPort}`;
 
-  await axios.post(`${agentBaseUrl}/logout`, {
-    employeeCode: employee.employeeCode,
-  });
-
-  console.log(`Agent stopped for ${employee.employeeCode}`);
-} catch (err) {
-  console.warn("Agent logout API failed:", err.message);
-}
 
     // Pause any active task
     const Task = mongoose.models.Task;
