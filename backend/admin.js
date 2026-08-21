@@ -1538,6 +1538,101 @@ productId: {
       default: "",
       trim: true,
     },
+    requirementId: {
+  type:
+    mongoose.Schema.Types.ObjectId,
+
+  ref: "Requirement",
+
+  default: null,
+  index: true,
+},
+
+requirementCode: {
+  type: String,
+  default: "",
+  trim: true,
+  uppercase: true,
+},
+
+finalAmount: {
+  type: Number,
+  default: 0,
+  min: 0,
+},
+
+amcApplicable: {
+  type: Boolean,
+  default: false,
+},
+
+proposedAmcAmount: {
+  type: Number,
+  default: 0,
+  min: 0,
+},
+
+warrantyEndDate: {
+  type: Date,
+  default: null,
+},
+deliveryDate: {
+  type: Date,
+  default: null,
+},
+
+amcContractId: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "AmcContract",
+  default: null,
+  index: true,
+},
+
+amcContractCode: {
+  type: String,
+  default: "",
+  trim: true,
+  uppercase: true,
+},
+
+amcActivated: {
+  type: Boolean,
+  default: false,
+},
+
+completedBy: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "User",
+  default: null,
+},
+
+completedByName: {
+  type: String,
+  default: "",
+  trim: true,
+},
+convertedToProduct: {
+  type: Boolean,
+  default: false,
+  index: true,
+},
+
+convertedProductAt: {
+  type: Date,
+  default: null,
+},
+
+convertedProductBy: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "User",
+  default: null,
+},
+
+convertedProductByName: {
+  type: String,
+  default: "",
+  trim: true,
+},
 
     description: {
       type: String,
@@ -1654,6 +1749,365 @@ const Project =
   mongoose.model(
     "Project",
     projectSchema
+  );
+
+  /* =====================================================
+   REQUIREMENT / ENQUIRY SCHEMA
+===================================================== */
+
+const requirementSchema =
+  new mongoose.Schema(
+    {
+      requirementCode: {
+        type: String,
+        required: true,
+        unique: true,
+        trim: true,
+        uppercase: true,
+        index: true,
+      },
+
+      sourceType: {
+        type: String,
+        enum: [
+          "Existing Client",
+          "New Prospect",
+        ],
+        required: true,
+        index: true,
+      },
+
+      /* ===============================================
+         EXISTING CLIENT
+      =============================================== */
+
+      clientId: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+        ref: "Client",
+        default: null,
+        index: true,
+      },
+
+      clientCode: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      clientName: {
+        type: String,
+        default: "",
+        trim: true,
+        index: true,
+      },
+
+      /* ===============================================
+         NEW PROSPECT
+      =============================================== */
+
+      prospectName: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      prospectCompany: {
+        type: String,
+        default: "",
+        trim: true,
+        index: true,
+      },
+
+      prospectMobile: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      prospectEmail: {
+        type: String,
+        default: "",
+        trim: true,
+        lowercase: true,
+      },
+
+      prospectCity: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      /* ===============================================
+         REQUIREMENT
+      =============================================== */
+
+      title: {
+        type: String,
+        required: true,
+        trim: true,
+        index: true,
+      },
+
+      requirementType: {
+        type: String,
+
+        enum: [
+          "New Software",
+          "Customization",
+          "Mobile App",
+          "Website",
+          "Integration",
+          "Upgrade",
+          "Automation",
+          "Support Requirement",
+          "Other",
+        ],
+
+        default:
+          "New Software",
+
+        index: true,
+      },
+
+      description: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      source: {
+        type: String,
+
+        enum: [
+          "Existing Client",
+          "Phone",
+          "WhatsApp",
+          "Email",
+          "Website",
+          "Referral",
+          "Walk In",
+          "Other",
+        ],
+
+        default:
+          "Existing Client",
+
+        index: true,
+      },
+
+      priority: {
+        type: String,
+        default: "Medium",
+        trim: true,
+        index: true,
+      },
+
+      expectedDeliveryDate: {
+        type: Date,
+        default: null,
+      },
+
+      /* ===============================================
+         COMMERCIAL / QUOTATION
+      =============================================== */
+
+      estimatedBudget: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      estimatedCost: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      quotedAmount: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      quotationNo: {
+        type: String,
+        default: "",
+        trim: true,
+        uppercase: true,
+      },
+
+      quotationDate: {
+        type: Date,
+        default: null,
+      },
+
+      /* ===============================================
+         ASSIGNMENT
+      =============================================== */
+
+      assignedEmployeeId: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+
+        ref: "Employee",
+
+        default: null,
+        index: true,
+      },
+
+      assignedEmployeeCode: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      assignedEmployeeName: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      /* ===============================================
+         WORKFLOW
+      =============================================== */
+
+      status: {
+        type: String,
+
+        enum: [
+          "New",
+          "Discussion",
+          "Analysis",
+          "Estimate Pending",
+          "Quotation Pending",
+          "Quotation Sent",
+          "Negotiation",
+          "Approved",
+          "Rejected",
+          "On Hold",
+          "Converted to Project",
+        ],
+
+        default:
+          "New",
+
+        index: true,
+      },
+
+      notes: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      /* ===============================================
+         PROJECT CONVERSION
+      =============================================== */
+
+      convertedProjectId: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+
+        ref: "Project",
+
+        default: null,
+      },
+
+      convertedProjectCode: {
+        type: String,
+        default: "",
+        trim: true,
+        uppercase: true,
+      },
+
+      convertedAt: {
+        type: Date,
+        default: null,
+      },
+
+      /* ===============================================
+         AUDIT
+      =============================================== */
+
+      createdBy: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+
+        ref: "User",
+
+        default: null,
+      },
+
+      createdByName: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      updatedBy: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+
+        ref: "User",
+
+        default: null,
+      },
+
+      updatedByName: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      isDeleted: {
+        type: Boolean,
+        default: false,
+        index: true,
+      },
+
+      deletedAt: {
+        type: Date,
+        default: null,
+      },
+
+      deletedBy: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+
+        ref: "User",
+
+        default: null,
+      },
+
+      deletedByName: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+    },
+    {
+      timestamps: true,
+      collection: "requirements",
+    }
+  );
+
+
+requirementSchema.index({
+  requirementCode: "text",
+  title: "text",
+  clientName: "text",
+  prospectName: "text",
+  prospectCompany: "text",
+  description: "text",
+});
+
+
+const Requirement =
+  mongoose.models.Requirement ||
+  mongoose.model(
+    "Requirement",
+    requirementSchema
   );
 /* ===========================
    CLIENT SCHEMA
@@ -2409,6 +2863,134 @@ const Task =
   mongoose.model("Task", taskSchema);
  // module.exports.Task = Task;
 
+ /* =====================================================
+   PROJECT TASK SUMMARY / AUTO PROGRESS
+===================================================== */
+
+async function syncProjectTaskProgress(projectId) {
+  if (
+    !projectId ||
+    !mongoose.Types.ObjectId.isValid(projectId)
+  ) {
+    return null;
+  }
+
+  const project = await Project.findOne({
+    _id: projectId,
+    isDeleted: false,
+  });
+
+  if (!project) {
+    return null;
+  }
+
+  const projectTasks = await Task.find({
+    projectId: project._id,
+    taskFor: "Project",
+    isDeleted: false,
+  })
+    .select("status progress dueDate")
+    .lean();
+
+  const totalTasks = projectTasks.length;
+
+  const completedTasks = projectTasks.filter(
+    (task) =>
+      task.status === "Completed" ||
+      Number(task.progress || 0) >= 100
+  ).length;
+
+  const activeTasks = projectTasks.filter(
+    (task) =>
+      ![
+        "Completed",
+        "Cancelled",
+      ].includes(task.status)
+  ).length;
+
+const now = new Date();
+
+/*
+ * A task becomes overdue only AFTER
+ * the end of its due date.
+ *
+ * Example:
+ * Due Date = 20 Aug
+ * It remains valid throughout 20 Aug.
+ * It becomes overdue on 21 Aug.
+ */
+const overdueTasks =
+  projectTasks.filter((task) => {
+    if (!task.dueDate) {
+      return false;
+    }
+
+    if (
+      [
+        "Completed",
+        "Closed",
+        "Cancelled",
+      ].includes(task.status)
+    ) {
+      return false;
+    }
+
+    const dueDate =
+      new Date(task.dueDate);
+
+    dueDate.setHours(
+      23,
+      59,
+      59,
+      999
+    );
+
+    return dueDate < now;
+  }).length;
+
+  const progress =
+  totalTasks > 0
+    ? Math.round(
+        projectTasks.reduce(
+          (total, task) => {
+            const taskProgress =
+              task.status === "Completed"
+                ? 100
+                : Math.min(
+                    100,
+                    Math.max(
+                      0,
+                      Number(task.progress || 0)
+                    )
+                  );
+
+            return total + taskProgress;
+          },
+          0
+        ) / totalTasks
+      )
+    : 0;
+
+  /*
+   * Keep project progress synchronized with tasks.
+   * We intentionally do not automatically change the
+   * project status here because status may be managed
+   * separately by the administrator.
+   */
+  if (Number(project.progress || 0) !== progress) {
+    project.progress = progress;
+    await project.save();
+  }
+
+  return {
+    totalTasks,
+    activeTasks,
+    completedTasks,
+    overdueTasks,
+    progress,
+    tasks: projectTasks,
+  };
+}
 /* =====================================================
  ACTIVITY LOG SCHEMA
 ===================================================== */
@@ -4675,6 +5257,52 @@ const ClientDocument =
   mongoose.model("ClientDocument", clientDocumentSchema);
 
 
+  async function generateRequirementCode() {
+  const year =
+    new Date().getFullYear();
+
+  const prefix =
+    `REQ-${year}-`;
+
+  const lastRequirement =
+    await Requirement.findOne({
+      requirementCode: {
+        $regex:
+          `^${prefix}`,
+      },
+    })
+      .sort({
+        requirementCode: -1,
+      })
+      .lean();
+
+  let nextNumber = 1;
+
+  if (
+    lastRequirement?.requirementCode
+  ) {
+    const match =
+      String(
+        lastRequirement.requirementCode
+      ).match(
+        /(\d+)$/
+      );
+
+    if (match) {
+      nextNumber =
+        Number(
+          match[1]
+        ) + 1;
+    }
+  }
+
+  return `${prefix}${String(
+    nextNumber
+  ).padStart(
+    4,
+    "0"
+  )}`;
+}
 
   /* =====================================================
    AMC HELPERS
@@ -5803,6 +6431,33 @@ function productResponse(product) {
       product.updatedAt,
   };
 }
+function rejectLockedProject(
+  project,
+  res
+) {
+  if (
+    project?.convertedToProduct === true
+  ) {
+    res.status(409).json({
+      success: false,
+
+      code:
+        "PROJECT_LOCKED",
+
+      message:
+        "This project has been converted to a product and is now a read-only historical record.",
+
+      data:
+        projectResponse(
+          project
+        ),
+    });
+
+    return true;
+  }
+
+  return false;
+}
 
 function projectResponse(project) {
   return {
@@ -5835,7 +6490,67 @@ function projectResponse(project) {
 
     clientName:
       project.clientName,
+      requirementId:
+  project.requirementId,
 
+requirementCode:
+  project.requirementCode,
+
+finalAmount:
+  Number(
+    project.finalAmount || 0
+  ),
+
+amcApplicable:
+  Boolean(
+    project.amcApplicable
+  ),
+
+proposedAmcAmount:
+  Number(
+    project.proposedAmcAmount || 0
+  ),
+
+warrantyEndDate:
+  project.warrantyEndDate,
+  deliveryDate:
+  project.deliveryDate,
+
+amcContractId:
+  project.amcContractId,
+
+amcContractCode:
+  project.amcContractCode,
+
+amcActivated:
+  Boolean(
+    project.amcActivated
+  ),
+
+completedBy:
+  project.completedBy,
+
+completedByName:
+  project.completedByName,
+
+  convertedToProduct:
+  Boolean(
+    project.convertedToProduct
+  ),
+
+convertedProductAt:
+  project.convertedProductAt,
+
+convertedProductBy:
+  project.convertedProductBy,
+
+convertedProductByName:
+  project.convertedProductByName,
+
+isReadOnly:
+  Boolean(
+    project.convertedToProduct
+  ),
     description:
       project.description,
 
@@ -7993,6 +8708,385 @@ router.patch(
     }
   }
 );
+/* =====================================================
+   CONVERT COMPLETED PROJECT TO PRODUCT
+   POST /api/admin/project/:id/convert-to-product
+===================================================== */
+
+router.post(
+  "/project/:id/convert-to-product",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid project ID.",
+        });
+      }
+
+      const project =
+        await Project.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Project not found.",
+        });
+      }
+      if (
+  project.convertedToProduct ===
+  true
+) {
+  return res.status(409).json({
+    success: false,
+
+    code:
+      "PROJECT_LOCKED",
+
+    message:
+      "This project has already been converted to a product. New project tasks cannot be created.",
+  });
+}
+
+      /*
+       * Already converted.
+       */
+
+      if (
+        project.convertedToProduct
+      ) {
+        return res.status(409).json({
+          success: false,
+
+          code:
+            "ALREADY_CONVERTED",
+
+          message:
+            "This project has already been converted to a product.",
+
+          data:
+            projectResponse(
+              project
+            ),
+        });
+      }
+
+      /*
+       * Only completed projects can
+       * become permanent products.
+       */
+
+      if (
+        project.status !==
+          "Completed" ||
+        Number(
+          project.progress || 0
+        ) < 100
+      ) {
+        return res.status(409).json({
+          success: false,
+
+          code:
+            "PROJECT_NOT_COMPLETED",
+
+          message:
+            "Complete the project before converting it to a product.",
+        });
+      }
+
+      /*
+       * A project already linked to an
+       * existing Product should not create
+       * another Product.
+       */
+
+      if (project.productId) {
+        return res.status(409).json({
+          success: false,
+
+          code:
+            "PROJECT_ALREADY_HAS_PRODUCT",
+
+          message:
+            "This project is already linked to an existing product.",
+        });
+      }
+
+      const {
+        productCode,
+        productName,
+
+        category,
+        description,
+
+        currentVersion,
+        platform,
+
+        releaseDate,
+      } = req.body || {};
+
+      const normalizedCode =
+        String(
+          productCode || ""
+        )
+          .trim()
+          .toUpperCase();
+
+      const normalizedName =
+        String(
+          productName ||
+            project.projectName ||
+            ""
+        ).trim();
+
+      if (!normalizedCode) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Product code is required.",
+        });
+      }
+
+      if (!normalizedName) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Product name is required.",
+        });
+      }
+
+      /*
+       * Prevent duplicate Product Code.
+       */
+
+      const duplicateProduct =
+        await Product.findOne({
+          productCode:
+            normalizedCode,
+
+          isDeleted:
+            false,
+        });
+
+      if (duplicateProduct) {
+        return res.status(409).json({
+          success: false,
+          message:
+            "Product code already exists.",
+        });
+      }
+
+      /*
+       * Create Product Master record.
+       */
+
+      const product =
+        await Product.create({
+          productCode:
+            normalizedCode,
+
+          productName:
+            normalizedName,
+
+          category:
+            String(
+              category ||
+                "Software"
+            ).trim() ||
+            "Software",
+
+          description:
+            String(
+              description ||
+                project.description ||
+                ""
+            ).trim(),
+
+          currentVersion:
+            String(
+              currentVersion ||
+                "v1.0.0"
+            ).trim() ||
+            "v1.0.0",
+
+          platform:
+            platform ||
+            "Web",
+
+          status:
+            "Active",
+
+          releaseDate:
+            releaseDate
+              ? new Date(
+                  releaseDate
+                )
+              : project.deliveryDate ||
+                project.completedDate ||
+                new Date(),
+
+          createdBy:
+            req.user._id,
+
+          createdByName:
+            req.user.name ||
+            "Admin",
+
+          updatedBy:
+            req.user._id,
+
+          updatedByName:
+            req.user.name ||
+            "Admin",
+        });
+
+      /*
+       * Link Product back to Project.
+       */
+
+      project.productId =
+        product._id;
+
+      project.productCode =
+        product.productCode;
+
+      project.productName =
+        product.productName;
+
+      /*
+       * Permanently lock Project.
+       */
+
+      project.convertedToProduct =
+        true;
+
+      project.convertedProductAt =
+        new Date();
+
+      project.convertedProductBy =
+        req.user._id;
+
+      project.convertedProductByName =
+        req.user.name ||
+        "Admin";
+
+      project.updatedBy =
+        req.user._id;
+
+      project.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      await project.save();
+
+      await createActivityLog({
+        action:
+          "Project Converted To Product",
+
+        category:
+          "Project",
+
+        description:
+          `${project.projectCode} - ${project.projectName} was converted to product ${product.productCode} - ${product.productName}.`,
+
+        entityType:
+          "project",
+
+        entityId:
+          project._id,
+
+        entityCode:
+          project.projectCode,
+
+        entityName:
+          project.projectName,
+
+        clientId:
+          project.clientId,
+
+        clientName:
+          project.clientName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+
+        metadata: {
+          productId:
+            product._id,
+
+          productCode:
+            product.productCode,
+
+          productName:
+            product.productName,
+
+          convertedAt:
+            project.convertedProductAt,
+        },
+      });
+
+      return res.status(201).json({
+        success: true,
+
+        message:
+          "Project converted to product successfully. The project is now read-only.",
+
+        data: {
+          project:
+            projectResponse(
+              project
+            ),
+
+          product:
+            productResponse(
+              product
+            ),
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Convert project to product error:",
+        error
+      );
+
+      if (error.code === 11000) {
+        return res.status(409).json({
+          success: false,
+
+          message:
+            "Product code already exists.",
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to convert project to product.",
+      });
+    }
+  }
+);
 
 /* =====================================================
    SOFT DELETE PRODUCT
@@ -9015,6 +10109,270 @@ router.get(
   }
 );
 
+
+/* =====================================================
+   PROJECT DETAILS WITH TASK SUMMARY
+   GET /api/admin/project/:id/details
+===================================================== */
+
+router.get(
+  "/project/:id/details",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid project ID.",
+        });
+      }
+
+      const project =
+        await Project.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Project not found.",
+        });
+      }
+
+      /*
+       * Synchronize project progress
+       * before returning the details.
+       */
+
+      const summary =
+        await syncProjectTaskProgress(
+          project._id
+        );
+
+      /*
+       * Reload project because progress
+       * may have just been updated.
+       */
+
+      const refreshedProject =
+        await Project.findOne({
+          _id: project._id,
+          isDeleted: false,
+        });
+
+      /*
+       * Load full project tasks.
+       */
+
+      const tasks =
+        await Task.find({
+          projectId:
+            project._id,
+
+          taskFor:
+            "Project",
+
+          isDeleted:
+            false,
+        })
+          .sort({
+            createdAt: -1,
+          })
+          .lean();
+
+      /*
+       * Unique project team.
+       *
+       * Anyone assigned to at least one
+       * project task is considered part
+       * of the project team.
+       */
+
+      const teamMap =
+        new Map();
+
+      for (const task of tasks) {
+        const employeeId =
+          task.assignedEmployeeId
+            ? String(
+                task.assignedEmployeeId
+              )
+            : "";
+
+        if (
+          !employeeId ||
+          teamMap.has(employeeId)
+        ) {
+          continue;
+        }
+
+        teamMap.set(
+          employeeId,
+          {
+            employeeId:
+              task.assignedEmployeeId,
+
+            employeeCode:
+              task.assignedEmployeeCode ||
+              "",
+
+            employeeName:
+              task.assignedEmployeeName ||
+              "Unassigned",
+          }
+        );
+      }
+
+      const team =
+        Array.from(
+          teamMap.values()
+        );
+
+      /*
+       * Format tasks for project screen.
+       */
+
+      const taskData =
+        tasks.map(
+          (task) => ({
+            id:
+              task._id,
+
+            taskCode:
+              task.taskCode,
+
+            title:
+              task.title,
+
+            description:
+              task.description ||
+              "",
+
+            workType:
+              task.workType ||
+              "",
+
+            priority:
+              task.priority ||
+              "Medium",
+
+            status:
+              task.status ||
+              "Assigned",
+
+            progress:
+              Number(
+                task.progress ||
+                0
+              ),
+
+            assignedEmployeeId:
+              task.assignedEmployeeId ||
+              null,
+
+            assignedEmployeeCode:
+              task.assignedEmployeeCode ||
+              "",
+
+            assignedEmployeeName:
+              task.assignedEmployeeName ||
+              "Unassigned",
+
+            startDate:
+              task.startDate ||
+              null,
+
+            dueDate:
+              task.dueDate ||
+              null,
+
+            completedAt:
+              task.completedAt ||
+              null,
+
+            estimatedMinutes:
+              Number(
+                task.estimatedMinutes ||
+                0
+              ),
+
+            spentMinutes:
+              Number(
+                task.spentMinutes ||
+                0
+              ),
+
+            createdAt:
+              task.createdAt,
+
+            updatedAt:
+              task.updatedAt,
+          })
+        );
+
+      return res.status(200).json({
+        success: true,
+
+        data: {
+          project:
+            projectResponse(
+              refreshedProject
+            ),
+
+          summary: {
+            totalTasks:
+              summary?.totalTasks ||
+              0,
+
+            activeTasks:
+              summary?.activeTasks ||
+              0,
+
+            completedTasks:
+              summary?.completedTasks ||
+              0,
+
+            overdueTasks:
+              summary?.overdueTasks ||
+              0,
+
+            progress:
+              summary?.progress ||
+              0,
+          },
+
+          team,
+
+          tasks:
+            taskData,
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Project details error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to load project details.",
+      });
+    }
+  }
+);
+
 /* =====================================================
    UPDATE PROJECT
    PUT /api/admin/project/:id
@@ -9052,6 +10410,14 @@ router.put(
             "Project not found.",
         });
       }
+      if (
+  rejectLockedProject(
+    project,
+    res
+  )
+) {
+  return;
+}
 
       const {
         projectCode,
@@ -9480,13 +10846,24 @@ router.patch(
         });
       }
 
-      const allowedStatuses = [
-        "Planned",
-        "Active",
-        "On Hold",
-        "Completed",
-        "Cancelled",
-      ];
+   const allowedStatuses = [
+  "Planned",
+  "Active",
+  "On Hold",
+  "Cancelled",
+];
+/*
+ * Completed projects must go through
+ * the dedicated completion workflow.
+ */
+if (status === "Completed") {
+  return res.status(400).json({
+    success: false,
+    requiresCompletionFlow: true,
+    message:
+      "Use Complete Project to finish this project. All project tasks must be completed first.",
+  });
+}
 
       if (
         !allowedStatuses.includes(
@@ -9513,6 +10890,14 @@ router.patch(
             "Project not found.",
         });
       }
+      if (
+  rejectLockedProject(
+    project,
+    res
+  )
+) {
+  return;
+}
 
       const previousStatus =
         project.status;
@@ -9533,15 +10918,7 @@ router.patch(
           );
       }
 
-      if (status === "Completed") {
-        project.progress = 100;
-        project.completedDate =
-          project.completedDate ||
-          new Date();
-      } else {
-        project.completedDate =
-          null;
-      }
+   project.completedDate = null;
 
       project.updatedBy =
         req.user._id;
@@ -9628,6 +11005,550 @@ router.patch(
 );
 
 /* =====================================================
+   COMPLETE PROJECT
+   POST /api/admin/project/:id/complete
+
+   Rules:
+   - Project must exist
+   - Project must have at least one task
+   - Every active project task must be completed
+   - Progress must be 100%
+   - Records delivery/warranty/AMC planning
+   - Does NOT create AMC contract yet unless AMC setup
+     is handled separately
+===================================================== */
+
+router.post(
+  "/project/:id/complete",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid project ID.",
+        });
+      }
+
+      const project =
+        await Project.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Project not found.",
+        });
+      }
+
+      if (
+        project.status ===
+        "Completed"
+      ) {
+        return res.status(409).json({
+          success: false,
+          message:
+            "This project is already completed.",
+          data:
+            projectResponse(
+              project
+            ),
+        });
+      }
+
+      /*
+       * Recalculate current task state.
+       */
+      const summary =
+        await syncProjectTaskProgress(
+          project._id
+        );
+
+      const totalTasks =
+        Number(
+          summary?.totalTasks ||
+          0
+        );
+
+      const completedTasks =
+        Number(
+          summary?.completedTasks ||
+          0
+        );
+
+      const progress =
+        Number(
+          summary?.progress ||
+          0
+        );
+
+      /*
+       * A project should not be completed
+       * without any development tasks.
+       */
+      if (totalTasks === 0) {
+        return res.status(400).json({
+          success: false,
+          code:
+            "NO_PROJECT_TASKS",
+
+          message:
+            "Create and complete at least one project task before completing the project.",
+
+          summary: {
+            totalTasks,
+            completedTasks,
+            progress,
+          },
+        });
+      }
+
+      /*
+       * All tasks must be completed.
+       */
+      if (
+        completedTasks !==
+          totalTasks ||
+        progress < 100
+      ) {
+        return res.status(409).json({
+          success: false,
+          code:
+            "PROJECT_TASKS_INCOMPLETE",
+
+          message:
+            `${completedTasks} of ${totalTasks} project tasks are completed. Complete all tasks before closing the project.`,
+
+          summary: {
+            totalTasks,
+            completedTasks,
+            activeTasks:
+              summary?.activeTasks ||
+              0,
+
+            overdueTasks:
+              summary?.overdueTasks ||
+              0,
+
+            progress,
+          },
+        });
+      }
+
+      const {
+        completionDate,
+        deliveryDate,
+
+        finalAmount,
+
+        amcApplicable,
+        proposedAmcAmount,
+
+        warrantyEndDate,
+      } = req.body || {};
+
+      /*
+       * Dates
+       */
+
+      const parsedCompletionDate =
+        completionDate
+          ? new Date(
+              completionDate
+            )
+          : new Date();
+
+      if (
+        Number.isNaN(
+          parsedCompletionDate.getTime()
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid completion date.",
+        });
+      }
+
+      const parsedDeliveryDate =
+        deliveryDate
+          ? new Date(
+              deliveryDate
+            )
+          : parsedCompletionDate;
+
+      if (
+        Number.isNaN(
+          parsedDeliveryDate.getTime()
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid delivery date.",
+        });
+      }
+
+      let parsedWarrantyEndDate =
+        null;
+
+      if (warrantyEndDate) {
+        parsedWarrantyEndDate =
+          new Date(
+            warrantyEndDate
+          );
+
+        if (
+          Number.isNaN(
+            parsedWarrantyEndDate.getTime()
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Invalid warranty end date.",
+          });
+        }
+
+        if (
+          parsedWarrantyEndDate <
+          parsedDeliveryDate
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Warranty end date cannot be before delivery date.",
+          });
+        }
+      }
+
+      /*
+       * Commercial values
+       */
+
+      const normalizedFinalAmount =
+        Math.max(
+          Number(
+            finalAmount ??
+              project.finalAmount ??
+              0
+          ),
+          0
+        );
+
+      const normalizedAmcApplicable =
+        Boolean(
+          amcApplicable
+        );
+
+      const normalizedAmcAmount =
+        normalizedAmcApplicable
+          ? Math.max(
+              Number(
+                proposedAmcAmount ??
+                  project.proposedAmcAmount ??
+                  0
+              ),
+              0
+            )
+          : 0;
+
+      if (
+        normalizedAmcApplicable &&
+        normalizedAmcAmount <= 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Enter the proposed yearly AMC amount.",
+        });
+      }
+
+      /*
+       * Complete the project.
+       */
+
+      project.status =
+        "Completed";
+
+      project.progress =
+        100;
+
+      project.completedDate =
+        parsedCompletionDate;
+
+      project.deliveryDate =
+        parsedDeliveryDate;
+
+      project.finalAmount =
+        normalizedFinalAmount;
+
+      project.amcApplicable =
+        normalizedAmcApplicable;
+
+      project.proposedAmcAmount =
+        normalizedAmcAmount;
+
+      project.warrantyEndDate =
+        parsedWarrantyEndDate;
+
+      /*
+       * AMC is NOT automatically activated here.
+       *
+       * The existing AMC module requires a valid
+       * client product before a contract can exist.
+       */
+      project.amcActivated =
+        Boolean(
+          project.amcContractId
+        );
+
+      project.completedBy =
+        req.user._id;
+
+      project.completedByName =
+        req.user.name ||
+        "Admin";
+
+      project.updatedBy =
+        req.user._id;
+
+      project.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      await project.save();
+
+      /*
+       * Update Client summary.
+       */
+
+      if (project.clientId) {
+        const client =
+          await Client.findOne({
+            _id:
+              project.clientId,
+
+            isDeleted:
+              false,
+          });
+
+        if (client) {
+          if (
+            normalizedAmcApplicable
+          ) {
+            client.amcStatus =
+              client.amcStatus ===
+              "Not Started"
+                ? "Not Started"
+                : client.amcStatus;
+          }
+
+          client.updatedBy =
+            req.user._id;
+
+          client.updatedByName =
+            req.user.name ||
+            "Admin";
+
+          await client.save();
+        }
+      }
+
+      /*
+       * Activity log.
+       */
+
+      await createActivityLog({
+        action:
+          "Project Completed",
+
+        category:
+          "Project",
+
+        description:
+          `${project.projectCode} - ${project.projectName} was completed successfully.`,
+
+        entityType:
+          "project",
+
+        entityId:
+          project._id,
+
+        entityCode:
+          project.projectCode,
+
+        entityName:
+          project.projectName,
+
+        clientId:
+          project.clientId,
+
+        clientName:
+          project.clientName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+
+        metadata: {
+          completedDate:
+            project.completedDate,
+
+          deliveryDate:
+            project.deliveryDate,
+
+          finalAmount:
+            project.finalAmount,
+
+          amcApplicable:
+            project.amcApplicable,
+
+          proposedAmcAmount:
+            project.proposedAmcAmount,
+
+          warrantyEndDate:
+            project.warrantyEndDate,
+
+          totalTasks,
+
+          completedTasks,
+
+          progress:
+            project.progress,
+        },
+      });
+
+      /*
+       * Tell frontend whether AMC can
+       * already be activated.
+       *
+       * Existing AMC contracts require
+       * an actual product assigned to client.
+       */
+
+      let amcReady =
+        false;
+
+      let amcReason =
+        "";
+
+      if (
+        project.amcApplicable
+      ) {
+        if (
+          !project.clientId
+        ) {
+          amcReason =
+            "AMC cannot be activated because this project has no client.";
+        } else if (
+          !project.productId
+        ) {
+          amcReason =
+            "AMC is planned, but first assign the completed software/product to the client.";
+        } else {
+          const client =
+            await Client.findOne({
+              _id:
+                project.clientId,
+
+              isDeleted:
+                false,
+            });
+
+          const clientProduct =
+            client?.products?.find(
+              (item) =>
+                String(
+                  item.productId
+                ) ===
+                String(
+                  project.productId
+                )
+            );
+
+          if (clientProduct) {
+            amcReady =
+              true;
+          } else {
+            amcReason =
+              "AMC is planned, but this project product is not assigned to the client yet.";
+          }
+        }
+      }
+
+      return res.status(200).json({
+        success: true,
+
+        message:
+          "Project completed successfully.",
+
+        data: {
+          project:
+            projectResponse(
+              project
+            ),
+
+          summary: {
+            totalTasks,
+            completedTasks,
+            progress: 100,
+          },
+
+          amc: {
+            applicable:
+              project.amcApplicable,
+
+            activated:
+              project.amcActivated,
+
+            ready:
+              amcReady,
+
+            reason:
+              amcReason,
+
+            proposedAmount:
+              project.proposedAmcAmount,
+
+            warrantyEndDate:
+              project.warrantyEndDate,
+          },
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Complete project error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to complete project.",
+      });
+    }
+  }
+);
+/* =====================================================
    SOFT DELETE PROJECT
    DELETE /api/admin/project/:id
 ===================================================== */
@@ -9664,6 +11585,14 @@ router.delete(
             "Project not found.",
         });
       }
+      if (
+  rejectLockedProject(
+    project,
+    res
+  )
+) {
+  return;
+}
 
       const linkedTaskCount =
         await Task.countDocuments({
@@ -12452,6 +14381,1223 @@ router.post(
     }
   }
 );
+/* =====================================================
+   CREATE REQUIREMENT
+   POST /api/admin/requirement
+===================================================== */
+
+router.post(
+  "/requirement",
+  async (req, res) => {
+    try {
+      const {
+        sourceType,
+
+        clientId,
+
+        prospectName,
+        prospectCompany,
+        prospectMobile,
+        prospectEmail,
+        prospectCity,
+
+        title,
+        requirementType,
+        description,
+        source,
+
+        priority,
+
+        expectedDeliveryDate,
+
+        estimatedBudget,
+        estimatedCost,
+        quotedAmount,
+
+        quotationNo,
+        quotationDate,
+
+        assignedEmployeeId,
+
+        status,
+        notes,
+      } = req.body || {};
+
+      const normalizedSourceType =
+        String(
+          sourceType || ""
+        ).trim();
+
+      if (
+        ![
+          "Existing Client",
+          "New Prospect",
+        ].includes(
+          normalizedSourceType
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Select Existing Client or New Prospect.",
+          });
+      }
+
+      const normalizedTitle =
+        String(
+          title || ""
+        ).trim();
+
+      const normalizedDescription =
+        String(
+          description || ""
+        ).trim();
+
+      if (!normalizedTitle) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Requirement title is required.",
+          });
+      }
+
+      if (
+        !normalizedDescription
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Requirement description is required.",
+          });
+      }
+
+      /*
+       * Validate priority from existing System Settings.
+       */
+
+      const selectedPriority =
+        await validatePriority(
+          priority || "Medium"
+        );
+
+      if (!selectedPriority) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Selected priority is invalid or inactive.",
+          });
+      }
+
+      let resolvedClient =
+        null;
+
+      /*
+       * EXISTING CLIENT
+       */
+
+      if (
+        normalizedSourceType ===
+        "Existing Client"
+      ) {
+        if (
+          !clientId ||
+          !mongoose.Types.ObjectId.isValid(
+            clientId
+          )
+        ) {
+          return res
+            .status(400)
+            .json({
+              success: false,
+              message:
+                "Please select a valid client.",
+            });
+        }
+
+        resolvedClient =
+          await Client.findOne({
+            _id:
+              clientId,
+
+            isDeleted:
+              false,
+          });
+
+        if (!resolvedClient) {
+          return res
+            .status(404)
+            .json({
+              success: false,
+              message:
+                "Selected client was not found.",
+            });
+        }
+      }
+
+      /*
+       * NEW PROSPECT
+       */
+
+      if (
+        normalizedSourceType ===
+        "New Prospect"
+      ) {
+        if (
+          !String(
+            prospectName || ""
+          ).trim()
+        ) {
+          return res
+            .status(400)
+            .json({
+              success: false,
+              message:
+                "Prospect name is required.",
+            });
+        }
+
+        if (
+          !String(
+            prospectMobile || ""
+          ).trim()
+        ) {
+          return res
+            .status(400)
+            .json({
+              success: false,
+              message:
+                "Prospect mobile number is required.",
+            });
+        }
+      }
+
+      /*
+       * OPTIONAL EMPLOYEE ASSIGNMENT
+       */
+
+      let employee =
+        null;
+
+      if (assignedEmployeeId) {
+        if (
+          !mongoose.Types.ObjectId.isValid(
+            assignedEmployeeId
+          )
+        ) {
+          return res
+            .status(400)
+            .json({
+              success: false,
+              message:
+                "Invalid employee ID.",
+            });
+        }
+
+        employee =
+          await mongoose
+            .model(
+              "Employee"
+            )
+            .findById(
+              assignedEmployeeId
+            );
+
+        if (!employee) {
+          return res
+            .status(404)
+            .json({
+              success: false,
+              message:
+                "Assigned employee was not found.",
+            });
+        }
+      }
+
+      const requirementCode =
+        await generateRequirementCode();
+
+      const requirement =
+        await Requirement.create({
+          requirementCode,
+
+          sourceType:
+            normalizedSourceType,
+
+          clientId:
+            resolvedClient?._id ||
+            null,
+
+          clientCode:
+            resolvedClient?.clientCode ||
+            "",
+
+          clientName:
+            resolvedClient?.companyName ||
+            "",
+
+          prospectName:
+            String(
+              prospectName || ""
+            ).trim(),
+
+          prospectCompany:
+            String(
+              prospectCompany || ""
+            ).trim(),
+
+          prospectMobile:
+            String(
+              prospectMobile || ""
+            ).trim(),
+
+          prospectEmail:
+            String(
+              prospectEmail || ""
+            )
+              .trim()
+              .toLowerCase(),
+
+          prospectCity:
+            String(
+              prospectCity || ""
+            ).trim(),
+
+          title:
+            normalizedTitle,
+
+          requirementType:
+            requirementType ||
+            "New Software",
+
+          description:
+            normalizedDescription,
+
+          source:
+            source ||
+            (
+              normalizedSourceType ===
+                "Existing Client"
+                ? "Existing Client"
+                : "Other"
+            ),
+
+          priority:
+            selectedPriority.name,
+
+          expectedDeliveryDate:
+            expectedDeliveryDate
+              ? new Date(
+                  expectedDeliveryDate
+                )
+              : null,
+
+          estimatedBudget:
+            Math.max(
+              Number(
+                estimatedBudget ||
+                0
+              ),
+              0
+            ),
+
+          estimatedCost:
+            Math.max(
+              Number(
+                estimatedCost ||
+                0
+              ),
+              0
+            ),
+
+          quotedAmount:
+            Math.max(
+              Number(
+                quotedAmount ||
+                0
+              ),
+              0
+            ),
+
+          quotationNo:
+            String(
+              quotationNo || ""
+            )
+              .trim()
+              .toUpperCase(),
+
+          quotationDate:
+            quotationDate
+              ? new Date(
+                  quotationDate
+                )
+              : null,
+
+          assignedEmployeeId:
+            employee?._id ||
+            null,
+
+          assignedEmployeeCode:
+            employee?.employeeCode ||
+            "",
+
+          assignedEmployeeName:
+            employee?.name ||
+            "",
+
+          status:
+            status ||
+            "New",
+
+          notes:
+            String(
+              notes || ""
+            ).trim(),
+
+          createdBy:
+            req.user._id,
+
+          createdByName:
+            req.user.name ||
+            "Admin",
+
+          updatedBy:
+            req.user._id,
+
+          updatedByName:
+            req.user.name ||
+            "Admin",
+        });
+
+      return res
+        .status(201)
+        .json({
+          success: true,
+
+          message:
+            "Requirement created successfully.",
+
+          data:
+            requirement,
+        });
+    } catch (error) {
+      console.error(
+        "Create requirement error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message ||
+            "Unable to create requirement.",
+        });
+    }
+  }
+);
+/* =====================================================
+   GET REQUIREMENTS
+   GET /api/admin/requirements
+===================================================== */
+
+router.get(
+  "/requirements",
+  async (req, res) => {
+    try {
+      const {
+        search = "",
+        status = "All",
+        sourceType = "All",
+        priority = "All",
+        limit = 200,
+      } = req.query;
+
+      const query = {
+        isDeleted: false,
+      };
+
+      if (
+        status !== "All"
+      ) {
+        query.status =
+          status;
+      }
+
+      if (
+        sourceType !== "All"
+      ) {
+        query.sourceType =
+          sourceType;
+      }
+
+      if (
+        priority !== "All"
+      ) {
+        query.priority =
+          priority;
+      }
+
+      const normalizedSearch =
+        String(
+          search || ""
+        ).trim();
+
+      if (normalizedSearch) {
+        query.$or = [
+          {
+            requirementCode: {
+              $regex:
+                normalizedSearch,
+
+              $options:
+                "i",
+            },
+          },
+
+          {
+            title: {
+              $regex:
+                normalizedSearch,
+
+              $options:
+                "i",
+            },
+          },
+
+          {
+            clientName: {
+              $regex:
+                normalizedSearch,
+
+              $options:
+                "i",
+            },
+          },
+
+          {
+            prospectName: {
+              $regex:
+                normalizedSearch,
+
+              $options:
+                "i",
+            },
+          },
+
+          {
+            prospectCompany: {
+              $regex:
+                normalizedSearch,
+
+              $options:
+                "i",
+            },
+          },
+        ];
+      }
+
+      const safeLimit =
+        Math.min(
+          Math.max(
+            Number(
+              limit || 200
+            ),
+            1
+          ),
+          500
+        );
+
+      const data =
+        await Requirement.find(
+          query
+        )
+          .sort({
+            createdAt: -1,
+          })
+          .limit(
+            safeLimit
+          )
+          .lean();
+
+      return res.json({
+        success: true,
+        count:
+          data.length,
+        data,
+      });
+    } catch (error) {
+      console.error(
+        "Load requirements error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+          message:
+            "Unable to load requirements.",
+        });
+    }
+  }
+);
+router.get(
+  "/requirement/:id",
+  async (req, res) => {
+    try {
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          req.params.id
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Invalid requirement ID.",
+          });
+      }
+
+      const requirement =
+        await Requirement.findOne({
+          _id:
+            req.params.id,
+
+          isDeleted:
+            false,
+        });
+
+      if (!requirement) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message:
+              "Requirement not found.",
+          });
+      }
+
+      return res.json({
+        success: true,
+        data:
+          requirement,
+      });
+    } catch (error) {
+      return res
+        .status(500)
+        .json({
+          success: false,
+          message:
+            "Unable to load requirement.",
+        });
+    }
+  }
+);
+/* =====================================================
+   UPDATE REQUIREMENT STATUS
+===================================================== */
+
+router.patch(
+  "/requirement/:id/status",
+  async (req, res) => {
+    try {
+      const allowedStatuses = [
+        "New",
+        "Discussion",
+        "Analysis",
+        "Estimate Pending",
+        "Quotation Pending",
+        "Quotation Sent",
+        "Negotiation",
+        "Approved",
+        "Rejected",
+        "On Hold",
+        "Converted to Project",
+      ];
+
+      const status =
+        String(
+          req.body.status || ""
+        ).trim();
+
+      if (
+        !allowedStatuses.includes(
+          status
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Invalid requirement status.",
+          });
+      }
+
+      const requirement =
+        await Requirement.findOne({
+          _id:
+            req.params.id,
+
+          isDeleted:
+            false,
+        });
+
+      if (!requirement) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message:
+              "Requirement not found.",
+          });
+      }
+
+      if (
+        requirement.status ===
+          "Converted to Project" &&
+        status !==
+          "Converted to Project"
+      ) {
+        return res
+          .status(409)
+          .json({
+            success: false,
+            message:
+              "Converted requirement cannot be moved back to another status.",
+          });
+      }
+
+      requirement.status =
+        status;
+
+      requirement.updatedBy =
+        req.user._id;
+
+      requirement.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      await requirement.save();
+
+      return res.json({
+        success: true,
+
+        message:
+          "Requirement status updated.",
+
+        data:
+          requirement,
+      });
+    } catch (error) {
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message ||
+            "Unable to update requirement status.",
+        });
+    }
+  }
+);
+/* =====================================================
+   CONVERT REQUIREMENT TO PROJECT
+===================================================== */
+
+router.post(
+  "/requirement/:id/convert-to-project",
+  async (req, res) => {
+    try {
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          req.params.id
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Invalid requirement ID.",
+          });
+      }
+
+      const requirement =
+        await Requirement.findOne({
+          _id:
+            req.params.id,
+
+          isDeleted:
+            false,
+        });
+
+      if (!requirement) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message:
+              "Requirement not found.",
+          });
+      }
+
+      if (
+        requirement.convertedProjectId
+      ) {
+        return res
+          .status(409)
+          .json({
+            success: false,
+
+            message:
+              "Requirement is already converted to a project.",
+          });
+      }
+
+      if (
+        requirement.status !==
+        "Approved"
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+
+            message:
+              "Requirement must be Approved before converting to a project.",
+          });
+      }
+
+      /*
+       * For phase 1:
+       * New Prospect must first be converted into a Client
+       * from the UI.
+       *
+       * We deliberately do not auto-create clients yet,
+       * because your Client creation currently also handles
+       * account/login/product rules.
+       */
+
+    /*
+ * New Prospect:
+ *
+ * After the prospect agrees to the project,
+ * admin creates the Client normally from Client Master.
+ *
+ * During conversion the frontend can send that new clientId.
+ */
+
+const requestedClientId =
+  req.body?.clientId ||
+  requirement.clientId ||
+  null;
+
+if (
+  requirement.sourceType ===
+    "New Prospect" &&
+  !requestedClientId
+) {
+  return res
+    .status(409)
+    .json({
+      success: false,
+
+      requiresClientCreation:
+        true,
+
+      message:
+        "Create the prospect as a client, then select that client before converting the requirement.",
+    });
+}
+
+if (
+  requestedClientId &&
+  !mongoose.Types.ObjectId.isValid(
+    requestedClientId
+  )
+) {
+  return res
+    .status(400)
+    .json({
+      success: false,
+      message:
+        "Invalid client ID.",
+    });
+}
+
+const client =
+  requestedClientId
+    ? await Client.findOne({
+        _id:
+          requestedClientId,
+
+        isDeleted:
+          false,
+      })
+    : null;
+
+if (
+  requestedClientId &&
+  !client
+) {
+  return res
+    .status(404)
+    .json({
+      success: false,
+      message:
+        "Selected client was not found.",
+    });
+}
+
+/*
+ * If this requirement originally came from a prospect,
+ * permanently link it to the newly-created client.
+ */
+
+if (
+  client &&
+  String(
+    requirement.clientId || ""
+  ) !==
+    String(client._id)
+) {
+  requirement.clientId =
+    client._id;
+
+  requirement.clientCode =
+    client.clientCode ||
+    "";
+
+  requirement.clientName =
+    client.companyName ||
+    "";
+
+  await requirement.save();
+}
+
+      const {
+          clientId,
+        projectCode,
+        projectName,
+        projectType,
+        startDate,
+        dueDate,
+        priority,
+        finalAmount,
+        amcApplicable,
+        proposedAmcAmount,
+        warrantyEndDate,
+      } = req.body || {};
+
+      const normalizedCode =
+        String(
+          projectCode || ""
+        )
+          .trim()
+          .toUpperCase();
+
+      if (!normalizedCode) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+
+            message:
+              "Project code is required.",
+          });
+      }
+
+      const duplicateProject =
+        await Project.findOne({
+          projectCode:
+            normalizedCode,
+
+          isDeleted:
+            false,
+        });
+
+      if (duplicateProject) {
+        return res
+          .status(409)
+          .json({
+            success: false,
+
+            message:
+              "Project code already exists.",
+          });
+      }
+
+      const selectedPriority =
+        await validatePriority(
+          priority ||
+          requirement.priority ||
+          "Medium"
+        );
+
+      if (!selectedPriority) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+
+            message:
+              "Selected priority is invalid or inactive.",
+          });
+      }
+
+      const project =
+        await Project.create({
+          projectCode:
+            normalizedCode,
+
+          projectName:
+            String(
+              projectName ||
+              requirement.title
+            ).trim(),
+
+          projectType:
+            projectType ||
+            (
+              requirement.requirementType ===
+                "Customization"
+                ? "Customization"
+                : requirement.requirementType ===
+                    "Upgrade"
+                  ? "Upgrade"
+                  : "Client Implementation"
+            ),
+
+          clientId:
+            client?._id ||
+            null,
+
+          clientCode:
+            client?.clientCode ||
+            "",
+
+          clientName:
+            client?.companyName ||
+            requirement.clientName ||
+            requirement.prospectCompany ||
+            requirement.prospectName ||
+            "",
+
+          requirementId:
+            requirement._id,
+
+          requirementCode:
+            requirement.requirementCode,
+
+          description:
+            requirement.description,
+
+          startDate:
+            startDate
+              ? new Date(
+                  startDate
+                )
+              : new Date(),
+
+          dueDate:
+            dueDate
+              ? new Date(
+                  dueDate
+                )
+              : requirement.expectedDeliveryDate ||
+                null,
+
+          priority:
+            selectedPriority.name,
+
+          status:
+            "Planned",
+
+          progress:
+            0,
+
+          finalAmount:
+            Math.max(
+              Number(
+                finalAmount ||
+                requirement.quotedAmount ||
+                0
+              ),
+              0
+            ),
+
+          amcApplicable:
+            Boolean(
+              amcApplicable
+            ),
+
+          proposedAmcAmount:
+            Math.max(
+              Number(
+                proposedAmcAmount ||
+                0
+              ),
+              0
+            ),
+
+          warrantyEndDate:
+            warrantyEndDate
+              ? new Date(
+                  warrantyEndDate
+                )
+              : null,
+
+          createdBy:
+            req.user._id,
+
+          createdByName:
+            req.user.name ||
+            "Admin",
+
+          updatedBy:
+            req.user._id,
+
+          updatedByName:
+            req.user.name ||
+            "Admin",
+        });
+
+      requirement.status =
+        "Converted to Project";
+
+      requirement.convertedProjectId =
+        project._id;
+
+      requirement.convertedProjectCode =
+        project.projectCode;
+
+      requirement.convertedAt =
+        new Date();
+
+      requirement.updatedBy =
+        req.user._id;
+
+      requirement.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      await requirement.save();
+
+      return res
+        .status(201)
+        .json({
+          success: true,
+
+          message:
+            "Requirement converted to project successfully.",
+
+          data: {
+            requirement,
+            project,
+          },
+        });
+    } catch (error) {
+      console.error(
+        "Convert requirement to project error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message ||
+            "Unable to convert requirement to project.",
+        });
+    }
+  }
+);
+router.delete(
+  "/requirement/:id",
+  async (req, res) => {
+    try {
+      const requirement =
+        await Requirement.findOne({
+          _id:
+            req.params.id,
+
+          isDeleted:
+            false,
+        });
+
+      if (!requirement) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message:
+              "Requirement not found.",
+          });
+      }
+
+      if (
+        requirement.status ===
+        "Converted to Project"
+      ) {
+        return res
+          .status(409)
+          .json({
+            success: false,
+
+            message:
+              "Converted requirement cannot be deleted.",
+          });
+      }
+
+      requirement.isDeleted =
+        true;
+
+      requirement.deletedAt =
+        new Date();
+
+      requirement.deletedBy =
+        req.user._id;
+
+      requirement.deletedByName =
+        req.user.name ||
+        "Admin";
+
+      await requirement.save();
+
+      return res.json({
+        success: true,
+
+        message:
+          "Requirement deleted successfully.",
+      });
+    } catch (error) {
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message ||
+            "Unable to delete requirement.",
+        });
+    }
+  }
+);
 async function resolveTaskProject(projectId) {
   if (!projectId) {
     throw new Error(
@@ -12526,7 +15672,14 @@ if (!employee) {
 task.status = "In Progress";
 task.startedAt = new Date();
 await task.save();
-
+if (
+  task.taskFor === "Project" &&
+  task.projectId
+) {
+  await syncProjectTaskProgress(
+    task.projectId
+  );
+}
 // Update employee current task
 employee.status = "Working";
 
@@ -13179,6 +16332,32 @@ else {
         dueDate: task.dueDate,
       },
     });
+/*
+ * Keep linked project progress synchronized.
+ */
+
+if (
+  task.taskFor === "Project" &&
+  task.projectId
+) {
+  await syncProjectTaskProgress(
+    task.projectId
+  );
+}
+// if (
+//   project?.convertedToProduct ===
+//   true
+// ) {
+//   return res.status(409).json({
+//     success: false,
+
+//     code:
+//       "PROJECT_LOCKED",
+
+//     message:
+//       "This project has already been converted to a product. New project tasks cannot be created.",
+//   });
+// }
 
     return res.status(201).json({
       success: true,
@@ -13904,7 +17083,18 @@ router.patch("/task/:id/status", async (req, res) => {
       }
     }
     // --- END AUTO-RESOLVE ---
+/*
+ * AUTO SYNC PROJECT PROGRESS
+ */
 
+if (
+  task.taskFor === "Project" &&
+  task.projectId
+) {
+  await syncProjectTaskProgress(
+    task.projectId
+  );
+}
     return res.status(200).json({
       success: true,
       message: "Task status updated successfully.",
@@ -14088,7 +17278,11 @@ router.delete("/task/:id", async (req, res) => {
         message: "Task not found.",
       });
     }
-
+const affectedProjectId =
+  task.taskFor === "Project" &&
+  task.projectId
+    ? task.projectId
+    : null;
     const wasOpen = ![
       "Completed",
       "Closed",
@@ -14108,6 +17302,11 @@ router.delete("/task/:id", async (req, res) => {
     });
 
     await task.save();
+    if (affectedProjectId) {
+  await syncProjectTaskProgress(
+    affectedProjectId
+  );
+}
     await createActivityLog({
       action: "Task Deleted",
 

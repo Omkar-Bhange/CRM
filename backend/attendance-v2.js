@@ -3129,9 +3129,23 @@ if (
 }
 
 /*
- * Public IP is SECONDARY evidence only.
+ * =========================================================
+ * TRUSTED DEVICE POLICY
+ * =========================================================
  *
- * The approved device is the primary identity.
+ * PRIMARY TRUST:
+ *
+ * 1. Local ClientConnect Agent is detected
+ * 2. Agent reports itself as registered
+ * 3. Agent employeeCode matches logged-in employee
+ * 4. deviceId exists in AgentDevice
+ * 5. AgentDevice is approved and active
+ *
+ * Public IP is SECONDARY INFORMATION ONLY.
+ *
+ * This is important because many ISPs use dynamic
+ * public IP addresses. Router restart / reconnect must
+ * not make an already-approved office PC untrusted.
  */
 
 const officeIpMatches =
@@ -3141,17 +3155,19 @@ const officeIpMatches =
       configuredOfficeIp
   );
 
+/*
+ * An approved registered workstation is sufficient
+ * to start office attendance.
+ */
 const isTrustedOfficeLogin =
   Boolean(
-    approvedDevice &&
-    officeIpMatches
+    approvedDevice
   );
 
 /*
- * If both approved device + office network match,
- * continue with normal attendance creation.
+ * Only unknown / unapproved devices require
+ * admin attendance approval.
  */
-
 if (!isTrustedOfficeLogin) {
   /*
    * Avoid creating multiple Pending requests
@@ -3252,10 +3268,8 @@ if (!isTrustedOfficeLogin) {
     workdayCompleted:
       false,
 
-    message:
-      approvedDevice
-        ? "You are outside the approved office network. Attendance approval has been sent to admin."
-        : "This device is not an approved office workstation. Attendance approval has been sent to admin.",
+  message:
+  "This PC is not an approved registered workstation for this employee. Attendance approval has been sent to admin.",
 
     request: {
       id:
@@ -3337,13 +3351,56 @@ const attendance =
     await createAttendanceEvent(attendance._id, employee._id, "LOGIN", req.body.source || "web", req.body.notes || "");
     await updateEmployeeStatus(employee, "Working");
 
-   return res.status(201).json({
+return res.status(201).json({
   success: true,
+
   message:
-    "Login recorded successfully.",
+    officeIpMatches
+      ? "Login recorded successfully from approved office workstation."
+      : "Login recorded successfully from approved workstation. Public office IP has changed or does not match.",
 
   allowAgentStart: true,
+
+  attendancePending: false,
+  attendanceActive: true,
   workdayCompleted: false,
+
+  trustedDevice: true,
+
+  network: {
+    publicIp:
+      requestIp,
+
+    configuredOfficeIp:
+      configuredOfficeIp ||
+      null,
+
+    officeIpMatches,
+
+    networkType:
+      officeIpMatches
+        ? "Office"
+        : "Dynamic / Changed IP",
+  },
+
+  device: {
+    deviceId:
+      approvedDevice?.deviceId ||
+      deviceId ||
+      "",
+
+    pcName:
+      approvedDevice?.pcName ||
+      pcName ||
+      "",
+
+    employeeCode:
+      approvedDevice?.employeeCode ||
+      normalizedEmployeeCode,
+
+    approved:
+      true,
+  },
 
   data:
     formatAttendance(

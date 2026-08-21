@@ -71,7 +71,10 @@ function getPriorityClasses(priority) {
     return "bg-slate-100 text-slate-600 ring-slate-500/10";
 }
 
-export default function Tasks() {
+export default function Tasks({
+    initialProject = null,
+    onInitialProjectHandled = null,
+}) {
     const [tasks, setTasks] = useState([]);
     const [employees, setEmployees] = useState([]);
     const [clients, setClients] = useState([]);
@@ -139,6 +142,63 @@ export default function Tasks() {
         estimatedTime: "",
         description: "",
     });
+    useEffect(() => {
+    if (!initialProject) {
+        return;
+    }
+
+    const projectId =
+        initialProject._id ||
+        initialProject.id ||
+        "";
+
+    if (!projectId) {
+        return;
+    }
+
+    setCreateTaskForm(
+        (current) => ({
+            ...current,
+
+            taskFor:
+                "Project",
+
+            projectId,
+
+            projectCode:
+                initialProject.projectCode ||
+                "",
+
+            projectName:
+                initialProject.projectName ||
+                "",
+
+            clientId:
+                initialProject.clientId ||
+                "",
+
+            client:
+                initialProject.clientName ||
+                "Internal Development",
+
+            productId:
+                initialProject.productId ||
+                "",
+        })
+    );
+
+    setCreateTaskOpen(true);
+
+    if (
+        typeof onInitialProjectHandled ===
+        "function"
+    ) {
+        onInitialProjectHandled();
+    }
+}, [
+    initialProject,
+    onInitialProjectHandled,
+]);
 
     const [editTaskForm, setEditTaskForm] = useState({
         title: "",

@@ -15,6 +15,137 @@ const Task =
   mongoose.models.Task ||
   mongoose.model("Task");
 const { getISTDateBucket, getISTDateString } = require("./utils/dateUtils");
+const Project =
+  mongoose.models.Project ||
+  mongoose.model("Project");
+
+/* =========================================================
+   SYNC PROJECT PROGRESS FROM PROJECT TASKS
+========================================================= */
+
+async function syncProjectTaskProgress(projectId) {
+  if (
+    !projectId ||
+    !mongoose.Types.ObjectId.isValid(projectId)
+  ) {
+    return null;
+  }
+
+  const project = await Project.findOne({
+    _id: projectId,
+    isDeleted: false,
+  });
+
+  if (!project) {
+    return null;
+  }
+
+  const projectTasks = await Task.find({
+    projectId: project._id,
+    taskFor: "Project",
+    isDeleted: false,
+  })
+    .select("status progress dueDate")
+    .lean();
+
+  const totalTasks =
+    projectTasks.length;
+
+  const completedTasks =
+    projectTasks.filter(
+      (task) =>
+        task.status === "Completed" ||
+        Number(task.progress || 0) >= 100
+    ).length;
+
+  const activeTasks =
+    projectTasks.filter(
+      (task) =>
+        ![
+          "Completed",
+          "Closed",
+          "Cancelled",
+        ].includes(task.status)
+    ).length;
+
+ const now = new Date();
+
+/*
+ * A task becomes overdue only AFTER
+ * the end of its due date.
+ *
+ * Example:
+ * Due Date = 20 Aug
+ * It remains valid throughout 20 Aug.
+ * It becomes overdue on 21 Aug.
+ */
+const overdueTasks =
+  projectTasks.filter((task) => {
+    if (!task.dueDate) {
+      return false;
+    }
+
+    if (
+      [
+        "Completed",
+        "Closed",
+        "Cancelled",
+      ].includes(task.status)
+    ) {
+      return false;
+    }
+
+    const dueDate =
+      new Date(task.dueDate);
+
+    dueDate.setHours(
+      23,
+      59,
+      59,
+      999
+    );
+
+    return dueDate < now;
+  }).length;
+
+  const progress =
+    totalTasks > 0
+      ? Math.round(
+          projectTasks.reduce(
+            (sum, task) =>
+              sum +
+              Math.min(
+                100,
+                Math.max(
+                  0,
+                  Number(
+                    task.progress || 0
+                  )
+                )
+              ),
+            0
+          ) / totalTasks
+        )
+      : 0;
+
+  if (
+    Number(project.progress || 0) !==
+    progress
+  ) {
+    project.progress =
+      progress;
+
+    await project.save();
+  }
+
+  return {
+    totalTasks,
+    completedTasks,
+    activeTasks,
+    overdueTasks,
+    progress,
+  };
+}
 const router = express.Router();
 require("./agentSession"); // register models
 
@@ -1572,14 +1703,25 @@ router.post("/tasks/:id/end", authenticateUser, async (req, res, next) => {
       task.elapsedSeconds = (task.elapsedSeconds || 0) + elapsed;
     }
 
-    task.status = "Completed";
-    task.startedAt = null;
-    task.completedAt = new Date();
-    task.lastUpdated = new Date();
+task.status = "Completed";
+task.progress = 100; // IMPORTANT
+task.startedAt = null;
+task.completedAt = new Date();
+task.lastUpdated = new Date();
 
-    await task.save();
+await task.save();
 
-    res.json({
+/* Update linked project progress */
+if (
+  task.taskFor === "Project" &&
+  task.projectId
+) {
+  await syncProjectTaskProgress(
+    task.projectId
+  );
+}
+
+res.json({
       success: true,
       message: "Task completed",
       data: task,
@@ -1633,7 +1775,15 @@ router.patch("/tasks/:id/timer", async (req, res, next) => {
 
   // Save the completed task first
   await task.save();
-
+/* Update linked project progress */
+if (
+  task.taskFor === "Project" &&
+  task.projectId
+) {
+  await syncProjectTaskProgress(
+    task.projectId
+  );
+}
   // Then resolve the linked ticket
   await resolveLinkedTicket(task);
   // Recalculate employee status after task completion

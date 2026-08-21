@@ -40,6 +40,8 @@ const SETTING_COLORS = [
 const PERMISSION_OPTIONS = [
   "Overview",
   "Clients",
+  "Requirements",
+  "Projects",
   "AMC & Billing",
   "Tickets",
   "Team",

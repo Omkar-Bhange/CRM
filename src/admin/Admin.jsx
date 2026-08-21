@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import SystemSettings from "./settings/SystemSettings";
+import Requirements from "./requirements/Requirements";
+import Projects from "./projects/Projects";
 import Attendance from "./attendance/Attendance";
 import NexoraLogo from "../assets/NexoraLogo.png";
 import Tasks from "./tasks/Tasks";
@@ -108,6 +110,16 @@ const menuItems = [
         label: "Clients",
         icon: Users,
     },
+    {
+    id: "requirements",
+    label: "Requirements",
+    icon: ClipboardList,
+},
+{
+    id: "projects",
+    label: "Projects",
+    icon: BriefcaseBusiness,
+},
     {
         id: "billing",
         label: "AMC & Billing",
@@ -705,6 +717,10 @@ export default function Admin({ onLogout }) {
     const [clientAmcData, setClientAmcData] = useState(null);
     const [clientAmcLoading, setClientAmcLoading] = useState(false);
     const [clientAmcError, setClientAmcError] = useState("");
+    const [
+    projectForNewTask,
+    setProjectForNewTask,
+] = useState(null);
 
     const [clientPaymentsData, setClientPaymentsData] = useState([]);
     const [clientPaymentsLoading, setClientPaymentsLoading] = useState(false);
@@ -7007,6 +7023,29 @@ export default function Admin({ onLogout }) {
                                 </div>
                             )
 
+                            ) : activeMenu === "requirements" ? (
+    <div className="enterprise-page">
+        <Requirements
+            clients={clients}
+            employees={employees}
+        />
+    </div>
+    ) : activeMenu === "projects" ? (
+    <div className="enterprise-page">
+     <Projects
+    clients={clients}
+    products={productMasters}
+    onCreateProjectTask={(project) => {
+        setProjectForNewTask(
+            project
+        );
+
+        setActiveMenu(
+            "tasks"
+        );
+    }}
+/>
+    </div>
                         ) : activeMenu === "tickets" ? (
                             <div className="enterprise-page"><SupportTickets /></div>
                         ) : activeMenu === "billing" ? (
@@ -7014,7 +7053,18 @@ export default function Admin({ onLogout }) {
                         ) : activeMenu === "team" ? (
                             <div className="enterprise-page"><Team /></div>
                         ) : activeMenu === "tasks" ? (
-                            <div className="enterprise-page"><Tasks /></div>
+                            <div className="enterprise-page">
+                               <Tasks
+    initialProject={
+        projectForNewTask
+    }
+    onInitialProjectHandled={() => {
+        setProjectForNewTask(
+            null
+        );
+    }}
+/>
+                                </div>
                         ) : activeMenu === "attendance" ? (
                             <div className="enterprise-page">
                                 <Attendance />
