@@ -76,16 +76,33 @@ const Attendance =
           default: 0,
           min: 0,
         },
-     shiftStart: {
-  type: String,
-  default: "10:00",
-  trim: true,
-},
+        shiftStart: {
+          type: String,
+          default: "10:00",
+          trim: true,
+        },
         shiftEnd: {
           type: String,
           default: "18:00",
           trim: true,
         },
+        graceMinutes: {
+  type: Number,
+  default: 15,
+  min: 0,
+},
+
+fullDayMinutes: {
+  type: Number,
+  default: 480,
+  min: 0,
+},
+
+halfDayThresholdMinutes: {
+  type: Number,
+  default: 240,
+  min: 0,
+},
         lateMinutes: {
           type: Number,
           default: 0,
@@ -150,8 +167,8 @@ const Attendance =
     )
   );
 
-  /* =========================================================
-   ATTENDANCE DATABASE INDEXES
+/* =========================================================
+ ATTENDANCE DATABASE INDEXES
 ========================================================= */
 
 /*
@@ -223,7 +240,10 @@ const AttendanceEvent =
   );
 
 const Employee = mongoose.models.Employee;
+const Task = mongoose.models.Task;
 
+const AgentDailySummary =
+  mongoose.models.AgentDailySummary;
 
 /* =========================================================
    ADVANCED LEAVE REQUEST MODEL
@@ -566,17 +586,17 @@ const AttendanceRegularization =
           default: null,
         },
         attendanceId: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "AttendanceV2",
-  default: null,
-},
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "AttendanceV2",
+          default: null,
+        },
 
-appliedAt: {
-  type: Date,
-  default: null,
-},
+        appliedAt: {
+          type: Date,
+          default: null,
+        },
       },
-      
+
       {
         timestamps: true,
         collection: "attendanceRegularizations",
@@ -770,7 +790,50 @@ function isValidRegularizationType(value) {
 // 5 = Friday
 // 6 = Saturday
 
-const WEEKLY_OFF_DAYS = [0];
+const WEEK_DAY_INDEX = {
+  Sunday: 0,
+  Monday: 1,
+  Tuesday: 2,
+  Wednesday: 3,
+  Thursday: 4,
+  Friday: 5,
+  Saturday: 6,
+};
+
+function isWeeklyOff(
+  dateString,
+  weeklyOff = ["Sunday"]
+) {
+  const date =
+    parseDateOnly(dateString);
+
+  if (!date) {
+    return false;
+  }
+
+  const configuredIndexes =
+    weeklyOff
+      .map(
+        (day) =>
+          WEEK_DAY_INDEX[day]
+      )
+      .filter(
+        (value) =>
+          value !== undefined
+      );
+
+  if (
+    configuredIndexes.includes(
+      date.getDay()
+    )
+  ) {
+    return true;
+  }
+
+  return isAlternateSaturdayOff(
+    dateString
+  );
+}
 
 // Change false if all Saturdays are working.
 const ALTERNATE_SATURDAY_OFF = false;
@@ -781,23 +844,8 @@ const ALTERNATE_SATURDAY_OFF = false;
   4th Saturday = Weekly Off
 */
 
-const DEFAULT_LEAVE_TYPES = [
-  {
-    leaveType: "Casual Leave",
-    code: "CL",
-    total: 12,
-  },
-  {
-    leaveType: "Sick Leave",
-    code: "SL",
-    total: 8,
-  },
-  {
-    leaveType: "Earned Leave",
-    code: "EL",
-    total: 15,
-  },
-];
+
+
 
 const { getISTDateString } = require("./utils/dateUtils");
 
@@ -951,27 +999,103 @@ function isAlternateSaturdayOff(
   );
 }
 
-function isWeeklyOff(
-  dateString
-) {
-  const date =
-    parseDateOnly(dateString);
 
-  if (!date) {
-    return false;
+/* =========================================================
+   SYSTEM SETTINGS / ATTENDANCE POLICY
+========================================================= */
+
+async function getSystemSettings() {
+  const SystemSettingsModel =
+    mongoose.models.SystemSettings;
+
+  if (!SystemSettingsModel) {
+    throw new Error(
+      "SystemSettings model is not registered. Make sure the settings route is loaded before attendance-v2."
+    );
   }
 
-  if (
-    WEEKLY_OFF_DAYS.includes(
-      date.getDay()
-    )
-  ) {
-    return true;
-  }
+  return SystemSettingsModel.findOne({
+    settingsKey: "system",
+  }).lean();
+}
 
-  return isAlternateSaturdayOff(
-    dateString
-  );
+async function getAttendancePolicy() {
+  const settings =
+    await getSystemSettings();
+
+  const workingHours =
+    settings?.workingHours || {};
+
+  return {
+    shiftStart:
+      workingHours.officeStartTime ||
+      "10:00",
+
+    shiftEnd:
+      workingHours.officeEndTime ||
+      "18:00",
+
+    graceMinutes:
+      Number(
+        workingHours.lateAfterMinutes ??
+        15
+      ),
+
+    fullDayMinutes:
+      Math.round(
+        Number(
+          workingHours.fullDayHours ??
+          8
+        ) * 60
+      ),
+
+    halfDayThresholdMinutes:
+      Math.round(
+        Number(
+          workingHours.halfDayHours ??
+          4
+        ) * 60
+      ),
+
+    defaultBreakMinutes:
+      Number(
+        workingHours.defaultBreakMinutes ??
+        0
+      ),
+
+    weeklyOff:
+      Array.isArray(
+        workingHours.weeklyOff
+      )
+        ? workingHours.weeklyOff
+        : ["Sunday"],
+
+    autoMarkAbsent:
+      workingHours.autoMarkAbsent !==
+      false,
+
+    absentMarkTime:
+      workingHours.absentMarkTime ||
+      "11:00",
+
+    allowManualCorrection:
+      workingHours.allowManualCorrection !==
+      false,
+  };
+}
+
+async function getConfiguredLeaveTypes() {
+  const settings =
+    await getSystemSettings();
+
+  return Array.isArray(
+    settings?.leaveTypes
+  )
+    ? settings.leaveTypes.filter(
+        (item) =>
+          item.status === "Active"
+      )
+    : [];
 }
 
 async function findHolidayByDate(
@@ -1504,6 +1628,9 @@ async function calculateChargeableLeaveDays(
     };
   }
 
+  const policy =
+    await getAttendancePolicy();
+
   const holidayMap =
     await getHolidayMap(
       fromDate,
@@ -1515,19 +1642,24 @@ async function calculateChargeableLeaveDays(
       fromDate,
       toDate
     ).filter((date) => {
-      if (isWeeklyOff(date)) {
+      if (
+        isWeeklyOff(
+          date,
+          policy.weeklyOff
+        )
+      ) {
         return false;
       }
 
- const holiday =
-  holidayMap.get(date);
+      const holiday =
+        holidayMap.get(date);
 
-if (
-  holiday &&
-  holiday.type !== "Optional"
-) {
-  return false;
-}
+      if (
+        holiday &&
+        holiday.type !== "Optional"
+      ) {
+        return false;
+      }
 
       return true;
     });
@@ -1556,64 +1688,82 @@ async function ensureLeaveBalances(
   employeeId,
   year
 ) {
-  const existing =
-    await LeaveBalance.find({
-      employeeId,
-      year,
-    }).lean();
+  const configuredLeaveTypes =
+    await getConfiguredLeaveTypes();
 
-  const existingNames =
-    new Set(
-      existing.map(
-        (item) =>
-          item.leaveType
-      )
-    );
-
-  const missing =
-    DEFAULT_LEAVE_TYPES.filter(
-      (item) =>
-        !existingNames.has(
-          item.leaveType
-        )
-    );
-
-  if (missing.length > 0) {
-    try {
-      await LeaveBalance.insertMany(
-        missing.map(
-          (item) => ({
-            employeeId,
-
-            year,
-
-            leaveType:
-              item.leaveType,
-
-            code:
-              item.code,
-
-            total:
-              item.total,
-
-            carriedForward: 0,
-          })
-        ),
-        {
-          ordered: false,
-        }
+  /*
+   * Keep employee leave balances synchronized
+   * with Admin Settings.
+   *
+   * Example:
+   * Admin changes Sick Leave yearlyLimit
+   * from 8 -> 3.
+   *
+   * Existing employee LeaveBalance.total
+   * must also become 3.
+   */
+  for (
+    const leaveType of
+    configuredLeaveTypes
+  ) {
+    const configuredTotal =
+      Number(
+        leaveType.yearlyLimit || 0
       );
-    } catch (error) {
-      // Duplicate balance records are safe to ignore.
-      if (error?.code !== 11000) {
-        throw error;
+
+    await LeaveBalance.findOneAndUpdate(
+      {
+        employeeId,
+        year,
+        leaveType:
+          leaveType.name,
+      },
+
+      {
+        $set: {
+          code:
+            leaveType.code,
+
+          total:
+            configuredTotal,
+        },
+
+        $setOnInsert: {
+          employeeId,
+          year,
+          leaveType:
+            leaveType.name,
+
+          carriedForward: 0,
+        },
+      },
+
+      {
+        upsert: true,
+        new: true,
+        setDefaultsOnInsert: true,
       }
-    }
+    );
   }
+
+  /*
+   * Only return leave types that are
+   * currently active in Admin Settings.
+   */
+  const activeLeaveNames =
+    configuredLeaveTypes.map(
+      (item) =>
+        item.name
+    );
 
   return LeaveBalance.find({
     employeeId,
     year,
+
+    leaveType: {
+      $in:
+        activeLeaveNames,
+    },
   })
     .sort({
       leaveType: 1,
@@ -1704,7 +1854,7 @@ async function getLeaveBalanceSummary(
         ) +
         Number(
           balance.carriedForward ||
-            0
+          0
         );
 
       return {
@@ -1738,13 +1888,13 @@ async function getLeaveBalanceSummary(
           Math.max(
             0,
             total -
-              used -
-              pending
+            used -
+            pending
           ),
       };
     }
   );
-} 
+}
 
 function parseShiftDate(dateString, timeString) {
   if (!dateString || !timeString) return null;
@@ -1796,9 +1946,36 @@ function formatAttendance(attendance) {
     totalBreakMinutes: Number(data.totalBreakMinutes || data.breakMinutes || 0),
     workingMinutes: Number(data.workingMinutes || 0),
     totalWorkedMinutes: Number(data.totalWorkedMinutes || data.workingMinutes || 0),
-    shiftStart: data.shiftStart || DEFAULT_SHIFT_START,
-    shiftEnd: data.shiftEnd || DEFAULT_SHIFT_END,
-    lateMinutes: Number(data.lateMinutes || 0),
+shiftStart:
+  data.shiftStart ||
+  DEFAULT_SHIFT_START,
+
+shiftEnd:
+  data.shiftEnd ||
+  DEFAULT_SHIFT_END,
+
+graceMinutes:
+  Number(
+    data.graceMinutes ??
+    15
+  ),
+
+fullDayMinutes:
+  Number(
+    data.fullDayMinutes ??
+    480
+  ),
+
+halfDayThresholdMinutes:
+  Number(
+    data.halfDayThresholdMinutes ??
+    240
+  ),
+
+lateMinutes:
+  Number(
+    data.lateMinutes || 0
+  ),
     earlyLogoutMinutes: Number(data.earlyLogoutMinutes || 0),
     overtimeMinutes: Number(data.overtimeMinutes || 0),
     status: data.status || getAttendanceStatus(data),
@@ -1839,21 +2016,26 @@ function getAttendanceStatus(attendance) {
   const workedMinutes =
     Number(
       attendance.totalWorkedMinutes ??
-        attendance.workingMinutes ??
-        0
+      attendance.workingMinutes ??
+      0
     );
+const halfDayThresholdMinutes =
+  Number(
+    attendance.halfDayThresholdMinutes ??
+    240
+  );
 
-  if (
-    workedMinutes <
-    HALF_DAY_THRESHOLD_MINUTES
-  ) {
-    return "Half Day";
-  }
+if (
+  workedMinutes <
+  halfDayThresholdMinutes
+) {
+  return "Half Day";
+}
 
   if (
     Number(
       attendance.lateMinutes ||
-        0
+      0
     ) > 0
   ) {
     return "Late";
@@ -1891,55 +2073,215 @@ async function endActiveBreak(attendance, employee, now = new Date(), source = "
 function calculateAttendanceMetrics(attendance) {
   const result = {
     totalWorkedMinutes: 0,
-    totalBreakMinutes: Number(attendance.totalBreakMinutes || 0),
+    totalBreakMinutes:
+      Number(
+        attendance.totalBreakMinutes ||
+        0
+      ),
+
+    /*
+     * Final adjusted values.
+     */
     lateMinutes: 0,
     earlyLogoutMinutes: 0,
     overtimeMinutes: 0,
+
+    /*
+     * Optional diagnostic values.
+     */
+    originalLateMinutes: 0,
+    originalOvertimeMinutes: 0,
+    compensatedLateMinutes: 0,
   };
 
-  if (!attendance.loginTime) return result;
-
-  const loginTime = new Date(attendance.loginTime);
-  const logoutTime = attendance.logoutTime ? new Date(attendance.logoutTime) : new Date();
-
-  const grossMinutes = Math.max(0, Math.floor((logoutTime.getTime() - loginTime.getTime()) / 60000));
-  result.totalWorkedMinutes = Math.max(0, grossMinutes - result.totalBreakMinutes);
-
-  const shiftStartAt = parseShiftDate(attendance.date, attendance.shiftStart || DEFAULT_SHIFT_START);
-  if (shiftStartAt) {
-    const lateBy = Math.floor((loginTime.getTime() - shiftStartAt.getTime()) / 60000);
-    result.lateMinutes = lateBy > GRACE_MINUTES ? lateBy : 0;
+  if (!attendance.loginTime) {
+    return result;
   }
 
-const shiftEndAt =
-  parseShiftDate(
-    attendance.date,
-    attendance.shiftEnd ||
-      DEFAULT_SHIFT_END
-  );
+  const loginTime =
+    new Date(
+      attendance.loginTime
+    );
 
-if (
-  attendance.logoutTime &&
-  shiftEndAt &&
-  logoutTime.getTime() <
-    shiftEndAt.getTime()
-) {
-  result.earlyLogoutMinutes =
+  const logoutTime =
+    attendance.logoutTime
+      ? new Date(
+        attendance.logoutTime
+      )
+      : new Date();
+
+  /* =====================================================
+     WORKED MINUTES
+  ===================================================== */
+
+  const grossMinutes =
     Math.max(
       0,
       Math.floor(
         (
-          shiftEndAt.getTime() -
-          logoutTime.getTime()
+          logoutTime.getTime() -
+          loginTime.getTime()
         ) /
-          60000
+        60000
       )
     );
-}
 
-  if (result.totalWorkedMinutes > FULL_DAY_MINUTES) {
-    result.overtimeMinutes = result.totalWorkedMinutes - FULL_DAY_MINUTES;
+  result.totalWorkedMinutes =
+    Math.max(
+      0,
+      grossMinutes -
+      result.totalBreakMinutes
+    );
+
+  /* =====================================================
+     ORIGINAL LATE MINUTES
+  ===================================================== */
+
+  const shiftStartAt =
+    parseShiftDate(
+      attendance.date,
+      attendance.shiftStart ||
+      DEFAULT_SHIFT_START
+    );
+
+  let originalLateMinutes = 0;
+
+  if (shiftStartAt) {
+    const lateBy =
+      Math.floor(
+        (
+          loginTime.getTime() -
+          shiftStartAt.getTime()
+        ) /
+        60000
+      );
+
+    /*
+     * Grace period remains 15 minutes.
+     *
+     * Example:
+     * 10:10 = no late
+     * 10:20 = 20 minutes late
+     */
+const graceMinutes =
+  Number(
+    attendance.graceMinutes ??
+    15
+  );
+
+originalLateMinutes =
+  lateBy > graceMinutes
+    ? lateBy
+    : 0;
   }
+
+  result.originalLateMinutes =
+    originalLateMinutes;
+
+  /* =====================================================
+     SHIFT END
+  ===================================================== */
+
+  const shiftEndAt =
+    parseShiftDate(
+      attendance.date,
+      attendance.shiftEnd ||
+      DEFAULT_SHIFT_END
+    );
+
+  /* =====================================================
+     EARLY LOGOUT
+  ===================================================== */
+
+  if (
+    attendance.logoutTime &&
+    shiftEndAt &&
+    logoutTime.getTime() <
+    shiftEndAt.getTime()
+  ) {
+    result.earlyLogoutMinutes =
+      Math.max(
+        0,
+        Math.floor(
+          (
+            shiftEndAt.getTime() -
+            logoutTime.getTime()
+          ) /
+          60000
+        )
+      );
+  }
+
+  /* =====================================================
+     RAW AFTER-SHIFT TIME
+  ===================================================== */
+
+  let originalOvertimeMinutes = 0;
+
+  if (
+    attendance.logoutTime &&
+    shiftEndAt &&
+    logoutTime.getTime() >
+    shiftEndAt.getTime()
+  ) {
+    originalOvertimeMinutes =
+      Math.max(
+        0,
+        Math.floor(
+          (
+            logoutTime.getTime() -
+            shiftEndAt.getTime()
+          ) /
+          60000
+        )
+      );
+  }
+
+  result.originalOvertimeMinutes =
+    originalOvertimeMinutes;
+
+  /* =====================================================
+     LATE VS OVERTIME ADJUSTMENT
+
+     Example:
+
+     Shift        10:00 - 18:00
+     Login        10:30
+     Logout       19:00
+
+     Original Late      = 30
+     After Shift Work   = 60
+
+     First:
+       30 min overtime compensates 30 min late.
+
+     Final:
+       Late     = 0
+       Overtime = 30
+  ===================================================== */
+
+  const compensatedLateMinutes =
+    Math.min(
+      originalLateMinutes,
+      originalOvertimeMinutes
+    );
+
+  result.compensatedLateMinutes =
+    compensatedLateMinutes;
+
+  result.lateMinutes =
+    Math.max(
+      0,
+      originalLateMinutes -
+      compensatedLateMinutes
+    );
+
+  result.overtimeMinutes =
+    Math.max(
+      0,
+      originalOvertimeMinutes -
+      compensatedLateMinutes
+    );
 
   return result;
 }
@@ -2105,11 +2447,25 @@ async function findOverlappingLeave(
 
 
 
-function getLeaveTypeConfig(leaveType) {
-  return DEFAULT_LEAVE_TYPES.find(
-    (item) =>
-      item.leaveType ===
-      String(leaveType || "").trim()
+async function getLeaveTypeConfig(
+  leaveType
+) {
+  const leaveTypes =
+    await getConfiguredLeaveTypes();
+
+  const normalizedLeaveType =
+    String(
+      leaveType || ""
+    ).trim();
+
+  return (
+    leaveTypes.find(
+      (item) =>
+        String(
+          item.name || ""
+        ).trim() ===
+        normalizedLeaveType
+    ) || null
   );
 }
 async function validateLeaveAvailability({
@@ -2179,7 +2535,7 @@ async function validateLeaveAvailability({
     calculation.days >
     Number(
       balance.availableAfterPending ||
-        0
+      0
     )
   ) {
     return {
@@ -2226,18 +2582,18 @@ async function updateEmployeeStatus(employee, workStatus) {
   } else {
     const hasActiveTask = Task
       ? await Task.exists({
-          assignedEmployeeId: employee._id,
-          isDeleted: false,
-          status: { $in: ["Assigned", "In Progress", "Paused", "Testing"] },
-        })
+        assignedEmployeeId: employee._id,
+        isDeleted: false,
+        status: { $in: ["Assigned", "In Progress", "Paused", "Testing"] },
+      })
       : false;
 
     const hasActiveTicket = SupportTicket
       ? await SupportTicket.exists({
-          assignedEmployeeId: employee._id,
-          isDeleted: false,
-          status: { $in: ["New", "Assigned", "In Progress"] },
-        })
+        assignedEmployeeId: employee._id,
+        isDeleted: false,
+        status: { $in: ["New", "Assigned", "In Progress"] },
+      })
       : false;
 
     status = hasActiveTask || hasActiveTicket ? "Working" : "Free";
@@ -2333,6 +2689,8 @@ router.patch(
   "/admin/approval-requests/:id/approve",
   async (req, res, next) => {
     try {
+      const policy =
+  await getAttendancePolicy();
       if (!requireAdmin(req, res)) {
         return;
       }
@@ -2439,11 +2797,11 @@ router.patch(
             approvalRequest.requestedAt
           );
 
-        const shiftStartAt =
-          parseShiftDate(
-            approvalRequest.date,
-            DEFAULT_SHIFT_START
-          );
+   const shiftStartAt =
+  parseShiftDate(
+    approvalRequest.date,
+    policy.shiftStart
+  );
 
         let lateMinutes = 0;
 
@@ -2454,12 +2812,12 @@ router.patch(
                 loginTime.getTime() -
                 shiftStartAt.getTime()
               ) /
-                60000
+              60000
             );
 
           lateMinutes =
-            difference >
-            GRACE_MINUTES
+       difference >
+  policy.graceMinutes
               ? difference
               : 0;
         }
@@ -2506,12 +2864,20 @@ router.patch(
             totalWorkedMinutes:
               0,
 
-            shiftStart:
-              DEFAULT_SHIFT_START,
+    shiftStart:
+  policy.shiftStart,
 
-            shiftEnd:
-              DEFAULT_SHIFT_END,
+shiftEnd:
+  policy.shiftEnd,
 
+  graceMinutes:
+  policy.graceMinutes,
+
+fullDayMinutes:
+  policy.fullDayMinutes,
+
+halfDayThresholdMinutes:
+  policy.halfDayThresholdMinutes,
             lateMinutes,
 
             earlyLogoutMinutes:
@@ -2788,7 +3154,7 @@ router.get(
 
           message:
             approvalRequest?.status ===
-            "Approved"
+              "Approved"
               ? "Attendance request approved."
               : "Workday is active.",
 
@@ -2974,439 +3340,459 @@ router.post("/login", async (req, res, next) => {
     await closeOpenAttendanceForEmployee(employee._id);
 
     const today = getLocalDateString();
+    const policy =
+  await getAttendancePolicy();
     const {
-  deviceId,
-  pcName,
-  agentEmployeeCode,
-  agentRegistered,
-} = req.body || {};
+      deviceId,
+      pcName,
+      agentEmployeeCode,
+      agentRegistered,
+    } = req.body || {};
 
-const requestIp =
-  getRequestIp(req);
+    const requestIp =
+      getRequestIp(req);
 
-const configuredOfficeIp =
-  String(
-    process.env.OFFICE_PUBLIC_IP || ""
-  ).trim();
+    const configuredOfficeIp =
+      String(
+        process.env.OFFICE_PUBLIC_IP || ""
+      ).trim();
     const currentAttendance = await Attendance.findOne({ employeeId: employee._id, date: today });
-  if (currentAttendance) {
-  /*
-  ============================================================
-  WORKDAY ALREADY ACTIVE
-  ============================================================
-  CRM login is allowed and the local agent may run.
-  */
+    if (currentAttendance) {
+      /*
+      ============================================================
+      WORKDAY ALREADY ACTIVE
+      ============================================================
+      CRM login is allowed and the local agent may run.
+      */
 
-  if (!currentAttendance.logoutTime) {
-    return res.status(200).json({
-      success: true,
-      message: "You are already logged in.",
+      if (!currentAttendance.logoutTime) {
+        return res.status(200).json({
+          success: true,
+          message: "You are already logged in.",
 
-      allowAgentStart: true,
-      workdayCompleted: false,
+          allowAgentStart: true,
+          workdayCompleted: false,
 
-      data:
-        formatAttendance(
-          currentAttendance
-        ),
-    });
-  }
+          data:
+            formatAttendance(
+              currentAttendance
+            ),
+        });
+      }
 
-  /*
-  ============================================================
-  WORKDAY ALREADY COMPLETED
-  ============================================================
-  Employee may still access CRM, but attendance must NOT
-  reopen and local Windows Agent must NOT start again today.
-  */
+      /*
+      ============================================================
+      WORKDAY ALREADY COMPLETED
+      ============================================================
+      Employee may still access CRM, but attendance must NOT
+      reopen and local Windows Agent must NOT start again today.
+      */
 
-  return res.status(200).json({
-    success: true,
-    message:
-      "Today attendance is already completed.",
+      return res.status(200).json({
+        success: true,
+        message:
+          "Today attendance is already completed.",
 
-    allowAgentStart: false,
-    workdayCompleted: true,
+        allowAgentStart: false,
+        workdayCompleted: true,
 
-    data:
-      formatAttendance(
-        currentAttendance
-      ),
-  });
-}
-
-const leave =
-  await getApprovedLeave(
-    employee._id,
-    today
-  );
-
-if (leave) {
-  return res.status(400).json({
-    success: false,
-    message:
-      "Today is already marked as approved leave.",
-  });
-}
-
-/* =========================
-   HOLIDAY CHECK
-========================= */
-
-const holiday =
-  await Holiday.findOne({
-    date: today,
-    isActive: true,
-  }).lean();
-
-if (
-  holiday &&
-  holiday.type !== "Optional"
-) {
-  return res.status(400).json({
-    success: false,
-
-    message:
-      `Today is a holiday: ${holiday.name}. ` +
-      `Contact admin if you are required to work.`,
-  });
-}
-
-/* =========================
-   WEEKLY OFF CHECK
-========================= */
-
-if (isWeeklyOff(today)) {
-  return res.status(400).json({
-    success: false,
-
-    message:
-      "Today is configured as a weekly off. " +
-      "Contact admin if you are required to work.",
-  });
-}
-/* =========================================================
-   OFFICE DEVICE / REMOTE LOGIN VERIFICATION
-========================================================= */
-
-const normalizedEmployeeCode =
-  String(
-    employee.employeeCode || ""
-  )
-    .trim()
-    .toUpperCase();
-
-const normalizedAgentEmployeeCode =
-  String(
-    agentEmployeeCode || ""
-  )
-    .trim()
-    .toUpperCase();
-
-let approvedDevice =
-  null;
-
-if (
-  deviceId &&
-  agentRegistered === true &&
-  normalizedAgentEmployeeCode ===
-    normalizedEmployeeCode
-) {
-  approvedDevice =
-    await AgentDevice.findOne({
-      deviceId:
-        String(deviceId).trim(),
-
-      employeeCode:
-        normalizedEmployeeCode,
-
-      isActive:
-        true,
-
-      isApproved:
-        true,
-    }).lean();
-}
-
-/*
- * =========================================================
- * TRUSTED DEVICE POLICY
- * =========================================================
- *
- * PRIMARY TRUST:
- *
- * 1. Local ClientConnect Agent is detected
- * 2. Agent reports itself as registered
- * 3. Agent employeeCode matches logged-in employee
- * 4. deviceId exists in AgentDevice
- * 5. AgentDevice is approved and active
- *
- * Public IP is SECONDARY INFORMATION ONLY.
- *
- * This is important because many ISPs use dynamic
- * public IP addresses. Router restart / reconnect must
- * not make an already-approved office PC untrusted.
- */
-
-const officeIpMatches =
-  Boolean(
-    configuredOfficeIp &&
-    requestIp ===
-      configuredOfficeIp
-  );
-
-/*
- * An approved registered workstation is sufficient
- * to start office attendance.
- */
-const isTrustedOfficeLogin =
-  Boolean(
-    approvedDevice
-  );
-
-/*
- * Only unknown / unapproved devices require
- * admin attendance approval.
- */
-if (!isTrustedOfficeLogin) {
-  /*
-   * Avoid creating multiple Pending requests
-   * when employee repeatedly logs in.
-   */
-
-  let pendingRequest =
-    await AttendanceApprovalRequest.findOne({
-      employeeId:
-        employee._id,
-
-      date:
-        today,
-
-      status:
-        "Pending",
-    });
-
-  if (!pendingRequest) {
-    pendingRequest =
-      await AttendanceApprovalRequest.create({
-        employeeId:
-          employee._id,
-
-        employeeCode:
-          employee.employeeCode,
-
-        employeeName:
-          employee.name,
-
-        department:
-          employee.department || "",
-
-        date:
-          today,
-
-        requestedAt:
-          new Date(),
-
-        requestType:
-          "Remote Login",
-
-        reason:
-          "",
-
-        pcName:
-          String(
-            pcName ||
-            approvedDevice?.pcName ||
-            ""
-          ).trim(),
-
-        deviceId:
-          String(
-            deviceId || ""
-          ).trim(),
-
-        ipAddress:
-          requestIp,
-
-        networkType:
-          officeIpMatches
-            ? "Office"
-            : configuredOfficeIp
-              ? "Outside Office"
-              : "Unknown",
-
-        status:
-          "Pending",
-
-        approvalType:
-          "",
-
-        reviewedBy:
-          null,
-
-        reviewedAt:
-          null,
-
-        reviewNote:
-          "",
-
-        attendanceId:
-          null,
+        data:
+          formatAttendance(
+            currentAttendance
+          ),
       });
-  }
+    }
 
-  return res.status(202).json({
-    success:
-      true,
+    const leave =
+      await getApprovedLeave(
+        employee._id,
+        today
+      );
 
-    attendancePending:
-      true,
+    if (leave) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Today is already marked as approved leave.",
+      });
+    }
 
-    allowAgentStart:
-      false,
+    /* =========================
+       HOLIDAY CHECK
+    ========================= */
 
-    workdayCompleted:
-      false,
+    const holiday =
+      await Holiday.findOne({
+        date: today,
+        isActive: true,
+      }).lean();
 
-  message:
-  "This PC is not an approved registered workstation for this employee. Attendance approval has been sent to admin.",
+    if (
+      holiday &&
+      holiday.type !== "Optional"
+    ) {
+      return res.status(400).json({
+        success: false,
 
-    request: {
-      id:
-        pendingRequest._id,
+        message:
+          `Today is a holiday: ${holiday.name}. ` +
+          `Contact admin if you are required to work.`,
+      });
+    }
 
-      status:
-        pendingRequest.status,
+    /* =========================
+       WEEKLY OFF CHECK
+    ========================= */
 
-      requestedAt:
-        pendingRequest.requestedAt,
+if (
+  isWeeklyOff(
+    today,
+    policy.weeklyOff
+  )
+) {
+      return res.status(400).json({
+        success: false,
 
-      networkType:
-        pendingRequest.networkType,
+        message:
+          "Today is configured as a weekly off. " +
+          "Contact admin if you are required to work.",
+      });
+    }
+    /* =========================================================
+       OFFICE DEVICE / REMOTE LOGIN VERIFICATION
+    ========================================================= */
 
-      pcName:
-        pendingRequest.pcName,
-    },
-  });
-}
-const loginTime =
-  new Date();
+    const normalizedEmployeeCode =
+      String(
+        employee.employeeCode || ""
+      )
+        .trim()
+        .toUpperCase();
+
+    const normalizedAgentEmployeeCode =
+      String(
+        agentEmployeeCode || ""
+      )
+        .trim()
+        .toUpperCase();
+
+    let approvedDevice =
+      null;
+
+    if (
+      deviceId &&
+      agentRegistered === true &&
+      normalizedAgentEmployeeCode ===
+      normalizedEmployeeCode
+    ) {
+      approvedDevice =
+        await AgentDevice.findOne({
+          deviceId:
+            String(deviceId).trim(),
+
+          employeeCode:
+            normalizedEmployeeCode,
+
+          isActive:
+            true,
+
+          isApproved:
+            true,
+        }).lean();
+    }
+
+    /*
+     * =========================================================
+     * TRUSTED DEVICE POLICY
+     * =========================================================
+     *
+     * PRIMARY TRUST:
+     *
+     * 1. Local ClientConnect Agent is detected
+     * 2. Agent reports itself as registered
+     * 3. Agent employeeCode matches logged-in employee
+     * 4. deviceId exists in AgentDevice
+     * 5. AgentDevice is approved and active
+     *
+     * Public IP is SECONDARY INFORMATION ONLY.
+     *
+     * This is important because many ISPs use dynamic
+     * public IP addresses. Router restart / reconnect must
+     * not make an already-approved office PC untrusted.
+     */
+
+    const officeIpMatches =
+      Boolean(
+        configuredOfficeIp &&
+        requestIp ===
+        configuredOfficeIp
+      );
+
+    /*
+     * An approved registered workstation is sufficient
+     * to start office attendance.
+     */
+    const isTrustedOfficeLogin =
+      Boolean(
+        approvedDevice
+      );
+
+    /*
+     * Only unknown / unapproved devices require
+     * admin attendance approval.
+     */
+    if (!isTrustedOfficeLogin) {
+      /*
+       * Avoid creating multiple Pending requests
+       * when employee repeatedly logs in.
+       */
+
+      let pendingRequest =
+        await AttendanceApprovalRequest.findOne({
+          employeeId:
+            employee._id,
+
+          date:
+            today,
+
+          status:
+            "Pending",
+        });
+
+      if (!pendingRequest) {
+        pendingRequest =
+          await AttendanceApprovalRequest.create({
+            employeeId:
+              employee._id,
+
+            employeeCode:
+              employee.employeeCode,
+
+            employeeName:
+              employee.name,
+
+            department:
+              employee.department || "",
+
+            date:
+              today,
+
+            requestedAt:
+              new Date(),
+
+            requestType:
+              "Remote Login",
+
+            reason:
+              "",
+
+            pcName:
+              String(
+                pcName ||
+                approvedDevice?.pcName ||
+                ""
+              ).trim(),
+
+            deviceId:
+              String(
+                deviceId || ""
+              ).trim(),
+
+            ipAddress:
+              requestIp,
+
+            networkType:
+              officeIpMatches
+                ? "Office"
+                : configuredOfficeIp
+                  ? "Outside Office"
+                  : "Unknown",
+
+            status:
+              "Pending",
+
+            approvalType:
+              "",
+
+            reviewedBy:
+              null,
+
+            reviewedAt:
+              null,
+
+            reviewNote:
+              "",
+
+            attendanceId:
+              null,
+          });
+      }
+
+      return res.status(202).json({
+        success:
+          true,
+
+        attendancePending:
+          true,
+
+        allowAgentStart:
+          false,
+
+        workdayCompleted:
+          false,
+
+        message:
+          "This PC is not an approved registered workstation for this employee. Attendance approval has been sent to admin.",
+
+        request: {
+          id:
+            pendingRequest._id,
+
+          status:
+            pendingRequest.status,
+
+          requestedAt:
+            pendingRequest.requestedAt,
+
+          networkType:
+            pendingRequest.networkType,
+
+          pcName:
+            pendingRequest.pcName,
+        },
+      });
+    }
+    const loginTime =
+      new Date();
 
 const shiftStartAt =
   parseShiftDate(
     today,
-    DEFAULT_SHIFT_START
-  );
+    policy.shiftStart
+  );  
 
-let lateMinutes = 0;
+    let lateMinutes = 0;
 
-if (shiftStartAt) {
-  const difference =
-    Math.floor(
-      (
-        loginTime.getTime() -
-        shiftStartAt.getTime()
-      ) /
-        60000
-    );
+    if (shiftStartAt) {
+      const difference =
+        Math.floor(
+          (
+            loginTime.getTime() -
+            shiftStartAt.getTime()
+          ) /
+          60000
+        );
 
-  lateMinutes =
-    difference >
-    GRACE_MINUTES
-      ? difference
-      : 0;
-}
+      lateMinutes =
+  difference >
+    policy.graceMinutes
+    ? difference
+    : 0;
+    }
 
-const attendance =
-  await Attendance.create({
-      employeeId: employee._id,
-      employeeCode: employee.employeeCode,
-      employeeName: employee.name,
-      department: employee.department,
-      role: employee.role,
-      date: today,
-      loginTime,
-      logoutTime: null,
-      breakStartedAt: null,
-      breakMinutes: 0,
-      totalBreakMinutes: 0,
-      workingMinutes: 0,
-      totalWorkedMinutes: 0,
-      shiftStart: DEFAULT_SHIFT_START,
-      shiftEnd: DEFAULT_SHIFT_END,
-     lateMinutes,
-      earlyLogoutMinutes: 0,
-      overtimeMinutes: 0,
-     status:
-  lateMinutes > 0
-    ? "Late"
-    : "Present",
-      workStatus: "Working",
-      isAutoClosed: false,
-      autoClosedReason: "",
-      createdBy: req.user._id,
-      updatedBy: req.user._id,
-    });
+    const attendance =
+      await Attendance.create({
+        employeeId: employee._id,
+        employeeCode: employee.employeeCode,
+        employeeName: employee.name,
+        department: employee.department,
+        role: employee.role,
+        date: today,
+        loginTime,
+        logoutTime: null,
+        breakStartedAt: null,
+        breakMinutes: 0,
+        totalBreakMinutes: 0,
+        workingMinutes: 0,
+        totalWorkedMinutes: 0,
+shiftStart:
+  policy.shiftStart,
+
+shiftEnd:
+  policy.shiftEnd,
+
+graceMinutes:
+  policy.graceMinutes,
+
+fullDayMinutes:
+  policy.fullDayMinutes,
+
+halfDayThresholdMinutes:
+  policy.halfDayThresholdMinutes,
+
+lateMinutes,
+        earlyLogoutMinutes: 0,
+        overtimeMinutes: 0,
+        status:
+          lateMinutes > 0
+            ? "Late"
+            : "Present",
+        workStatus: "Working",
+        isAutoClosed: false,
+        autoClosedReason: "",
+        createdBy: req.user._id,
+        updatedBy: req.user._id,
+      });
 
     await createAttendanceEvent(attendance._id, employee._id, "LOGIN", req.body.source || "web", req.body.notes || "");
     await updateEmployeeStatus(employee, "Working");
 
-return res.status(201).json({
-  success: true,
+    return res.status(201).json({
+      success: true,
 
-  message:
-    officeIpMatches
-      ? "Login recorded successfully from approved office workstation."
-      : "Login recorded successfully from approved workstation. Public office IP has changed or does not match.",
+      message:
+        officeIpMatches
+          ? "Login recorded successfully from approved office workstation."
+          : "Login recorded successfully from approved workstation. Public office IP has changed or does not match.",
 
-  allowAgentStart: true,
+      allowAgentStart: true,
 
-  attendancePending: false,
-  attendanceActive: true,
-  workdayCompleted: false,
+      attendancePending: false,
+      attendanceActive: true,
+      workdayCompleted: false,
 
-  trustedDevice: true,
+      trustedDevice: true,
 
-  network: {
-    publicIp:
-      requestIp,
+      network: {
+        publicIp:
+          requestIp,
 
-    configuredOfficeIp:
-      configuredOfficeIp ||
-      null,
+        configuredOfficeIp:
+          configuredOfficeIp ||
+          null,
 
-    officeIpMatches,
+        officeIpMatches,
 
-    networkType:
-      officeIpMatches
-        ? "Office"
-        : "Dynamic / Changed IP",
-  },
+        networkType:
+          officeIpMatches
+            ? "Office"
+            : "Dynamic / Changed IP",
+      },
 
-  device: {
-    deviceId:
-      approvedDevice?.deviceId ||
-      deviceId ||
-      "",
+      device: {
+        deviceId:
+          approvedDevice?.deviceId ||
+          deviceId ||
+          "",
 
-    pcName:
-      approvedDevice?.pcName ||
-      pcName ||
-      "",
+        pcName:
+          approvedDevice?.pcName ||
+          pcName ||
+          "",
 
-    employeeCode:
-      approvedDevice?.employeeCode ||
-      normalizedEmployeeCode,
+        employeeCode:
+          approvedDevice?.employeeCode ||
+          normalizedEmployeeCode,
 
-    approved:
-      true,
-  },
+        approved:
+          true,
+      },
 
-  data:
-    formatAttendance(
-      attendance
-    ),
-});
+      data:
+        formatAttendance(
+          attendance
+        ),
+    });
   } catch (error) {
     next(error);
   }
@@ -3561,7 +3947,10 @@ router.post("/break/end", async (req, res, next) => {
 router.get(
   "/today",
   async (req, res, next) => {
+
     try {
+      const policy =
+  await getAttendancePolicy();
       const employee =
         await findEmployee(
           req,
@@ -3697,10 +4086,10 @@ router.get(
           isActive: true,
         }).lean();
 
-    if (
-  holiday &&
-  holiday.type !== "Optional"
-) {
+      if (
+        holiday &&
+        holiday.type !== "Optional"
+      ) {
         return res
           .status(200)
           .json({
@@ -3748,9 +4137,12 @@ router.get(
          WEEKLY OFF
       ========================= */
 
-      if (
-        isWeeklyOff(today)
-      ) {
+if (
+  isWeeklyOff(
+    today,
+    policy.weeklyOff
+  )
+) {
         return res
           .status(200)
           .json({
@@ -3823,12 +4215,15 @@ router.get(
 router.get(
   "/history",
   async (req, res, next) => {
-    try {
-      const employee =
-        await findEmployee(
-          req,
-          res
-        );
+ try {
+  const policy =
+    await getAttendancePolicy();
+
+  const employee =
+    await findEmployee(
+      req,
+      res
+    );
 
       if (!employee) {
         return;
@@ -3839,7 +4234,7 @@ router.get(
           Math.max(
             Number(
               req.query.limit ||
-                60
+              60
             ),
             1
           ),
@@ -3857,7 +4252,7 @@ router.get(
 
       startDate.setDate(
         startDate.getDate() -
-          (limit - 1)
+        (limit - 1)
       );
 
       const fromDate =
@@ -3939,49 +4334,52 @@ router.get(
       ) {
         const start =
           leave.fromDate <
-          fromDate
+            fromDate
             ? fromDate
             : leave.fromDate;
 
         const end =
           leave.toDate >
-          today
+            today
             ? today
             : leave.toDate;
 
-       for (
-  const date of eachDate(
-    start,
-    end
+        for (
+          const date of eachDate(
+            start,
+            end
+          )
+        ) {
+          /*
+            Do not convert company/national holidays
+            or weekly offs into leave days.
+          */
+
+    if (
+  isWeeklyOff(
+    date,
+    policy.weeklyOff
   )
 ) {
-  /*
-    Do not convert company/national holidays
-    or weekly offs into leave days.
-  */
-
-  if (
-    isWeeklyOff(date)
-  ) {
-    continue;
-  }
-
-  const leaveDateHoliday =
-    holidayMap.get(date);
-
-  if (
-    leaveDateHoliday &&
-    leaveDateHoliday.type !==
-      "Optional"
-  ) {
-    continue;
-  }
-
-  leaveMap.set(
-    date,
-    leave
-  );
+  continue;
 }
+
+          const leaveDateHoliday =
+            holidayMap.get(date);
+
+          if (
+            leaveDateHoliday &&
+            leaveDateHoliday.type !==
+            "Optional"
+          ) {
+            continue;
+          }
+
+          leaveMap.set(
+            date,
+            leave
+          );
+        }
       }
 
       const rows = [];
@@ -3999,7 +4397,7 @@ router.get(
         if (
           employee.joiningDate &&
           date <
-            employee.joiningDate
+          employee.joiningDate
         ) {
           continue;
         }
@@ -4104,13 +4502,13 @@ router.get(
         /* =========================
            HOLIDAY
         ========================= */
-const holiday =
-  holidayMap.get(date);
+        const holiday =
+          holidayMap.get(date);
 
-if (
-  holiday &&
-  holiday.type !== "Optional"
-) {
+        if (
+          holiday &&
+          holiday.type !== "Optional"
+        ) {
           rows.push({
             id:
               `holiday-${date}`,
@@ -4163,10 +4561,13 @@ if (
            WEEKLY OFF
         ========================= */
 
-        if (
-          isWeeklyOff(date)
-        ) {
-          rows.push({
+       if (
+  isWeeklyOff(
+    date,
+    policy.weeklyOff
+  )
+) {
+  rows.push({
             id:
               `weekly-off-${date}`,
 
@@ -4283,6 +4684,9 @@ router.get(
   "/month",
   async (req, res, next) => {
     try {
+      const policy =
+        await getAttendancePolicy();
+
       const employee =
         await findEmployee(
           req,
@@ -4405,49 +4809,51 @@ router.get(
       ) {
         const start =
           leave.fromDate <
-          range.start
+            range.start
             ? range.start
             : leave.fromDate;
 
         const end =
           leave.toDate >
-          range.end
+            range.end
             ? range.end
             : leave.toDate;
 
         for (
-  const date of eachDate(
-    start,
-    end
+          const date of eachDate(
+            start,
+            end
+          )
+        ) {
+          /*
+            Do not convert company/national holidays
+            or weekly offs into leave days.
+          */
+
+if (
+  isWeeklyOff(
+    date,
+    policy.weeklyOff
   )
 ) {
-  /*
-    Do not convert company/national holidays
-    or weekly offs into leave days.
-  */
-
-  if (
-    isWeeklyOff(date)
-  ) {
-    continue;
-  }
-
-  const leaveDateHoliday =
-    holidayMap.get(date);
-
-  if (
-    leaveDateHoliday &&
-    leaveDateHoliday.type !==
-      "Optional"
-  ) {
-    continue;
-  }
-
-  leaveMap.set(
-    date,
-    leave
-  );
+  continue;
 }
+          const leaveDateHoliday =
+            holidayMap.get(date);
+
+          if (
+            leaveDateHoliday &&
+            leaveDateHoliday.type !==
+            "Optional"
+          ) {
+            continue;
+          }
+
+          leaveMap.set(
+            date,
+            leave
+          );
+        }
       }
 
       const calendar = [];
@@ -4504,7 +4910,7 @@ router.get(
         const beforeJoining =
           employee.joiningDate &&
           date <
-            employee.joiningDate;
+          employee.joiningDate;
 
         const record =
           attendanceMap.get(
@@ -4577,26 +4983,26 @@ router.get(
           summary.totalWorkedMinutes +=
             Number(
               formatted.totalWorkedMinutes ||
-                formatted.workingMinutes ||
-                0
+              formatted.workingMinutes ||
+              0
             );
 
           summary.overtimeMinutes +=
             Number(
               formatted.overtimeMinutes ||
-                0
+              0
             );
 
           summary.lateMinutes +=
             Number(
               formatted.lateMinutes ||
-                0
+              0
             );
 
           summary.earlyLogoutMinutes +=
             Number(
               formatted.earlyLogoutMinutes ||
-                0
+              0
             );
 
           if (missedPunch) {
@@ -4660,10 +5066,10 @@ router.get(
            HOLIDAY
         ========================= */
 
-       else if (
-  holiday &&
-  holiday.type !== "Optional"
-) {
+        else if (
+          holiday &&
+          holiday.type !== "Optional"
+        ) {
           entry = {
             date,
 
@@ -4696,9 +5102,12 @@ router.get(
            WEEKLY OFF
         ========================= */
 
-        else if (
-          isWeeklyOff(date)
-        ) {
+  else if (
+  isWeeklyOff(
+    date,
+    policy.weeklyOff
+  )
+) {
           entry = {
             date,
 
@@ -4779,10 +5188,10 @@ router.get(
       summary.attendanceRate =
         summary.workingDays > 0
           ? Math.round(
-              (attendedEquivalent /
-                summary.workingDays) *
-                1000
-            ) / 10
+            (attendedEquivalent /
+              summary.workingDays) *
+            1000
+          ) / 10
           : 0;
 
       return res
@@ -4792,28 +5201,29 @@ router.get(
 
           month,
 
-          policy: {
-            shiftStart:
-              DEFAULT_SHIFT_START,
+    policy: {
+  shiftStart:
+    policy.shiftStart,
 
-            shiftEnd:
-              DEFAULT_SHIFT_END,
+  shiftEnd:
+    policy.shiftEnd,
 
-            graceMinutes:
-              GRACE_MINUTES,
 
-            fullDayMinutes:
-              FULL_DAY_MINUTES,
+  graceMinutes:
+    policy.graceMinutes,
 
-            halfDayThresholdMinutes:
-              HALF_DAY_THRESHOLD_MINUTES,
+  fullDayMinutes:
+    policy.fullDayMinutes,
 
-            weeklyOffDays:
-              WEEKLY_OFF_DAYS,
+  halfDayThresholdMinutes:
+    policy.halfDayThresholdMinutes,
 
-            alternateSaturdayOff:
-              ALTERNATE_SATURDAY_OFF,
-          },
+  weeklyOff:
+    policy.weeklyOff,
+
+  alternateSaturdayOff:
+    ALTERNATE_SATURDAY_OFF,
+},
 
           summary,
 
@@ -4825,7 +5235,8 @@ router.get(
       next(error);
     }
   }
-);/* =========================================================
+);
+/* =========================================================
    LEAVE BALANCES
 ========================================================= */
 
@@ -4846,8 +5257,8 @@ router.get(
       const year =
         Number(
           req.query.year ||
-            getLocalDateString()
-              .slice(0, 4)
+          getLocalDateString()
+            .slice(0, 4)
         );
 
       const data =
@@ -5159,17 +5570,17 @@ router.put(
         const approvalAvailable =
           Number(
             balance.availableAfterPending ||
-              0
+            0
           ) +
           Number(
             leave.days ||
-              0
+            0
           );
 
         if (
           Number(
             leave.days ||
-              0
+            0
           ) >
           approvalAvailable
         ) {
@@ -5195,12 +5606,12 @@ router.put(
       leave.reviewNote =
         String(
           reviewNote ||
-            ""
+          ""
         ).trim();
 
       leave.approvedAt =
         status ===
-        "Approved"
+          "Approved"
           ? new Date()
           : null;
 
@@ -5406,7 +5817,7 @@ router.post(
 
       if (leaveType) {
         const configuredType =
-          getLeaveTypeConfig(
+          await getLeaveTypeConfig(
             leaveType
           );
 
@@ -5453,10 +5864,10 @@ router.post(
           sufficientBalance:
             !balance ||
             calculation.days <=
-              Number(
-                balance.availableAfterPending ||
-                  0
-              ),
+            Number(
+              balance.availableAfterPending ||
+              0
+            ),
         },
       });
     } catch (error) {
@@ -5518,7 +5929,7 @@ router.post(
       ========================= */
 
       const configuredType =
-        getLeaveTypeConfig(
+         await getLeaveTypeConfig(
           leaveType
         );
 
@@ -5589,7 +6000,7 @@ router.post(
       if (
         employee.joiningDate &&
         fromDate <
-          employee.joiningDate
+        employee.joiningDate
       ) {
         return res.status(400).json({
           success: false,
@@ -5651,7 +6062,7 @@ router.post(
       if (
         Number(
           calculation.days ||
-            0
+          0
         ) <= 0
       ) {
         return res.status(400).json({
@@ -5700,7 +6111,7 @@ router.post(
         ) >
         Number(
           balance.availableAfterPending ||
-            0
+          0
         )
       ) {
         return res.status(400).json({
@@ -5751,7 +6162,7 @@ router.post(
           contactDuringLeave:
             String(
               contactDuringLeave ||
-                ""
+              ""
             ).trim(),
 
           status:
@@ -5786,12 +6197,12 @@ router.post(
               0,
               Number(
                 balance.availableAfterPending ||
-                  0
+                0
               ) -
-                Number(
-                  calculation.days ||
-                    0
-                )
+              Number(
+                calculation.days ||
+                0
+              )
             ),
         },
       });
@@ -5808,7 +6219,7 @@ router.post(
    DELETE HOLIDAY
 ========================================================= */
 
-  
+
 /* =========================================================
    APPLY REGULARIZATION TO ATTENDANCE
 ========================================================= */
@@ -5817,6 +6228,8 @@ async function applyAttendanceRegularization(
   regularization,
   reviewerUser
 ) {
+  const policy =
+  await getAttendancePolicy();
   const employee =
     await Employee.findById(
       regularization.employeeId
@@ -5844,17 +6257,17 @@ async function applyAttendanceRegularization(
   const requestedLogin =
     regularization.requestedLoginTime
       ? parseRequestedAttendanceTime(
-          regularization.date,
-          regularization.requestedLoginTime
-        )
+        regularization.date,
+        regularization.requestedLoginTime
+      )
       : null;
 
   const requestedLogout =
     regularization.requestedLogoutTime
       ? parseRequestedAttendanceTime(
-          regularization.date,
-          regularization.requestedLogoutTime
-        )
+        regularization.date,
+        regularization.requestedLogoutTime
+      )
       : null;
 
   /* =====================================================
@@ -5926,11 +6339,20 @@ async function applyAttendanceRegularization(
         totalWorkedMinutes:
           0,
 
-        shiftStart:
-          DEFAULT_SHIFT_START,
+ shiftStart:
+  policy.shiftStart,
 
-        shiftEnd:
-          DEFAULT_SHIFT_END,
+shiftEnd:
+  policy.shiftEnd,
+
+graceMinutes:
+  policy.graceMinutes,
+
+fullDayMinutes:
+  policy.fullDayMinutes,
+
+halfDayThresholdMinutes:
+  policy.halfDayThresholdMinutes,
 
         lateMinutes:
           0,
@@ -5965,7 +6387,7 @@ async function applyAttendanceRegularization(
   ===================================================== */
 
   switch (
-    regularization.requestType
+  regularization.requestType
   ) {
     case "Missing Login":
       if (!requestedLogin) {
@@ -6045,9 +6467,9 @@ async function applyAttendanceRegularization(
     new Date(
       attendance.logoutTime
     ) <=
-      new Date(
-        attendance.loginTime
-      )
+    new Date(
+      attendance.loginTime
+    )
   ) {
     throw new Error(
       "Logout time must be after login time."
@@ -6065,7 +6487,7 @@ async function applyAttendanceRegularization(
       parseShiftDate(
         attendance.date,
         attendance.shiftStart ||
-          DEFAULT_SHIFT_START
+        DEFAULT_SHIFT_START
       );
 
     let lateMinutes = 0;
@@ -6079,14 +6501,20 @@ async function applyAttendanceRegularization(
             ).getTime() -
             shiftStartAt.getTime()
           ) /
-            60000
+          60000
         );
 
-      lateMinutes =
-        difference >
-        GRACE_MINUTES
-          ? difference
-          : 0;
+   const graceMinutes =
+  Number(
+    attendance.graceMinutes ??
+    policy.graceMinutes
+  );
+
+lateMinutes =
+  difference >
+    graceMinutes
+    ? difference
+    : 0;
     }
 
     attendance.lateMinutes =
@@ -6128,10 +6556,10 @@ async function applyAttendanceRegularization(
 
   const regularizationLabel =
     regularization.requestType ===
-    "Work From Home"
+      "Work From Home"
       ? "Work From Home"
       : regularization.requestType ===
-          "Client Site"
+        "Client Site"
         ? "Client Site"
         : regularization.requestType;
 
@@ -6189,8 +6617,8 @@ router.get(
     }
   }
 );
-  /* =========================================================
-   CANCEL MY REGULARIZATION
+/* =========================================================
+ CANCEL MY REGULARIZATION
 ========================================================= */
 
 router.patch(
@@ -6484,7 +6912,7 @@ router.post(
       if (
         employee.joiningDate &&
         date <
-          employee.joiningDate
+        employee.joiningDate
       ) {
         return res.status(400).json({
           success: false,
@@ -6561,7 +6989,7 @@ router.post(
 
       if (
         requestType ===
-          "Incorrect Time" &&
+        "Incorrect Time" &&
         !requestedLoginTime &&
         !requestedLogoutTime
       ) {
@@ -6596,7 +7024,7 @@ router.post(
           !requestedLogin ||
           !requestedLogout ||
           requestedLogout <=
-            requestedLogin
+          requestedLogin
         ) {
           return res.status(400).json({
             success: false,
@@ -6627,7 +7055,10 @@ router.post(
         });
       }
 
-      if (isWeeklyOff(date)) {
+      if (isWeeklyOff(
+  date,
+  policy.weeklyOff
+)) {
         return res.status(400).json({
           success: false,
           message:
@@ -6665,7 +7096,7 @@ router.post(
 
       if (
         requestType ===
-          "Missing Login" &&
+        "Missing Login" &&
         attendance?.loginTime
       ) {
         return res.status(400).json({
@@ -6677,7 +7108,7 @@ router.post(
 
       if (
         requestType ===
-          "Missing Logout" &&
+        "Missing Logout" &&
         !attendance?.loginTime
       ) {
         return res.status(400).json({
@@ -6689,7 +7120,7 @@ router.post(
 
       if (
         requestType ===
-          "Missing Logout" &&
+        "Missing Logout" &&
         attendance?.logoutTime
       ) {
         return res.status(400).json({
@@ -6701,7 +7132,7 @@ router.post(
 
       if (
         requestType ===
-          "Incorrect Time" &&
+        "Incorrect Time" &&
         !attendance
       ) {
         return res.status(400).json({
@@ -6756,13 +7187,13 @@ router.post(
           requestedLoginTime:
             String(
               requestedLoginTime ||
-                ""
+              ""
             ).trim(),
 
           requestedLogoutTime:
             String(
               requestedLogoutTime ||
-                ""
+              ""
             ).trim(),
 
           reason:
@@ -6899,7 +7330,7 @@ router.put(
       request.reviewNote =
         String(
           reviewNote ||
-            ""
+          ""
         ).trim();
 
       request.reviewedAt =
@@ -6921,8 +7352,8 @@ router.put(
         attendance:
           attendance
             ? formatAttendance(
-                attendance
-              )
+              attendance
+            )
             : null,
       });
     } catch (error) {
@@ -6941,6 +7372,8 @@ router.get(
   "/admin/today",
   async (req, res, next) => {
     try {
+      const policy =
+  await getAttendancePolicy();
       if (
         !requireAdmin(
           req,
@@ -6953,7 +7386,7 @@ router.get(
       const today =
         String(
           req.query.date ||
-            getLocalDateString()
+          getLocalDateString()
         );
 
       if (
@@ -7053,12 +7486,15 @@ router.get(
       const isCompanyHoliday =
         Boolean(
           holiday &&
-            holiday.type !==
-              "Optional"
+          holiday.type !==
+          "Optional"
         );
 
-      const weeklyOff =
-        isWeeklyOff(today);
+   const weeklyOff =
+  isWeeklyOff(
+    today,
+    policy.weeklyOff
+  );
 
       const currentToday =
         getLocalDateString();
@@ -7074,7 +7510,7 @@ router.get(
         if (
           employee.joiningDate &&
           today <
-            employee.joiningDate
+          employee.joiningDate
         ) {
           continue;
         }
@@ -7099,7 +7535,7 @@ router.get(
 
           const missedPunch =
             today <
-              currentToday &&
+            currentToday &&
             formatted.loginTime &&
             !formatted.logoutTime;
 
@@ -7325,7 +7761,7 @@ router.get(
         */
         const status =
           today <
-          currentToday
+            currentToday
             ? "Absent"
             : "Not Checked In";
 
@@ -7356,7 +7792,7 @@ router.get(
 
           workStatus:
             status ===
-            "Absent"
+              "Absent"
               ? "Absent"
               : "Not Started",
 
@@ -7500,6 +7936,8 @@ router.get(
   "/admin/absence-analysis",
   async (req, res, next) => {
     try {
+      const policy =
+  await getAttendancePolicy();
       if (
         !requireAdmin(
           req,
@@ -7514,7 +7952,7 @@ router.get(
           Math.max(
             Number(
               req.query.days ||
-                30
+              30
             ),
             7
           ),
@@ -7536,7 +7974,7 @@ router.get(
 
       startDateObj.setDate(
         startDateObj.getDate() -
-          (days - 1)
+        (days - 1)
       );
 
       const fromDate =
@@ -7644,21 +8082,21 @@ router.get(
       ) {
         const start =
           leave.fromDate <
-          fromDate
+            fromDate
             ? fromDate
             : leave.fromDate;
 
         const end =
           leave.toDate >=
-          today
+            today
             ? getLocalDateString(
-                new Date(
-                  parseDateOnly(
-                    today
-                  ).getTime() -
-                    86400000
-                )
+              new Date(
+                parseDateOnly(
+                  today
+                ).getTime() -
+                86400000
               )
+            )
             : leave.toDate;
 
         for (
@@ -7667,13 +8105,14 @@ router.get(
             end
           )
         ) {
-          if (
-            isWeeklyOff(
-              date
-            )
-          ) {
-            continue;
-          }
+if (
+  isWeeklyOff(
+    date,
+    policy.weeklyOff
+  )
+) {
+  continue;
+}
 
           const holiday =
             holidayMap.get(
@@ -7683,7 +8122,7 @@ router.get(
           if (
             holiday &&
             holiday.type !==
-              "Optional"
+            "Optional"
           ) {
             continue;
           }
@@ -7719,7 +8158,7 @@ router.get(
                 parseDateOnly(
                   today
                 ).getTime() -
-                  86400000
+                86400000
               )
             )
           )
@@ -7727,7 +8166,7 @@ router.get(
           if (
             employee.joiningDate &&
             date <
-              employee.joiningDate
+            employee.joiningDate
           ) {
             continue;
           }
@@ -7740,16 +8179,19 @@ router.get(
           if (
             holiday &&
             holiday.type !==
-              "Optional"
+            "Optional"
           ) {
             continue;
           }
 
-          if (
-            isWeeklyOff(date)
-          ) {
-            continue;
-          }
+      if (
+  isWeeklyOff(
+    date,
+    policy.weeklyOff
+  )
+) {
+  continue;
+}
 
           const key =
             `${employeeId}|${date}`;
@@ -7822,7 +8264,7 @@ router.get(
 
             cursor.setDate(
               cursor.getDate() +
-                1
+              1
             );
 
             let broken =
@@ -7842,13 +8284,14 @@ router.get(
                 );
 
               if (
-                !isWeeklyOff(
-                  middleDate
-                ) &&
+             !isWeeklyOff(
+  middleDate,
+  policy.weeklyOff
+) &&
                 !(
                   middleHoliday &&
                   middleHoliday.type !==
-                    "Optional"
+                  "Optional"
                 )
               ) {
                 broken =
@@ -7858,7 +8301,7 @@ router.get(
 
               cursor.setDate(
                 cursor.getDate() +
-                  1
+                1
               );
             }
 
@@ -7935,10 +8378,10 @@ router.get(
 
             warningLevel:
               longestStreak >=
-              3
+                3
                 ? "High"
                 : absentDates.length >=
-                    3
+                  3
                   ? "Medium"
                   : "Low",
           });
@@ -7948,9 +8391,9 @@ router.get(
       results.sort(
         (a, b) =>
           b.longestStreak -
-            a.longestStreak ||
+          a.longestStreak ||
           b.totalAbsentDays -
-            a.totalAbsentDays
+          a.totalAbsentDays
       );
 
       return res.json({
@@ -8066,9 +8509,9 @@ router.put(
         attendance.loginTime =
           loginTime
             ? parseShiftDate(
-                attendance.date,
-                loginTime
-              )
+              attendance.date,
+              loginTime
+            )
             : null;
       }
 
@@ -8092,9 +8535,9 @@ router.put(
         attendance.logoutTime =
           logoutTime
             ? parseShiftDate(
-                attendance.date,
-                logoutTime
-              )
+              attendance.date,
+              logoutTime
+            )
             : null;
       }
 
@@ -8104,9 +8547,9 @@ router.put(
         new Date(
           attendance.logoutTime
         ) <=
-          new Date(
-            attendance.loginTime
-          )
+        new Date(
+          attendance.loginTime
+        )
       ) {
         return res.status(400).json({
           success: false,
@@ -8312,8 +8755,8 @@ router.get(
             total +
             Number(
               item.totalWorkedMinutes ||
-                item.workingMinutes ||
-                0
+              item.workingMinutes ||
+              0
             ),
           0
         );
@@ -8327,7 +8770,7 @@ router.get(
             total +
             Number(
               item.overtimeMinutes ||
-                0
+              0
             ),
           0
         );
@@ -8337,7 +8780,7 @@ router.get(
           (item) =>
             Number(
               item.lateMinutes ||
-                0
+              0
             ) > 0
         ).length;
 
@@ -8377,16 +8820,779 @@ router.get(
 
             averageWorkedMinutes:
               completed.length >
-              0
+                0
                 ? Math.round(
-                    totalWorkedMinutes /
-                      completed.length
-                  )
+                  totalWorkedMinutes /
+                  completed.length
+                )
                 : 0,
           },
 
           upcomingHolidays:
             holidays,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+/* =========================================================
+   ADMIN - SINGLE DAY ATTENDANCE DETAILS
+
+   GET:
+   /api/attendance/admin/day/:employeeId/:date
+
+   Returns:
+   - employee
+   - attendance
+   - attendance events
+   - leave
+   - holiday
+   - weekly off
+   - regularization
+========================================================= */
+
+router.get(
+  "/admin/day/:employeeId/:date",
+  async (req, res, next) => {
+    try {
+      if (
+        !requireAdmin(
+          req,
+          res
+        )
+      ) {
+        return;
+      }
+
+      const {
+        employeeId,
+        date,
+      } = req.params;
+
+      /* =========================
+         VALIDATE EMPLOYEE ID
+      ========================= */
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          employeeId
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid employee ID.",
+        });
+      }
+
+      /* =========================
+         VALIDATE DATE
+      ========================= */
+
+      if (
+        !isValidDateString(
+          date
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Date must use YYYY-MM-DD format.",
+        });
+      }
+
+      /* =========================
+         LOAD EMPLOYEE
+      ========================= */
+
+      const employee =
+        await Employee.findById(
+          employeeId
+        )
+          .select({
+            employeeCode: 1,
+            name: 1,
+            department: 1,
+            role: 1,
+            joiningDate: 1,
+            status: 1,
+            isActive: 1,
+          })
+          .lean();
+
+      if (!employee) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Employee not found.",
+        });
+      }
+
+      /* =========================
+         BEFORE JOINING DATE
+      ========================= */
+
+      if (
+        employee.joiningDate &&
+        date <
+        employee.joiningDate
+      ) {
+        return res.json({
+          success: true,
+
+          data: {
+            employee: {
+              id:
+                employee._id,
+
+              employeeCode:
+                employee.employeeCode,
+
+              employeeName:
+                employee.name,
+
+              department:
+                employee.department ||
+                "",
+
+              role:
+                employee.role ||
+                "",
+
+              joiningDate:
+                employee.joiningDate ||
+                "",
+            },
+
+            date,
+
+            dayStatus:
+              "Not Applicable",
+
+            attendance:
+              null,
+
+            events:
+              [],
+
+            leave:
+              null,
+
+            holiday:
+              null,
+
+            regularization:
+              null,
+
+            isWeeklyOff:
+              false,
+
+            reason:
+              "Employee had not joined on this date.",
+          },
+        });
+      }
+
+      /* =========================
+         LOAD ATTENDANCE
+      ========================= */
+
+      const attendance =
+        await Attendance.findOne({
+          employeeId:
+            employee._id,
+
+          date,
+
+          isDeleted: {
+            $ne: true,
+          },
+        })
+          .lean();
+
+      /* =========================
+         LOAD HOLIDAY
+      ========================= */
+
+      const holiday =
+        await Holiday.findOne({
+          date,
+
+          isActive: true,
+        })
+          .lean();
+
+      /* =========================
+         WEEKLY OFF
+      ========================= */
+
+    const policy =
+  await getAttendancePolicy();
+
+const weeklyOff =
+  isWeeklyOff(
+    date,
+    policy.weeklyOff
+  );
+
+      /* =========================
+         LOAD APPROVED LEAVE
+      ========================= */
+
+      const leave =
+        await LeaveRequest.findOne({
+          employeeId:
+            employee._id,
+
+          status:
+            "Approved",
+
+          fromDate: {
+            $lte:
+              date,
+          },
+
+          toDate: {
+            $gte:
+              date,
+          },
+        })
+          .sort({
+            approvedAt: -1,
+            updatedAt: -1,
+          })
+          .lean();
+
+      /* =========================
+         LOAD REGULARIZATION
+      ========================= */
+
+      const regularization =
+        await AttendanceRegularization.findOne({
+          employeeId:
+            employee._id,
+
+          date,
+        })
+          .sort({
+            createdAt: -1,
+          })
+          .lean();
+
+      /* =========================
+         ATTENDANCE EVENTS
+      ========================= */
+
+      let events = [];
+
+      if (
+        attendance?._id
+      ) {
+        events =
+          await AttendanceEvent.find({
+            attendanceId:
+              attendance._id,
+
+            employeeId:
+              employee._id,
+          })
+            .sort({
+              timestamp: 1,
+            })
+            .lean();
+      }
+
+      /* =========================
+         DETERMINE DAY STATUS
+      ========================= */
+
+      let dayStatus =
+        "Absent";
+
+      let reason =
+        "No attendance recorded.";
+
+      /*
+       * Attendance gets first priority.
+       */
+      if (attendance) {
+        dayStatus =
+          attendance.status ||
+          getAttendanceStatus(
+            attendance
+          );
+
+        reason =
+          attendance.note ||
+          attendance.autoClosedReason ||
+          "";
+      }
+
+      /*
+       * Full day leave when attendance
+       * does not exist.
+       */
+      else if (
+        leave &&
+        (
+          !leave.duration ||
+          leave.duration ===
+          "Full Day"
+        )
+      ) {
+        dayStatus =
+          "On Leave";
+
+        reason =
+          leave.reason ||
+          leave.leaveType ||
+          "Approved Leave";
+      }
+
+      /*
+       * Holiday.
+       */
+      else if (
+        holiday &&
+        holiday.type !==
+        "Optional"
+      ) {
+        dayStatus =
+          "Holiday";
+
+        reason =
+          holiday.name ||
+          "Holiday";
+      }
+
+      /*
+       * Weekly Off.
+       */
+      else if (
+        weeklyOff
+      ) {
+        dayStatus =
+          "Weekly Off";
+
+        reason =
+          "Weekly Off";
+      }
+
+      /* =========================
+         FORMAT ATTENDANCE
+      ========================= */
+
+      const formattedAttendance =
+        attendance
+          ? formatAttendance(
+            attendance
+          )
+          : null;
+
+      /* =========================
+DAILY EMPLOYEE WORK
+========================= */
+
+      // Selected date in IST.
+      //
+      // Example:
+      // 2026-08-21
+      //
+      // MongoDB completedAt is a Date,
+      // so create the correct UTC range representing
+      // 00:00:00 - 23:59:59 India time.
+
+      const workDayStart =
+        new Date(
+          `${date}T00:00:00+05:30`
+        );
+
+      const workDayEnd =
+        new Date(
+          `${date}T23:59:59.999+05:30`
+        );
+
+      /*
+       * Tasks actually completed by this
+       * employee on the selected date.
+       */
+      const completedTasks =
+        Task
+          ? await Task.find({
+            assignedEmployeeId:
+              employee._id,
+
+            isDeleted: {
+              $ne: true,
+            },
+
+            completedAt: {
+              $gte: workDayStart,
+              $lte: workDayEnd,
+            },
+          })
+            .sort({
+              completedAt: 1,
+            })
+            .lean()
+          : [];
+
+
+      /*
+       * PC / Windows Agent work recorded
+       * for the selected day.
+       */
+
+      let agentWork = [];
+
+      if (AgentDailySummary) {
+
+        const agentDate =
+          new Date(
+            `${date}T00:00:00+05:30`
+          );
+
+        agentWork =
+          await AgentDailySummary.find({
+            employeeCode:
+              employee.employeeCode,
+
+            date:
+              agentDate,
+          })
+            .sort({
+              firstSeen: 1,
+            })
+            .lean();
+      }
+
+
+      /*
+       * Total task time.
+       */
+
+      const totalTaskMinutes =
+        completedTasks.reduce(
+          (total, task) => {
+
+            const minutes =
+              Number(
+                task.elapsedMinutes ||
+                task.spentMinutes ||
+                0
+              );
+
+            return total + minutes;
+          },
+          0
+        );
+
+
+      /*
+       * Total PC activity time.
+       */
+
+      const totalAgentSeconds =
+        agentWork.reduce(
+          (total, item) =>
+            total +
+            Number(
+              item.totalSeconds || 0
+            ),
+          0
+        );
+
+
+      /*
+       * Format completed tasks for frontend.
+       */
+
+      const dailyCompletedTasks =
+        completedTasks.map(
+          (task) => ({
+            id:
+              task._id,
+
+            taskCode:
+              task.taskCode || "",
+
+            title:
+              task.title || "Task",
+
+            description:
+              task.description || "",
+
+            workType:
+              task.workType || "",
+
+            status:
+              task.status || "Completed",
+
+            progress:
+              Number(
+                task.progress || 0
+              ),
+
+            clientName:
+              task.clientName || "",
+
+            projectName:
+              task.projectName || "",
+
+            completedAt:
+              task.completedAt || null,
+
+            spentMinutes:
+              Number(
+                task.elapsedMinutes ||
+                task.spentMinutes ||
+                0
+              ),
+
+            resolutionNote:
+              task.resolutionNote || "",
+          })
+        );
+
+
+      /*
+       * Format PC activity.
+       */
+
+      const dailyPcActivity =
+        agentWork.map(
+          (item) => ({
+            id:
+              item._id,
+
+            application:
+              item.application || "",
+
+            windowTitle:
+              item.lastWindowTitle || "",
+
+            category:
+              item.category || "",
+
+            activity:
+              item.activity || "",
+
+            project:
+              item.project || "",
+
+            client:
+              item.client || "",
+
+            taskCode:
+              item.taskCode || "",
+
+            taskTitle:
+              item.taskTitle || "",
+
+            taskStatus:
+              item.taskStatus || "",
+
+            firstSeen:
+              item.firstSeen || null,
+
+            lastSeen:
+              item.lastSeen || null,
+
+            totalSeconds:
+              Number(
+                item.totalSeconds || 0
+              ),
+          })
+        );
+      /* =========================
+         RESPONSE
+      ========================= */
+
+      return res.json({
+        success: true,
+
+        data: {
+
+          employee: {
+            id:
+              employee._id,
+
+            employeeCode:
+              employee.employeeCode,
+
+            employeeName:
+              employee.name,
+
+            department:
+              employee.department ||
+              "",
+
+            role:
+              employee.role ||
+              "",
+
+            joiningDate:
+              employee.joiningDate ||
+              "",
+          },
+
+          date,
+
+          dayStatus,
+
+          reason,
+
+          isWeeklyOff:
+            weeklyOff,
+
+          attendance:
+            formattedAttendance,
+
+          events:
+            events.map(
+              (event) => ({
+                id:
+                  event._id,
+
+                type:
+                  event.type,
+
+                timestamp:
+                  event.timestamp,
+
+                source:
+                  event.source ||
+                  "",
+
+                notes:
+                  event.notes ||
+                  "",
+              })
+            ),
+
+          holiday:
+            holiday
+              ? {
+                id:
+                  holiday._id,
+
+                date:
+                  holiday.date,
+
+                name:
+                  holiday.name,
+
+                type:
+                  holiday.type,
+
+                note:
+                  holiday.note ||
+                  "",
+              }
+              : null,
+
+          leave:
+            leave
+              ? {
+                id:
+                  leave._id,
+
+                leaveType:
+                  leave.leaveType,
+
+                fromDate:
+                  leave.fromDate,
+
+                toDate:
+                  leave.toDate,
+
+                days:
+                  Number(
+                    leave.days ||
+                    0
+                  ),
+
+                duration:
+                  leave.duration ||
+                  "Full Day",
+
+                reason:
+                  leave.reason ||
+                  "",
+
+                status:
+                  leave.status,
+
+                approvedAt:
+                  leave.approvedAt ||
+                  null,
+              }
+              : null,
+
+          regularization:
+            regularization
+              ? {
+                id:
+                  regularization._id,
+
+                requestType:
+                  regularization.requestType,
+
+                requestedLoginTime:
+                  regularization.requestedLoginTime ||
+                  "",
+
+                requestedLogoutTime:
+                  regularization.requestedLogoutTime ||
+                  "",
+
+                reason:
+                  regularization.reason ||
+                  "",
+
+                status:
+                  regularization.status,
+
+                reviewNote:
+                  regularization.reviewNote ||
+                  "",
+
+                reviewedBy:
+                  regularization.reviewedBy ||
+                  "",
+
+                reviewedAt:
+                  regularization.reviewedAt ||
+                  null,
+
+                appliedAt:
+                  regularization.appliedAt ||
+                  null,
+              }
+
+              : null,
+          workSummary: {
+            completedTasks:
+              dailyCompletedTasks.length,
+
+            totalTaskMinutes:
+              totalTaskMinutes,
+
+            totalPcSeconds:
+              totalAgentSeconds,
+
+            applicationsUsed:
+              dailyPcActivity.length,
+          },
+
+          completedTasks:
+            dailyCompletedTasks,
+
+          pcActivity:
+            dailyPcActivity,
+
         },
       });
     } catch (error) {
@@ -8402,6 +9608,8 @@ router.get(
   "/admin/month",
   async (req, res, next) => {
     try {
+      const policy =
+  await getAttendancePolicy();
       if (
         !requireAdmin(
           req,
@@ -8414,8 +9622,8 @@ router.get(
       const month =
         String(
           req.query.month ||
-            getLocalDateString()
-              .slice(0, 7)
+          getLocalDateString()
+            .slice(0, 7)
         );
 
       const range =
@@ -8605,13 +9813,13 @@ router.get(
         ) {
           const start =
             leave.fromDate <
-            range.start
+              range.start
               ? range.start
               : leave.fromDate;
 
           const end =
             leave.toDate >
-            range.end
+              range.end
               ? range.end
               : leave.toDate;
 
@@ -8621,9 +9829,12 @@ router.get(
               end
             )
           ) {
-            if (
-              isWeeklyOff(date)
-            ) {
+  if (
+  isWeeklyOff(
+    date,
+    policy.weeklyOff
+  )
+) {
               continue;
             }
 
@@ -8635,7 +9846,7 @@ router.get(
             if (
               holiday &&
               holiday.type !==
-                "Optional"
+              "Optional"
             ) {
               continue;
             }
@@ -8681,7 +9892,7 @@ router.get(
           if (
             employee.joiningDate &&
             date <
-              employee.joiningDate
+            employee.joiningDate
           ) {
             calendar.push({
               date,
@@ -8727,16 +9938,16 @@ router.get(
 
             const code =
               status ===
-              "Present"
+                "Present"
                 ? "P"
                 : status ===
-                    "Late"
+                  "Late"
                   ? "L"
                   : status ===
-                      "Half Day"
+                    "Half Day"
                     ? "HD"
                     : status ===
-                        "Missed Punch"
+                      "Missed Punch"
                       ? "MP"
                       : "P";
 
@@ -8752,25 +9963,25 @@ router.get(
             summary.totalWorkedMinutes +=
               Number(
                 formatted.totalWorkedMinutes ||
-                  0
+                0
               );
 
             summary.overtimeMinutes +=
               Number(
                 formatted.overtimeMinutes ||
-                  0
+                0
               );
 
             summary.lateMinutes +=
               Number(
                 formatted.lateMinutes ||
-                  0
+                0
               );
 
             summary.earlyLogoutMinutes +=
               Number(
                 formatted.earlyLogoutMinutes ||
-                  0
+                0
               );
 
             if (missedPunch) {
@@ -8798,7 +10009,7 @@ router.get(
           if (
             holiday &&
             holiday.type !==
-              "Optional"
+            "Optional"
           ) {
             calendar.push({
               date,
@@ -8815,10 +10026,13 @@ router.get(
             continue;
           }
 
-          if (
-            isWeeklyOff(date)
-          ) {
-            calendar.push({
+         if (
+  isWeeklyOff(
+    date,
+    policy.weeklyOff
+  )
+) {
+  calendar.push({
               date,
               status:
                 "Weekly Off",
@@ -8881,18 +10095,18 @@ router.get(
           summary.present +
           summary.late +
           summary.halfDay *
-            0.5;
+          0.5;
 
         summary.attendanceRate =
           summary.workingDays >
-          0
+            0
             ? Math.round(
-                (
-                  equivalentPresent /
-                  summary.workingDays
-                ) *
-                  1000
-              ) / 10
+              (
+                equivalentPresent /
+                summary.workingDays
+              ) *
+              1000
+            ) / 10
             : 0;
 
         employeeRows.push({
@@ -8949,8 +10163,8 @@ router.get("/stats", async (req, res, next) => {
     const last30 = completed.slice(0, 30);
     const averageWorkedMinutes = last30.length
       ? Math.round(
-          last30.reduce((sum, record) => sum + Number(record.totalWorkedMinutes || record.workingMinutes || 0), 0) / last30.length
-        )
+        last30.reduce((sum, record) => sum + Number(record.totalWorkedMinutes || record.workingMinutes || 0), 0) / last30.length
+      )
       : 0;
 
     const summary = {

@@ -30,13 +30,7 @@ import {
 
 
 
-const officeSettings = {
-    startTime: "10:00",
-    endTime: "18:00",
-    fullDayMinutes: 8 * 60,
-    halfDayMinutes: 4 * 60,
-    lateAfter: "10:15",
-};
+
 
 function formatTime(time) {
     if (time && String(time).includes("T")) {
@@ -85,18 +79,10 @@ function formatDuration(totalMinutes) {
 
     return `${hours}h ${minutes}m`;
 }
-
 function calculateWorkingMinutes(record) {
-    if (!record.loginTime) return 0;
-
-    const loginMinutes = getMinutesFromTime(record.loginTime);
-
-    const logoutMinutes = record.logoutTime
-        ? getMinutesFromTime(record.logoutTime)
-        : getMinutesFromTime("17:04");
-
-    return Math.max(
-        logoutMinutes - loginMinutes - Number(record.breakMinutes || 0),
+    return Number(
+        record.totalWorkedMinutes ??
+        record.workingMinutes ??
         0
     );
 }
@@ -167,6 +153,32 @@ function getLeaveStatusClasses(status) {
 
 
 
+function getDateKey(date) {
+    if (!date) {
+        return "";
+    }
+
+    const year =
+        date.getFullYear();
+
+    const month =
+        String(
+            date.getMonth() + 1
+        ).padStart(
+            2,
+            "0"
+        );
+
+    const day =
+        String(
+            date.getDate()
+        ).padStart(
+            2,
+            "0"
+        );
+
+    return `${year}-${month}-${day}`;
+}
 function getCalendarDays(year, month) {
     const firstDay =
         new Date(year, month, 1);
@@ -247,7 +259,32 @@ function SummaryCard({
     );
 }
 
+function DayMetric({
+    label,
+    value,
+}) {
+    return (
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+            <p className="text-[9px] font-bold uppercase tracking-[0.13em] text-slate-400">
+                {label}
+            </p>
+
+            <p className="mt-2 text-xs font-bold text-slate-900">
+                {value || "—"}
+            </p>
+        </div>
+    );
+}
 export default function Attendance() {
+    const [officeSettings, setOfficeSettings] =
+    useState({
+        startTime: "",
+        endTime: "",
+        graceMinutes: 0,
+        fullDayMinutes: 0,
+        halfDayMinutes: 0,
+        weeklyOff: [],
+    });
 
 
     const [employees, setEmployees] = useState([]);
@@ -317,6 +354,76 @@ const [holidayForm, setHolidayForm] = useState({
             ""
         );
     };
+    const loadWorkingHours = async () => {
+    try {
+        const response = await fetch(
+            `${API_URL}/api/settings/working-hours`,
+            {
+                headers: {
+                    Authorization:
+                        `Bearer ${getAuthToken()}`,
+
+                    "Content-Type":
+                        "application/json",
+                },
+            }
+        );
+
+        const result =
+            await response.json();
+
+        if (
+            !response.ok ||
+            !result.success
+        ) {
+            throw new Error(
+                result.message ||
+                "Failed to load working hours."
+            );
+        }
+
+        const workingHours =
+            result.data || {};
+
+        setOfficeSettings({
+            startTime:
+                workingHours.officeStartTime || "",
+
+            endTime:
+                workingHours.officeEndTime || "",
+
+            graceMinutes:
+                Number(
+                    workingHours.lateAfterMinutes || 0
+                ),
+
+            fullDayMinutes:
+                Number(
+                    workingHours.fullDayHours || 0
+                ) * 60,
+
+            halfDayMinutes:
+                Number(
+                    workingHours.halfDayHours || 0
+                ) * 60,
+
+            weeklyOff:
+                Array.isArray(
+                    workingHours.weeklyOff
+                )
+                    ? workingHours.weeklyOff
+                    : [],
+        });
+    } catch (err) {
+        console.error(
+            "Load Working Hours:",
+            err
+        );
+
+        setError(err.message);
+    }
+};
+
     const getEmployee = (employeeId) => {
         return employees.find(
             (employee) =>
@@ -647,6 +754,38 @@ const loadMonthlyRegister = async () => {
 
         setMonthlyRegister(result.employees || []);
         setMonthlyHolidays(result.holidays || []);
+        if (result.policy) {
+    setOfficeSettings({
+        startTime:
+            result.policy.shiftStart || "",
+
+        endTime:
+            result.policy.shiftEnd || "",
+
+        graceMinutes:
+            Number(
+                result.policy.graceMinutes || 0
+            ),
+
+        fullDayMinutes:
+            Number(
+                result.policy.fullDayMinutes || 0
+            ),
+
+        halfDayMinutes:
+            Number(
+                result.policy.halfDayThresholdMinutes ||
+                0
+            ),
+
+        weeklyOff:
+            Array.isArray(
+                result.policy.weeklyOff
+            )
+                ? result.policy.weeklyOff
+                : [],
+    });
+}
 
     } catch (err) {
         console.error(
@@ -658,6 +797,101 @@ const loadMonthlyRegister = async () => {
     } finally {
         setMonthlyLoading(false);
     }
+};
+/* =========================================================
+   LOAD SINGLE DAY ATTENDANCE DETAILS
+========================================================= */
+
+const loadDayAttendanceDetails =
+    async (
+        employeeId,
+        date
+    ) => {
+        if (
+            !employeeId ||
+            !date
+        ) {
+            return;
+        }
+
+        try {
+            setDayDetailsLoading(
+                true
+            );
+
+            setDayDetailsError(
+                ""
+            );
+
+            setSelectedDayDetails(
+                null
+            );
+
+            setDayDetailsOpen(
+                true
+            );
+
+            const response =
+                await fetch(
+                    `${API_URL}/api/attendance/admin/day/${employeeId}/${encodeURIComponent(
+                        date
+                    )}`,
+                    {
+                        headers: {
+                            Authorization:
+                                `Bearer ${getAuthToken()}`,
+
+                            "Content-Type":
+                                "application/json",
+                        },
+                    }
+                );
+
+            const result =
+                await response.json();
+
+            if (
+                !response.ok ||
+                !result.success
+            ) {
+                throw new Error(
+                    result.message ||
+                        "Unable to load attendance details."
+                );
+            }
+
+            setSelectedDayDetails(
+                result.data ||
+                    null
+            );
+        } catch (err) {
+            console.error(
+                "Load Day Attendance Details:",
+                err
+            );
+
+            setDayDetailsError(
+                err.message ||
+                    "Unable to load attendance details."
+            );
+        } finally {
+            setDayDetailsLoading(
+                false
+            );
+        }
+    };
+    const closeDayDetails = () => {
+    setDayDetailsOpen(
+        false
+    );
+
+    setSelectedDayDetails(
+        null
+    );
+
+    setDayDetailsError(
+        ""
+    );
 };
     const loadLeaveRequests = async () => {
     try {
@@ -748,17 +982,46 @@ const [monthlyRegister, setMonthlyRegister] = useState([]);
 const [monthlyHolidays, setMonthlyHolidays] = useState([]);
 const [monthlyLoading, setMonthlyLoading] = useState(false);
 
-    useEffect(() => {
-        const init = async () => {
-            setLoading(true);
+/* =========================================================
+   DAY ATTENDANCE DETAILS DRAWER
+========================================================= */
 
-            await Promise.all([loadEmployees(), loadTodayAttendance(), loadLeaveRequests()]);
+const [
+    selectedDayDetails,
+    setSelectedDayDetails,
+] = useState(null);
 
-            setLoading(false);
-        };
+const [
+    dayDetailsOpen,
+    setDayDetailsOpen,
+] = useState(false);
 
-        init();
-    }, []);
+const [
+    dayDetailsLoading,
+    setDayDetailsLoading,
+] = useState(false);
+
+const [
+    dayDetailsError,
+    setDayDetailsError,
+] = useState("");
+
+useEffect(() => {
+    const init = async () => {
+        setLoading(true);
+
+        await Promise.all([
+            loadWorkingHours(),
+            loadEmployees(),
+            loadTodayAttendance(),
+            loadLeaveRequests(),
+        ]);
+
+        setLoading(false);
+    };
+
+    init();
+}, []);
     useEffect(() => {
     loadMonthlyRegister();
 }, [calendarDate]);
@@ -1393,7 +1656,13 @@ return (
                 <SummaryCard
                     label="Late"
                     value={attendanceSummary.late}
-                    description={`After ${formatTime(officeSettings.lateAfter)}`}
+                    description={
+    officeSettings.startTime
+        ? `After ${officeSettings.graceMinutes} min grace from ${formatTime(
+              officeSettings.startTime
+          )}`
+        : "Working hours not loaded"
+}
                     icon={Clock3}
                     iconClass="bg-amber-100 text-amber-700"
                     descriptionClass="text-amber-600"
@@ -1666,21 +1935,33 @@ return (
 
                                             <td className="px-4 py-4">
                                                 <p className="text-xs font-semibold text-slate-900">
-                                                    {formatDuration(
-                                                        record.workingMinutes
-                                                    )}
+                                                  {formatDuration(
+    Number(
+        record.totalWorkedMinutes ??
+        record.workingMinutes ??
+        0
+    )
+)}
                                                 </p>
 
                                                <div className="mt-2 h-2 w-28 overflow-hidden rounded-full bg-slate-100 ring-1 ring-inset ring-slate-200/60">
                                                     <div
                                                         className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 transition-all duration-500"
                                                         style={{
-                                                            width: `${Math.min(
-                                                                (record.workingMinutes /
-                                                                    officeSettings.fullDayMinutes) *
-                                                                100,
-                                                                100
-                                                            )}%`,
+                                                      width: `${
+    officeSettings.fullDayMinutes > 0
+        ? Math.min(
+              (Number(
+                  record.totalWorkedMinutes ??
+                  record.workingMinutes ??
+                  0
+              ) /
+                  officeSettings.fullDayMinutes) *
+                  100,
+              100
+          )
+        : 0
+}%`,
                                                         }}
                                                     />
                                                 </div>
@@ -1940,6 +2221,7 @@ return (
                                         ))}
 
                                       {calendarDays.map((date, index) => {
+                                        
     if (!date) {
         return (
             <div
@@ -1962,15 +2244,36 @@ return (
     const status =
         record?.status || "";
 
-    return (
-        <div
-            key={dateKey}
-            className={`group min-h-24 border border-slate-100 p-2 transition ${
+return (
+    <button
+        key={dateKey}
+        type="button"
+
+        disabled={
+            !selectedEmployeeId ||
+            record?.isFuture
+        }
+
+        onClick={() => {
+            if (
+                !selectedEmployeeId ||
                 record?.isFuture
-                    ? "bg-slate-50/40"
-                    : "bg-white hover:bg-violet-50/30"
-            }`}
-        >
+            ) {
+                return;
+            }
+
+            loadDayAttendanceDetails(
+                selectedEmployeeId,
+                dateKey
+            );
+        }}
+
+        className={`group min-h-24 border border-slate-100 p-2 text-left transition-all ${
+            record?.isFuture
+                ? "cursor-default bg-slate-50/40"
+                : "cursor-pointer bg-white hover:-translate-y-0.5 hover:border-violet-200 hover:bg-violet-50/40 hover:shadow-md"
+        }`}
+    >
             <div className="flex items-center justify-between">
                 <span className="text-[10px] font-bold text-slate-600">
                     {date.getDate()}
@@ -2030,7 +2333,7 @@ return (
                     Punch incomplete
                 </p>
             )}
-        </div>
+                </button>
     );
 })}
                                     </div>
@@ -3892,6 +4195,661 @@ return (
                     </div>
                 </>
             )}
+            {/* =========================================================
+    DAY ATTENDANCE DETAILS DRAWER
+========================================================= */}
+
+{dayDetailsOpen && (
+    <>
+        <div
+            className="fixed inset-0 z-[90] bg-slate-950/30 backdrop-blur-[2px]"
+            onClick={closeDayDetails}
+        />
+
+        <div className="fixed inset-y-0 right-0 z-[100] flex w-full max-w-[520px] flex-col border-l border-slate-200 bg-white shadow-2xl">
+
+            {/* HEADER */}
+            <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
+                <div>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-violet-600">
+                        Attendance Details
+                    </p>
+
+                    <h2 className="mt-1 text-xl font-bold text-slate-950">
+                        {selectedDayDetails
+                            ?.employee
+                            ?.employeeName ||
+                            "Day Details"}
+                    </h2>
+
+                    <p className="mt-1 text-xs text-slate-500">
+                        {selectedDayDetails
+                            ?.date ||
+                            "Loading..."}
+                    </p>
+                </div>
+
+                <button
+                    type="button"
+                    onClick={
+                        closeDayDetails
+                    }
+                    className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
+                >
+                    <X size={17} />
+                </button>
+            </div>
+
+            {/* CONTENT */}
+            <div className="flex-1 overflow-y-auto p-6">
+
+                {dayDetailsLoading && (
+                    <div className="flex min-h-[300px] items-center justify-center">
+                        <div className="text-center">
+                            <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-violet-200 border-t-violet-600" />
+
+                            <p className="mt-3 text-xs font-medium text-slate-500">
+                                Loading attendance details...
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                {!dayDetailsLoading &&
+                    dayDetailsError && (
+                        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
+                            <div className="flex gap-3">
+                                <AlertCircle
+                                    size={
+                                        18
+                                    }
+                                    className="shrink-0 text-rose-600"
+                                />
+
+                                <p className="text-xs font-medium text-rose-700">
+                                    {
+                                        dayDetailsError
+                                    }
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
+                {!dayDetailsLoading &&
+                    !dayDetailsError &&
+                    selectedDayDetails && (
+                        <div className="space-y-5">
+
+                            {/* EMPLOYEE + STATUS */}
+                            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                                <div className="flex items-center justify-between gap-4">
+
+                                    <div>
+                                        <p className="text-sm font-bold text-slate-950">
+                                            {
+                                                selectedDayDetails
+                                                    .employee
+                                                    ?.employeeName
+                                            }
+                                        </p>
+
+                                        <p className="mt-1 text-[11px] text-slate-500">
+                                            {
+                                                selectedDayDetails
+                                                    .employee
+                                                    ?.employeeCode
+                                            }
+                                            {" • "}
+                                            {
+                                                selectedDayDetails
+                                                    .employee
+                                                    ?.department
+                                            }
+                                        </p>
+                                    </div>
+
+                                    <span
+                                        className={`inline-flex rounded-full px-3 py-1.5 text-[10px] font-bold ring-1 ring-inset ${getStatusClasses(
+                                            selectedDayDetails.dayStatus
+                                        )}`}
+                                    >
+                                        {
+                                            selectedDayDetails.dayStatus
+                                        }
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* ATTENDANCE VALUES */}
+                            <div>
+                                <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">
+                                    Attendance
+                                </p>
+
+                                <div className="grid grid-cols-2 gap-3">
+
+                                    <DayMetric
+                                        label="Shift"
+                                        value={
+                                            selectedDayDetails
+                                                .attendance
+                                                ? `${formatTime(
+                                                      selectedDayDetails
+                                                          .attendance
+                                                          .shiftStart
+                                                  )} - ${formatTime(
+                                                      selectedDayDetails
+                                                          .attendance
+                                                          .shiftEnd
+                                                  )}`
+                                                : "—"
+                                        }
+                                    />
+
+                                    <DayMetric
+                                        label="Worked"
+                                        value={formatDuration(
+                                            Number(
+                                                selectedDayDetails
+                                                    .attendance
+                                                    ?.totalWorkedMinutes ||
+                                                    0
+                                            )
+                                        )}
+                                    />
+
+                                    <DayMetric
+                                        label="Login"
+                                        value={formatTime(
+                                            selectedDayDetails
+                                                .attendance
+                                                ?.loginTime
+                                        )}
+                                    />
+
+                                    <DayMetric
+                                        label="Logout"
+                                        value={formatTime(
+                                            selectedDayDetails
+                                                .attendance
+                                                ?.logoutTime
+                                        )}
+                                    />
+
+                                    <DayMetric
+                                        label="Break"
+                                        value={formatDuration(
+                                            Number(
+                                                selectedDayDetails
+                                                    .attendance
+                                                    ?.totalBreakMinutes ||
+                                                    0
+                                            )
+                                        )}
+                                    />
+
+                                    <DayMetric
+                                        label="Late"
+                                        value={formatDuration(
+                                            Number(
+                                                selectedDayDetails
+                                                    .attendance
+                                                    ?.lateMinutes ||
+                                                    0
+                                            )
+                                        )}
+                                    />
+
+                                    <DayMetric
+                                        label="Early Logout"
+                                        value={formatDuration(
+                                            Number(
+                                                selectedDayDetails
+                                                    .attendance
+                                                    ?.earlyLogoutMinutes ||
+                                                    0
+                                            )
+                                        )}
+                                    />
+
+                                    <DayMetric
+                                        label="Overtime"
+                                        value={formatDuration(
+                                            Number(
+                                                selectedDayDetails
+                                                    .attendance
+                                                    ?.overtimeMinutes ||
+                                                    0
+                                            )
+                                        )}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* REASON */}
+                            {selectedDayDetails.reason && (
+                                <div className="rounded-2xl border border-slate-200 p-4">
+                                    <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">
+                                        Day Remark
+                                    </p>
+
+                                    <p className="mt-2 text-xs font-medium leading-5 text-slate-700">
+                                        {
+                                            selectedDayDetails.reason
+                                        }
+                                    </p>
+                                </div>
+                            )}
+{/* =====================================================
+    WORK DONE ON SELECTED DAY
+===================================================== */}
+
+<div>
+    <div className="mb-3 flex items-center justify-between">
+        <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">
+            Work Done
+        </p>
+
+        <span className="rounded-full bg-violet-50 px-2.5 py-1 text-[9px] font-bold text-violet-700">
+            {selectedDayDetails
+                .workSummary
+                ?.completedTasks || 0}{" "}
+            Completed
+        </span>
+    </div>
+
+    {/* WORK SUMMARY */}
+
+    <div className="grid grid-cols-2 gap-3">
+
+        <DayMetric
+            label="Completed Tasks"
+            value={
+                selectedDayDetails
+                    .workSummary
+                    ?.completedTasks || 0
+            }
+        />
+
+        <DayMetric
+            label="Task Time"
+            value={formatDuration(
+                Number(
+                    selectedDayDetails
+                        .workSummary
+                        ?.totalTaskMinutes ||
+                        0
+                )
+            )}
+        />
+
+        <DayMetric
+            label="PC Active Time"
+            value={formatDuration(
+                Math.round(
+                    Number(
+                        selectedDayDetails
+                            .workSummary
+                            ?.totalPcSeconds ||
+                            0
+                    ) / 60
+                )
+            )}
+        />
+
+        <DayMetric
+            label="Applications"
+            value={
+                selectedDayDetails
+                    .workSummary
+                    ?.applicationsUsed || 0
+            }
+        />
+    </div>
+
+
+    {/* COMPLETED TASK LIST */}
+
+    {selectedDayDetails
+        .completedTasks
+        ?.length > 0 ? (
+
+        <div className="mt-4 space-y-2">
+
+            {selectedDayDetails
+                .completedTasks
+                .map((task) => (
+
+                <div
+                    key={task.id}
+                    className="rounded-xl border border-slate-200 bg-white p-3"
+                >
+
+                    <div className="flex items-start gap-3">
+
+                        <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+
+                            <CheckCircle2
+                                size={15}
+                            />
+
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+
+                            <div className="flex items-start justify-between gap-3">
+
+                                <div className="min-w-0">
+
+                                    <p className="truncate text-xs font-semibold text-slate-900">
+                                        {task.title}
+                                    </p>
+
+                                    {task.taskCode && (
+                                        <p className="mt-1 text-[9px] font-semibold text-violet-600">
+                                            {task.taskCode}
+                                        </p>
+                                    )}
+
+                                </div>
+
+                                <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-1 text-[8px] font-bold text-emerald-700">
+                                    Completed
+                                </span>
+
+                            </div>
+
+
+                            {(task.projectName ||
+                                task.clientName) && (
+
+                                <p className="mt-2 text-[10px] text-slate-500">
+
+                                    {task.projectName ||
+                                        "General Work"}
+
+                                    {task.clientName
+                                        ? ` • ${task.clientName}`
+                                        : ""}
+
+                                </p>
+                            )}
+
+
+                            <div className="mt-2 flex flex-wrap items-center gap-3 text-[9px] font-medium text-slate-400">
+
+                                <span className="flex items-center gap-1">
+
+                                    <Timer
+                                        size={11}
+                                    />
+
+                                    {formatDuration(
+                                        Number(
+                                            task.spentMinutes ||
+                                            0
+                                        )
+                                    )}
+
+                                </span>
+
+
+                                {task.completedAt && (
+
+                                    <span className="flex items-center gap-1">
+
+                                        <Check
+                                            size={11}
+                                        />
+
+                                        {formatTime(
+                                            task.completedAt
+                                        )}
+
+                                    </span>
+                                )}
+
+                            </div>
+
+
+                            {task.resolutionNote && (
+
+                                <div className="mt-2 rounded-lg bg-slate-50 px-2.5 py-2">
+
+                                    <p className="text-[9px] leading-4 text-slate-600">
+                                        {
+                                            task.resolutionNote
+                                        }
+                                    </p>
+
+                                </div>
+                            )}
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            ))}
+
+        </div>
+
+    ) : (
+
+        <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/50 px-4 py-5 text-center">
+
+            <CheckCircle2
+                size={18}
+                className="mx-auto text-slate-300"
+            />
+
+            <p className="mt-2 text-[10px] font-medium text-slate-500">
+                No tasks completed on this day.
+            </p>
+
+        </div>
+
+    )}
+
+</div>
+                            {/* EVENTS */}
+                            <div>
+                                <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">
+                                    Attendance Timeline
+                                </p>
+
+                                {selectedDayDetails
+                                    .events
+                                    ?.length >
+                                0 ? (
+                                    <div className="space-y-2">
+                                        {selectedDayDetails.events.map(
+                                            (
+                                                event
+                                            ) => (
+                                                <div
+                                                    key={
+                                                        event.id
+                                                    }
+                                                    className="flex items-center gap-3 rounded-xl border border-slate-200 p-3"
+                                                >
+                                                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-700">
+                                                        <Clock3
+                                                            size={
+                                                                16
+                                                            }
+                                                        />
+                                                    </div>
+
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="text-xs font-bold text-slate-900">
+                                                            {
+                                                                event.type
+                                                            }
+                                                        </p>
+
+                                                        <p className="mt-1 text-[10px] text-slate-500">
+                                                            {formatTime(
+                                                                event.timestamp
+                                                            )}
+                                                            {event.source
+                                                                ? ` • ${event.source}`
+                                                                : ""}
+                                                        </p>
+
+                                                        {event.notes && (
+                                                            <p className="mt-1 text-[10px] text-slate-500">
+                                                                {
+                                                                    event.notes
+                                                                }
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-xs text-slate-400">
+                                        No attendance events recorded.
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* LEAVE */}
+                            {selectedDayDetails.leave && (
+                                <div className="rounded-2xl border border-violet-200 bg-violet-50/50 p-4">
+                                    <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-violet-500">
+                                        Leave
+                                    </p>
+
+                                    <p className="mt-2 text-sm font-bold text-violet-900">
+                                        {
+                                            selectedDayDetails
+                                                .leave
+                                                .leaveType
+                                        }
+                                    </p>
+
+                                    <p className="mt-1 text-xs text-violet-700">
+                                        {
+                                            selectedDayDetails
+                                                .leave
+                                                .duration
+                                        }
+                                    </p>
+
+                                    {selectedDayDetails
+                                        .leave
+                                        .reason && (
+                                        <p className="mt-2 text-xs text-violet-700">
+                                            {
+                                                selectedDayDetails
+                                                    .leave
+                                                    .reason
+                                            }
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* HOLIDAY */}
+                            {selectedDayDetails.holiday && (
+                                <div className="rounded-2xl border border-cyan-200 bg-cyan-50/50 p-4">
+                                    <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-cyan-600">
+                                        Holiday
+                                    </p>
+
+                                    <p className="mt-2 text-sm font-bold text-cyan-900">
+                                        {
+                                            selectedDayDetails
+                                                .holiday
+                                                .name
+                                        }
+                                    </p>
+
+                                    <p className="mt-1 text-xs text-cyan-700">
+                                        {
+                                            selectedDayDetails
+                                                .holiday
+                                                .type
+                                        }
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* REGULARIZATION */}
+                            {selectedDayDetails.regularization && (
+                                <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
+                                    <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-amber-600">
+                                        Regularization
+                                    </p>
+
+                                    <div className="mt-3 space-y-2 text-xs">
+                                        <p>
+                                            <span className="font-semibold">
+                                                Type:
+                                            </span>{" "}
+                                            {
+                                                selectedDayDetails
+                                                    .regularization
+                                                    .requestType
+                                            }
+                                        </p>
+
+                                        <p>
+                                            <span className="font-semibold">
+                                                Status:
+                                            </span>{" "}
+                                            {
+                                                selectedDayDetails
+                                                    .regularization
+                                                    .status
+                                            }
+                                        </p>
+
+                                        {selectedDayDetails
+                                            .regularization
+                                            .reason && (
+                                            <p>
+                                                <span className="font-semibold">
+                                                    Reason:
+                                                </span>{" "}
+                                                {
+                                                    selectedDayDetails
+                                                        .regularization
+                                                        .reason
+                                                }
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* AUTO CLOSED */}
+                            {selectedDayDetails
+                                .attendance
+                                ?.isAutoClosed && (
+                                <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4">
+                                    <p className="text-xs font-bold text-orange-800">
+                                        Attendance Auto Closed
+                                    </p>
+
+                                    <p className="mt-1 text-xs text-orange-700">
+                                        {selectedDayDetails
+                                            .attendance
+                                            .autoClosedReason ||
+                                            "Attendance was automatically closed."}
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+            </div>
+        </div>
+    </>
+)}
         </div>
          </div>
     );

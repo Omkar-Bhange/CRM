@@ -170,16 +170,36 @@ app.use(
   employeeRoutes
 );
 
+/*
+ * IMPORTANT:
+ * Mount settings before Attendance V2.
+ *
+ * attendance-v2 reads the SystemSettings model
+ * for:
+ * - Office Start Time
+ * - Office End Time
+ * - Grace Minutes
+ * - Full Day Hours
+ * - Half Day Hours
+ * - Weekly Off
+ * - Auto Absent settings
+ * - Leave Types
+ */
+app.use(
+  "/api/settings",
+  settingsRoutes
+);
+
 app.use(
   "/api/attendance",
   attendanceV2Routes
 );
 
-
 app.use(
   "/api/reports",
   reportRoutes
 );
+
 app.use(
   "/api/client",
   clientRoutes
@@ -188,11 +208,6 @@ app.use(
 app.use(
   "/api/documents",
   documentsRoutes
-);
-
-app.use(
-  "/api/settings",
-  settingsRoutes
 );
 
 /* =========================================================

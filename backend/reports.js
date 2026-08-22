@@ -6201,6 +6201,20 @@ router.get(
                 getModel(
                     "AttendanceV2"
                 );
+                const Employee =
+    getModel(
+        "Employee"
+    );
+
+const Holiday =
+    getOptionalModel(
+        "Holiday"
+    );
+
+const LeaveRequest =
+    getOptionalModel(
+        "LeaveRequestV2"
+    );
 
             const {
                 fromDate,
@@ -6225,13 +6239,7 @@ router.get(
                     employeeId;
             }
 
-            if (
-                status &&
-                status !== "All"
-            ) {
-                query.status =
-                    status;
-            }
+            
 
             if (
                 fromDate ||
@@ -6250,7 +6258,7 @@ router.get(
                 }
             }
 
-            const records =
+            const databaseRecords =
                 await Attendance.find(
                     query
                 )
@@ -6281,6 +6289,612 @@ router.get(
                     })
                     .lean();
 
+                    /* =========================================================
+   BUILD COMPLETE ATTENDANCE CALENDAR
+   INCLUDING MISSING ABSENT DAYS
+========================================================= */
+
+const today =
+    getTodayString();
+
+/*
+ * If user selected dates,
+ * use selected dates.
+ *
+ * Otherwise report current month
+ * from 1st day until today.
+ */
+const currentMonth =
+    today.substring(
+        0,
+        7
+    );
+
+const reportFromDate =
+    fromDate ||
+    `${currentMonth}-01`;
+
+const reportToDate =
+    toDate &&
+    toDate < today
+        ? toDate
+        : today;
+
+/* =========================================================
+   LOAD EMPLOYEES
+========================================================= */
+
+const employeeQuery = {
+    isActive: {
+        $ne: false,
+    },
+};
+
+if (
+    employeeId &&
+    mongoose.Types.ObjectId.isValid(
+        employeeId
+    )
+) {
+    employeeQuery._id =
+        new mongoose.Types.ObjectId(
+            employeeId
+        );
+}
+
+const employees =
+    await Employee.find(
+        employeeQuery
+    )
+        .select({
+            employeeCode: 1,
+            name: 1,
+            department: 1,
+            role: 1,
+            joiningDate: 1,
+        })
+        .sort({
+            name: 1,
+        })
+        .lean();
+
+/* =========================================================
+   LOAD HOLIDAYS
+========================================================= */
+
+const holidayMap =
+    new Map();
+
+if (Holiday) {
+    const holidays =
+        await Holiday.find({
+            isActive: true,
+
+            date: {
+                $gte:
+                    reportFromDate,
+
+                $lte:
+                    reportToDate,
+            },
+        })
+            .select({
+                date: 1,
+                name: 1,
+                type: 1,
+            })
+            .lean();
+
+    for (
+        const holiday of
+        holidays
+    ) {
+        /*
+         * Optional holidays do NOT automatically
+         * make the company closed.
+         */
+        if (
+            holiday.type !==
+            "Optional"
+        ) {
+            holidayMap.set(
+                holiday.date,
+                holiday
+            );
+        }
+    }
+}
+
+/* =========================================================
+   LOAD APPROVED LEAVES
+========================================================= */
+
+const approvedLeaves = [];
+
+if (LeaveRequest) {
+    const leaveQuery = {
+        status:
+            "Approved",
+
+        fromDate: {
+            $lte:
+                reportToDate,
+        },
+
+        toDate: {
+            $gte:
+                reportFromDate,
+        },
+    };
+
+    if (
+        employeeId &&
+        mongoose.Types.ObjectId.isValid(
+            employeeId
+        )
+    ) {
+        leaveQuery.employeeId =
+            new mongoose.Types.ObjectId(
+                employeeId
+            );
+    }
+
+    const leaves =
+        await LeaveRequest.find(
+            leaveQuery
+        )
+            .select({
+                employeeId: 1,
+                fromDate: 1,
+                toDate: 1,
+                duration: 1,
+                leaveType: 1,
+                reason: 1,
+            })
+            .lean();
+
+    approvedLeaves.push(
+        ...leaves
+    );
+}
+
+/* =========================================================
+   DATE HELPERS FOR REPORT
+========================================================= */
+
+function reportDatesBetween(
+    start,
+    end
+) {
+    const output = [];
+
+    const startDate =
+        new Date(
+            `${start}T00:00:00+05:30`
+        );
+
+    const endDate =
+        new Date(
+            `${end}T00:00:00+05:30`
+        );
+
+    if (
+        Number.isNaN(
+            startDate.getTime()
+        ) ||
+        Number.isNaN(
+            endDate.getTime()
+        )
+    ) {
+        return output;
+    }
+
+    const cursor =
+        new Date(
+            startDate
+        );
+
+    while (
+        cursor <= endDate
+    ) {
+        const value =
+            new Intl.DateTimeFormat(
+                "en-CA",
+                {
+                    timeZone:
+                        "Asia/Kolkata",
+
+                    year:
+                        "numeric",
+
+                    month:
+                        "2-digit",
+
+                    day:
+                        "2-digit",
+                }
+            ).format(
+                cursor
+            );
+
+        output.push(
+            value
+        );
+
+        cursor.setDate(
+            cursor.getDate() +
+                1
+        );
+    }
+
+    return output;
+}
+
+function reportIsSunday(
+    dateString
+) {
+    const value =
+        new Date(
+            `${dateString}T00:00:00+05:30`
+        );
+
+    return (
+        value.getDay() ===
+        0
+    );
+}
+
+function findApprovedLeave(
+    employeeIdValue,
+    date
+) {
+    return approvedLeaves.find(
+        (leave) =>
+            String(
+                leave.employeeId
+            ) ===
+                String(
+                    employeeIdValue
+                ) &&
+            leave.fromDate <=
+                date &&
+            leave.toDate >=
+                date
+    );
+}
+
+/* =========================================================
+   EXISTING ATTENDANCE LOOKUP
+========================================================= */
+
+const attendanceMap =
+    new Map();
+
+for (
+    const record of
+    databaseRecords
+) {
+    const key =
+        `${String(
+            record.employeeId
+        )}|${record.date}`;
+
+    attendanceMap.set(
+        key,
+        record
+    );
+}
+
+/* =========================================================
+   START WITH REAL DATABASE RECORDS
+========================================================= */
+
+let records =
+    databaseRecords.map(
+        (record) => ({
+            ...record,
+        })
+    );
+
+/* =========================================================
+   CREATE VIRTUAL ABSENT / LEAVE RECORDS
+========================================================= */
+
+for (
+    const employee of
+    employees
+) {
+    const dates =
+        reportDatesBetween(
+            reportFromDate,
+            reportToDate
+        );
+
+    for (
+        const date of
+        dates
+    ) {
+        /*
+         * Never calculate future date.
+         */
+        if (
+            date > today
+        ) {
+            continue;
+        }
+
+        /*
+         * Before joining date.
+         */
+        if (
+            employee.joiningDate &&
+            date <
+                employee.joiningDate
+        ) {
+            continue;
+        }
+
+        /*
+         * Sunday = weekly off.
+         */
+        if (
+            reportIsSunday(
+                date
+            )
+        ) {
+            continue;
+        }
+
+        /*
+         * Company/National holiday.
+         */
+        if (
+            holidayMap.has(
+                date
+            )
+        ) {
+            continue;
+        }
+
+        const key =
+            `${String(
+                employee._id
+            )}|${date}`;
+
+        /*
+         * Real attendance exists.
+         */
+        if (
+            attendanceMap.has(
+                key
+            )
+        ) {
+            continue;
+        }
+
+        const approvedLeave =
+            findApprovedLeave(
+                employee._id,
+                date
+            );
+
+        /* =================================================
+           APPROVED LEAVE
+        ================================================= */
+
+        if (
+            approvedLeave
+        ) {
+            /*
+             * Full-day approved leave.
+             */
+            if (
+                !approvedLeave.duration ||
+                approvedLeave.duration ===
+                    "Full Day"
+            ) {
+                records.push({
+                    _id:
+                        `LEAVE-${employee._id}-${date}`,
+
+                    id:
+                        `LEAVE-${employee._id}-${date}`,
+
+                    employeeId:
+                        employee._id,
+
+                    employeeCode:
+                        employee.employeeCode ||
+                        "",
+
+                    employeeName:
+                        employee.name ||
+                        "",
+
+                    department:
+                        employee.department ||
+                        "",
+
+                    role:
+                        employee.role ||
+                        "",
+
+                    date,
+
+                    loginTime:
+                        null,
+
+                    logoutTime:
+                        null,
+
+                    totalBreakMinutes:
+                        0,
+
+                    totalWorkedMinutes:
+                        0,
+
+                    shiftStart:
+                        "10:00",
+
+                    shiftEnd:
+                        "18:00",
+
+                    lateMinutes:
+                        0,
+
+                    earlyLogoutMinutes:
+                        0,
+
+                    overtimeMinutes:
+                        0,
+
+                    status:
+                        "On Leave",
+
+                    workStatus:
+                        "On Leave",
+
+                    isAutoClosed:
+                        false,
+
+                    autoClosedReason:
+                        approvedLeave.leaveType
+                            ? `Approved ${approvedLeave.leaveType}`
+                            : "Approved Leave",
+
+                    isGenerated:
+                        true,
+                });
+
+                continue;
+            }
+        }
+
+        /* =================================================
+           NO ATTENDANCE = ABSENT
+        ================================================= */
+
+        records.push({
+            _id:
+                `ABSENT-${employee._id}-${date}`,
+
+            id:
+                `ABSENT-${employee._id}-${date}`,
+
+            employeeId:
+                employee._id,
+
+            employeeCode:
+                employee.employeeCode ||
+                "",
+
+            employeeName:
+                employee.name ||
+                "",
+
+            department:
+                employee.department ||
+                "",
+
+            role:
+                employee.role ||
+                "",
+
+            date,
+
+            loginTime:
+                null,
+
+            logoutTime:
+                null,
+
+            totalBreakMinutes:
+                0,
+
+            totalWorkedMinutes:
+                0,
+
+            shiftStart:
+                "10:00",
+
+            shiftEnd:
+                "18:00",
+
+            lateMinutes:
+                0,
+
+            earlyLogoutMinutes:
+                0,
+
+            overtimeMinutes:
+                0,
+
+            status:
+                "Absent",
+
+            workStatus:
+                "Logged Out",
+
+            isAutoClosed:
+                false,
+
+            autoClosedReason:
+                "No attendance recorded",
+
+            isGenerated:
+                true,
+        });
+    }
+}
+
+/* =========================================================
+   APPLY STATUS FILTER AFTER ABSENT GENERATION
+========================================================= */
+
+if (
+    status &&
+    status !== "All"
+) {
+    records =
+        records.filter(
+            (record) =>
+                record.status ===
+                status
+        );
+}
+
+/* =========================================================
+   SORT COMPLETE REPORT
+========================================================= */
+
+records.sort(
+    (a, b) => {
+        const dateCompare =
+            String(
+                b.date || ""
+            ).localeCompare(
+                String(
+                    a.date || ""
+                )
+            );
+
+        if (
+            dateCompare !== 0
+        ) {
+            return dateCompare;
+        }
+
+        return String(
+            a.employeeName ||
+                ""
+        ).localeCompare(
+            String(
+                b.employeeName ||
+                    ""
+            )
+        );
+    }
+);
             const summary =
                 records.reduce(
                     (
@@ -6498,51 +7112,74 @@ router.get(
                 }
             }
 
-            const employeeSummary =
-                [...employeeMap.values()]
-                    .map((employee) => ({
-                        ...employee,
+           const employeeSummary =
+    [...employeeMap.values()]
+        .map((employee) => {
 
-                        averageWorkedMinutes:
-                            employee.attendanceDays > 0
-                                ? Math.round(
-                                    employee.totalWorkedMinutes /
-                                    employee.attendanceDays
-                                )
-                                : 0,
+            /*
+             * ATTENDANCE CALCULATION
+             *
+             * Present  = 1 day
+             * Late     = 1 day
+             * Half Day = 0.5 day
+             * Absent   = 0 day
+             * Leave    = 0 day
+             */
 
-                        averageBreakMinutes:
-                            employee.attendanceDays > 0
-                                ? Math.round(
-                                    employee.totalBreakMinutes /
-                                    employee.attendanceDays
-                                )
-                                : 0,
+            const totalAttendanceRecords =
+                Number(employee.present || 0) +
+                Number(employee.late || 0) +
+                Number(employee.halfDay || 0) +
+                Number(employee.absent || 0) +
+                Number(employee.leave || 0);
 
-                        attendancePercentage:
-                            employee.attendanceDays > 0
-                                ? Number(
-                                    (
-                                        (
-                                            employee.present +
-                                            employee.late +
-                                            employee.halfDay
-                                        ) /
-                                        employee.attendanceDays *
-                                        100
-                                    ).toFixed(1)
-                                )
-                                : 0,
-                    }))
-                    .sort((a, b) =>
-                        String(
-                            a.employeeName || ""
-                        ).localeCompare(
-                            String(
-                                b.employeeName || ""
-                            )
+            const effectivePresentDays =
+                Number(employee.present || 0) +
+                Number(employee.late || 0) +
+                Number(employee.halfDay || 0) * 0.5;
+
+            const attendancePercentage =
+                totalAttendanceRecords > 0
+                    ? Number(
+                        (
+                            effectivePresentDays /
+                            totalAttendanceRecords *
+                            100
+                        ).toFixed(1)
+                    )
+                    : 0;
+
+            return {
+                ...employee,
+
+                averageWorkedMinutes:
+                    employee.attendanceDays > 0
+                        ? Math.round(
+                            employee.totalWorkedMinutes /
+                            employee.attendanceDays
                         )
-                    );
+                        : 0,
+
+                averageBreakMinutes:
+                    employee.attendanceDays > 0
+                        ? Math.round(
+                            employee.totalBreakMinutes /
+                            employee.attendanceDays
+                        )
+                        : 0,
+
+                attendancePercentage,
+            };
+        })
+        .sort((a, b) =>
+            String(
+                a.employeeName || ""
+            ).localeCompare(
+                String(
+                    b.employeeName || ""
+                )
+            )
+        );
 
             /* =========================================================
                SPECIAL REPORT DATASETS

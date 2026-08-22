@@ -1,4 +1,4 @@
- import API_URL from "../config/api";
+import API_URL from "../config/api";
 import { useEffect, useMemo, useState } from "react";
 import {
     AlertCircle,
@@ -15,112 +15,6 @@ import {
     Timer,
     TrendingUp,
 } from "lucide-react";
-
-const initialTasks = [
-    {
-        id: 1,
-        taskNo: "TSK-2084",
-        ticketNo: "TKT-1042",
-        title: "Fix GST report mismatch",
-        client: "Shree Ganesh Industries",
-        project: "NexERP",
-        priority: "High",
-        status: "In Progress",
-        dueDate: "Today",
-        estimatedMinutes: 150,
-        spentSeconds: 8142,
-        progress: 70,
-    },
-    {
-        id: 2,
-        taskNo: "TSK-2087",
-        ticketNo: "TKT-1041",
-        title: "Barcode printer driver issue",
-        client: "Omkar Traders",
-        project: "RetailPOS",
-        priority: "Critical",
-        status: "Assigned",
-        dueDate: "Today",
-        estimatedMinutes: 120,
-        spentSeconds: 0,
-        progress: 0,
-    },
-    {
-        id: 3,
-        taskNo: "TSK-2089",
-        ticketNo: "",
-        title: "Complete StockPro module testing",
-        client: "Internal Development",
-        project: "StockPro",
-        priority: "Medium",
-        status: "Testing",
-        dueDate: "Tomorrow",
-        estimatedMinutes: 240,
-        spentSeconds: 7200,
-        progress: 60,
-    },
-];
-
-const assignedTickets = [
-    {
-        id: 1,
-        ticketNo: "TKT-1042",
-        title: "GST report mismatch in monthly summary",
-        client: "Shree Ganesh Industries",
-        project: "NexERP",
-        priority: "High",
-        status: "In Progress",
-        dueDate: "Today",
-    },
-    {
-        id: 2,
-        ticketNo: "TKT-1038",
-        title: "Need new user login created",
-        client: "GreenLeaf Agro",
-        project: "StockPro",
-        priority: "Low",
-        status: "Resolved",
-        dueDate: "08 Jul",
-    },
-];
-
-const initialWorkLogs = [
-    {
-        id: 1,
-        type: "login",
-        title: "Logged in",
-        description: "Attendance login recorded",
-        time: "09:02 AM",
-    },
-    {
-        id: 2,
-        type: "task",
-        title: "Started TKT-1042",
-        description: "GST report mismatch investigation",
-        time: "09:20 AM",
-    },
-    {
-        id: 3,
-        type: "completed",
-        title: "Resolved TKT-1038",
-        description: "Created new user login for GreenLeaf Agro",
-        time: "11:35 AM",
-    },
-    {
-        id: 4,
-        type: "call",
-        title: "Client support call",
-        description: "Shree Ganesh Industries · 25 minutes",
-        time: "12:10 PM",
-    },
-    {
-        id: 5,
-        type: "task",
-        title: "Resumed TKT-1042",
-        description: "Testing corrected report on staging",
-        time: "02:00 PM",
-    },
-];
 
 function formatTimer(totalSeconds) {
     const safeSeconds = Math.max(Number(totalSeconds || 0), 0);
@@ -225,47 +119,10 @@ const getAuthToken = () => {
         ""
     );
 };
-const loadEmployeeProfile = async () => {
-    try {
-        const response = await fetch(
-            `${API_URL}/api/employee/me`,
-            {
-                headers: {
-                    Authorization: `Bearer ${getAuthToken()}`,
-                    "Content-Type": "application/json",
-                },
-            }
-        );
 
-        const result = await response.json();
 
-        if (!response.ok || !result.success) {
-            throw new Error(
-                result.message || "Unable to load employee profile."
-            );
-        }
 
-        setEmployee(result.data);
-    } catch (err) {
-        console.error("Employee Profile:", err);
-        setError(err.message);
-    } finally {
-        setLoading(false);
-    }
-};
 
-const loadTodayAttendance = async () => {
-    const response = await fetch(`${API_URL}/api/attendance/today`, {
-        headers: { Authorization: `Bearer ${getAuthToken()}` },
-    });
-    const result = await response.json();
-    if (!response.ok || !result.success) {
-        throw new Error(result.message || "Unable to load today's attendance.");
-    }
-    setTodayAttendance(result.data || null);
-    setAttendanceStatus(result.data?.workStatus || result.data?.status || "Absent");
-    setLoginTime(result.data?.loginTime ? new Date(result.data.loginTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—");
-};
 const mapTask = (task, formatDate) => {
     if (!task) return null;
 
@@ -463,10 +320,15 @@ useEffect(() => {
 
     const dueTodayCount = dashboardSummary.dueTodayCount;
 
-    const hoursToday = useMemo(() => {
-        const minutes = Number(dashboardSummary.hoursToday || 0);
-        return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
-    }, [todayAttendance]);
+   const hoursToday = useMemo(() => {
+    const minutes = Number(
+        dashboardSummary.hoursToday || 0
+    );
+
+    return `${Math.floor(minutes / 60)}h ${
+        minutes % 60
+    }m`;
+}, [dashboardSummary.hoursToday]);
 
     const addWorkLog = (title, description, type = "task") => {
         setWorkLogs((current) => [
@@ -484,16 +346,7 @@ useEffect(() => {
         ]);
     };
 
-    const updateTaskStatus = async (taskId, status, progress) => {
-        const response = await fetch(`${API_URL}/api/admin/task/${taskId}/status`, {
-            method: "PATCH",
-            headers: { Authorization: `Bearer ${getAuthToken()}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ status, progress }),
-        });
-        const result = await response.json();
-        if (!response.ok || !result.success) throw new Error(result.message || "Unable to update task.");
-        await loadDashboard();
-    };
+
 
 const handlePauseResume = async () => {
     if (!activeTask) return;
@@ -771,7 +624,7 @@ const isWorking =
         =========================================================
         */
 
-        await loadTodayAttendance();
+     await loadDashboard();
 
         addWorkLog(
             isWorking

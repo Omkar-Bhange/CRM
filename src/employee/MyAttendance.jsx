@@ -19,15 +19,10 @@ import {
     XCircle,
 } from "lucide-react";
 
-const officeSettings = {
-    startTime: "10:00",
-    endTime: "18:00",
-    lateAfter: "10:15",
-    fullDayMinutes: 480,
-};
+
 
 const emptyLeaveForm = {
-    leaveType: "Casual Leave",
+    leaveType: "",
     fromDate: "",
     toDate: "",
     duration: "Full Day",
@@ -216,11 +211,149 @@ function SummaryCard({
 }
 
 export default function MyAttendance() {
-    
+const [officeSettings, setOfficeSettings] =
+    useState({
+        startTime: "",
+        endTime: "",
+        graceMinutes: 0,
+        fullDayMinutes: 0,
+        halfDayMinutes: 0,
+        weeklyOff: [],
+    });
+
+    const [configuredLeaveTypes, setConfiguredLeaveTypes] =
+        useState([]);
+
     const getAuthToken = () =>
         localStorage.getItem("client-connect-token") ||
         sessionStorage.getItem("client-connect-token") ||
         "";
+const loadSystemSettings = async () => {
+    try {
+        const headers = {
+            Authorization:
+                `Bearer ${getAuthToken()}`,
+
+            "Content-Type":
+                "application/json",
+        };
+
+        const [
+            workingHoursResponse,
+            leaveTypesResponse,
+        ] = await Promise.all([
+            fetch(
+                `${API_URL}/api/settings/working-hours`,
+                { headers }
+            ),
+
+            fetch(
+                `${API_URL}/api/settings/leave-types`,
+                { headers }
+            ),
+        ]);
+
+        const [
+            workingHoursResult,
+            leaveTypesResult,
+        ] = await Promise.all([
+            workingHoursResponse.json(),
+            leaveTypesResponse.json(),
+        ]);
+
+        if (
+            !workingHoursResponse.ok ||
+            !workingHoursResult.success
+        ) {
+            throw new Error(
+                workingHoursResult.message ||
+                "Unable to load working hours."
+            );
+        }
+
+        if (
+            !leaveTypesResponse.ok ||
+            !leaveTypesResult.success
+        ) {
+            throw new Error(
+                leaveTypesResult.message ||
+                "Unable to load leave types."
+            );
+        }
+
+        const workingHours =
+            workingHoursResult.data || {};
+
+        setOfficeSettings({
+            startTime:
+                workingHours.officeStartTime || "",
+
+            endTime:
+                workingHours.officeEndTime || "",
+
+            graceMinutes:
+                Number(
+                    workingHours.lateAfterMinutes || 0
+                ),
+
+            fullDayMinutes:
+                Number(
+                    workingHours.fullDayHours || 0
+                ) * 60,
+
+            halfDayMinutes:
+                Number(
+                    workingHours.halfDayHours || 0
+                ) * 60,
+
+            weeklyOff:
+                Array.isArray(
+                    workingHours.weeklyOff
+                )
+                    ? workingHours.weeklyOff
+                    : [],
+        });
+
+        const activeLeaveTypes =
+            Array.isArray(
+                leaveTypesResult.data
+            )
+                ? leaveTypesResult.data.filter(
+                    (item) =>
+                        item.status === "Active"
+                )
+                : [];
+
+        setConfiguredLeaveTypes(
+            activeLeaveTypes
+        );
+
+        setLeaveForm((current) => {
+            const stillValid =
+                activeLeaveTypes.some(
+                    (item) =>
+                        item.name ===
+                        current.leaveType
+                );
+
+            return {
+                ...current,
+
+                leaveType:
+                    stillValid
+                        ? current.leaveType
+                        : activeLeaveTypes[0]
+                              ?.name || "",
+            };
+        });
+
+    } catch (error) {
+        console.error(
+            "Load System Settings:",
+            error
+        );
+    }
+};
     const toTimeInput = (value) => {
         if (!value) return "";
         const date = new Date(value);
@@ -800,7 +933,22 @@ export default function MyAttendance() {
         }
     };
     useEffect(() => {
-        loadData().catch((error) => console.error("Attendance:", error));
+        const init = async () => {
+            try {
+                await Promise.all([
+                    loadSystemSettings(),
+                    loadData(),
+                    loadLeaveData(),
+                ]);
+            } catch (error) {
+                console.error(
+                    "Attendance initialization:",
+                    error
+                );
+            }
+        };
+
+        init();
     }, []);
     useEffect(() => {
         loadMonthlyAttendance();
@@ -820,9 +968,7 @@ export default function MyAttendance() {
             loadRegularizations();
         }
     }, [activeTab]);
-    useEffect(() => {
-        loadLeaveData();
-    }, []);
+
     useEffect(() => {
         calculateSelectedLeave();
     }, [
@@ -832,156 +978,74 @@ export default function MyAttendance() {
         leaveForm.duration,
     ]);
 
- const handleAttendanceToggle = async () => {
-    const isEndingWorkday =
-        attendanceStatus === "Working" ||
-        attendanceStatus === "Break";
+    const handleAttendanceToggle = async () => {
+        const isEndingWorkday =
+            attendanceStatus === "Working" ||
+            attendanceStatus === "Break";
 
-    const endpoint = isEndingWorkday
-        ? "logout"
-        : "login";
+        const endpoint = isEndingWorkday
+            ? "logout"
+            : "login";
 
-    try {
-        /*
-        =========================================================
-        1. UPDATE ATTENDANCE ON MAIN BACKEND FIRST
-        =========================================================
+        try {
+            /*
+            =========================================================
+            1. UPDATE ATTENDANCE ON MAIN BACKEND FIRST
+            =========================================================
+    
+            We only stop/start the local Windows agent AFTER the
+            attendance operation succeeds.
+            */
 
-        We only stop/start the local Windows agent AFTER the
-        attendance operation succeeds.
-        */
+            const response = await fetch(
+                `${API_URL}/api/attendance/${endpoint}`,
+                {
+                    method: "POST",
 
-        const response = await fetch(
-            `${API_URL}/api/attendance/${endpoint}`,
-            {
-                method: "POST",
+                    headers: {
+                        Authorization:
+                            `Bearer ${getAuthToken()}`,
 
-                headers: {
-                    Authorization:
-                        `Bearer ${getAuthToken()}`,
+                        "Content-Type":
+                            "application/json",
+                    },
 
-                    "Content-Type":
-                        "application/json",
-                },
-
-                body: JSON.stringify({
-                    source: "web",
-                }),
-            }
-        );
-
-        const result =
-            await response.json();
-
-        if (
-            !response.ok ||
-            !result.success
-        ) {
-            throw new Error(
-                result.message ||
-                "Attendance update failed."
-            );
-        }
-
-        /*
-        =========================================================
-        2. END WORKDAY -> STOP LOCAL AGENT
-        =========================================================
-        */
-
-        if (isEndingWorkday) {
-            try {
-                const agentResponse =
-                    await fetch(
-                        "http://127.0.0.1:4500/logout",
-                        {
-                            method: "POST",
-                            headers: {
-                                "Content-Type":
-                                    "application/json",
-                            },
-                        }
-                    );
-
-                const agentResult =
-                    await agentResponse.json();
-
-                if (
-                    !agentResponse.ok ||
-                    !agentResult.success
-                ) {
-                    console.warn(
-                        "ClientConnect Agent stop warning:",
-                        agentResult.message
-                    );
-                } else {
-                    console.log(
-                        "ClientConnect Agent stopped:",
-                        agentResult.message
-                    );
+                    body: JSON.stringify({
+                        source: "web",
+                    }),
                 }
-            } catch (agentError) {
-                /*
-                 * IMPORTANT:
-                 *
-                 * Attendance End Workday has already succeeded.
-                 * Do NOT undo/fail attendance just because
-                 * the local agent is unavailable.
-                 */
+            );
 
-                console.warn(
-                    "ClientConnect Agent could not be stopped:",
-                    agentError
+            const result =
+                await response.json();
+
+            if (
+                !response.ok ||
+                !result.success
+            ) {
+                throw new Error(
+                    result.message ||
+                    "Attendance update failed."
                 );
             }
-        }
 
-        /*
-        =========================================================
-        3. START WORKDAY -> START LOCAL AGENT
-        =========================================================
+            /*
+            =========================================================
+            2. END WORKDAY -> STOP LOCAL AGENT
+            =========================================================
+            */
 
-        This is also useful if the employee starts the workday
-        manually from this attendance screen.
-        */
-
-        if (!isEndingWorkday) {
-            try {
-                /*
-                 * Get current user stored by your login system.
-                 */
-
-                const storedUserRaw =
-                    localStorage.getItem(
-                        "client-connect-current-user"
-                    );
-
-                const storedUser =
-                    storedUserRaw
-                        ? JSON.parse(storedUserRaw)
-                        : null;
-
-                const employeeCode =
-                    storedUser?.employeeCode ||
-                    storedUser?.code ||
-                    "";
-
-                if (employeeCode) {
+            if (isEndingWorkday) {
+                try {
                     const agentResponse =
                         await fetch(
-                            "http://127.0.0.1:4500/login",
+                            "http://127.0.0.1:4500/logout",
                             {
                                 method: "POST",
-
                                 headers: {
                                     "Content-Type":
                                         "application/json",
                                 },
-
-                                body:
-                                    JSON.stringify({
-                                        employeeCode,
-                                    }),
                             }
                         );
 
@@ -993,47 +1057,129 @@ export default function MyAttendance() {
                         !agentResult.success
                     ) {
                         console.warn(
-                            "ClientConnect Agent start warning:",
+                            "ClientConnect Agent stop warning:",
                             agentResult.message
                         );
                     } else {
                         console.log(
-                            "ClientConnect Agent started:",
+                            "ClientConnect Agent stopped:",
                             agentResult.message
                         );
                     }
+                } catch (agentError) {
+                    /*
+                     * IMPORTANT:
+                     *
+                     * Attendance End Workday has already succeeded.
+                     * Do NOT undo/fail attendance just because
+                     * the local agent is unavailable.
+                     */
+
+                    console.warn(
+                        "ClientConnect Agent could not be stopped:",
+                        agentError
+                    );
                 }
-            } catch (agentError) {
-                console.warn(
-                    "ClientConnect Agent could not be started:",
-                    agentError
-                );
             }
+
+            /*
+            =========================================================
+            3. START WORKDAY -> START LOCAL AGENT
+            =========================================================
+    
+            This is also useful if the employee starts the workday
+            manually from this attendance screen.
+            */
+
+            if (!isEndingWorkday) {
+                try {
+                    /*
+                     * Get current user stored by your login system.
+                     */
+
+                    const storedUserRaw =
+                        localStorage.getItem(
+                            "client-connect-current-user"
+                        );
+
+                    const storedUser =
+                        storedUserRaw
+                            ? JSON.parse(storedUserRaw)
+                            : null;
+
+                    const employeeCode =
+                        storedUser?.employeeCode ||
+                        storedUser?.code ||
+                        "";
+
+                    if (employeeCode) {
+                        const agentResponse =
+                            await fetch(
+                                "http://127.0.0.1:4500/login",
+                                {
+                                    method: "POST",
+
+                                    headers: {
+                                        "Content-Type":
+                                            "application/json",
+                                    },
+
+                                    body:
+                                        JSON.stringify({
+                                            employeeCode,
+                                        }),
+                                }
+                            );
+
+                        const agentResult =
+                            await agentResponse.json();
+
+                        if (
+                            !agentResponse.ok ||
+                            !agentResult.success
+                        ) {
+                            console.warn(
+                                "ClientConnect Agent start warning:",
+                                agentResult.message
+                            );
+                        } else {
+                            console.log(
+                                "ClientConnect Agent started:",
+                                agentResult.message
+                            );
+                        }
+                    }
+                } catch (agentError) {
+                    console.warn(
+                        "ClientConnect Agent could not be started:",
+                        agentError
+                    );
+                }
+            }
+
+            /*
+            =========================================================
+            4. REFRESH ATTENDANCE UI
+            =========================================================
+            */
+
+            await Promise.all([
+                loadData(),
+                loadMonthlyAttendance(),
+            ]);
+
+        } catch (error) {
+            console.error(
+                "Attendance toggle error:",
+                error
+            );
+
+            alert(
+                error.message ||
+                "Unable to update attendance."
+            );
         }
-
-        /*
-        =========================================================
-        4. REFRESH ATTENDANCE UI
-        =========================================================
-        */
-
-        await Promise.all([
-            loadData(),
-            loadMonthlyAttendance(),
-        ]);
-
-    } catch (error) {
-        console.error(
-            "Attendance toggle error:",
-            error
-        );
-
-        alert(
-            error.message ||
-            "Unable to update attendance."
-        );
-    }
-};
+    };
 
     const handleBreakToggle = async () => {
         if (attendanceStatus !== "Working" && attendanceStatus !== "Break") return;
@@ -1626,7 +1772,7 @@ export default function MyAttendance() {
                                                     : !loginTime
                                                         ? "bg-slate-100 text-slate-600 ring-slate-500/10"
 
-                                                        : loginTime > officeSettings.lateAfter
+                                                        : attendanceStatus === "Late"
                                                             ? "bg-amber-50 text-amber-700 ring-amber-600/10"
 
                                                             : "bg-emerald-50 text-emerald-700 ring-emerald-600/10"
@@ -1644,7 +1790,7 @@ export default function MyAttendance() {
                                                     : !loginTime
                                                         ? "Not Started"
 
-                                                        : loginTime > officeSettings.lateAfter
+                                                        : attendanceStatus === "Late"
                                                             ? "Late Arrival"
 
                                                             : "On Time"}
@@ -2293,8 +2439,8 @@ export default function MyAttendance() {
                                             <div
                                                 key={dateKey}
                                                 className={`min-h-24 border border-slate-100 p-2 ${record?.isFuture
-                                                        ? "bg-slate-50/50"
-                                                        : "bg-white"
+                                                    ? "bg-slate-50/50"
+                                                    : "bg-white"
                                                     }`}
                                             >
                                                 <span className="text-[10px] font-semibold text-slate-500">
@@ -2396,20 +2542,17 @@ export default function MyAttendance() {
                                         )
                                         : 0;
 
+                                const configuredLeaveType =
+                                    configuredLeaveTypes.find(
+                                        (item) =>
+                                            item.name ===
+                                            leave.leaveType
+                                    );
+
                                 const code =
                                     leave.code ||
-                                    (
-                                        leave.leaveType ===
-                                            "Casual Leave"
-                                            ? "CL"
-                                            : leave.leaveType ===
-                                                "Sick Leave"
-                                                ? "SL"
-                                                : leave.leaveType ===
-                                                    "Earned Leave"
-                                                    ? "EL"
-                                                    : "LV"
-                                    );
+                                    configuredLeaveType?.code ||
+                                    "LV";
 
                                 return (
                                     <div
@@ -3428,19 +3571,35 @@ export default function MyAttendance() {
                                         onChange={
                                             handleLeaveFormChange
                                         }
-                                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                        disabled={
+                                            configuredLeaveTypes.length === 0
+                                        }
+                                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
                                     >
-                                        {leaveBalances.map(
-                                            (leave) => (
-                                                <option
-                                                    key={
-                                                        leave.id
-                                                    }
-                                                >
-                                                    {
-                                                        leave.name
-                                                    }
-                                                </option>
+                                        {configuredLeaveTypes.length === 0 ? (
+                                            <option value="">
+                                                No active leave types
+                                            </option>
+                                        ) : (
+                                            configuredLeaveTypes.map(
+                                                (leaveType) => (
+                                                    <option
+                                                        key={
+                                                            leaveType._id ||
+                                                            leaveType.id ||
+                                                            leaveType.code ||
+                                                            leaveType.name
+                                                        }
+                                                        value={
+                                                            leaveType.name
+                                                        }
+                                                    >
+                                                        {leaveType.name}
+                                                        {leaveType.code
+                                                            ? ` (${leaveType.code})`
+                                                            : ""}
+                                                    </option>
+                                                )
                                             )
                                         )}
                                     </select>

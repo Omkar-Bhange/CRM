@@ -10,10 +10,36 @@ const authenticateUser = require("./authMiddleware");
 router.use(authenticateUser);
 
 router.use((req, res, next) => {
-  if (!req.user || req.user.role !== "admin") {
+  /*
+   * Employees need read-only access to these
+   * two settings because Attendance uses them.
+   *
+   * They are authenticated above by:
+   * router.use(authenticateUser)
+   */
+  const employeeReadableSettings =
+    req.method === "GET" &&
+    (
+      req.path === "/working-hours" ||
+      req.path === "/leave-types"
+    );
+
+  if (employeeReadableSettings) {
+    return next();
+  }
+
+  /*
+   * Everything else under /api/settings
+   * remains ADMIN ONLY.
+   */
+  if (
+    !req.user ||
+    req.user.role !== "admin"
+  ) {
     return res.status(403).json({
       success: false,
-      message: "Admin access is required.",
+      message:
+        "Admin access is required.",
     });
   }
 
