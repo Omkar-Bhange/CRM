@@ -246,36 +246,262 @@ app.post("/api/agent/upload", async (req, res) => {
   });
 });
 const AgentDailySummary = mongoose.models.AgentDailySummary;
-const processedSessionSchema = new mongoose.Schema(
+/* =========================================================
+   PROCESSED AGENT SESSION DAILY BUCKET
+
+   Instead of:
+   1 Mongo document = 1 session
+
+   We now use:
+   1 Mongo document =
+   1 employee + 1 PC + 1 day
+
+   Example:
+   {
+     employeeCode: "EMP100",
+     pcName: "Total4",
+     date: 2026-08-22,
+     sessionIds: ["id1", "id2", "id3", ...]
+   }
+========================================================= */
+
+const processedSessionBucketSchema =
+  new mongoose.Schema(
+    {
+      employeeCode: {
+        type: String,
+        required: true,
+        uppercase: true,
+        trim: true,
+        index: true,
+      },
+
+      pcName: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      date: {
+        type: Date,
+        required: true,
+        index: true,
+      },
+
+      sessionIds: {
+        type: [String],
+        default: [],
+      },
+
+      expiresAt: {
+        type: Date,
+        required: true,
+      },
+    },
+    {
+      collection:
+        "agent_processed_session_buckets",
+
+      versionKey: false,
+
+      timestamps: true,
+    }
+  );
+
+/*
+ * Only one bucket is allowed for:
+ *
+ * EMP100 + Total4 + 2026-08-22
+ */
+processedSessionBucketSchema.index(
   {
-    sessionId: {
-      type: String,
-      required: true,
-      unique: true,
-      index: true,
-    },
-
-    employeeCode: {
-      type: String,
-      required: true,
-      index: true,
-    },
-
-    createdAt: {
-      type: Date,
-      default: Date.now,
-      expires: 60 * 60 * 24 * 30,
-    },
+    employeeCode: 1,
+    pcName: 1,
+    date: 1,
   },
   {
-    collection: "agent_processed_sessions",
-    versionKey: false,
+    unique: true,
   }
 );
 
-const ProcessedSession =
-  mongoose.models.ProcessedSession ||
-  mongoose.model("ProcessedSession", processedSessionSchema);
+/*
+ * Automatically remove old deduplication
+ * buckets after expiry.
+ */
+processedSessionBucketSchema.index(
+  {
+    expiresAt: 1,
+  },
+  {
+    expireAfterSeconds: 0,
+  }
+);
+
+const ProcessedSessionBucket =
+  mongoose.models
+    .ProcessedSessionBucket ||
+  mongoose.model(
+    "ProcessedSessionBucket",
+    processedSessionBucketSchema
+  );
+  /* =========================================================
+   RESERVE ONE SESSION ID INSIDE DAILY BUCKET
+========================================================= */
+
+async function reserveProcessedSession({
+  employeeCode,
+  pcName,
+  date,
+  sessionId,
+}) {
+  const normalizedEmployeeCode =
+    String(
+      employeeCode || ""
+    )
+      .trim()
+      .toUpperCase();
+
+  const normalizedPcName =
+    String(
+      pcName || ""
+    ).trim();
+
+  /*
+   * Keep deduplication data for 30 days.
+   *
+   * Change 30 to 7 later if you decide
+   * one week of retry protection is enough.
+   */
+  const expiresAt =
+    new Date(
+      Date.now() +
+        30 *
+          24 *
+          60 *
+          60 *
+          1000
+    );
+
+  const filter = {
+    employeeCode:
+      normalizedEmployeeCode,
+
+    pcName:
+      normalizedPcName,
+
+    date,
+  };
+
+  const update = {
+    $addToSet: {
+      sessionIds:
+        String(sessionId),
+    },
+
+    $setOnInsert: {
+      employeeCode:
+        normalizedEmployeeCode,
+
+      pcName:
+        normalizedPcName,
+
+      date,
+
+      expiresAt,
+    },
+  };
+
+  try {
+    const result =
+      await ProcessedSessionBucket.updateOne(
+        filter,
+        update,
+        {
+          upsert: true,
+        }
+      );
+
+    /*
+     * modifiedCount = 1
+     * means session ID was newly added.
+     *
+     * upsertedCount = 1
+     * means new daily bucket was created.
+     *
+     * Both mean:
+     * WE RESERVED THE SESSION.
+     *
+     * modifiedCount = 0 and upsertedCount = 0
+     * means this session ID already exists.
+     */
+    return (
+      result.upsertedCount === 1 ||
+      result.modifiedCount === 1
+    );
+  } catch (error) {
+    /*
+     * Two requests can try creating today's
+     * bucket at exactly the same moment.
+     *
+     * Unique bucket index may cause E11000.
+     * Retry once against the now-existing bucket.
+     */
+    if (error?.code === 11000) {
+      const retry =
+        await ProcessedSessionBucket.updateOne(
+          filter,
+          {
+            $addToSet: {
+              sessionIds:
+                String(sessionId),
+            },
+          }
+        );
+
+      return (
+        retry.modifiedCount === 1
+      );
+    }
+
+    throw error;
+  }
+}
+
+
+/* =========================================================
+   REMOVE RESERVATION WHEN PROCESSING FAILS
+========================================================= */
+
+async function releaseProcessedSession({
+  employeeCode,
+  pcName,
+  date,
+  sessionId,
+}) {
+  await ProcessedSessionBucket.updateOne(
+    {
+      employeeCode:
+        String(
+          employeeCode || ""
+        )
+          .trim()
+          .toUpperCase(),
+
+      pcName:
+        String(
+          pcName || ""
+        ).trim(),
+
+      date,
+    },
+    {
+      $pull: {
+        sessionIds:
+          String(sessionId),
+      },
+    }
+  );
+}
 
 // =========================================================
 // WINDOWS AGENT APPLICATION SESSION (DAILY SUMMARY)
@@ -650,51 +876,106 @@ if (
       (session) => session.id
     );
 
-    // =====================================================
-    // ONE DB QUERY FOR PREVIOUSLY PROCESSED IDS
-    // =====================================================
+   // =====================================================
+// LOAD DAILY PROCESSED-SESSION BUCKETS
+// =====================================================
 
-    const existingProcessed =
-      await ProcessedSession.find(
-        {
-          sessionId: {
-            $in: incomingIds,
-          },
-        },
-        {
-          sessionId: 1,
-          _id: 0,
-        }
-      ).lean();
+const bucketDates = [
+  ...new Map(
+    uniqueSessions.map(
+      (session) => {
+        const bucketDate =
+          getISTDateBucket(
+            new Date(
+              session.startTime
+            )
+          );
 
-    const existingIdSet = new Set(
-      existingProcessed.map(
-        (item) => item.sessionId
-      )
+        return [
+          bucketDate.getTime(),
+          bucketDate,
+        ];
+      }
+    )
+  ).values(),
+];
+
+const existingBuckets =
+  await ProcessedSessionBucket.find(
+    {
+      employeeCode:
+        employee.employeeCode,
+
+      pcName:
+        String(
+          pcName || ""
+        ).trim(),
+
+      date: {
+        $in:
+          bucketDates,
+      },
+    },
+    {
+      sessionIds: 1,
+      _id: 0,
+    }
+  ).lean();
+
+const existingIdSet =
+  new Set(
+    existingBuckets.flatMap(
+      (bucket) =>
+        Array.isArray(
+          bucket.sessionIds
+        )
+          ? bucket.sessionIds
+          : []
+    )
+  );
+
+/*
+ * Sessions already present in the daily
+ * bucket are ACKNOWLEDGED immediately.
+ */
+for (const sessionId of incomingIds) {
+  if (
+    existingIdSet.has(
+      sessionId
+    )
+  ) {
+    processedIds.push(
+      sessionId
     );
+  }
+}
 
-    // Already processed = ACK immediately.
-    for (const id of existingIdSet) {
-      processedIds.push(id);
-    }
+const newSessions =
+  uniqueSessions.filter(
+    (session) =>
+      !existingIdSet.has(
+        session.id
+      )
+  );
 
-    const newSessions =
-      uniqueSessions.filter(
-        (session) =>
-          !existingIdSet.has(
-            session.id
-          )
-      );
+if (
+  newSessions.length === 0
+) {
+  return res.json({
+    success: true,
 
-    if (newSessions.length === 0) {
-      return res.json({
-        success: true,
-        processed:
-          processedIds.length,
-        processedIds,
-        failed,
-      });
-    }
+    processed:
+      processedIds.length,
+
+    processedIds: [
+      ...new Set(
+        processedIds
+      ),
+    ],
+
+    failed,
+  });
+}
 
     // =====================================================
     // LOAD TASKS ONCE FOR THE WHOLE BATCH
@@ -738,41 +1019,53 @@ if (
     // =====================================================
 
     for (const session of newSessions) {
-      let reservationCreated = false;
+     let reservationCreated =
+  false;
 
-      try {
-        // -----------------------------------------------
-        // ATOMIC IDEMPOTENCY RESERVATION
-        // -----------------------------------------------
+let reservationDate =
+  null;
 
-        try {
-          await ProcessedSession.create({
-            sessionId: session.id,
-            employeeCode:
-              employee.employeeCode,
-          });
+try {
+  // -----------------------------------------------
+  // DAILY-BUCKET ATOMIC RESERVATION
+  // -----------------------------------------------
 
-          reservationCreated = true;
-        } catch (dupErr) {
-          if (dupErr.code === 11000) {
-            // Another request processed/reserved this
-            // session after our batch lookup.
-            processedIds.push(
-              session.id
-            );
+  reservationDate =
+    getISTDateBucket(
+      new Date(
+        session.startTime
+      )
+    );
 
-            continue;
-          }
+  reservationCreated =
+    await reserveProcessedSession({
+      employeeCode:
+        employee.employeeCode,
 
-          throw dupErr;
-        }
+      pcName:
+        pcName || "",
 
-        const today =
-          getISTDateBucket(
-            new Date(
-              session.startTime
-            )
-          );
+      date:
+        reservationDate,
+
+      sessionId:
+        session.id,
+    });
+
+  /*
+   * false means another request has
+   * already processed/reserved this ID.
+   */
+  if (!reservationCreated) {
+    processedIds.push(
+      session.id
+    );
+
+    continue;
+  }
+
+  const today =
+    reservationDate;
 
         const summaryTaskId =
           session.taskId ||
@@ -921,20 +1214,32 @@ if (
         // even though its summary was never updated.
         // =================================================
 
-        if (reservationCreated) {
-          try {
-            await ProcessedSession.deleteOne({
-              sessionId:
-                session.id,
-            });
-          } catch (cleanupErr) {
-            console.error(
-              "Processed-session cleanup failed:",
-              session.id,
-              cleanupErr.message
-            );
-          }
-        }
+     if (
+  reservationCreated &&
+  reservationDate
+) {
+  try {
+    await releaseProcessedSession({
+      employeeCode:
+        employee.employeeCode,
+
+      pcName:
+        pcName || "",
+
+      date:
+        reservationDate,
+
+      sessionId:
+        session.id,
+    });
+  } catch (cleanupErr) {
+    console.error(
+      "Processed-session bucket cleanup failed:",
+      session.id,
+      cleanupErr.message
+    );
+  }
+}
 
         failed.push({
           id: session.id,
