@@ -462,434 +462,434 @@ router.get(
    Uses the same AmcInvoice fields as Management Reports.
 ========================================================= */
 
-if (AmcInvoice) {
-  const invoices =
-    await AmcInvoice.find({
-      isDeleted: {
-        $ne: true,
-      },
-
-      status: {
-        $ne: "Cancelled",
-      },
-    })
-      .select({
-        invoiceCode: 1,
-        invoiceDate: 1,
-
-        contractCode: 1,
-        contractStartDate: 1,
-        contractExpiryDate: 1,
-
-        dueDate: 1,
-
-        clientId: 1,
-        clientCode: 1,
-        clientName: 1,
-
-        productCode: 1,
-        productName: 1,
-        productVersion: 1,
-
-        totalAmount: 1,
-        paidAmount: 1,
-        pendingAmount: 1,
-
-        paymentStatus: 1,
-        status: 1,
-      })
-      .lean();
-
-  const amcRiskRows = [];
-  const collectionRows = [];
-
-  for (const invoice of invoices) {
-    const totalAmount =
-      Number(
-        invoice.totalAmount ||
-          0
-      );
-
-    const paidAmount =
-      Number(
-        invoice.paidAmount ||
-          0
-      );
-
-    const pendingAmount =
-      Number(
-        invoice.pendingAmount ||
-          0
-      );
-
-    /* =========================
-       AMC RISK
-    ========================= */
-
-    const expiryDate =
-      invoice.contractExpiryDate
-        ? new Date(
-            invoice.contractExpiryDate
-          )
-        : null;
-
-    let daysLeft = null;
-
-    if (
-      expiryDate &&
-      !Number.isNaN(
-        expiryDate.getTime()
-      )
-    ) {
-      daysLeft =
-        Math.ceil(
-          (
-            expiryDate.getTime() -
-            now.getTime()
-          ) /
-            86400000
-        );
-    }
-
-    let renewalRisk =
-      "Normal";
-
-    if (
-      daysLeft !== null &&
-      daysLeft < 0
-    ) {
-      renewalRisk =
-        "Expired";
-    } else if (
-      daysLeft !== null &&
-      daysLeft <= 7
-    ) {
-      renewalRisk =
-        "Critical";
-    } else if (
-      daysLeft !== null &&
-      daysLeft <= 30
-    ) {
-      renewalRisk =
-        "Expiring Soon";
-    }
-
-    amcSummary.total += 1;
-
-    amcSummary.totalValue +=
-      totalAmount;
-
-    amcSummary.outstanding +=
-      pendingAmount;
-
-    if (
-      renewalRisk ===
-      "Expired"
-    ) {
-      amcSummary.expired +=
-        1;
-    } else if (
-      renewalRisk ===
-      "Critical"
-    ) {
-      amcSummary.critical +=
-        1;
-    } else if (
-      renewalRisk ===
-      "Expiring Soon"
-    ) {
-      amcSummary.expiringSoon +=
-        1;
-    } else {
-      amcSummary.active +=
-        1;
-    }
-
-    /* =========================
-       PAYMENT / COLLECTION
-    ========================= */
-
-    const dueDate =
-      invoice.dueDate
-        ? new Date(
-            invoice.dueDate
-          )
-        : null;
-
-    const isOverdue =
-      Boolean(
-        pendingAmount > 0 &&
-        dueDate &&
-        !Number.isNaN(
-          dueDate.getTime()
-        ) &&
-        dueDate < now
-      );
-
-    const overdueDays =
-      isOverdue
-        ? Math.max(
-            0,
-            Math.floor(
-              (
-                now.getTime() -
-                dueDate.getTime()
-              ) /
-                86400000
-            )
-          )
-        : 0;
-
-    let collectionStatus =
-      "Pending";
-
-    if (
-      pendingAmount <= 0 &&
-      totalAmount > 0
-    ) {
-      collectionStatus =
-        "Paid";
-    } else if (
-      isOverdue
-    ) {
-      collectionStatus =
-        "Overdue";
-    } else if (
-      paidAmount > 0 &&
-      pendingAmount > 0
-    ) {
-      collectionStatus =
-        "Partially Paid";
-    }
-
-    collectionSummary.invoiceCount +=
-      1;
-
-    collectionSummary.totalBilled +=
-      totalAmount;
-
-    collectionSummary.collected +=
-      paidAmount;
-
-    collectionSummary.outstanding +=
-      pendingAmount;
-
-    if (isOverdue) {
-      collectionSummary.overdueInvoices +=
-        1;
-
-      collectionSummary.overdueAmount +=
-        pendingAmount;
-
-      amcSummary.overdueAmount +=
-        pendingAmount;
-    }
-
-    if (
-      collectionStatus ===
-      "Paid"
-    ) {
-      collectionSummary.paidInvoices +=
-        1;
-    }
-
-    if (
-      collectionStatus ===
-      "Partially Paid"
-    ) {
-      collectionSummary.partialInvoices +=
-        1;
-    }
-
-    amcRiskRows.push({
-      id:
-        invoice._id,
-
-      clientId:
-        invoice.clientId,
-
-      clientCode:
-        invoice.clientCode ||
-        "",
-
-      clientName:
-        invoice.clientName ||
-        "",
-
-      invoiceCode:
-        invoice.invoiceCode ||
-        "",
-
-      contractCode:
-        invoice.contractCode ||
-        "",
-
-      productCode:
-        invoice.productCode ||
-        "",
-
-      productName:
-        invoice.productName ||
-        "",
-
-      contractExpiryDate:
-        invoice.contractExpiryDate ||
-        null,
-
-      daysLeft,
-
-      renewalRisk,
-
-      totalAmount,
-      pendingAmount,
-    });
-
-    collectionRows.push({
-      id:
-        invoice._id,
-
-      clientId:
-        invoice.clientId,
-
-      clientCode:
-        invoice.clientCode ||
-        "",
-
-      clientName:
-        invoice.clientName ||
-        "",
-
-      invoiceCode:
-        invoice.invoiceCode ||
-        "",
-
-      dueDate:
-        invoice.dueDate ||
-        null,
-
-      totalAmount,
-      paidAmount,
-      pendingAmount,
-
-      isOverdue,
-      overdueDays,
-
-      collectionStatus,
-    });
-  }
-
-  /* =====================================================
-     AMC ATTENTION
-
-     Only expired / critical / expiring AMC.
-  ===================================================== */
-
-  const amcRiskOrder = {
-    Expired: 1,
-    Critical: 2,
-    "Expiring Soon": 3,
-    Normal: 4,
-  };
-
-  amcAttention =
-    amcRiskRows
-      .filter(
-        (item) =>
-          item.renewalRisk !==
-          "Normal"
-      )
-      .sort((a, b) => {
-        const riskDifference =
-          (
-            amcRiskOrder[
-              a.renewalRisk
-            ] || 99
-          ) -
-          (
-            amcRiskOrder[
-              b.renewalRisk
-            ] || 99
-          );
-
-        if (
-          riskDifference !== 0
-        ) {
-          return riskDifference;
-        }
-
-        return (
-          Number(
-            a.daysLeft ??
-              999999
-          ) -
-          Number(
-            b.daysLeft ??
-              999999
-          )
-        );
-      })
-      .slice(0, 10);
-
-  /* =====================================================
-     COLLECTION ATTENTION
-
-     Highest overdue/outstanding first.
-  ===================================================== */
-
-  collectionAttention =
-    collectionRows
-      .filter(
-        (item) =>
-          Number(
-            item.pendingAmount ||
-              0
-          ) > 0
-      )
-      .sort((a, b) => {
-        if (
-          a.isOverdue !==
-          b.isOverdue
-        ) {
-          return a.isOverdue
-            ? -1
-            : 1;
-        }
-
-        if (
-          Number(
-            b.overdueDays ||
-              0
-          ) !==
-          Number(
-            a.overdueDays ||
-              0
-          )
-        ) {
-          return (
-            Number(
-              b.overdueDays ||
-                0
-            ) -
-            Number(
-              a.overdueDays ||
-                0
-            )
-          );
-        }
-
-        return (
-          Number(
-            b.pendingAmount ||
-              0
-          ) -
-          Number(
-            a.pendingAmount ||
-              0
-          )
-        );
-      })
-      .slice(0, 10);
-}
+            if (AmcInvoice) {
+                const invoices =
+                    await AmcInvoice.find({
+                        isDeleted: {
+                            $ne: true,
+                        },
+
+                        status: {
+                            $ne: "Cancelled",
+                        },
+                    })
+                        .select({
+                            invoiceCode: 1,
+                            invoiceDate: 1,
+
+                            contractCode: 1,
+                            contractStartDate: 1,
+                            contractExpiryDate: 1,
+
+                            dueDate: 1,
+
+                            clientId: 1,
+                            clientCode: 1,
+                            clientName: 1,
+
+                            productCode: 1,
+                            productName: 1,
+                            productVersion: 1,
+
+                            totalAmount: 1,
+                            paidAmount: 1,
+                            pendingAmount: 1,
+
+                            paymentStatus: 1,
+                            status: 1,
+                        })
+                        .lean();
+
+                const amcRiskRows = [];
+                const collectionRows = [];
+
+                for (const invoice of invoices) {
+                    const totalAmount =
+                        Number(
+                            invoice.totalAmount ||
+                            0
+                        );
+
+                    const paidAmount =
+                        Number(
+                            invoice.paidAmount ||
+                            0
+                        );
+
+                    const pendingAmount =
+                        Number(
+                            invoice.pendingAmount ||
+                            0
+                        );
+
+                    /* =========================
+                       AMC RISK
+                    ========================= */
+
+                    const expiryDate =
+                        invoice.contractExpiryDate
+                            ? new Date(
+                                invoice.contractExpiryDate
+                            )
+                            : null;
+
+                    let daysLeft = null;
+
+                    if (
+                        expiryDate &&
+                        !Number.isNaN(
+                            expiryDate.getTime()
+                        )
+                    ) {
+                        daysLeft =
+                            Math.ceil(
+                                (
+                                    expiryDate.getTime() -
+                                    now.getTime()
+                                ) /
+                                86400000
+                            );
+                    }
+
+                    let renewalRisk =
+                        "Normal";
+
+                    if (
+                        daysLeft !== null &&
+                        daysLeft < 0
+                    ) {
+                        renewalRisk =
+                            "Expired";
+                    } else if (
+                        daysLeft !== null &&
+                        daysLeft <= 7
+                    ) {
+                        renewalRisk =
+                            "Critical";
+                    } else if (
+                        daysLeft !== null &&
+                        daysLeft <= 30
+                    ) {
+                        renewalRisk =
+                            "Expiring Soon";
+                    }
+
+                    amcSummary.total += 1;
+
+                    amcSummary.totalValue +=
+                        totalAmount;
+
+                    amcSummary.outstanding +=
+                        pendingAmount;
+
+                    if (
+                        renewalRisk ===
+                        "Expired"
+                    ) {
+                        amcSummary.expired +=
+                            1;
+                    } else if (
+                        renewalRisk ===
+                        "Critical"
+                    ) {
+                        amcSummary.critical +=
+                            1;
+                    } else if (
+                        renewalRisk ===
+                        "Expiring Soon"
+                    ) {
+                        amcSummary.expiringSoon +=
+                            1;
+                    } else {
+                        amcSummary.active +=
+                            1;
+                    }
+
+                    /* =========================
+                       PAYMENT / COLLECTION
+                    ========================= */
+
+                    const dueDate =
+                        invoice.dueDate
+                            ? new Date(
+                                invoice.dueDate
+                            )
+                            : null;
+
+                    const isOverdue =
+                        Boolean(
+                            pendingAmount > 0 &&
+                            dueDate &&
+                            !Number.isNaN(
+                                dueDate.getTime()
+                            ) &&
+                            dueDate < now
+                        );
+
+                    const overdueDays =
+                        isOverdue
+                            ? Math.max(
+                                0,
+                                Math.floor(
+                                    (
+                                        now.getTime() -
+                                        dueDate.getTime()
+                                    ) /
+                                    86400000
+                                )
+                            )
+                            : 0;
+
+                    let collectionStatus =
+                        "Pending";
+
+                    if (
+                        pendingAmount <= 0 &&
+                        totalAmount > 0
+                    ) {
+                        collectionStatus =
+                            "Paid";
+                    } else if (
+                        isOverdue
+                    ) {
+                        collectionStatus =
+                            "Overdue";
+                    } else if (
+                        paidAmount > 0 &&
+                        pendingAmount > 0
+                    ) {
+                        collectionStatus =
+                            "Partially Paid";
+                    }
+
+                    collectionSummary.invoiceCount +=
+                        1;
+
+                    collectionSummary.totalBilled +=
+                        totalAmount;
+
+                    collectionSummary.collected +=
+                        paidAmount;
+
+                    collectionSummary.outstanding +=
+                        pendingAmount;
+
+                    if (isOverdue) {
+                        collectionSummary.overdueInvoices +=
+                            1;
+
+                        collectionSummary.overdueAmount +=
+                            pendingAmount;
+
+                        amcSummary.overdueAmount +=
+                            pendingAmount;
+                    }
+
+                    if (
+                        collectionStatus ===
+                        "Paid"
+                    ) {
+                        collectionSummary.paidInvoices +=
+                            1;
+                    }
+
+                    if (
+                        collectionStatus ===
+                        "Partially Paid"
+                    ) {
+                        collectionSummary.partialInvoices +=
+                            1;
+                    }
+
+                    amcRiskRows.push({
+                        id:
+                            invoice._id,
+
+                        clientId:
+                            invoice.clientId,
+
+                        clientCode:
+                            invoice.clientCode ||
+                            "",
+
+                        clientName:
+                            invoice.clientName ||
+                            "",
+
+                        invoiceCode:
+                            invoice.invoiceCode ||
+                            "",
+
+                        contractCode:
+                            invoice.contractCode ||
+                            "",
+
+                        productCode:
+                            invoice.productCode ||
+                            "",
+
+                        productName:
+                            invoice.productName ||
+                            "",
+
+                        contractExpiryDate:
+                            invoice.contractExpiryDate ||
+                            null,
+
+                        daysLeft,
+
+                        renewalRisk,
+
+                        totalAmount,
+                        pendingAmount,
+                    });
+
+                    collectionRows.push({
+                        id:
+                            invoice._id,
+
+                        clientId:
+                            invoice.clientId,
+
+                        clientCode:
+                            invoice.clientCode ||
+                            "",
+
+                        clientName:
+                            invoice.clientName ||
+                            "",
+
+                        invoiceCode:
+                            invoice.invoiceCode ||
+                            "",
+
+                        dueDate:
+                            invoice.dueDate ||
+                            null,
+
+                        totalAmount,
+                        paidAmount,
+                        pendingAmount,
+
+                        isOverdue,
+                        overdueDays,
+
+                        collectionStatus,
+                    });
+                }
+
+                /* =====================================================
+                   AMC ATTENTION
+              
+                   Only expired / critical / expiring AMC.
+                ===================================================== */
+
+                const amcRiskOrder = {
+                    Expired: 1,
+                    Critical: 2,
+                    "Expiring Soon": 3,
+                    Normal: 4,
+                };
+
+                amcAttention =
+                    amcRiskRows
+                        .filter(
+                            (item) =>
+                                item.renewalRisk !==
+                                "Normal"
+                        )
+                        .sort((a, b) => {
+                            const riskDifference =
+                                (
+                                    amcRiskOrder[
+                                    a.renewalRisk
+                                    ] || 99
+                                ) -
+                                (
+                                    amcRiskOrder[
+                                    b.renewalRisk
+                                    ] || 99
+                                );
+
+                            if (
+                                riskDifference !== 0
+                            ) {
+                                return riskDifference;
+                            }
+
+                            return (
+                                Number(
+                                    a.daysLeft ??
+                                    999999
+                                ) -
+                                Number(
+                                    b.daysLeft ??
+                                    999999
+                                )
+                            );
+                        })
+                        .slice(0, 10);
+
+                /* =====================================================
+                   COLLECTION ATTENTION
+              
+                   Highest overdue/outstanding first.
+                ===================================================== */
+
+                collectionAttention =
+                    collectionRows
+                        .filter(
+                            (item) =>
+                                Number(
+                                    item.pendingAmount ||
+                                    0
+                                ) > 0
+                        )
+                        .sort((a, b) => {
+                            if (
+                                a.isOverdue !==
+                                b.isOverdue
+                            ) {
+                                return a.isOverdue
+                                    ? -1
+                                    : 1;
+                            }
+
+                            if (
+                                Number(
+                                    b.overdueDays ||
+                                    0
+                                ) !==
+                                Number(
+                                    a.overdueDays ||
+                                    0
+                                )
+                            ) {
+                                return (
+                                    Number(
+                                        b.overdueDays ||
+                                        0
+                                    ) -
+                                    Number(
+                                        a.overdueDays ||
+                                        0
+                                    )
+                                );
+                            }
+
+                            return (
+                                Number(
+                                    b.pendingAmount ||
+                                    0
+                                ) -
+                                Number(
+                                    a.pendingAmount ||
+                                    0
+                                )
+                            );
+                        })
+                        .slice(0, 10);
+            }
             const employeeWorkload =
                 await Employee.find({
                     isActive: {
@@ -1072,65 +1072,65 @@ if (AmcInvoice) {
 
                     attendance:
                         todayAttendance,
-                        amc: {
-  total:
-    amcSummary.total,
+                    amc: {
+                        total:
+                            amcSummary.total,
 
-  active:
-    amcSummary.active,
+                        active:
+                            amcSummary.active,
 
-  expiringSoon:
-    amcSummary.expiringSoon,
+                        expiringSoon:
+                            amcSummary.expiringSoon,
 
-  critical:
-    amcSummary.critical,
+                        critical:
+                            amcSummary.critical,
 
-  expired:
-    amcSummary.expired,
+                        expired:
+                            amcSummary.expired,
 
-  totalValue:
-    amcSummary.totalValue,
+                        totalValue:
+                            amcSummary.totalValue,
 
-  outstanding:
-    amcSummary.outstanding,
+                        outstanding:
+                            amcSummary.outstanding,
 
-  overdueAmount:
-    amcSummary.overdueAmount,
-},
+                        overdueAmount:
+                            amcSummary.overdueAmount,
+                    },
 
-collections: {
-  invoiceCount:
-    collectionSummary.invoiceCount,
+                    collections: {
+                        invoiceCount:
+                            collectionSummary.invoiceCount,
 
-  totalBilled:
-    collectionSummary.totalBilled,
+                        totalBilled:
+                            collectionSummary.totalBilled,
 
-  collected:
-    collectionSummary.collected,
+                        collected:
+                            collectionSummary.collected,
 
-  outstanding:
-    collectionSummary.outstanding,
+                        outstanding:
+                            collectionSummary.outstanding,
 
-  overdueInvoices:
-    collectionSummary.overdueInvoices,
+                        overdueInvoices:
+                            collectionSummary.overdueInvoices,
 
-  overdueAmount:
-    collectionSummary.overdueAmount,
+                        overdueAmount:
+                            collectionSummary.overdueAmount,
 
-  paidInvoices:
-    collectionSummary.paidInvoices,
+                        paidInvoices:
+                            collectionSummary.paidInvoices,
 
-  partialInvoices:
-    collectionSummary.partialInvoices,
-},
+                        partialInvoices:
+                            collectionSummary.partialInvoices,
+                    },
 
                     employeeWorkload,
 
-clientAttention,
+                    clientAttention,
 
-amcAttention,
+                    amcAttention,
 
-collectionAttention,
+                    collectionAttention,
                 },
             });
         } catch (error) {
@@ -6201,20 +6201,20 @@ router.get(
                 getModel(
                     "AttendanceV2"
                 );
-                const Employee =
-    getModel(
-        "Employee"
-    );
+            const Employee =
+                getModel(
+                    "Employee"
+                );
 
-const Holiday =
-    getOptionalModel(
-        "Holiday"
-    );
+            const Holiday =
+                getOptionalModel(
+                    "Holiday"
+                );
 
-const LeaveRequest =
-    getOptionalModel(
-        "LeaveRequestV2"
-    );
+            const LeaveRequest =
+                getOptionalModel(
+                    "LeaveRequestV2"
+                );
 
             const {
                 fromDate,
@@ -6239,7 +6239,7 @@ const LeaveRequest =
                     employeeId;
             }
 
-            
+
 
             if (
                 fromDate ||
@@ -6289,612 +6289,612 @@ const LeaveRequest =
                     })
                     .lean();
 
-                    /* =========================================================
-   BUILD COMPLETE ATTENDANCE CALENDAR
-   INCLUDING MISSING ABSENT DAYS
+            /* =========================================================
+BUILD COMPLETE ATTENDANCE CALENDAR
+INCLUDING MISSING ABSENT DAYS
 ========================================================= */
 
-const today =
-    getTodayString();
+            const today =
+                getTodayString();
 
-/*
- * If user selected dates,
- * use selected dates.
- *
- * Otherwise report current month
- * from 1st day until today.
- */
-const currentMonth =
-    today.substring(
-        0,
-        7
-    );
-
-const reportFromDate =
-    fromDate ||
-    `${currentMonth}-01`;
-
-const reportToDate =
-    toDate &&
-    toDate < today
-        ? toDate
-        : today;
-
-/* =========================================================
-   LOAD EMPLOYEES
-========================================================= */
-
-const employeeQuery = {
-    isActive: {
-        $ne: false,
-    },
-};
-
-if (
-    employeeId &&
-    mongoose.Types.ObjectId.isValid(
-        employeeId
-    )
-) {
-    employeeQuery._id =
-        new mongoose.Types.ObjectId(
-            employeeId
-        );
-}
-
-const employees =
-    await Employee.find(
-        employeeQuery
-    )
-        .select({
-            employeeCode: 1,
-            name: 1,
-            department: 1,
-            role: 1,
-            joiningDate: 1,
-        })
-        .sort({
-            name: 1,
-        })
-        .lean();
-
-/* =========================================================
-   LOAD HOLIDAYS
-========================================================= */
-
-const holidayMap =
-    new Map();
-
-if (Holiday) {
-    const holidays =
-        await Holiday.find({
-            isActive: true,
-
-            date: {
-                $gte:
-                    reportFromDate,
-
-                $lte:
-                    reportToDate,
-            },
-        })
-            .select({
-                date: 1,
-                name: 1,
-                type: 1,
-            })
-            .lean();
-
-    for (
-        const holiday of
-        holidays
-    ) {
-        /*
-         * Optional holidays do NOT automatically
-         * make the company closed.
-         */
-        if (
-            holiday.type !==
-            "Optional"
-        ) {
-            holidayMap.set(
-                holiday.date,
-                holiday
-            );
-        }
-    }
-}
-
-/* =========================================================
-   LOAD APPROVED LEAVES
-========================================================= */
-
-const approvedLeaves = [];
-
-if (LeaveRequest) {
-    const leaveQuery = {
-        status:
-            "Approved",
-
-        fromDate: {
-            $lte:
-                reportToDate,
-        },
-
-        toDate: {
-            $gte:
-                reportFromDate,
-        },
-    };
-
-    if (
-        employeeId &&
-        mongoose.Types.ObjectId.isValid(
-            employeeId
-        )
-    ) {
-        leaveQuery.employeeId =
-            new mongoose.Types.ObjectId(
-                employeeId
-            );
-    }
-
-    const leaves =
-        await LeaveRequest.find(
-            leaveQuery
-        )
-            .select({
-                employeeId: 1,
-                fromDate: 1,
-                toDate: 1,
-                duration: 1,
-                leaveType: 1,
-                reason: 1,
-            })
-            .lean();
-
-    approvedLeaves.push(
-        ...leaves
-    );
-}
-
-/* =========================================================
-   DATE HELPERS FOR REPORT
-========================================================= */
-
-function reportDatesBetween(
-    start,
-    end
-) {
-    const output = [];
-
-    const startDate =
-        new Date(
-            `${start}T00:00:00+05:30`
-        );
-
-    const endDate =
-        new Date(
-            `${end}T00:00:00+05:30`
-        );
-
-    if (
-        Number.isNaN(
-            startDate.getTime()
-        ) ||
-        Number.isNaN(
-            endDate.getTime()
-        )
-    ) {
-        return output;
-    }
-
-    const cursor =
-        new Date(
-            startDate
-        );
-
-    while (
-        cursor <= endDate
-    ) {
-        const value =
-            new Intl.DateTimeFormat(
-                "en-CA",
-                {
-                    timeZone:
-                        "Asia/Kolkata",
-
-                    year:
-                        "numeric",
-
-                    month:
-                        "2-digit",
-
-                    day:
-                        "2-digit",
-                }
-            ).format(
-                cursor
-            );
-
-        output.push(
-            value
-        );
-
-        cursor.setDate(
-            cursor.getDate() +
-                1
-        );
-    }
-
-    return output;
-}
-
-function reportIsSunday(
-    dateString
-) {
-    const value =
-        new Date(
-            `${dateString}T00:00:00+05:30`
-        );
-
-    return (
-        value.getDay() ===
-        0
-    );
-}
-
-function findApprovedLeave(
-    employeeIdValue,
-    date
-) {
-    return approvedLeaves.find(
-        (leave) =>
-            String(
-                leave.employeeId
-            ) ===
-                String(
-                    employeeIdValue
-                ) &&
-            leave.fromDate <=
-                date &&
-            leave.toDate >=
-                date
-    );
-}
-
-/* =========================================================
-   EXISTING ATTENDANCE LOOKUP
-========================================================= */
-
-const attendanceMap =
-    new Map();
-
-for (
-    const record of
-    databaseRecords
-) {
-    const key =
-        `${String(
-            record.employeeId
-        )}|${record.date}`;
-
-    attendanceMap.set(
-        key,
-        record
-    );
-}
-
-/* =========================================================
-   START WITH REAL DATABASE RECORDS
-========================================================= */
-
-let records =
-    databaseRecords.map(
-        (record) => ({
-            ...record,
-        })
-    );
-
-/* =========================================================
-   CREATE VIRTUAL ABSENT / LEAVE RECORDS
-========================================================= */
-
-for (
-    const employee of
-    employees
-) {
-    const dates =
-        reportDatesBetween(
-            reportFromDate,
-            reportToDate
-        );
-
-    for (
-        const date of
-        dates
-    ) {
-        /*
-         * Never calculate future date.
-         */
-        if (
-            date > today
-        ) {
-            continue;
-        }
-
-        /*
-         * Before joining date.
-         */
-        if (
-            employee.joiningDate &&
-            date <
-                employee.joiningDate
-        ) {
-            continue;
-        }
-
-        /*
-         * Sunday = weekly off.
-         */
-        if (
-            reportIsSunday(
-                date
-            )
-        ) {
-            continue;
-        }
-
-        /*
-         * Company/National holiday.
-         */
-        if (
-            holidayMap.has(
-                date
-            )
-        ) {
-            continue;
-        }
-
-        const key =
-            `${String(
-                employee._id
-            )}|${date}`;
-
-        /*
-         * Real attendance exists.
-         */
-        if (
-            attendanceMap.has(
-                key
-            )
-        ) {
-            continue;
-        }
-
-        const approvedLeave =
-            findApprovedLeave(
-                employee._id,
-                date
-            );
-
-        /* =================================================
-           APPROVED LEAVE
-        ================================================= */
-
-        if (
-            approvedLeave
-        ) {
             /*
-             * Full-day approved leave.
+             * If user selected dates,
+             * use selected dates.
+             *
+             * Otherwise report current month
+             * from 1st day until today.
              */
+            const currentMonth =
+                today.substring(
+                    0,
+                    7
+                );
+
+            const reportFromDate =
+                fromDate ||
+                `${currentMonth}-01`;
+
+            const reportToDate =
+                toDate &&
+                    toDate < today
+                    ? toDate
+                    : today;
+
+            /* =========================================================
+               LOAD EMPLOYEES
+            ========================================================= */
+
+            const employeeQuery = {
+                isActive: {
+                    $ne: false,
+                },
+            };
+
             if (
-                !approvedLeave.duration ||
-                approvedLeave.duration ===
-                    "Full Day"
-            ) {
-                records.push({
-                    _id:
-                        `LEAVE-${employee._id}-${date}`,
-
-                    id:
-                        `LEAVE-${employee._id}-${date}`,
-
-                    employeeId:
-                        employee._id,
-
-                    employeeCode:
-                        employee.employeeCode ||
-                        "",
-
-                    employeeName:
-                        employee.name ||
-                        "",
-
-                    department:
-                        employee.department ||
-                        "",
-
-                    role:
-                        employee.role ||
-                        "",
-
-                    date,
-
-                    loginTime:
-                        null,
-
-                    logoutTime:
-                        null,
-
-                    totalBreakMinutes:
-                        0,
-
-                    totalWorkedMinutes:
-                        0,
-
-                    shiftStart:
-                        "10:00",
-
-                    shiftEnd:
-                        "18:00",
-
-                    lateMinutes:
-                        0,
-
-                    earlyLogoutMinutes:
-                        0,
-
-                    overtimeMinutes:
-                        0,
-
-                    status:
-                        "On Leave",
-
-                    workStatus:
-                        "On Leave",
-
-                    isAutoClosed:
-                        false,
-
-                    autoClosedReason:
-                        approvedLeave.leaveType
-                            ? `Approved ${approvedLeave.leaveType}`
-                            : "Approved Leave",
-
-                    isGenerated:
-                        true,
-                });
-
-                continue;
-            }
-        }
-
-        /* =================================================
-           NO ATTENDANCE = ABSENT
-        ================================================= */
-
-        records.push({
-            _id:
-                `ABSENT-${employee._id}-${date}`,
-
-            id:
-                `ABSENT-${employee._id}-${date}`,
-
-            employeeId:
-                employee._id,
-
-            employeeCode:
-                employee.employeeCode ||
-                "",
-
-            employeeName:
-                employee.name ||
-                "",
-
-            department:
-                employee.department ||
-                "",
-
-            role:
-                employee.role ||
-                "",
-
-            date,
-
-            loginTime:
-                null,
-
-            logoutTime:
-                null,
-
-            totalBreakMinutes:
-                0,
-
-            totalWorkedMinutes:
-                0,
-
-            shiftStart:
-                "10:00",
-
-            shiftEnd:
-                "18:00",
-
-            lateMinutes:
-                0,
-
-            earlyLogoutMinutes:
-                0,
-
-            overtimeMinutes:
-                0,
-
-            status:
-                "Absent",
-
-            workStatus:
-                "Logged Out",
-
-            isAutoClosed:
-                false,
-
-            autoClosedReason:
-                "No attendance recorded",
-
-            isGenerated:
-                true,
-        });
-    }
-}
-
-/* =========================================================
-   APPLY STATUS FILTER AFTER ABSENT GENERATION
-========================================================= */
-
-if (
-    status &&
-    status !== "All"
-) {
-    records =
-        records.filter(
-            (record) =>
-                record.status ===
-                status
-        );
-}
-
-/* =========================================================
-   SORT COMPLETE REPORT
-========================================================= */
-
-records.sort(
-    (a, b) => {
-        const dateCompare =
-            String(
-                b.date || ""
-            ).localeCompare(
-                String(
-                    a.date || ""
+                employeeId &&
+                mongoose.Types.ObjectId.isValid(
+                    employeeId
                 )
+            ) {
+                employeeQuery._id =
+                    new mongoose.Types.ObjectId(
+                        employeeId
+                    );
+            }
+
+            const employees =
+                await Employee.find(
+                    employeeQuery
+                )
+                    .select({
+                        employeeCode: 1,
+                        name: 1,
+                        department: 1,
+                        role: 1,
+                        joiningDate: 1,
+                    })
+                    .sort({
+                        name: 1,
+                    })
+                    .lean();
+
+            /* =========================================================
+               LOAD HOLIDAYS
+            ========================================================= */
+
+            const holidayMap =
+                new Map();
+
+            if (Holiday) {
+                const holidays =
+                    await Holiday.find({
+                        isActive: true,
+
+                        date: {
+                            $gte:
+                                reportFromDate,
+
+                            $lte:
+                                reportToDate,
+                        },
+                    })
+                        .select({
+                            date: 1,
+                            name: 1,
+                            type: 1,
+                        })
+                        .lean();
+
+                for (
+                    const holiday of
+                    holidays
+                ) {
+                    /*
+                     * Optional holidays do NOT automatically
+                     * make the company closed.
+                     */
+                    if (
+                        holiday.type !==
+                        "Optional"
+                    ) {
+                        holidayMap.set(
+                            holiday.date,
+                            holiday
+                        );
+                    }
+                }
+            }
+
+            /* =========================================================
+               LOAD APPROVED LEAVES
+            ========================================================= */
+
+            const approvedLeaves = [];
+
+            if (LeaveRequest) {
+                const leaveQuery = {
+                    status:
+                        "Approved",
+
+                    fromDate: {
+                        $lte:
+                            reportToDate,
+                    },
+
+                    toDate: {
+                        $gte:
+                            reportFromDate,
+                    },
+                };
+
+                if (
+                    employeeId &&
+                    mongoose.Types.ObjectId.isValid(
+                        employeeId
+                    )
+                ) {
+                    leaveQuery.employeeId =
+                        new mongoose.Types.ObjectId(
+                            employeeId
+                        );
+                }
+
+                const leaves =
+                    await LeaveRequest.find(
+                        leaveQuery
+                    )
+                        .select({
+                            employeeId: 1,
+                            fromDate: 1,
+                            toDate: 1,
+                            duration: 1,
+                            leaveType: 1,
+                            reason: 1,
+                        })
+                        .lean();
+
+                approvedLeaves.push(
+                    ...leaves
+                );
+            }
+
+            /* =========================================================
+               DATE HELPERS FOR REPORT
+            ========================================================= */
+
+            function reportDatesBetween(
+                start,
+                end
+            ) {
+                const output = [];
+
+                const startDate =
+                    new Date(
+                        `${start}T00:00:00+05:30`
+                    );
+
+                const endDate =
+                    new Date(
+                        `${end}T00:00:00+05:30`
+                    );
+
+                if (
+                    Number.isNaN(
+                        startDate.getTime()
+                    ) ||
+                    Number.isNaN(
+                        endDate.getTime()
+                    )
+                ) {
+                    return output;
+                }
+
+                const cursor =
+                    new Date(
+                        startDate
+                    );
+
+                while (
+                    cursor <= endDate
+                ) {
+                    const value =
+                        new Intl.DateTimeFormat(
+                            "en-CA",
+                            {
+                                timeZone:
+                                    "Asia/Kolkata",
+
+                                year:
+                                    "numeric",
+
+                                month:
+                                    "2-digit",
+
+                                day:
+                                    "2-digit",
+                            }
+                        ).format(
+                            cursor
+                        );
+
+                    output.push(
+                        value
+                    );
+
+                    cursor.setDate(
+                        cursor.getDate() +
+                        1
+                    );
+                }
+
+                return output;
+            }
+
+            function reportIsSunday(
+                dateString
+            ) {
+                const value =
+                    new Date(
+                        `${dateString}T00:00:00+05:30`
+                    );
+
+                return (
+                    value.getDay() ===
+                    0
+                );
+            }
+
+            function findApprovedLeave(
+                employeeIdValue,
+                date
+            ) {
+                return approvedLeaves.find(
+                    (leave) =>
+                        String(
+                            leave.employeeId
+                        ) ===
+                        String(
+                            employeeIdValue
+                        ) &&
+                        leave.fromDate <=
+                        date &&
+                        leave.toDate >=
+                        date
+                );
+            }
+
+            /* =========================================================
+               EXISTING ATTENDANCE LOOKUP
+            ========================================================= */
+
+            const attendanceMap =
+                new Map();
+
+            for (
+                const record of
+                databaseRecords
+            ) {
+                const key =
+                    `${String(
+                        record.employeeId
+                    )}|${record.date}`;
+
+                attendanceMap.set(
+                    key,
+                    record
+                );
+            }
+
+            /* =========================================================
+               START WITH REAL DATABASE RECORDS
+            ========================================================= */
+
+            let records =
+                databaseRecords.map(
+                    (record) => ({
+                        ...record,
+                    })
+                );
+
+            /* =========================================================
+               CREATE VIRTUAL ABSENT / LEAVE RECORDS
+            ========================================================= */
+
+            for (
+                const employee of
+                employees
+            ) {
+                const dates =
+                    reportDatesBetween(
+                        reportFromDate,
+                        reportToDate
+                    );
+
+                for (
+                    const date of
+                    dates
+                ) {
+                    /*
+                     * Never calculate future date.
+                     */
+                    if (
+                        date > today
+                    ) {
+                        continue;
+                    }
+
+                    /*
+                     * Before joining date.
+                     */
+                    if (
+                        employee.joiningDate &&
+                        date <
+                        employee.joiningDate
+                    ) {
+                        continue;
+                    }
+
+                    /*
+                     * Sunday = weekly off.
+                     */
+                    if (
+                        reportIsSunday(
+                            date
+                        )
+                    ) {
+                        continue;
+                    }
+
+                    /*
+                     * Company/National holiday.
+                     */
+                    if (
+                        holidayMap.has(
+                            date
+                        )
+                    ) {
+                        continue;
+                    }
+
+                    const key =
+                        `${String(
+                            employee._id
+                        )}|${date}`;
+
+                    /*
+                     * Real attendance exists.
+                     */
+                    if (
+                        attendanceMap.has(
+                            key
+                        )
+                    ) {
+                        continue;
+                    }
+
+                    const approvedLeave =
+                        findApprovedLeave(
+                            employee._id,
+                            date
+                        );
+
+                    /* =================================================
+                       APPROVED LEAVE
+                    ================================================= */
+
+                    if (
+                        approvedLeave
+                    ) {
+                        /*
+                         * Full-day approved leave.
+                         */
+                        if (
+                            !approvedLeave.duration ||
+                            approvedLeave.duration ===
+                            "Full Day"
+                        ) {
+                            records.push({
+                                _id:
+                                    `LEAVE-${employee._id}-${date}`,
+
+                                id:
+                                    `LEAVE-${employee._id}-${date}`,
+
+                                employeeId:
+                                    employee._id,
+
+                                employeeCode:
+                                    employee.employeeCode ||
+                                    "",
+
+                                employeeName:
+                                    employee.name ||
+                                    "",
+
+                                department:
+                                    employee.department ||
+                                    "",
+
+                                role:
+                                    employee.role ||
+                                    "",
+
+                                date,
+
+                                loginTime:
+                                    null,
+
+                                logoutTime:
+                                    null,
+
+                                totalBreakMinutes:
+                                    0,
+
+                                totalWorkedMinutes:
+                                    0,
+
+                                shiftStart:
+                                    "10:00",
+
+                                shiftEnd:
+                                    "18:00",
+
+                                lateMinutes:
+                                    0,
+
+                                earlyLogoutMinutes:
+                                    0,
+
+                                overtimeMinutes:
+                                    0,
+
+                                status:
+                                    "On Leave",
+
+                                workStatus:
+                                    "On Leave",
+
+                                isAutoClosed:
+                                    false,
+
+                                autoClosedReason:
+                                    approvedLeave.leaveType
+                                        ? `Approved ${approvedLeave.leaveType}`
+                                        : "Approved Leave",
+
+                                isGenerated:
+                                    true,
+                            });
+
+                            continue;
+                        }
+                    }
+
+                    /* =================================================
+                       NO ATTENDANCE = ABSENT
+                    ================================================= */
+
+                    records.push({
+                        _id:
+                            `ABSENT-${employee._id}-${date}`,
+
+                        id:
+                            `ABSENT-${employee._id}-${date}`,
+
+                        employeeId:
+                            employee._id,
+
+                        employeeCode:
+                            employee.employeeCode ||
+                            "",
+
+                        employeeName:
+                            employee.name ||
+                            "",
+
+                        department:
+                            employee.department ||
+                            "",
+
+                        role:
+                            employee.role ||
+                            "",
+
+                        date,
+
+                        loginTime:
+                            null,
+
+                        logoutTime:
+                            null,
+
+                        totalBreakMinutes:
+                            0,
+
+                        totalWorkedMinutes:
+                            0,
+
+                        shiftStart:
+                            "10:00",
+
+                        shiftEnd:
+                            "18:00",
+
+                        lateMinutes:
+                            0,
+
+                        earlyLogoutMinutes:
+                            0,
+
+                        overtimeMinutes:
+                            0,
+
+                        status:
+                            "Absent",
+
+                        workStatus:
+                            "Logged Out",
+
+                        isAutoClosed:
+                            false,
+
+                        autoClosedReason:
+                            "No attendance recorded",
+
+                        isGenerated:
+                            true,
+                    });
+                }
+            }
+
+            /* =========================================================
+               APPLY STATUS FILTER AFTER ABSENT GENERATION
+            ========================================================= */
+
+            if (
+                status &&
+                status !== "All"
+            ) {
+                records =
+                    records.filter(
+                        (record) =>
+                            record.status ===
+                            status
+                    );
+            }
+
+            /* =========================================================
+               SORT COMPLETE REPORT
+            ========================================================= */
+
+            records.sort(
+                (a, b) => {
+                    const dateCompare =
+                        String(
+                            b.date || ""
+                        ).localeCompare(
+                            String(
+                                a.date || ""
+                            )
+                        );
+
+                    if (
+                        dateCompare !== 0
+                    ) {
+                        return dateCompare;
+                    }
+
+                    return String(
+                        a.employeeName ||
+                        ""
+                    ).localeCompare(
+                        String(
+                            b.employeeName ||
+                            ""
+                        )
+                    );
+                }
             );
-
-        if (
-            dateCompare !== 0
-        ) {
-            return dateCompare;
-        }
-
-        return String(
-            a.employeeName ||
-                ""
-        ).localeCompare(
-            String(
-                b.employeeName ||
-                    ""
-            )
-        );
-    }
-);
             const summary =
                 records.reduce(
                     (
@@ -7112,74 +7112,74 @@ records.sort(
                 }
             }
 
-           const employeeSummary =
-    [...employeeMap.values()]
-        .map((employee) => {
+            const employeeSummary =
+                [...employeeMap.values()]
+                    .map((employee) => {
 
-            /*
-             * ATTENDANCE CALCULATION
-             *
-             * Present  = 1 day
-             * Late     = 1 day
-             * Half Day = 0.5 day
-             * Absent   = 0 day
-             * Leave    = 0 day
-             */
+                        /*
+                         * ATTENDANCE CALCULATION
+                         *
+                         * Present  = 1 day
+                         * Late     = 1 day
+                         * Half Day = 0.5 day
+                         * Absent   = 0 day
+                         * Leave    = 0 day
+                         */
 
-            const totalAttendanceRecords =
-                Number(employee.present || 0) +
-                Number(employee.late || 0) +
-                Number(employee.halfDay || 0) +
-                Number(employee.absent || 0) +
-                Number(employee.leave || 0);
+                        const totalAttendanceRecords =
+                            Number(employee.present || 0) +
+                            Number(employee.late || 0) +
+                            Number(employee.halfDay || 0) +
+                            Number(employee.absent || 0) +
+                            Number(employee.leave || 0);
 
-            const effectivePresentDays =
-                Number(employee.present || 0) +
-                Number(employee.late || 0) +
-                Number(employee.halfDay || 0) * 0.5;
+                        const effectivePresentDays =
+                            Number(employee.present || 0) +
+                            Number(employee.late || 0) +
+                            Number(employee.halfDay || 0) * 0.5;
 
-            const attendancePercentage =
-                totalAttendanceRecords > 0
-                    ? Number(
-                        (
-                            effectivePresentDays /
-                            totalAttendanceRecords *
-                            100
-                        ).toFixed(1)
-                    )
-                    : 0;
+                        const attendancePercentage =
+                            totalAttendanceRecords > 0
+                                ? Number(
+                                    (
+                                        effectivePresentDays /
+                                        totalAttendanceRecords *
+                                        100
+                                    ).toFixed(1)
+                                )
+                                : 0;
 
-            return {
-                ...employee,
+                        return {
+                            ...employee,
 
-                averageWorkedMinutes:
-                    employee.attendanceDays > 0
-                        ? Math.round(
-                            employee.totalWorkedMinutes /
-                            employee.attendanceDays
+                            averageWorkedMinutes:
+                                employee.attendanceDays > 0
+                                    ? Math.round(
+                                        employee.totalWorkedMinutes /
+                                        employee.attendanceDays
+                                    )
+                                    : 0,
+
+                            averageBreakMinutes:
+                                employee.attendanceDays > 0
+                                    ? Math.round(
+                                        employee.totalBreakMinutes /
+                                        employee.attendanceDays
+                                    )
+                                    : 0,
+
+                            attendancePercentage,
+                        };
+                    })
+                    .sort((a, b) =>
+                        String(
+                            a.employeeName || ""
+                        ).localeCompare(
+                            String(
+                                b.employeeName || ""
+                            )
                         )
-                        : 0,
-
-                averageBreakMinutes:
-                    employee.attendanceDays > 0
-                        ? Math.round(
-                            employee.totalBreakMinutes /
-                            employee.attendanceDays
-                        )
-                        : 0,
-
-                attendancePercentage,
-            };
-        })
-        .sort((a, b) =>
-            String(
-                a.employeeName || ""
-            ).localeCompare(
-                String(
-                    b.employeeName || ""
-                )
-            )
-        );
+                    );
 
             /* =========================================================
                SPECIAL REPORT DATASETS

@@ -1738,11 +1738,11 @@ async function ensureLeaveBalances(
         },
       },
 
-      {
-        upsert: true,
-        new: true,
-        setDefaultsOnInsert: true,
-      }
+ {
+  upsert: true,
+  returnDocument: "after",
+  setDefaultsOnInsert: true,
+}
     );
   }
 

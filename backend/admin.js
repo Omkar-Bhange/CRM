@@ -2175,6 +2175,46 @@ const clientProductSchema =
         ],
         default: "Standard",
       },
+      acquisitionType: {
+  type: String,
+  enum: [
+    "Product Sale",
+    "Legacy / Historical",
+    "Migration",
+  ],
+  default: "Legacy / Historical",
+},
+
+productSaleId: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "ProductSale",
+  default: null,
+},
+
+productSaleCode: {
+  type: String,
+  default: "",
+  trim: true,
+  uppercase: true,
+},
+
+originalInvoiceNo: {
+  type: String,
+  default: "",
+  trim: true,
+  uppercase: true,
+},
+
+originalPurchaseAmount: {
+  type: Number,
+  default: 0,
+  min: 0,
+},
+
+historicalDataComplete: {
+  type: Boolean,
+  default: false,
+},
 
       amcStatus: {
         type: String,
@@ -2493,6 +2533,1157 @@ const Client =
     clientSchema
   );
 
+  /* =====================================================
+   PRODUCT SALE / INITIAL PRODUCT INVOICE
+===================================================== */
+
+/*
+ * This collection stores the ORIGINAL commercial sale
+ * of software/products to a client.
+ *
+ * IMPORTANT:
+ *
+ * ProductSale        = original software/product purchase
+ * AmcInvoice         = yearly maintenance/support invoice
+ *
+ * They are intentionally separate financial records.
+ */
+
+const productSaleItemSchema =
+  new mongoose.Schema(
+    {
+      /*
+       * Product Master reference.
+       */
+      productId: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+
+        ref:
+          "Product",
+
+        required: [
+          true,
+          "Product is required.",
+        ],
+
+        index:
+          true,
+      },
+
+      /*
+       * Snapshot fields.
+       *
+       * Product Master may change later, but an old
+       * invoice must always keep the original name/code.
+       */
+      productCode: {
+        type:
+          String,
+
+        required:
+          true,
+
+        trim:
+          true,
+
+        uppercase:
+          true,
+      },
+
+      productName: {
+        type:
+          String,
+
+        required:
+          true,
+
+        trim:
+          true,
+      },
+
+      version: {
+        type:
+          String,
+
+        default:
+          "",
+
+        trim:
+          true,
+      },
+
+      /*
+       * This will be populated after the sale creates
+       * the corresponding entry inside client.products[].
+       */
+      clientProductId: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+
+        default:
+          null,
+
+        index:
+          true,
+      },
+
+      licenceType: {
+        type:
+          String,
+
+        enum: [
+          "Perpetual Licence",
+          "Annual Licence",
+          "Monthly Subscription",
+        ],
+
+        default:
+          "Perpetual Licence",
+      },
+
+      licensedUsers: {
+        type:
+          Number,
+
+        default:
+          1,
+
+        min:
+          1,
+      },
+
+      quantity: {
+        type:
+          Number,
+
+        default:
+          1,
+
+        min:
+          1,
+      },
+
+      /*
+       * COMMERCIAL VALUE
+       */
+      rate: {
+        type:
+          Number,
+
+        default:
+          0,
+
+        min:
+          0,
+      },
+
+      grossAmount: {
+        type:
+          Number,
+
+        default:
+          0,
+
+        min:
+          0,
+      },
+
+      discountAmount: {
+        type:
+          Number,
+
+        default:
+          0,
+
+        min:
+          0,
+      },
+
+      taxableAmount: {
+        type:
+          Number,
+
+        default:
+          0,
+
+        min:
+          0,
+      },
+
+      gstRate: {
+        type:
+          Number,
+
+        default:
+          18,
+
+        min:
+          0,
+      },
+
+      cgstAmount: {
+        type:
+          Number,
+
+        default:
+          0,
+
+        min:
+          0,
+      },
+
+      sgstAmount: {
+        type:
+          Number,
+
+        default:
+          0,
+
+        min:
+          0,
+      },
+
+      igstAmount: {
+        type:
+          Number,
+
+        default:
+          0,
+
+        min:
+          0,
+      },
+
+      totalAmount: {
+        type:
+          Number,
+
+        default:
+          0,
+
+        min:
+          0,
+      },
+
+      /*
+       * IMPLEMENTATION / SUPPORT
+       */
+
+      purchaseDate: {
+        type:
+          Date,
+
+        default:
+          null,
+      },
+
+      installationDate: {
+        type:
+          Date,
+
+        default:
+          null,
+      },
+
+      warrantyMonths: {
+        type:
+          Number,
+
+        default:
+          12,
+
+        min:
+          0,
+      },
+
+      warrantyStartDate: {
+        type:
+          Date,
+
+        default:
+          null,
+      },
+
+      warrantyEndDate: {
+        type:
+          Date,
+
+        default:
+          null,
+      },
+
+      supportType: {
+        type:
+          String,
+
+        enum: [
+          "Basic",
+          "Standard",
+          "Premium",
+        ],
+
+        default:
+          "Standard",
+      },
+
+      installationStatus: {
+        type:
+          String,
+
+        enum: [
+          "Not Installed",
+          "Installation Pending",
+          "Installed",
+          "Inactive",
+        ],
+
+        default:
+          "Not Installed",
+      },
+
+      /*
+       * AMC configuration for this product.
+       *
+       * This does NOT create an AMC invoice yet.
+       * It only remembers what should happen after
+       * warranty/free-support ends.
+       */
+      amcApplicable: {
+        type:
+          Boolean,
+
+        default:
+          true,
+      },
+
+      proposedAmcAmount: {
+        type:
+          Number,
+
+        default:
+          0,
+
+        min:
+          0,
+      },
+
+      notes: {
+        type:
+          String,
+
+        default:
+          "",
+
+        trim:
+          true,
+      },
+    },
+    {
+      _id:
+        true,
+
+      timestamps:
+        true,
+    }
+  );
+
+
+const productSaleSchema =
+  new mongoose.Schema(
+    {
+      /*
+       * Internal sale number.
+       *
+       * Example:
+       * SAL-2026-0001
+       */
+      saleCode: {
+        type:
+          String,
+
+        required:
+          true,
+
+        unique:
+          true,
+
+        trim:
+          true,
+
+        uppercase:
+          true,
+
+        index:
+          true,
+      },
+
+      /*
+       * Numeric running sequence.
+       */
+      saleNumber: {
+        type:
+          Number,
+
+        required:
+          true,
+
+        min:
+          1,
+
+        index:
+          true,
+      },
+
+      /*
+       * Your actual invoice/reference number.
+       */
+      invoiceNo: {
+        type:
+          String,
+
+        default:
+          "",
+
+        trim:
+          true,
+
+        uppercase:
+          true,
+
+        index:
+          true,
+      },
+
+      saleDate: {
+        type:
+          Date,
+
+        required: [
+          true,
+          "Sale date is required.",
+        ],
+
+        default:
+          Date.now,
+
+        index:
+          true,
+      },
+
+      invoiceDate: {
+        type:
+          Date,
+
+        default:
+          Date.now,
+
+        index:
+          true,
+      },
+
+      dueDate: {
+        type:
+          Date,
+
+        default:
+          null,
+
+        index:
+          true,
+      },
+
+      /* =================================================
+         CLIENT SNAPSHOT
+      ================================================= */
+
+      clientId: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+
+        ref:
+          "Client",
+
+        required: [
+          true,
+          "Client is required.",
+        ],
+
+        index:
+          true,
+      },
+
+      clientCode: {
+        type:
+          String,
+
+        required:
+          true,
+
+        trim:
+          true,
+
+        uppercase:
+          true,
+
+        index:
+          true,
+      },
+
+      clientName: {
+        type:
+          String,
+
+        required:
+          true,
+
+        trim:
+          true,
+
+        index:
+          true,
+      },
+
+      contactPerson: {
+        type:
+          String,
+
+        default:
+          "",
+
+        trim:
+          true,
+      },
+
+      mobile: {
+        type:
+          String,
+
+        default:
+          "",
+
+        trim:
+          true,
+      },
+
+      email: {
+        type:
+          String,
+
+        default:
+          "",
+
+        trim:
+          true,
+
+        lowercase:
+          true,
+      },
+
+      gstNo: {
+        type:
+          String,
+
+        default:
+          "",
+
+        trim:
+          true,
+
+        uppercase:
+          true,
+      },
+
+      state: {
+        type:
+          String,
+
+        default:
+          "",
+
+        trim:
+          true,
+      },
+
+      billingAddress: {
+        type:
+          String,
+
+        default:
+          "",
+
+        trim:
+          true,
+      },
+
+      /* =================================================
+         PRODUCTS
+      ================================================= */
+
+      items: {
+        type: [
+          productSaleItemSchema
+        ],
+
+        validate: {
+          validator:
+            function (
+              value
+            ) {
+              return (
+                Array.isArray(
+                  value
+                ) &&
+                value.length >
+                  0
+              );
+            },
+
+          message:
+            "At least one product is required.",
+        },
+      },
+
+      /* =================================================
+         INVOICE TOTALS
+      ================================================= */
+
+      grossAmount: {
+        type:
+          Number,
+
+        default:
+          0,
+
+        min:
+          0,
+      },
+
+      discountAmount: {
+        type:
+          Number,
+
+        default:
+          0,
+
+        min:
+          0,
+      },
+
+      taxableAmount: {
+        type:
+          Number,
+
+        default:
+          0,
+
+        min:
+          0,
+      },
+
+      cgstAmount: {
+        type:
+          Number,
+
+        default:
+          0,
+
+        min:
+          0,
+      },
+
+      sgstAmount: {
+        type:
+          Number,
+
+        default:
+          0,
+
+        min:
+          0,
+      },
+
+      igstAmount: {
+        type:
+          Number,
+
+        default:
+          0,
+
+        min:
+          0,
+      },
+
+      roundOff: {
+        type:
+          Number,
+
+        default:
+          0,
+      },
+
+      totalAmount: {
+        type:
+          Number,
+
+        default:
+          0,
+
+        min:
+          0,
+      },
+
+      paidAmount: {
+        type:
+          Number,
+
+        default:
+          0,
+
+        min:
+          0,
+      },
+
+      pendingAmount: {
+        type:
+          Number,
+
+        default:
+          0,
+
+        min:
+          0,
+      },
+
+      paymentStatus: {
+        type:
+          String,
+
+        enum: [
+          "Unpaid",
+          "Partially Paid",
+          "Paid",
+          "Overdue",
+        ],
+
+        default:
+          "Unpaid",
+
+        index:
+          true,
+      },
+
+      status: {
+        type:
+          String,
+
+        enum: [
+          "Draft",
+          "Confirmed",
+          "Cancelled",
+        ],
+
+        default:
+          "Confirmed",
+
+        index:
+          true,
+      },
+
+      notes: {
+        type:
+          String,
+
+        default:
+          "",
+
+        trim:
+          true,
+      },
+
+      /* =================================================
+         AUDIT
+      ================================================= */
+
+      createdBy: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+
+        ref:
+          "User",
+
+        default:
+          null,
+      },
+
+      createdByName: {
+        type:
+          String,
+
+        default:
+          "",
+
+        trim:
+          true,
+      },
+
+      updatedBy: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+
+        ref:
+          "User",
+
+        default:
+          null,
+      },
+
+      updatedByName: {
+        type:
+          String,
+
+        default:
+          "",
+
+        trim:
+          true,
+      },
+
+      isDeleted: {
+        type:
+          Boolean,
+
+        default:
+          false,
+
+        index:
+          true,
+      },
+
+      deletedAt: {
+        type:
+          Date,
+
+        default:
+          null,
+      },
+
+      deletedBy: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+
+        ref:
+          "User",
+
+        default:
+          null,
+      },
+
+      deletedByName: {
+        type:
+          String,
+
+        default:
+          "",
+
+        trim:
+          true,
+      },
+    },
+    {
+      timestamps:
+        true,
+
+      collection:
+        "productsales",
+    }
+  );
+
+
+productSaleSchema.index({
+  saleCode:
+    "text",
+
+  invoiceNo:
+    "text",
+
+  clientCode:
+    "text",
+
+  clientName:
+    "text",
+
+  "items.productCode":
+    "text",
+
+  "items.productName":
+    "text",
+});
+
+
+productSaleSchema.index({
+  clientId:
+    1,
+
+  saleDate:
+    -1,
+});
+
+
+const ProductSale =
+  mongoose.models.ProductSale ||
+  mongoose.model(
+    "ProductSale",
+    productSaleSchema
+  );
+
+
+/* =====================================================
+   PRODUCT SALE PAYMENT
+===================================================== */
+
+/*
+ * Permanent payment records for original ProductSale.
+ *
+ * Do not store only a number in ProductSale.
+ * Every receipt/payment should have its own record.
+ */
+
+const productSalePaymentSchema =
+  new mongoose.Schema(
+    {
+      paymentCode: {
+        type:
+          String,
+
+        required:
+          true,
+
+        unique:
+          true,
+
+        uppercase:
+          true,
+
+        trim:
+          true,
+
+        index:
+          true,
+      },
+
+      paymentNumber: {
+        type:
+          Number,
+
+        required:
+          true,
+
+        min:
+          1,
+      },
+
+      productSaleId: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+
+        ref:
+          "ProductSale",
+
+        required:
+          true,
+
+        index:
+          true,
+      },
+
+      saleCode: {
+        type:
+          String,
+
+        required:
+          true,
+
+        uppercase:
+          true,
+
+        trim:
+          true,
+
+        index:
+          true,
+      },
+
+      clientId: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+
+        ref:
+          "Client",
+
+        required:
+          true,
+
+        index:
+          true,
+      },
+
+      clientCode: {
+        type:
+          String,
+
+        required:
+          true,
+
+        uppercase:
+          true,
+
+        trim:
+          true,
+      },
+
+      clientName: {
+        type:
+          String,
+
+        required:
+          true,
+
+        trim:
+          true,
+      },
+
+      amount: {
+        type:
+          Number,
+
+        required:
+          true,
+
+        min:
+          0.01,
+      },
+
+      paymentDate: {
+        type:
+          Date,
+
+        required:
+          true,
+
+        default:
+          Date.now,
+
+        index:
+          true,
+      },
+
+      mode: {
+        type:
+          String,
+
+        enum: [
+          "Cash",
+          "Bank Transfer",
+          "UPI",
+          "Cheque",
+          "Card",
+          "Other",
+        ],
+
+        default:
+          "Bank Transfer",
+      },
+
+      referenceNo: {
+        type:
+          String,
+
+        default:
+          "",
+
+        trim:
+          true,
+      },
+
+      notes: {
+        type:
+          String,
+
+        default:
+          "",
+
+        trim:
+          true,
+      },
+
+      createdBy: {
+        type:
+          mongoose.Schema.Types.ObjectId,
+
+        ref:
+          "User",
+
+        default:
+          null,
+      },
+
+      createdByName: {
+        type:
+          String,
+
+        default:
+          "",
+
+        trim:
+          true,
+      },
+
+      isDeleted: {
+        type:
+          Boolean,
+
+        default:
+          false,
+
+        index:
+          true,
+      },
+
+      deletedAt: {
+        type:
+          Date,
+
+        default:
+          null,
+      },
+    },
+    {
+      timestamps:
+        true,
+
+      collection:
+        "productsalepayments",
+    }
+  );
+
+
+productSalePaymentSchema.index({
+  productSaleId:
+    1,
+
+  paymentDate:
+    -1,
+});
+
+
+const ProductSalePayment =
+  mongoose.models
+    .ProductSalePayment ||
+  mongoose.model(
+    "ProductSalePayment",
+    productSalePaymentSchema
+  );
 /* =====================================================
  TASK SCHEMA
 ===================================================== */
@@ -4853,6 +6044,55 @@ const AmcInvoice =
     amcInvoiceSchema
   );
 
+  async function getNextAmcInvoiceIdentity() {
+  const now =
+    new Date();
+
+  const year =
+    now.getFullYear();
+
+  /*
+   * Get the highest invoiceNumber currently stored.
+   */
+  const lastInvoice =
+    await AmcInvoice.findOne({
+      isDeleted: {
+        $ne: true,
+      },
+    })
+      .sort({
+        invoiceNumber: -1,
+        createdAt: -1,
+      })
+      .select(
+        "invoiceNumber invoiceCode"
+      )
+      .lean();
+
+  const nextNumber =
+    Math.max(
+      Number(
+        lastInvoice?.invoiceNumber ||
+        0
+      ) + 1,
+      1
+    );
+
+  const invoiceCode =
+    `AMC-INV-${year}-${String(
+      nextNumber
+    ).padStart(
+      4,
+      "0"
+    )}`;
+
+  return {
+    invoiceNumber:
+      nextNumber,
+
+    invoiceCode,
+  };
+}
 /* =====================================================
    AMC PAYMENT SCHEMA
 ===================================================== */
@@ -5257,6 +6497,7 @@ const ClientDocument =
   mongoose.model("ClientDocument", clientDocumentSchema);
 
 
+
   async function generateRequirementCode() {
   const year =
     new Date().getFullYear();
@@ -5334,6 +6575,100 @@ function generateAmcInvoiceCode() {
       .padStart(3, "0")}`.slice(-8);
 
   return `AMC-INV-${year}-${uniquePart}`;
+}
+/* =====================================================
+   PRODUCT SALE NUMBER GENERATOR
+===================================================== */
+
+/*
+ * Generates:
+ *
+ * SAL-2026-0001
+ * SAL-2026-0002
+ * SAL-2026-0003
+ */
+
+async function generateProductSaleCode() {
+  const year =
+    new Date().getFullYear();
+
+  const prefix =
+    `SAL-${year}-`;
+
+  const lastSale =
+    await ProductSale.findOne({
+      saleCode: {
+        $regex: `^${prefix}`,
+      },
+    })
+      .sort({
+        saleNumber: -1,
+      })
+      .lean();
+
+  const nextNumber =
+    lastSale
+      ? Number(
+          lastSale.saleNumber || 0
+        ) + 1
+      : 1;
+
+  return {
+    saleNumber:
+      nextNumber,
+
+    saleCode:
+      `${prefix}${String(
+        nextNumber
+      ).padStart(4, "0")}`,
+  };
+}
+
+
+/* =====================================================
+   PRODUCT SALE PAYMENT NUMBER
+===================================================== */
+
+/*
+ * Generates:
+ *
+ * PSP-2026-0001
+ */
+
+async function generateProductSalePaymentCode() {
+  const year =
+    new Date().getFullYear();
+
+  const prefix =
+    `PSP-${year}-`;
+
+  const lastPayment =
+    await ProductSalePayment.findOne({
+      paymentCode: {
+        $regex: `^${prefix}`,
+      },
+    })
+      .sort({
+        paymentNumber: -1,
+      })
+      .lean();
+
+  const nextNumber =
+    lastPayment
+      ? Number(
+          lastPayment.paymentNumber || 0
+        ) + 1
+      : 1;
+
+  return {
+    paymentNumber:
+      nextNumber,
+
+    paymentCode:
+      `${prefix}${String(
+        nextNumber
+      ).padStart(4, "0")}`,
+  };
 }
 
 function generateAmcPaymentCode() {
@@ -12536,110 +13871,1363 @@ router.get(
    GET /api/admin/client/:id/amc
 ===================================================== */
 
-router.get("/client/:id/amc", async (req, res) => {
-  try {
-    const { id } = req.params;
+/* =====================================================
+   GET CLIENT AMC
+   GET /api/admin/client/:id/amc
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
+   Enterprise AMC history.
+
+   Financial source of truth:
+   AmcInvoice -> AmcPayment
+
+   IMPORTANT:
+   - Every AMC cycle is one permanent AmcInvoice.
+   - Old invoices remain unchanged after renewal.
+   - Payments remain linked to the exact invoice through
+     amcInvoiceId.
+   - Client AMC Management and AMC & Billing can now use
+     the same invoice-based figures.
+===================================================== */
+
+router.get(
+  "/client/:id/amc",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      /* ===============================================
+         VALIDATE CLIENT
+      =============================================== */
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid client ID.",
+        });
+      }
+
+      const client =
+        await Client.findOne({
+          _id: id,
+          isDeleted: {
+            $ne: true,
+          },
+        })
+          .select(
+            "_id clientCode companyName amcStatus nextRenewal"
+          )
+          .lean();
+
+      if (!client) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Client was not found.",
+        });
+      }
+
+      /* ===============================================
+         LOAD ALL AMC DATA FOR CLIENT
+      =============================================== */
+
+      const [
+        contracts,
+        invoices,
+        payments,
+      ] =
+        await Promise.all([
+          AmcContract.find({
+            clientId: id,
+            isDeleted: {
+              $ne: true,
+            },
+          })
+            .sort({
+              createdAt: -1,
+            })
+            .lean(),
+
+          AmcInvoice.find({
+            clientId: id,
+            isDeleted: {
+              $ne: true,
+            },
+            status: {
+              $ne: "Cancelled",
+            },
+          })
+            .sort({
+              contractStartDate: -1,
+              invoiceDate: -1,
+              createdAt: -1,
+            })
+            .lean(),
+
+          AmcPayment.find({
+            clientId: id,
+            isDeleted: {
+              $ne: true,
+            },
+          })
+            .sort({
+              paymentDate: -1,
+              createdAt: -1,
+            })
+            .lean(),
+        ]);
+
+      /* ===============================================
+         CONTRACT LOOKUP
+      =============================================== */
+
+      const contractMap =
+        new Map();
+
+      contracts.forEach(
+        (contract) => {
+          contractMap.set(
+            String(
+              contract._id
+            ),
+            contract
+          );
+
+          if (
+            contract.contractCode
+          ) {
+            contractMap.set(
+              String(
+                contract.contractCode
+              ),
+              contract
+            );
+          }
+        }
+      );
+
+      /* ===============================================
+         GROUP PAYMENTS BY AMC INVOICE
+      =============================================== */
+
+      const paymentsByInvoice =
+        new Map();
+
+      payments.forEach(
+        (payment) => {
+          const invoiceId =
+            String(
+              payment.amcInvoiceId ||
+              ""
+            );
+
+          if (!invoiceId) {
+            return;
+          }
+
+          if (
+            !paymentsByInvoice.has(
+              invoiceId
+            )
+          ) {
+            paymentsByInvoice.set(
+              invoiceId,
+              []
+            );
+          }
+
+          paymentsByInvoice
+            .get(
+              invoiceId
+            )
+            .push(
+              payment
+            );
+        }
+      );
+
+      /* ===============================================
+         BUILD PERMANENT INVOICE HISTORY
+
+         Each invoice is recalculated from the actual
+         payment records linked to that invoice.
+      =============================================== */
+
+      const invoiceHistory =
+        invoices.map(
+          (invoice) => {
+            const invoicePayments =
+              paymentsByInvoice.get(
+                String(
+                  invoice._id
+                )
+              ) ||
+              [];
+
+            const actualPaidAmount =
+              roundAmcAmount(
+                invoicePayments.reduce(
+                  (
+                    total,
+                    payment
+                  ) =>
+                    total +
+                    Number(
+                      payment.amount ||
+                      0
+                    ),
+                  0
+                )
+              );
+
+            const totalAmount =
+              roundAmcAmount(
+                Number(
+                  invoice.totalAmount ||
+                  0
+                )
+              );
+
+            const actualPendingAmount =
+              roundAmcAmount(
+                Math.max(
+                  totalAmount -
+                    actualPaidAmount,
+                  0
+                )
+              );
+
+            let paymentStatus =
+              "Pending";
+
+            if (
+              actualPendingAmount <=
+              0
+            ) {
+              paymentStatus =
+                "Paid";
+            } else if (
+              actualPaidAmount >
+              0
+            ) {
+              paymentStatus =
+                "Partially Paid";
+            } else {
+              const dueDate =
+                invoice.dueDate
+                  ? new Date(
+                      invoice.dueDate
+                    )
+                  : null;
+
+              if (
+                dueDate &&
+                !Number.isNaN(
+                  dueDate.getTime()
+                ) &&
+                dueDate <
+                  new Date()
+              ) {
+                paymentStatus =
+                  "Overdue";
+              }
+            }
+
+            const contract =
+              contractMap.get(
+                String(
+                  invoice.amcContractId ||
+                  ""
+                )
+              ) ||
+              contractMap.get(
+                String(
+                  invoice.contractCode ||
+                  ""
+                )
+              ) ||
+              null;
+
+            return {
+              id:
+                invoice._id,
+
+              _id:
+                invoice._id,
+
+              amcInvoiceId:
+                invoice._id,
+
+              invoiceCode:
+                invoice.invoiceCode ||
+                "",
+
+              invoiceNo:
+                invoice.invoiceCode ||
+                "",
+
+              invoiceNumber:
+                Number(
+                  invoice.invoiceNumber ||
+                  0
+                ),
+
+              amcContractId:
+                invoice.amcContractId ||
+                null,
+
+              contractCode:
+                invoice.contractCode ||
+                contract?.contractCode ||
+                "",
+
+              clientId:
+                invoice.clientId ||
+                client._id,
+
+              clientCode:
+                invoice.clientCode ||
+                client.clientCode ||
+                "",
+
+              clientName:
+                invoice.clientName ||
+                client.companyName ||
+                "",
+
+              productId:
+                invoice.productId ||
+                null,
+
+              productCode:
+                invoice.productCode ||
+                "",
+
+              productName:
+                invoice.productName ||
+                "",
+
+              productVersion:
+                invoice.productVersion ||
+                "",
+
+              plan:
+                invoice.plan ||
+                contract?.plan ||
+                "",
+
+              licensedUsers:
+                Number(
+                  invoice.licensedUsers ||
+                  contract?.licensedUsers ||
+                  0
+                ),
+
+              /* =======================================
+                 AMC CYCLE
+              ======================================= */
+
+              startDate:
+                invoice.contractStartDate ||
+                null,
+
+              endDate:
+                invoice.contractExpiryDate ||
+                null,
+
+              contractStartDate:
+                invoice.contractStartDate ||
+                null,
+
+              contractExpiryDate:
+                invoice.contractExpiryDate ||
+                null,
+
+              invoiceDate:
+                invoice.invoiceDate ||
+                null,
+
+              dueDate:
+                invoice.dueDate ||
+                null,
+
+              /* =======================================
+                 FINANCIALS
+              ======================================= */
+
+              grossAmount:
+                Number(
+                  invoice.grossAmount ||
+                  0
+                ),
+
+              discountAmount:
+                Number(
+                  invoice.discountAmount ||
+                  0
+                ),
+
+              taxableAmount:
+                Number(
+                  invoice.taxableAmount ||
+                  0
+                ),
+
+              cgstRate:
+                Number(
+                  invoice.cgstRate ||
+                  0
+                ),
+
+              sgstRate:
+                Number(
+                  invoice.sgstRate ||
+                  0
+                ),
+
+              igstRate:
+                Number(
+                  invoice.igstRate ||
+                  0
+                ),
+
+              cgstAmount:
+                Number(
+                  invoice.cgstAmount ||
+                  0
+                ),
+
+              sgstAmount:
+                Number(
+                  invoice.sgstAmount ||
+                  0
+                ),
+
+              igstAmount:
+                Number(
+                  invoice.igstAmount ||
+                  0
+                ),
+
+              totalAmount,
+
+              /*
+               * IMPORTANT:
+               *
+               * These are rebuilt from AmcPayment,
+               * not trusted blindly from invoice.paidAmount.
+               */
+              paidAmount:
+                actualPaidAmount,
+
+              pendingAmount:
+                actualPendingAmount,
+
+              paymentStatus,
+
+              status:
+                invoice.status ||
+                "Issued",
+
+              reminderStatus:
+                contract?.reminderStatus ||
+                "Not Sent",
+
+              /* =======================================
+                 INSTALLMENTS / RECEIPTS
+              ======================================= */
+
+              payments:
+                invoicePayments.map(
+                  (payment) => ({
+                    id:
+                      payment._id,
+
+                    _id:
+                      payment._id,
+
+                    paymentCode:
+                      payment.paymentCode ||
+                      "",
+
+                    paymentNumber:
+                      Number(
+                        payment.paymentNumber ||
+                        0
+                      ),
+
+                    paymentDate:
+                      payment.paymentDate ||
+                      null,
+
+                    amount:
+                      Number(
+                        payment.amount ||
+                        0
+                      ),
+
+                    mode:
+                      payment.mode ||
+                      "",
+
+                    referenceNo:
+                      payment.referenceNo ||
+                      "",
+
+                    notes:
+                      payment.notes ||
+                      "",
+
+                    receivedBy:
+                      payment.receivedBy ||
+                      null,
+
+                    receivedByName:
+                      payment.receivedByName ||
+                      payment.createdByName ||
+                      "",
+
+                    createdAt:
+                      payment.createdAt ||
+                      null,
+                  })
+                ),
+
+              paymentCount:
+                invoicePayments.length,
+
+              createdAt:
+                invoice.createdAt ||
+                null,
+
+              updatedAt:
+                invoice.updatedAt ||
+                null,
+            };
+          }
+        );
+
+      /* ===============================================
+         CLIENT AMC TOTALS
+      =============================================== */
+
+      const totalAmcValue =
+        roundAmcAmount(
+          invoiceHistory.reduce(
+            (
+              total,
+              invoice
+            ) =>
+              total +
+              Number(
+                invoice.totalAmount ||
+                0
+              ),
+            0
+          )
+        );
+
+      const totalPaid =
+        roundAmcAmount(
+          invoiceHistory.reduce(
+            (
+              total,
+              invoice
+            ) =>
+              total +
+              Number(
+                invoice.paidAmount ||
+                0
+              ),
+            0
+          )
+        );
+
+      const totalPending =
+        roundAmcAmount(
+          invoiceHistory.reduce(
+            (
+              total,
+              invoice
+            ) =>
+              total +
+              Number(
+                invoice.pendingAmount ||
+                0
+              ),
+            0
+          )
+        );
+
+      /* ===============================================
+         ACTIVE / CURRENT AMC CYCLE
+
+         Current means the latest non-cancelled invoice
+         by AMC cycle start date.
+      =============================================== */
+
+      const currentInvoice =
+        invoiceHistory.length >
+        0
+          ? invoiceHistory[0]
+          : null;
+
+      /* ===============================================
+         NEXT RENEWAL
+
+         Use nearest expiry that is today/future.
+      =============================================== */
+
+      const now =
+        new Date();
+
+      const futureExpiryDates =
+        invoiceHistory
+          .map(
+            (invoice) =>
+              invoice.endDate
+                ? new Date(
+                    invoice.endDate
+                  )
+                : null
+          )
+          .filter(
+            (date) =>
+              date &&
+              !Number.isNaN(
+                date.getTime()
+              ) &&
+              date >= now
+          )
+          .sort(
+            (
+              first,
+              second
+            ) =>
+              first -
+              second
+          );
+
+      const nextRenewal =
+        futureExpiryDates.length >
+        0
+          ? futureExpiryDates[0]
+          : null;
+
+      /* ===============================================
+         RESPONSE
+      =============================================== */
+
+      return res.status(200).json({
+        success: true,
+
+        data: {
+          client: {
+            id:
+              client._id,
+
+            clientCode:
+              client.clientCode ||
+              "",
+
+            companyName:
+              client.companyName ||
+              "",
+
+            amcStatus:
+              client.amcStatus ||
+              "Not Started",
+
+            nextRenewal:
+              nextRenewal ||
+              client.nextRenewal ||
+              null,
+          },
+
+          /*
+           * Keep contracts available for compatibility.
+           */
+          contracts,
+
+          /*
+           * Main financial source for frontend.
+           */
+          invoices:
+            invoiceHistory,
+
+          invoiceHistory,
+
+          currentInvoice,
+
+          invoiceCount:
+            invoiceHistory.length,
+
+          paymentCount:
+            payments.length,
+
+          totals: {
+            totalAmcValue,
+
+            totalPaid,
+
+            totalPending,
+
+            invoiceCount:
+              invoiceHistory.length,
+
+            paymentCount:
+              payments.length,
+          },
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Get client AMC error:",
+        error
+      );
+
+      return res.status(500).json({
         success: false,
-        message: "Invalid client ID.",
+
+        message:
+          error.message ||
+          "Unable to load client AMC records.",
       });
     }
-
-    const [contracts, invoices] = await Promise.all([
-      AmcContract.find({
-        clientId: id,
-        isDeleted: false,
-      }).sort({ createdAt: -1 }),
-
-      AmcInvoice.find({
-        clientId: id,
-        isDeleted: false,
-      }).sort({ invoiceDate: -1 }),
-    ]);
-
-    const contractReminderByCode = {};
-    contracts.forEach((contract) => {
-      contractReminderByCode[contract.contractCode] =
-        contract.reminderStatus || "Not Sent";
-    });
-
-    return res.status(200).json({
-      success: true,
-      data: {
-        contracts,
-        invoices: invoices.map((invoice) => ({
-          id: invoice._id,
-          invoiceCode: invoice.invoiceCode,
-          invoiceDate: invoice.invoiceDate,
-          productName: invoice.productName,
-          startDate: invoice.contractStartDate,
-          endDate: invoice.contractExpiryDate,
-          totalAmount: invoice.totalAmount,
-          paidAmount: invoice.paidAmount,
-          dueDate: invoice.dueDate,
-          paymentStatus: invoice.paymentStatus,
-          reminderStatus:
-            contractReminderByCode[invoice.contractCode] || "Not Sent",
-        })),
-      },
-    });
-  } catch (error) {
-    console.error("Get client AMC error:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Unable to load client AMC records.",
-    });
   }
-});
+);
 
 /* =====================================================
    GET CLIENT PAYMENTS
    GET /api/admin/client/:id/payments
 ===================================================== */
+/* =====================================================
+   GET CLIENT PAYMENTS
+   GET /api/admin/client/:id/payments
 
-router.get("/client/:id/payments", async (req, res) => {
-  try {
-    const { id } = req.params;
+   Combined client financial history:
+   1. Product Sale payments
+   2. AMC payments
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
+   IMPORTANT:
+   Existing ProductSalePayment and AmcPayment remain
+   separate source-of-truth collections.
+===================================================== */
+
+router.get(
+  "/client/:id/payments",
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      /* ============================================
+         VALIDATE CLIENT ID
+      ============================================ */
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid client ID.",
+        });
+      }
+
+      /* ============================================
+         VERIFY CLIENT
+      ============================================ */
+
+      const client =
+        await Client.findOne({
+          _id: id,
+
+          isDeleted: {
+            $ne: true,
+          },
+        })
+          .select(
+            "_id clientCode companyName"
+          )
+          .lean();
+
+      if (!client) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Client not found.",
+        });
+      }
+
+      /* ============================================
+         LOAD ALL FINANCIAL DATA IN PARALLEL
+      ============================================ */
+
+      const [
+        productSalePayments,
+        amcPayments,
+        productSales,
+        amcInvoices,
+      ] = await Promise.all([
+        ProductSalePayment.find({
+          clientId: id,
+
+          isDeleted: {
+            $ne: true,
+          },
+        })
+          .sort({
+            paymentDate: -1,
+            createdAt: -1,
+          })
+          .lean(),
+
+        AmcPayment.find({
+          clientId: id,
+
+          isDeleted: {
+            $ne: true,
+          },
+        })
+          .sort({
+            paymentDate: -1,
+            createdAt: -1,
+          })
+          .lean(),
+
+        ProductSale.find({
+          clientId: id,
+
+          isDeleted: {
+            $ne: true,
+          },
+
+          status: {
+            $ne: "Cancelled",
+          },
+        })
+          .sort({
+            saleDate: -1,
+          })
+          .lean(),
+
+        AmcInvoice.find({
+          clientId: id,
+
+          isDeleted: {
+            $ne: true,
+          },
+        })
+          .sort({
+            invoiceDate: -1,
+            createdAt: -1,
+          })
+          .lean(),
+      ]);
+
+      /* ============================================
+         FAST LOOKUP MAPS
+      ============================================ */
+
+      const productSaleMap =
+        new Map(
+          productSales.map(
+            (sale) => [
+              String(sale._id),
+              sale,
+            ]
+          )
+        );
+
+      const amcInvoiceMap =
+        new Map(
+          amcInvoices.map(
+            (invoice) => [
+              String(invoice._id),
+              invoice,
+            ]
+          )
+        );
+
+      /* ============================================
+         NORMALIZE PRODUCT SALE PAYMENTS
+      ============================================ */
+
+      const normalizedProductPayments =
+        productSalePayments.map(
+          (payment) => {
+            const sale =
+              productSaleMap.get(
+                String(
+                  payment.productSaleId ||
+                    ""
+                )
+              ) || null;
+
+            const productNames =
+              Array.isArray(
+                sale?.items
+              )
+                ? sale.items
+                    .map(
+                      (item) =>
+                        item.productName
+                    )
+                    .filter(Boolean)
+                : [];
+
+            return {
+              id:
+                payment._id,
+
+              _id:
+                payment._id,
+
+              sourceType:
+                "Product Sale",
+
+              paymentType:
+                "Product Sale",
+
+              receiptNo:
+                payment.paymentCode ||
+                "",
+
+              paymentCode:
+                payment.paymentCode ||
+                "",
+
+              clientId:
+                payment.clientId,
+
+              clientCode:
+                payment.clientCode ||
+                client.clientCode ||
+                "",
+
+              clientName:
+                payment.clientName ||
+                client.companyName ||
+                "",
+
+              invoiceId:
+                sale?._id ||
+                payment.productSaleId ||
+                null,
+
+              productSaleId:
+                payment.productSaleId ||
+                null,
+
+              invoiceNo:
+                sale?.invoiceNo ||
+                payment.saleCode ||
+                "",
+
+              saleCode:
+                sale?.saleCode ||
+                payment.saleCode ||
+                "",
+
+              product:
+                productNames.join(
+                  ", "
+                ) || "Product Sale",
+
+              productNames,
+
+              paymentDate:
+                payment.paymentDate,
+
+              amount:
+                Number(
+                  payment.amount || 0
+                ),
+
+              mode:
+                payment.mode || "",
+
+              referenceNo:
+                payment.referenceNo ||
+                "",
+
+              notes:
+                payment.notes || "",
+
+              receivedBy:
+                payment.createdByName ||
+                "Admin",
+
+              status:
+                "Completed",
+
+              invoiceTotal:
+                Number(
+                  sale?.totalAmount ||
+                    0
+                ),
+
+              invoicePaid:
+                Number(
+                  sale?.paidAmount ||
+                    0
+                ),
+
+              invoicePending:
+                Number(
+                  sale?.pendingAmount ||
+                    0
+                ),
+
+              invoiceStatus:
+                sale?.paymentStatus ||
+                "",
+
+              createdAt:
+                payment.createdAt ||
+                payment.paymentDate,
+            };
+          }
+        );
+
+      /* ============================================
+         NORMALIZE AMC PAYMENTS
+      ============================================ */
+
+      const normalizedAmcPayments =
+        amcPayments.map(
+          (payment) => {
+            const invoice =
+              amcInvoiceMap.get(
+                String(
+                  payment.amcInvoiceId ||
+                    ""
+                )
+              ) || null;
+
+            return {
+              id:
+                payment._id,
+
+              _id:
+                payment._id,
+
+              sourceType:
+                "AMC",
+
+              paymentType:
+                "AMC",
+
+              receiptNo:
+                payment.paymentCode ||
+                "",
+
+              paymentCode:
+                payment.paymentCode ||
+                "",
+
+              clientId:
+                payment.clientId,
+
+              clientCode:
+                payment.clientCode ||
+                client.clientCode ||
+                "",
+
+              clientName:
+                payment.clientName ||
+                client.companyName ||
+                "",
+
+              invoiceId:
+                invoice?._id ||
+                payment.amcInvoiceId ||
+                null,
+
+              amcInvoiceId:
+                payment.amcInvoiceId ||
+                null,
+
+              invoiceNo:
+                invoice?.invoiceCode ||
+                invoice?.invoiceNo ||
+                payment.invoiceCode ||
+                "",
+
+              product:
+                invoice?.productName ||
+                payment.productName ||
+                "AMC",
+
+              productNames:
+                invoice?.productName
+                  ? [
+                      invoice.productName,
+                    ]
+                  : [],
+
+              paymentDate:
+                payment.paymentDate,
+
+              amount:
+                Number(
+                  payment.amount || 0
+                ),
+
+              mode:
+                payment.mode || "",
+
+              referenceNo:
+                payment.referenceNo ||
+                "",
+
+              notes:
+                payment.notes || "",
+
+              receivedBy:
+                payment.receivedByName ||
+                payment.createdByName ||
+                "Admin",
+
+              status:
+                "Completed",
+
+              invoiceTotal:
+                Number(
+                  invoice?.totalAmount ||
+                    0
+                ),
+
+              invoicePaid:
+                Number(
+                  invoice?.paidAmount ||
+                    0
+                ),
+
+              invoicePending:
+                Number(
+                  invoice?.pendingAmount ||
+                    0
+                ),
+
+              invoiceStatus:
+                invoice?.paymentStatus ||
+                "",
+
+              createdAt:
+                payment.createdAt ||
+                payment.paymentDate,
+            };
+          }
+        );
+
+      /* ============================================
+         COMBINE + SORT PAYMENT HISTORY
+      ============================================ */
+
+      const payments = [
+        ...normalizedProductPayments,
+        ...normalizedAmcPayments,
+      ].sort(
+        (a, b) =>
+          new Date(
+            b.paymentDate ||
+              b.createdAt ||
+              0
+          ).getTime() -
+          new Date(
+            a.paymentDate ||
+              a.createdAt ||
+              0
+          ).getTime()
+      );
+
+      /* ============================================
+         PAYMENT TOTALS
+      ============================================ */
+
+      const productSalesReceived =
+        normalizedProductPayments.reduce(
+          (total, payment) =>
+            total +
+            Number(
+              payment.amount || 0
+            ),
+          0
+        );
+
+      const amcReceived =
+        normalizedAmcPayments.reduce(
+          (total, payment) =>
+            total +
+            Number(
+              payment.amount || 0
+            ),
+          0
+        );
+
+      const totalReceived =
+        productSalesReceived +
+        amcReceived;
+
+      /* ============================================
+         PRODUCT SALE INVOICE TOTALS
+      ============================================ */
+
+      const productSalesValue =
+        productSales.reduce(
+          (total, sale) =>
+            total +
+            Number(
+              sale.totalAmount || 0
+            ),
+          0
+        );
+
+      const productSalesPending =
+        productSales.reduce(
+          (total, sale) =>
+            total +
+            Math.max(
+              Number(
+                sale.pendingAmount ||
+                  0
+              ),
+              0
+            ),
+          0
+        );
+
+      /* ============================================
+         AMC INVOICE TOTALS
+      ============================================ */
+
+      const amcValue =
+        amcInvoices.reduce(
+          (total, invoice) =>
+            total +
+            Number(
+              invoice.totalAmount ||
+                0
+            ),
+          0
+        );
+
+      const amcPending =
+        amcInvoices.reduce(
+          (total, invoice) =>
+            total +
+            Math.max(
+              Number(
+                invoice.pendingAmount ??
+                  (
+                    Number(
+                      invoice.totalAmount ||
+                        0
+                    ) -
+                    Number(
+                      invoice.paidAmount ||
+                        0
+                    )
+                  )
+              ),
+              0
+            ),
+          0
+        );
+
+      const totalPending =
+        productSalesPending +
+        amcPending;
+
+      /* ============================================
+         LAST PAYMENT
+      ============================================ */
+
+      const lastPayment =
+        payments.length > 0
+          ? payments[0]
+          : null;
+
+      /* ============================================
+         RESPONSE
+      ============================================ */
+
+      return res.status(200).json({
+        success: true,
+
+        data: payments,
+
+        payments,
+
+        summary: {
+          totalReceived,
+
+          productSalesReceived,
+
+          amcReceived,
+
+          totalPending,
+
+          productSalesPending,
+
+          amcPending,
+
+          productSalesValue,
+
+          amcValue,
+
+          totalInvoiceValue:
+            productSalesValue +
+            amcValue,
+
+          paymentCount:
+            payments.length,
+
+          productSalePaymentCount:
+            normalizedProductPayments.length,
+
+          amcPaymentCount:
+            normalizedAmcPayments.length,
+
+          lastPaymentDate:
+            lastPayment?.paymentDate ||
+            null,
+
+          lastPaymentAmount:
+            Number(
+              lastPayment?.amount ||
+                0
+            ),
+
+          lastPaymentType:
+            lastPayment?.sourceType ||
+            null,
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Get combined client payments error:",
+        error
+      );
+
+      return res.status(500).json({
         success: false,
-        message: "Invalid client ID.",
+
+        message:
+          error.message ||
+          "Unable to load client payments.",
       });
     }
-
-    const payments = await AmcPayment.find({
-      clientId: id,
-      isDeleted: false,
-    }).sort({ paymentDate: -1 });
-
-    return res.status(200).json({
-      success: true,
-      data: payments.map((payment) => ({
-        id: payment._id,
-        receiptNo: payment.paymentCode,
-        invoiceNo: payment.invoiceCode,
-        product: payment.productName,
-        paymentDate: payment.paymentDate,
-        amount: payment.amount,
-        mode: payment.mode,
-        referenceNo: payment.referenceNo,
-        receivedBy: payment.receivedByName,
-        status: "Completed",
-      })),
-    });
-  } catch (error) {
-    console.error("Get client payments error:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Unable to load client payments.",
-    });
   }
-});
+);
 
 /* =====================================================
    GET CLIENT DOCUMENTS
@@ -12799,7 +15387,7 @@ router.delete("/client/:id/documents/:docId", async (req, res) => {
     const document = await ClientDocument.findOneAndUpdate(
       { _id: docId, clientId: id },
       { isDeleted: true },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!document) {
@@ -13287,9 +15875,43 @@ router.post(
           });
       }
 
-      client.products.push(
-        resolvedProduct
-      );
+    client.products.push({
+  ...resolvedProduct,
+
+  acquisitionType:
+    req.body.acquisitionType ||
+    "Legacy / Historical",
+
+  productSaleId:
+    null,
+
+  productSaleCode:
+    "",
+
+  originalInvoiceNo:
+    String(
+      req.body.originalInvoiceNo ||
+      ""
+    )
+      .trim()
+      .toUpperCase(),
+
+  originalPurchaseAmount:
+    Math.max(
+      Number(
+        req.body.originalPurchaseAmount ||
+        0
+      ),
+      0
+    ),
+
+  historicalDataComplete:
+    Boolean(
+      req.body.originalInvoiceNo ||
+      req.body.originalPurchaseAmount ||
+      req.body.purchaseDate
+    ),
+});
 
       client.updatedBy =
         req.user._id;
@@ -21779,6 +24401,602 @@ router.get(
    }
 ===================================================== */
 
+
+/* =====================================================
+   AMC PAYMENT LIST
+   GET /api/admin/amc-payments
+
+   Used by:
+   Payments & Collections
+
+   IMPORTANT:
+   This reads the existing AmcPayment collection.
+   It does NOT create a second payment collection.
+===================================================== */
+
+/* =====================================================
+   AMC PAYMENT LIST
+   GET /api/admin/amc-payments
+
+   Enterprise collection view.
+
+   IMPORTANT:
+   AmcPayment = actual receipt/installment
+   AmcInvoice = AMC cycle + financial source of truth
+
+   No invoice values are duplicated into AmcPayment.
+===================================================== */
+
+router.get(
+  "/amc-payments",
+  async (req, res) => {
+    try {
+      const limit =
+        Math.min(
+          Math.max(
+            Number(
+              req.query.limit ||
+              500
+            ),
+            1
+          ),
+          1000
+        );
+
+      /*
+       * STEP 1:
+       * Load actual AMC payment/installment records.
+       */
+      const payments =
+        await AmcPayment.find({
+          isDeleted: {
+            $ne: true,
+          },
+        })
+          .sort({
+            paymentDate: -1,
+            createdAt: -1,
+          })
+          .limit(limit)
+          .lean();
+
+      /*
+       * STEP 2:
+       * Collect the unique AMC invoice IDs.
+       *
+       * Example:
+       *
+       * AMC invoice = ₹10,000
+       *
+       * Payment 1 = ₹4,000
+       * Payment 2 = ₹6,000
+       *
+       * Both payments point to the SAME amcInvoiceId.
+       */
+      const invoiceIds =
+        [
+          ...new Set(
+            payments
+              .map(
+                (payment) =>
+                  String(
+                    payment.amcInvoiceId ||
+                    ""
+                  )
+              )
+              .filter(
+                (id) =>
+                  mongoose.Types.ObjectId.isValid(
+                    id
+                  )
+              )
+          ),
+        ];
+
+      /*
+       * STEP 3:
+       * Load the permanent AMC invoices.
+       */
+      const invoices =
+        invoiceIds.length > 0
+          ? await AmcInvoice.find({
+              _id: {
+                $in:
+                  invoiceIds,
+              },
+
+              isDeleted: {
+                $ne: true,
+              },
+            }).lean()
+          : [];
+
+      /*
+       * Fast invoice lookup.
+       */
+      const invoiceMap =
+        new Map(
+          invoices.map(
+            (invoice) => [
+              String(
+                invoice._id
+              ),
+              invoice,
+            ]
+          )
+        );
+
+      /*
+       * STEP 4:
+       * Return every payment with its AMC cycle information.
+       *
+       * We are NOT writing these invoice values into
+       * AmcPayment.
+       *
+       * They are joined only while reading.
+       */
+      const data =
+        payments.map(
+          (payment) => {
+            const invoice =
+              invoiceMap.get(
+                String(
+                  payment.amcInvoiceId ||
+                  ""
+                )
+              ) ||
+              null;
+
+            return {
+              /*
+               * PAYMENT / INSTALLMENT
+               */
+              id:
+                payment._id,
+
+              _id:
+                payment._id,
+
+              paymentCode:
+                payment.paymentCode ||
+                "",
+
+              paymentNumber:
+                Number(
+                  payment.paymentNumber ||
+                  0
+                ),
+
+              paymentDate:
+                payment.paymentDate ||
+                null,
+
+              amount:
+                Number(
+                  payment.amount ||
+                  0
+                ),
+
+              mode:
+                payment.mode ||
+                "",
+
+              referenceNo:
+                payment.referenceNo ||
+                "",
+
+              notes:
+                payment.notes ||
+                "",
+
+              /*
+               * AMC REFERENCES
+               */
+              amcContractId:
+                payment.amcContractId ||
+                invoice?.amcContractId ||
+                null,
+
+              contractCode:
+                payment.contractCode ||
+                invoice?.contractCode ||
+                "",
+
+              amcInvoiceId:
+                payment.amcInvoiceId ||
+                invoice?._id ||
+                null,
+
+              invoiceCode:
+                payment.invoiceCode ||
+                invoice?.invoiceCode ||
+                "",
+
+              invoiceNo:
+                payment.invoiceCode ||
+                invoice?.invoiceCode ||
+                "",
+
+              /*
+               * CLIENT
+               */
+              clientId:
+                payment.clientId ||
+                invoice?.clientId ||
+                null,
+
+              clientCode:
+                payment.clientCode ||
+                invoice?.clientCode ||
+                "",
+
+              clientName:
+                payment.clientName ||
+                invoice?.clientName ||
+                "",
+
+              /*
+               * PRODUCT
+               */
+              productId:
+                payment.productId ||
+                invoice?.productId ||
+                null,
+
+              productCode:
+                payment.productCode ||
+                invoice?.productCode ||
+                "",
+
+              productName:
+                payment.productName ||
+                invoice?.productName ||
+                "",
+
+              productVersion:
+                invoice?.productVersion ||
+                "",
+
+              plan:
+                invoice?.plan ||
+                "",
+
+              licensedUsers:
+                Number(
+                  invoice?.licensedUsers ||
+                  0
+                ),
+
+              /*
+               * AMC CYCLE / PERIOD
+
+               * THIS defines which AMC year/cycle the
+               * payment belongs to.
+               *
+               * Do NOT determine AMC cycle from paymentDate.
+               */
+              contractStartDate:
+                invoice?.contractStartDate ||
+                null,
+
+              contractExpiryDate:
+                invoice?.contractExpiryDate ||
+                null,
+
+              invoiceDate:
+                invoice?.invoiceDate ||
+                null,
+
+              dueDate:
+                invoice?.dueDate ||
+                null,
+
+              invoiceType:
+                invoice?.invoiceType ||
+                "",
+
+              /*
+               * AMC INVOICE FINANCIAL TOTALS
+               */
+              invoiceGrossAmount:
+                Number(
+                  invoice?.grossAmount ||
+                  0
+                ),
+
+              invoiceDiscountAmount:
+                Number(
+                  invoice?.discountAmount ||
+                  0
+                ),
+
+              invoiceTaxableAmount:
+                Number(
+                  invoice?.taxableAmount ||
+                  0
+                ),
+
+              invoiceCgstAmount:
+                Number(
+                  invoice?.cgstAmount ||
+                  0
+                ),
+
+              invoiceSgstAmount:
+                Number(
+                  invoice?.sgstAmount ||
+                  0
+                ),
+
+              invoiceIgstAmount:
+                Number(
+                  invoice?.igstAmount ||
+                  0
+                ),
+
+              invoiceTotalAmount:
+                Number(
+                  invoice?.totalAmount ||
+                  0
+                ),
+
+              invoicePaidAmount:
+                Number(
+                  invoice?.paidAmount ||
+                  0
+                ),
+
+              invoicePendingAmount:
+                Number(
+                  invoice?.pendingAmount ||
+                  0
+                ),
+
+              invoicePaymentStatus:
+                invoice?.paymentStatus ||
+                "Unpaid",
+
+              invoiceStatus:
+                invoice?.status ||
+                "",
+
+              /*
+               * AUDIT
+               */
+              receivedBy:
+                payment.receivedBy ||
+                null,
+
+              receivedByName:
+                payment.receivedByName ||
+                payment.createdByName ||
+                "",
+
+              createdBy:
+                payment.createdBy ||
+                null,
+
+              createdByName:
+                payment.createdByName ||
+                "",
+
+              createdAt:
+                payment.createdAt ||
+                null,
+
+              updatedAt:
+                payment.updatedAt ||
+                null,
+            };
+          }
+        );
+
+      /*
+       * STEP 5:
+       * Also prepare invoice/cycle summary.
+       *
+       * This is useful for the frontend because all
+       * installments belonging to one AMC invoice
+       * can be shown under one AMC cycle.
+       */
+      const cycleMap =
+        new Map();
+
+      data.forEach(
+        (payment) => {
+          const key =
+            String(
+              payment.amcInvoiceId ||
+              payment.invoiceCode ||
+              ""
+            );
+
+          if (!key) {
+            return;
+          }
+
+          if (
+            !cycleMap.has(
+              key
+            )
+          ) {
+            cycleMap.set(
+              key,
+              {
+                amcInvoiceId:
+                  payment.amcInvoiceId,
+
+                invoiceCode:
+                  payment.invoiceCode,
+
+                amcContractId:
+                  payment.amcContractId,
+
+                contractCode:
+                  payment.contractCode,
+
+                clientId:
+                  payment.clientId,
+
+                clientCode:
+                  payment.clientCode,
+
+                clientName:
+                  payment.clientName,
+
+                productId:
+                  payment.productId,
+
+                productCode:
+                  payment.productCode,
+
+                productName:
+                  payment.productName,
+
+                productVersion:
+                  payment.productVersion,
+
+                plan:
+                  payment.plan,
+
+                licensedUsers:
+                  payment.licensedUsers,
+
+                contractStartDate:
+                  payment.contractStartDate,
+
+                contractExpiryDate:
+                  payment.contractExpiryDate,
+
+                invoiceDate:
+                  payment.invoiceDate,
+
+                dueDate:
+                  payment.dueDate,
+
+                invoiceTotalAmount:
+                  payment.invoiceTotalAmount,
+
+                invoicePaidAmount:
+                  payment.invoicePaidAmount,
+
+                invoicePendingAmount:
+                  payment.invoicePendingAmount,
+
+                invoicePaymentStatus:
+                  payment.invoicePaymentStatus,
+
+                installments:
+                  [],
+
+                installmentCount:
+                  0,
+
+                collectedThroughPayments:
+                  0,
+              }
+            );
+          }
+
+          const cycle =
+            cycleMap.get(
+              key
+            );
+
+          cycle.installments.push({
+            id:
+              payment.id,
+
+            paymentCode:
+              payment.paymentCode,
+
+            paymentDate:
+              payment.paymentDate,
+
+            amount:
+              payment.amount,
+
+            mode:
+              payment.mode,
+
+            referenceNo:
+              payment.referenceNo,
+
+            notes:
+              payment.notes,
+          });
+
+          cycle.installmentCount +=
+            1;
+
+          cycle.collectedThroughPayments +=
+            Number(
+              payment.amount ||
+              0
+            );
+        }
+      );
+
+      const cycles =
+        Array.from(
+          cycleMap.values()
+        ).sort(
+          (
+            first,
+            second
+          ) =>
+            new Date(
+              second.contractStartDate ||
+              second.invoiceDate ||
+              0
+            ).getTime() -
+            new Date(
+              first.contractStartDate ||
+              first.invoiceDate ||
+              0
+            ).getTime()
+        );
+
+      return res.status(200).json({
+        success:
+          true,
+
+        count:
+          data.length,
+
+        /*
+         * Old frontend remains compatible.
+         */
+        data,
+
+        payments:
+          data,
+
+        /*
+         * NEW enterprise AMC-cycle structure.
+         */
+        cycles,
+
+        cycleCount:
+          cycles.length,
+      });
+    } catch (error) {
+      console.error(
+        "Load AMC payments error:",
+        error
+      );
+
+      return res.status(500).json({
+        success:
+          false,
+
+        message:
+          error.message ||
+          "Unable to load AMC payments.",
+      });
+    }
+  }
+);
 router.post(
   "/amc/payment",
   async (req, res) => {
@@ -24694,6 +27912,2994 @@ router.use(
     next(
       error
     );
+  }
+);
+/* =====================================================
+   CREATE PRODUCT SALE
+   POST /api/admin/product-sales
+===================================================== */
+
+router.post(
+  "/product-sales",
+  async (req, res) => {
+    try {
+      const {
+        clientId,
+        saleDate,
+        invoiceNo,
+        invoiceDate,
+        dueDate,
+        items,
+        discountAmount,
+        roundOff,
+        notes,
+      } = req.body || {};
+
+      /* ============================================
+         VALIDATE CLIENT
+      ============================================ */
+
+      if (
+        !clientId ||
+        !mongoose.Types.ObjectId.isValid(
+          clientId
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Valid client is required.",
+        });
+      }
+
+      const client =
+        await Client.findOne({
+          _id: clientId,
+          isDeleted: {
+            $ne: true,
+          },
+        });
+
+      if (!client) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Client not found.",
+        });
+      }
+
+      /* ============================================
+         VALIDATE ITEMS
+      ============================================ */
+
+      if (
+        !Array.isArray(items) ||
+        items.length === 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "At least one product is required.",
+        });
+      }
+
+      const normalizedItems = [];
+
+      for (const item of items) {
+        if (
+          !item.productId ||
+          !mongoose.Types.ObjectId.isValid(
+            item.productId
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Every sale item requires a valid product.",
+          });
+        }
+
+        const product =
+          await Product.findOne({
+            _id:
+              item.productId,
+
+            isDeleted: {
+              $ne: true,
+            },
+
+            status:
+              "Active",
+          }).lean();
+
+        if (!product) {
+          return res.status(404).json({
+            success: false,
+            message:
+              "One of the selected products was not found or is inactive.",
+          });
+        }
+
+        const quantity =
+          Math.max(
+            Number(
+              item.quantity || 1
+            ),
+            1
+          );
+
+        const rate =
+          Math.max(
+            Number(
+              item.rate || 0
+            ),
+            0
+          );
+
+        const itemDiscount =
+          Math.max(
+            Number(
+              item.discountAmount || 0
+            ),
+            0
+          );
+
+        const grossAmount =
+          quantity * rate;
+
+        const taxableAmount =
+          Math.max(
+            grossAmount -
+              itemDiscount,
+            0
+          );
+
+        const gstRate =
+          Math.max(
+            Number(
+              item.gstRate ?? 18
+            ),
+            0
+          );
+
+        /*
+         * For now:
+         * Maharashtra client -> CGST + SGST
+         * Other state -> IGST
+         *
+         * Later we can make company state
+         * come from System Settings.
+         */
+
+        const companyState =
+          "Maharashtra";
+
+        const sameState =
+          String(
+            client.state || ""
+          )
+            .trim()
+            .toLowerCase() ===
+          companyState.toLowerCase();
+
+        let cgstAmount = 0;
+        let sgstAmount = 0;
+        let igstAmount = 0;
+
+        if (gstRate > 0) {
+          if (sameState) {
+            cgstAmount =
+              taxableAmount *
+              (gstRate / 2) /
+              100;
+
+            sgstAmount =
+              taxableAmount *
+              (gstRate / 2) /
+              100;
+          } else {
+            igstAmount =
+              taxableAmount *
+              gstRate /
+              100;
+          }
+        }
+
+        const totalAmount =
+          taxableAmount +
+          cgstAmount +
+          sgstAmount +
+          igstAmount;
+
+        normalizedItems.push({
+          productId:
+            product._id,
+
+          productCode:
+            product.productCode,
+
+          productName:
+            product.productName,
+
+          version:
+            String(
+              item.version ||
+              product.currentVersion ||
+              ""
+            ).trim(),
+
+          licenceType:
+            item.licenceType ||
+            "Perpetual Licence",
+
+          licensedUsers:
+            Math.max(
+              Number(
+                item.licensedUsers || 1
+              ),
+              1
+            ),
+
+          quantity,
+
+          rate,
+
+          grossAmount:
+            Number(
+              grossAmount.toFixed(2)
+            ),
+
+          discountAmount:
+            Number(
+              itemDiscount.toFixed(2)
+            ),
+
+          taxableAmount:
+            Number(
+              taxableAmount.toFixed(2)
+            ),
+
+          gstRate,
+
+          cgstAmount:
+            Number(
+              cgstAmount.toFixed(2)
+            ),
+
+          sgstAmount:
+            Number(
+              sgstAmount.toFixed(2)
+            ),
+
+          igstAmount:
+            Number(
+              igstAmount.toFixed(2)
+            ),
+
+          totalAmount:
+            Number(
+              totalAmount.toFixed(2)
+            ),
+
+          purchaseDate:
+            item.purchaseDate ||
+            saleDate ||
+            new Date(),
+
+          installationDate:
+            item.installationDate ||
+            null,
+
+          warrantyMonths:
+            Math.max(
+              Number(
+                item.warrantyMonths ?? 12
+              ),
+              0
+            ),
+
+          warrantyStartDate:
+            item.warrantyStartDate ||
+            item.installationDate ||
+            saleDate ||
+            new Date(),
+
+          warrantyEndDate:
+            item.warrantyEndDate ||
+            null,
+
+          supportType:
+            item.supportType ||
+            "Standard",
+
+          installationStatus:
+            item.installationStatus ||
+            "Not Installed",
+
+          amcApplicable:
+            item.amcApplicable !== false,
+
+          proposedAmcAmount:
+            Math.max(
+              Number(
+                item.proposedAmcAmount || 0
+              ),
+              0
+            ),
+
+          notes:
+            String(
+              item.notes || ""
+            ).trim(),
+        });
+      }
+
+      /* ============================================
+         CALCULATE WARRANTY END DATES
+      ============================================ */
+
+      for (
+        const item of
+        normalizedItems
+      ) {
+        if (
+          !item.warrantyEndDate &&
+          item.warrantyStartDate
+        ) {
+          const warrantyEnd =
+            new Date(
+              item.warrantyStartDate
+            );
+
+          warrantyEnd.setMonth(
+            warrantyEnd.getMonth() +
+              Number(
+                item.warrantyMonths || 0
+              )
+          );
+
+          item.warrantyEndDate =
+            warrantyEnd;
+        }
+      }
+
+      /* ============================================
+         SALE TOTALS
+      ============================================ */
+
+      const grossTotal =
+        normalizedItems.reduce(
+          (sum, item) =>
+            sum +
+            Number(
+              item.grossAmount || 0
+            ),
+          0
+        );
+
+      const itemDiscountTotal =
+        normalizedItems.reduce(
+          (sum, item) =>
+            sum +
+            Number(
+              item.discountAmount || 0
+            ),
+          0
+        );
+
+      const headerDiscount =
+        Math.max(
+          Number(
+            discountAmount || 0
+          ),
+          0
+        );
+
+      const taxableTotal =
+        normalizedItems.reduce(
+          (sum, item) =>
+            sum +
+            Number(
+              item.taxableAmount || 0
+            ),
+          0
+        );
+
+      const cgstTotal =
+        normalizedItems.reduce(
+          (sum, item) =>
+            sum +
+            Number(
+              item.cgstAmount || 0
+            ),
+          0
+        );
+
+      const sgstTotal =
+        normalizedItems.reduce(
+          (sum, item) =>
+            sum +
+            Number(
+              item.sgstAmount || 0
+            ),
+          0
+        );
+
+      const igstTotal =
+        normalizedItems.reduce(
+          (sum, item) =>
+            sum +
+            Number(
+              item.igstAmount || 0
+            ),
+          0
+        );
+
+      const normalizedRoundOff =
+        Number(
+          roundOff || 0
+        );
+
+      const invoiceTotal =
+        Math.max(
+          taxableTotal +
+            cgstTotal +
+            sgstTotal +
+            igstTotal -
+            headerDiscount +
+            normalizedRoundOff,
+          0
+        );
+
+      /* ============================================
+         GENERATE SALE CODE
+      ============================================ */
+
+      const {
+        saleNumber,
+        saleCode,
+      } =
+        await generateProductSaleCode();
+
+      /* ============================================
+         CREATE SALE
+      ============================================ */
+
+      const sale =
+        await ProductSale.create({
+          saleCode,
+          saleNumber,
+
+          invoiceNo:
+            String(
+              invoiceNo || saleCode
+            )
+              .trim()
+              .toUpperCase(),
+
+          saleDate:
+            saleDate ||
+            new Date(),
+
+          invoiceDate:
+            invoiceDate ||
+            saleDate ||
+            new Date(),
+
+          dueDate:
+            dueDate ||
+            null,
+
+          clientId:
+            client._id,
+
+          clientCode:
+            client.clientCode,
+
+          clientName:
+            client.companyName,
+
+          contactPerson:
+            client.contactPerson ||
+            "",
+
+          mobile:
+            client.mobile ||
+            "",
+
+          email:
+            client.email ||
+            "",
+
+          gstNo:
+            client.gstNo ||
+            "",
+
+          state:
+            client.state ||
+            "",
+
+          billingAddress:
+            [
+              client.addressLine1,
+              client.addressLine2,
+              client.city,
+              client.state,
+              client.pinCode,
+            ]
+              .filter(Boolean)
+              .join(", "),
+
+          items:
+            normalizedItems,
+
+          grossAmount:
+            Number(
+              grossTotal.toFixed(2)
+            ),
+
+          discountAmount:
+            Number(
+              (
+                itemDiscountTotal +
+                headerDiscount
+              ).toFixed(2)
+            ),
+
+          taxableAmount:
+            Number(
+              taxableTotal.toFixed(2)
+            ),
+
+          cgstAmount:
+            Number(
+              cgstTotal.toFixed(2)
+            ),
+
+          sgstAmount:
+            Number(
+              sgstTotal.toFixed(2)
+            ),
+
+          igstAmount:
+            Number(
+              igstTotal.toFixed(2)
+            ),
+
+          roundOff:
+            normalizedRoundOff,
+
+          totalAmount:
+            Number(
+              invoiceTotal.toFixed(2)
+            ),
+
+          paidAmount:
+            0,
+
+          pendingAmount:
+            Number(
+              invoiceTotal.toFixed(2)
+            ),
+
+          paymentStatus:
+            "Unpaid",
+
+          status:
+            "Confirmed",
+
+          notes:
+            String(
+              notes || ""
+            ).trim(),
+
+          createdBy:
+            req.user?._id ||
+            null,
+
+          createdByName:
+            req.user?.name ||
+            "Admin",
+
+          updatedBy:
+            req.user?._id ||
+            null,
+
+          updatedByName:
+            req.user?.name ||
+            "Admin",
+        });
+
+      /* ============================================
+         AUTO-ASSIGN PRODUCTS TO CLIENT
+      ============================================ */
+
+      for (
+        const saleItem of
+        sale.items
+      ) {
+        const alreadyAssigned =
+          client.products.find(
+            (clientProduct) =>
+              String(
+                clientProduct.productId
+              ) ===
+              String(
+                saleItem.productId
+              )
+          );
+
+        let clientProduct;
+
+        if (alreadyAssigned) {
+          clientProduct =
+            alreadyAssigned;
+        } else {
+          client.products.push({
+  productId:
+    saleItem.productId,
+
+  productCode:
+    saleItem.productCode,
+
+  productName:
+    saleItem.productName,
+
+  version:
+    saleItem.version,
+
+  /* =========================================
+     PRODUCT ORIGIN
+  ========================================= */
+
+  acquisitionType:
+    "Product Sale",
+
+  productSaleId:
+    sale._id,
+
+  productSaleCode:
+    sale.saleCode,
+
+  originalInvoiceNo:
+    sale.invoiceNo ||
+    sale.saleCode,
+
+  originalPurchaseAmount:
+    Number(
+      saleItem.totalAmount ||
+      0
+    ),
+
+  historicalDataComplete:
+    true,
+
+  /* =========================================
+     PRODUCT / INSTALLATION DETAILS
+  ========================================= */
+
+  purchaseDate:
+    saleItem.purchaseDate
+      ? new Date(
+          saleItem.purchaseDate
+        )
+          .toISOString()
+          .slice(0, 10)
+      : "",
+
+  installationDate:
+    saleItem.installationDate
+      ? new Date(
+          saleItem.installationDate
+        )
+          .toISOString()
+          .slice(0, 10)
+      : "",
+
+  licensedUsers:
+    saleItem.licensedUsers,
+
+  supportType:
+    saleItem.supportType,
+
+  amcStatus:
+    "Not Started",
+
+  expiryDate:
+    saleItem.warrantyEndDate
+      ? new Date(
+          saleItem.warrantyEndDate
+        )
+          .toISOString()
+          .slice(0, 10)
+      : "",
+
+  installationStatus:
+    saleItem.installationStatus,
+
+  licenceType:
+    saleItem.licenceType,
+
+  notes:
+    saleItem.notes ||
+    "",
+});
+
+          clientProduct =
+            client.products[
+              client.products.length -
+                1
+            ];
+        }
+
+        saleItem.clientProductId =
+          clientProduct._id;
+      }
+
+      await client.save();
+
+      /*
+       * Save generated clientProductId values
+       * back into the permanent ProductSale.
+       */
+      await sale.save();
+
+      /* ============================================
+         ACTIVITY LOG
+      ============================================ */
+
+      try {
+        await ActivityLog.create({
+          action:
+            "Product Sale Created",
+
+          category:
+            "Product",
+
+          description:
+            `${sale.saleCode} created for ${client.companyName}.`,
+
+          entityType:
+            "product",
+
+          entityId:
+            sale._id,
+
+          entityCode:
+            sale.saleCode,
+
+          entityName:
+            client.companyName,
+
+          clientId:
+            client._id,
+
+          clientName:
+            client.companyName,
+
+          performedBy:
+            req.user?._id ||
+            null,
+
+          performedByName:
+            req.user?.name ||
+            "Admin",
+
+          performedByRole:
+            "admin",
+
+          metadata: {
+            totalAmount:
+              sale.totalAmount,
+
+            products:
+              sale.items.map(
+                (item) => ({
+                  productId:
+                    item.productId,
+
+                  productCode:
+                    item.productCode,
+
+                  productName:
+                    item.productName,
+
+                  clientProductId:
+                    item.clientProductId,
+                })
+              ),
+          },
+        });
+      } catch (activityError) {
+        console.error(
+          "Product sale activity log error:",
+          activityError
+        );
+      }
+
+      return res.status(201).json({
+        success: true,
+
+        message:
+          "Product sale created successfully.",
+
+        data:
+          sale,
+      });
+    } catch (error) {
+      console.error(
+        "Create Product Sale Error:",
+        error
+      );
+
+      if (
+        error instanceof
+        mongoose.Error.ValidationError
+      ) {
+        const firstError =
+          Object.values(
+            error.errors
+          )[0];
+
+        return res.status(400).json({
+          success: false,
+
+          message:
+            firstError?.message ||
+            "Product sale validation failed.",
+        });
+      }
+
+      if (error?.code === 11000) {
+        return res.status(409).json({
+          success: false,
+
+          message:
+            "Product sale number already exists. Please try again.",
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to create product sale.",
+      });
+    }
+  }
+);
+/* =====================================================
+   PRODUCT SALES - LIST
+   GET /api/admin/product-sales
+===================================================== */
+
+router.get(
+  "/product-sales",
+  async (req, res) => {
+    try {
+      const {
+        search = "",
+        clientId = "",
+        paymentStatus = "",
+        status = "",
+        fromDate = "",
+        toDate = "",
+        page = 1,
+        limit = 25,
+      } = req.query;
+
+      const query = {
+        isDeleted: {
+          $ne: true,
+        },
+      };
+
+      /* CLIENT FILTER */
+
+      if (
+        clientId &&
+        mongoose.Types.ObjectId.isValid(
+          clientId
+        )
+      ) {
+        query.clientId =
+          clientId;
+      }
+
+      /* PAYMENT STATUS FILTER */
+
+      if (
+        [
+          "Unpaid",
+          "Partially Paid",
+          "Paid",
+          "Overdue",
+        ].includes(
+          paymentStatus
+        )
+      ) {
+        query.paymentStatus =
+          paymentStatus;
+      }
+
+      /* SALE STATUS FILTER */
+
+      if (
+        [
+          "Draft",
+          "Confirmed",
+          "Cancelled",
+        ].includes(
+          status
+        )
+      ) {
+        query.status =
+          status;
+      }
+
+      /* DATE FILTER */
+
+      if (
+        fromDate ||
+        toDate
+      ) {
+        query.saleDate = {};
+
+        if (fromDate) {
+          const start =
+            new Date(
+              fromDate
+            );
+
+          start.setHours(
+            0,
+            0,
+            0,
+            0
+          );
+
+          query.saleDate.$gte =
+            start;
+        }
+
+        if (toDate) {
+          const end =
+            new Date(
+              toDate
+            );
+
+          end.setHours(
+            23,
+            59,
+            59,
+            999
+          );
+
+          query.saleDate.$lte =
+            end;
+        }
+      }
+
+      /* SEARCH */
+
+      const normalizedSearch =
+        String(
+          search || ""
+        ).trim();
+
+      if (
+        normalizedSearch
+      ) {
+        const escapedSearch =
+          normalizedSearch.replace(
+            /[.*+?^${}()|[\]\\]/g,
+            "\\$&"
+          );
+
+        const regex =
+          new RegExp(
+            escapedSearch,
+            "i"
+          );
+
+        query.$or = [
+          {
+            saleCode:
+              regex,
+          },
+          {
+            invoiceNo:
+              regex,
+          },
+          {
+            clientCode:
+              regex,
+          },
+          {
+            clientName:
+              regex,
+          },
+          {
+            "items.productCode":
+              regex,
+          },
+          {
+            "items.productName":
+              regex,
+          },
+        ];
+      }
+
+      /* PAGINATION */
+
+      const normalizedPage =
+        Math.max(
+          Number(page) ||
+            1,
+          1
+        );
+
+      const normalizedLimit =
+        Math.min(
+          Math.max(
+            Number(limit) ||
+              25,
+            1
+          ),
+          100
+        );
+
+      const skip =
+        (
+          normalizedPage -
+          1
+        ) *
+        normalizedLimit;
+
+      const [
+        sales,
+        total,
+      ] =
+        await Promise.all([
+          ProductSale.find(
+            query
+          )
+            .sort({
+              saleDate:
+                -1,
+
+              createdAt:
+                -1,
+            })
+            .skip(
+              skip
+            )
+            .limit(
+              normalizedLimit
+            )
+            .lean(),
+
+          ProductSale.countDocuments(
+            query
+          ),
+        ]);
+
+      return res.json({
+        success:
+          true,
+
+        data:
+          sales,
+
+        pagination: {
+          page:
+            normalizedPage,
+
+          limit:
+            normalizedLimit,
+
+          total,
+
+          totalPages:
+            Math.max(
+              Math.ceil(
+                total /
+                  normalizedLimit
+              ),
+              1
+            ),
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Product Sale List Error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success:
+            false,
+
+          message:
+            error.message ||
+            "Unable to load product sales.",
+        });
+    }
+  }
+);
+
+
+/* =====================================================
+   CLIENT PRODUCT SALES
+   GET /api/admin/client/:id/product-sales
+===================================================== */
+
+router.get(
+  "/client/:id/product-sales",
+  async (req, res) => {
+    try {
+      const {
+        id,
+      } = req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success:
+              false,
+
+            message:
+              "Invalid client ID.",
+          });
+      }
+
+      const client =
+        await Client.findOne({
+          _id:
+            id,
+
+          isDeleted: {
+            $ne: true,
+          },
+        })
+          .select(
+            "_id clientCode companyName"
+          )
+          .lean();
+
+      if (!client) {
+        return res
+          .status(404)
+          .json({
+            success:
+              false,
+
+            message:
+              "Client not found.",
+          });
+      }
+
+      const sales =
+        await ProductSale.find({
+          clientId:
+            client._id,
+
+          isDeleted: {
+            $ne: true,
+          },
+        })
+          .sort({
+            saleDate:
+              -1,
+
+            createdAt:
+              -1,
+          })
+          .lean();
+
+      return res.json({
+        success:
+          true,
+
+        client: {
+          id:
+            client._id,
+
+          clientCode:
+            client.clientCode,
+
+          clientName:
+            client.companyName,
+        },
+
+        count:
+          sales.length,
+
+        data:
+          sales,
+      });
+    } catch (error) {
+      console.error(
+        "Client Product Sales Error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success:
+            false,
+
+          message:
+            error.message ||
+            "Unable to load client product sales.",
+        });
+    }
+  }
+);
+
+
+/* =====================================================
+   SINGLE PRODUCT SALE
+   GET /api/admin/product-sales/:id
+===================================================== */
+
+router.get(
+  "/product-sales/:id",
+  async (req, res) => {
+    try {
+      const {
+        id,
+      } = req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success:
+              false,
+
+            message:
+              "Invalid product sale ID.",
+          });
+      }
+
+      const sale =
+        await ProductSale.findOne({
+          _id:
+            id,
+
+          isDeleted: {
+            $ne: true,
+          },
+        }).lean();
+
+      if (!sale) {
+        return res
+          .status(404)
+          .json({
+            success:
+              false,
+
+            message:
+              "Product sale not found.",
+          });
+      }
+
+      const payments =
+        await ProductSalePayment.find({
+          productSaleId:
+            sale._id,
+
+          isDeleted: {
+            $ne: true,
+          },
+        })
+          .sort({
+            paymentDate:
+              -1,
+
+            createdAt:
+              -1,
+          })
+          .lean();
+
+      return res.json({
+        success:
+          true,
+
+        data: {
+          ...sale,
+
+          payments,
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Product Sale Details Error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success:
+            false,
+
+          message:
+            error.message ||
+            "Unable to load product sale.",
+        });
+    }
+  }
+);
+/* =====================================================
+   PRODUCT SALE PAYMENT
+   POST /api/admin/product-sales/:id/payment
+===================================================== */
+
+router.post(
+  "/product-sales/:id/payment",
+  async (req, res) => {
+    try {
+      const {
+        id,
+      } = req.params;
+
+      const {
+        amount,
+        paymentDate,
+        mode,
+        referenceNo,
+        notes,
+      } = req.body || {};
+
+      /* ============================================
+         VALIDATE SALE ID
+      ============================================ */
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Invalid product sale ID.",
+          });
+      }
+
+      /* ============================================
+         LOAD PRODUCT SALE
+      ============================================ */
+
+      const sale =
+        await ProductSale.findOne({
+          _id: id,
+
+          isDeleted: {
+            $ne: true,
+          },
+        });
+
+      if (!sale) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message:
+              "Product sale not found.",
+          });
+      }
+
+      /* ============================================
+         CANCELLED SALES CANNOT RECEIVE PAYMENT
+      ============================================ */
+
+      if (
+        sale.status ===
+        "Cancelled"
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Payment cannot be received against a cancelled product sale.",
+          });
+      }
+
+      /* ============================================
+         VALIDATE PAYMENT AMOUNT
+      ============================================ */
+
+      const paymentAmount =
+        Number(amount);
+
+      if (
+        !Number.isFinite(
+          paymentAmount
+        ) ||
+        paymentAmount <= 0
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Enter a valid payment amount greater than zero.",
+          });
+      }
+
+      const totalAmount =
+        Number(
+          sale.totalAmount ||
+          0
+        );
+
+      /*
+       * Calculate existing payments from permanent
+       * payment records instead of trusting only
+       * ProductSale.paidAmount.
+       */
+      const existingPayments =
+        await ProductSalePayment.aggregate([
+          {
+            $match: {
+              productSaleId:
+                sale._id,
+
+              isDeleted: {
+                $ne: true,
+              },
+            },
+          },
+
+          {
+            $group: {
+              _id: null,
+
+              totalPaid: {
+                $sum:
+                  "$amount",
+              },
+            },
+          },
+        ]);
+
+      const alreadyPaid =
+        Number(
+          existingPayments?.[0]
+            ?.totalPaid ||
+          0
+        );
+
+      const currentPending =
+        Math.max(
+          totalAmount -
+            alreadyPaid,
+          0
+        );
+
+      /* ============================================
+         PREVENT OVERPAYMENT
+      ============================================ */
+
+      if (
+        paymentAmount >
+        currentPending +
+          0.01
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+
+            message:
+              `Payment cannot exceed pending amount ₹${currentPending.toFixed(
+                2
+              )}.`,
+          });
+      }
+
+      /* ============================================
+         GENERATE PAYMENT CODE
+      ============================================ */
+
+      const {
+        paymentNumber,
+        paymentCode,
+      } =
+        await generateProductSalePaymentCode();
+
+      /* ============================================
+         CREATE PERMANENT PAYMENT RECORD
+      ============================================ */
+
+      const payment =
+        await ProductSalePayment.create({
+          paymentCode,
+
+          paymentNumber,
+
+          productSaleId:
+            sale._id,
+
+          saleCode:
+            sale.saleCode,
+
+          clientId:
+            sale.clientId,
+
+          clientCode:
+            sale.clientCode,
+
+          clientName:
+            sale.clientName,
+
+          amount:
+            Number(
+              paymentAmount.toFixed(
+                2
+              )
+            ),
+
+          paymentDate:
+            paymentDate ||
+            new Date(),
+
+          mode:
+            mode ||
+            "Bank Transfer",
+
+          referenceNo:
+            String(
+              referenceNo ||
+              ""
+            ).trim(),
+
+          notes:
+            String(
+              notes ||
+              ""
+            ).trim(),
+
+          createdBy:
+            req.user?._id ||
+            null,
+
+          createdByName:
+            req.user?.name ||
+            "Admin",
+        });
+
+      /* ============================================
+         RECALCULATE SALE BALANCE
+      ============================================ */
+
+      const newPaidAmount =
+        Number(
+          (
+            alreadyPaid +
+            paymentAmount
+          ).toFixed(2)
+        );
+
+      const newPendingAmount =
+        Number(
+          Math.max(
+            totalAmount -
+              newPaidAmount,
+            0
+          ).toFixed(2)
+        );
+
+      let paymentStatus =
+        "Unpaid";
+
+      if (
+        newPendingAmount <=
+        0.01
+      ) {
+        paymentStatus =
+          "Paid";
+      } else if (
+        newPaidAmount > 0
+      ) {
+        paymentStatus =
+          "Partially Paid";
+      }
+
+      sale.paidAmount =
+        newPaidAmount;
+
+      sale.pendingAmount =
+        newPendingAmount;
+
+      sale.paymentStatus =
+        paymentStatus;
+
+      sale.updatedBy =
+        req.user?._id ||
+        null;
+
+      sale.updatedByName =
+        req.user?.name ||
+        "Admin";
+
+      await sale.save();
+
+      /* ============================================
+         ACTIVITY LOG
+      ============================================ */
+
+      try {
+        await ActivityLog.create({
+          action:
+            "Product Sale Payment Received",
+
+          category:
+            "Payment",
+
+          description:
+            `${payment.paymentCode} - ₹${payment.amount.toFixed(
+              2
+            )} received against ${sale.saleCode}.`,
+
+          entityType:
+            "product",
+
+          entityId:
+            sale._id,
+
+          entityCode:
+            sale.saleCode,
+
+          entityName:
+            sale.clientName,
+
+          clientId:
+            sale.clientId,
+
+          clientName:
+            sale.clientName,
+
+          performedBy:
+            req.user?._id ||
+            null,
+
+          performedByName:
+            req.user?.name ||
+            "Admin",
+
+          performedByRole:
+            "admin",
+
+          metadata: {
+            paymentId:
+              payment._id,
+
+            paymentCode:
+              payment.paymentCode,
+
+            paymentAmount:
+              payment.amount,
+
+            totalAmount:
+              sale.totalAmount,
+
+            paidAmount:
+              sale.paidAmount,
+
+            pendingAmount:
+              sale.pendingAmount,
+
+            paymentStatus:
+              sale.paymentStatus,
+
+            paymentMode:
+              payment.mode,
+
+            referenceNo:
+              payment.referenceNo,
+          },
+        });
+      } catch (
+        activityError
+      ) {
+        console.error(
+          "Product Sale Payment Activity Error:",
+          activityError
+        );
+      }
+
+      /* ============================================
+         RESPONSE
+      ============================================ */
+
+      return res
+        .status(201)
+        .json({
+          success: true,
+
+          message:
+            "Product sale payment recorded successfully.",
+
+          data: {
+            payment,
+
+            sale: {
+              id:
+                sale._id,
+
+              saleCode:
+                sale.saleCode,
+
+              totalAmount:
+                sale.totalAmount,
+
+              paidAmount:
+                sale.paidAmount,
+
+              pendingAmount:
+                sale.pendingAmount,
+
+              paymentStatus:
+                sale.paymentStatus,
+            },
+          },
+        });
+    } catch (error) {
+      console.error(
+        "Product Sale Payment Error:",
+        error
+      );
+
+      if (
+        error instanceof
+        mongoose.Error
+          .ValidationError
+      ) {
+        const firstError =
+          Object.values(
+            error.errors
+          )[0];
+
+        return res
+          .status(400)
+          .json({
+            success: false,
+
+            message:
+              firstError
+                ?.message ||
+              "Payment validation failed.",
+          });
+      }
+
+      if (
+        error?.code ===
+        11000
+      ) {
+        return res
+          .status(409)
+          .json({
+            success: false,
+
+            message:
+              "Payment number conflict. Please try again.",
+          });
+      }
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message ||
+            "Unable to record product sale payment.",
+        });
+    }
+  }
+);
+/* =====================================================
+   PRODUCT SALES SUMMARY
+   GET /api/admin/product-sales-summary
+===================================================== */
+
+router.get(
+  "/product-sales-summary",
+  async (req, res) => {
+    try {
+      const match = {
+        isDeleted: {
+          $ne: true,
+        },
+
+        status: {
+          $ne: "Cancelled",
+        },
+      };
+
+      const summary =
+        await ProductSale.aggregate([
+          {
+            $match:
+              match,
+          },
+
+          {
+            $group: {
+              _id:
+                null,
+
+              totalSales: {
+                $sum:
+                  1,
+              },
+
+              totalAmount: {
+                $sum:
+                  "$totalAmount",
+              },
+
+              paidAmount: {
+                $sum:
+                  "$paidAmount",
+              },
+
+              pendingAmount: {
+                $sum:
+                  "$pendingAmount",
+              },
+
+              unpaidCount: {
+                $sum: {
+                  $cond: [
+                    {
+                      $eq: [
+                        "$paymentStatus",
+                        "Unpaid",
+                      ],
+                    },
+                    1,
+                    0,
+                  ],
+                },
+              },
+
+              partialCount: {
+                $sum: {
+                  $cond: [
+                    {
+                      $eq: [
+                        "$paymentStatus",
+                        "Partially Paid",
+                      ],
+                    },
+                    1,
+                    0,
+                  ],
+                },
+              },
+
+              paidCount: {
+                $sum: {
+                  $cond: [
+                    {
+                      $eq: [
+                        "$paymentStatus",
+                        "Paid",
+                      ],
+                    },
+                    1,
+                    0,
+                  ],
+                },
+              },
+            },
+          },
+        ]);
+
+      const data =
+        summary[0] || {
+          totalSales:
+            0,
+
+          totalAmount:
+            0,
+
+          paidAmount:
+            0,
+
+          pendingAmount:
+            0,
+
+          unpaidCount:
+            0,
+
+          partialCount:
+            0,
+
+          paidCount:
+            0,
+        };
+
+      return res.json({
+        success:
+          true,
+
+        data,
+      });
+    } catch (error) {
+      console.error(
+        "Product Sales Summary Error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success:
+            false,
+
+          message:
+            "Unable to load product sales summary.",
+        });
+    }
+  }
+);
+
+
+/* =====================================================
+   CANCEL PRODUCT SALE
+   PATCH /api/admin/product-sales/:id/cancel
+===================================================== */
+
+router.patch(
+  "/product-sales/:id/cancel",
+  async (req, res) => {
+    try {
+      const {
+        id,
+      } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success:
+              false,
+
+            message:
+              "Invalid product sale ID.",
+          });
+      }
+
+      const sale =
+        await ProductSale.findOne({
+          _id:
+            id,
+
+          isDeleted: {
+            $ne: true,
+          },
+        });
+
+      if (!sale) {
+        return res
+          .status(404)
+          .json({
+            success:
+              false,
+
+            message:
+              "Product sale not found.",
+          });
+      }
+
+      if (
+        sale.status ===
+        "Cancelled"
+      ) {
+        return res
+          .status(400)
+          .json({
+            success:
+              false,
+
+            message:
+              "Product sale is already cancelled.",
+          });
+      }
+
+      const paymentCount =
+        await ProductSalePayment.countDocuments({
+          productSaleId:
+            sale._id,
+
+          isDeleted: {
+            $ne: true,
+          },
+        });
+
+      if (
+        paymentCount > 0
+      ) {
+        return res
+          .status(400)
+          .json({
+            success:
+              false,
+
+            message:
+              "Cannot cancel a product sale that already has payments. Reverse or adjust the payment first.",
+          });
+      }
+
+      sale.status =
+        "Cancelled";
+
+      sale.paymentStatus =
+        "Unpaid";
+
+      sale.updatedBy =
+        req.user?._id ||
+        null;
+
+      sale.updatedByName =
+        req.user?.name ||
+        "Admin";
+
+      await sale.save();
+
+      return res.json({
+        success:
+          true,
+
+        message:
+          "Product sale cancelled successfully.",
+
+        data:
+          sale,
+      });
+    } catch (error) {
+      console.error(
+        "Cancel Product Sale Error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success:
+            false,
+
+          message:
+            error.message ||
+            "Unable to cancel product sale.",
+        });
+    }
+  }
+);
+/* =====================================================
+   PRODUCT SALE PAYMENT LIST
+   GET /api/admin/product-sale-payments
+===================================================== */
+
+router.get(
+  "/product-sale-payments",
+  async (req, res) => {
+    try {
+      const limit =
+        Math.min(
+          Math.max(
+            Number(
+              req.query.limit ||
+              500
+            ),
+            1
+          ),
+          1000
+        );
+
+      const payments =
+        await ProductSalePayment.find({
+          isDeleted: {
+            $ne: true,
+          },
+        })
+          .sort({
+            paymentDate: -1,
+            createdAt: -1,
+          })
+          .limit(limit)
+          .lean();
+
+      return res.status(200).json({
+        success: true,
+
+        count:
+          payments.length,
+
+        data:
+          payments.map(
+            (payment) => ({
+              id:
+                payment._id,
+
+              _id:
+                payment._id,
+
+              productSaleId:
+                payment.productSaleId,
+
+              clientId:
+                payment.clientId,
+
+              clientCode:
+                payment.clientCode ||
+                "",
+
+              clientName:
+                payment.clientName ||
+                "",
+
+              saleCode:
+                payment.saleCode ||
+                "",
+
+              invoiceNo:
+                payment.invoiceNo ||
+                payment.saleCode ||
+                "",
+
+              paymentDate:
+                payment.paymentDate,
+
+              amount:
+                Number(
+                  payment.amount ||
+                  0
+                ),
+
+              mode:
+                payment.mode ||
+                "",
+
+              referenceNo:
+                payment.referenceNo ||
+                "",
+
+              notes:
+                payment.notes ||
+                "",
+
+              createdBy:
+                payment.createdBy ||
+                null,
+
+              createdByName:
+                payment.createdByName ||
+                "",
+
+              createdAt:
+                payment.createdAt,
+
+              updatedAt:
+                payment.updatedAt,
+            })
+          ),
+      });
+    } catch (error) {
+      console.error(
+        "Load product sale payments error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to load product sale payments.",
+      });
+    }
+  }
+);
+/* =====================================================
+   RENEW AMC CONTRACT + CREATE NEW PERMANENT INVOICE
+   POST /api/admin/amc/contract/:id/renew
+
+   IMPORTANT:
+   - Existing invoice is NEVER overwritten.
+   - Existing payments are NEVER changed.
+   - Same AMC contract continues.
+   - A NEW permanent AmcInvoice is created.
+===================================================== */
+
+router.post(
+  "/amc/contract/:id/renew",
+  async (req, res) => {
+    let createdInvoice = null;
+
+    try {
+      const { id } = req.params;
+
+      /* =================================================
+         VALIDATE CONTRACT ID
+      ================================================= */
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid AMC contract ID.",
+        });
+      }
+
+      /* =================================================
+         LOAD CONTRACT
+      ================================================= */
+
+      const contract =
+        await AmcContract.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!contract) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "AMC contract was not found.",
+        });
+      }
+
+      if (
+        contract.status ===
+        "Cancelled"
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "A cancelled AMC contract cannot be renewed.",
+        });
+      }
+
+      /* =================================================
+         FIND CURRENT / LATEST INVOICE
+      ================================================= */
+
+      const previousInvoice =
+        await AmcInvoice.findOne({
+          amcContractId:
+            contract._id,
+
+          isDeleted:
+            false,
+
+          status: {
+            $ne: "Cancelled",
+          },
+        }).sort({
+          contractExpiryDate: -1,
+          invoiceDate: -1,
+          createdAt: -1,
+        });
+
+      if (!previousInvoice) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "No existing AMC invoice was found for this contract.",
+        });
+      }
+
+      /* =================================================
+         OPTIONAL VALUES FROM FRONTEND
+
+         If frontend does not send them, values are copied
+         from the previous AMC invoice.
+      ================================================= */
+
+      const {
+        startDate,
+        expiryDate,
+        dueDate,
+
+        taxableAmount,
+
+        cgstRate,
+        sgstRate,
+        igstRate,
+
+        plan,
+        licensedUsers,
+
+        notes,
+      } = req.body || {};
+
+      /* =================================================
+         CALCULATE NEW AMC PERIOD
+      ================================================= */
+
+      let newStartDate;
+
+      if (startDate) {
+        newStartDate =
+          new Date(startDate);
+      } else {
+        /*
+         * New AMC starts the day after previous expiry.
+         */
+        newStartDate =
+          new Date(
+            previousInvoice
+              .contractExpiryDate ||
+            contract.expiryDate
+          );
+
+        newStartDate.setDate(
+          newStartDate.getDate() + 1
+        );
+      }
+
+      if (
+        Number.isNaN(
+          newStartDate.getTime()
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Unable to determine the new AMC start date.",
+        });
+      }
+
+      let newExpiryDate;
+
+      if (expiryDate) {
+        newExpiryDate =
+          new Date(expiryDate);
+      } else {
+        /*
+         * Example:
+         *
+         * Previous:
+         * 01-Apr-2026 → 31-Mar-2027
+         *
+         * New:
+         * 01-Apr-2027 → 31-Mar-2028
+         */
+
+        newExpiryDate =
+          new Date(newStartDate);
+
+        newExpiryDate.setFullYear(
+          newExpiryDate.getFullYear() + 1
+        );
+
+        newExpiryDate.setDate(
+          newExpiryDate.getDate() - 1
+        );
+      }
+
+      if (
+        Number.isNaN(
+          newExpiryDate.getTime()
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Unable to determine the new AMC expiry date.",
+        });
+      }
+
+      if (
+        newExpiryDate <=
+        newStartDate
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "AMC expiry date must be after the start date.",
+        });
+      }
+
+      /* =================================================
+         PREVENT DUPLICATE RENEWAL
+
+         Prevents double-click from creating two invoices
+         for exactly the same AMC period.
+      ================================================= */
+
+      const duplicateInvoice =
+        await AmcInvoice.findOne({
+          amcContractId:
+            contract._id,
+
+          contractStartDate:
+            newStartDate,
+
+          contractExpiryDate:
+            newExpiryDate,
+
+          isDeleted:
+            false,
+
+          status: {
+            $ne: "Cancelled",
+          },
+        });
+
+      if (duplicateInvoice) {
+        return res.status(409).json({
+          success: false,
+          message:
+            `AMC renewal already exists for this period (${duplicateInvoice.invoiceCode}).`,
+        });
+      }
+
+      /* =================================================
+         PAYMENT DUE DATE
+      ================================================= */
+
+      let newDueDate;
+
+      if (dueDate) {
+        newDueDate =
+          new Date(dueDate);
+      } else {
+        /*
+         * By default payment becomes due on AMC start.
+         *
+         * You can change this later to +7 / +15 / +30 days
+         * if required.
+         */
+        newDueDate =
+          new Date(newStartDate);
+      }
+
+      if (
+        Number.isNaN(
+          newDueDate.getTime()
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid AMC payment due date.",
+        });
+      }
+
+      /* =================================================
+         COMMERCIAL VALUE
+      ================================================= */
+
+      const newTaxableAmount =
+        roundAmcAmount(
+          taxableAmount !==
+            undefined
+            ? taxableAmount
+            : previousInvoice
+                .taxableAmount
+        );
+
+      if (
+        !Number.isFinite(
+          newTaxableAmount
+        ) ||
+        newTaxableAmount <= 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Enter a valid AMC taxable amount.",
+        });
+      }
+
+      const newCgstRate =
+        Number(
+          cgstRate !== undefined
+            ? cgstRate
+            : previousInvoice
+                .cgstRate || 0
+        );
+
+      const newSgstRate =
+        Number(
+          sgstRate !== undefined
+            ? sgstRate
+            : previousInvoice
+                .sgstRate || 0
+        );
+
+      const newIgstRate =
+        Number(
+          igstRate !== undefined
+            ? igstRate
+            : previousInvoice
+                .igstRate || 0
+        );
+
+      /* =================================================
+         CALCULATE GST
+      ================================================= */
+
+      const cgstAmount =
+        roundAmcAmount(
+          newTaxableAmount *
+            newCgstRate /
+            100
+        );
+
+      const sgstAmount =
+        roundAmcAmount(
+          newTaxableAmount *
+            newSgstRate /
+            100
+        );
+
+      const igstAmount =
+        roundAmcAmount(
+          newTaxableAmount *
+            newIgstRate /
+            100
+        );
+
+      const totalAmount =
+        roundAmcAmount(
+          newTaxableAmount +
+          cgstAmount +
+          sgstAmount +
+          igstAmount
+        );
+
+      /* =================================================
+         GENERATE NEXT AMC INVOICE NUMBER
+
+         Uses your existing helper.
+      ================================================= */
+
+      const invoiceIdentity =
+        await getNextAmcInvoiceIdentity();
+
+      /*
+       * Your helper may return:
+       *
+       * {
+       *   invoiceNumber,
+       *   invoiceCode
+       * }
+       *
+       * This is the same helper already used by your
+       * AMC creation logic.
+       */
+
+      /* =================================================
+         CREATE PERMANENT RENEWAL INVOICE
+      ================================================= */
+
+      createdInvoice =
+        await AmcInvoice.create({
+          invoiceCode:
+            invoiceIdentity.invoiceCode,
+
+          invoiceNumber:
+            invoiceIdentity.invoiceNumber,
+
+        invoiceType:
+            "Renewal",
+
+          amcContractId:
+            contract._id,
+
+          contractCode:
+            contract.contractCode,
+
+          clientId:
+            contract.clientId,
+
+          clientCode:
+            contract.clientCode,
+
+          clientName:
+            contract.clientName,
+
+          productId:
+            contract.productId,
+
+          productCode:
+            contract.productCode,
+
+          productName:
+            contract.productName,
+
+          clientProductId:
+            contract.clientProductId,
+
+          plan:
+            plan ||
+            previousInvoice.plan ||
+            contract.plan,
+
+          licensedUsers:
+            Math.max(
+              Number(
+                licensedUsers ||
+                previousInvoice
+                  .licensedUsers ||
+                contract.licensedUsers ||
+                1
+              ),
+              1
+            ),
+
+          contractStartDate:
+            newStartDate,
+
+          contractExpiryDate:
+            newExpiryDate,
+
+          invoiceDate:
+            new Date(),
+
+          dueDate:
+            newDueDate,
+
+          taxableAmount:
+            newTaxableAmount,
+
+          cgstRate:
+            newCgstRate,
+
+          sgstRate:
+            newSgstRate,
+
+          igstRate:
+            newIgstRate,
+
+          cgstAmount,
+
+          sgstAmount,
+
+          igstAmount,
+
+          totalAmount,
+
+          /*
+           * NEW invoice = no payment yet.
+           */
+
+          paidAmount:
+            0,
+
+          pendingAmount:
+            totalAmount,
+
+          paymentStatus:
+            "Pending",
+
+          status:
+            "Issued",
+
+          notes:
+            String(
+              notes ||
+              `AMC renewal after ${previousInvoice.invoiceCode}`
+            ).trim(),
+
+          createdBy:
+            req.user._id,
+
+          createdByName:
+            req.user.name ||
+            "Admin",
+
+          updatedBy:
+            req.user._id,
+
+          updatedByName:
+            req.user.name ||
+            "Admin",
+
+          isDeleted:
+            false,
+        });
+
+      /* =================================================
+         UPDATE CURRENT CONTRACT PERIOD
+
+         Contract represents CURRENT AMC state.
+
+         Old invoice remains untouched in amcinvoices.
+      ================================================= */
+
+      contract.currentInvoiceId =
+    createdInvoice._id;
+
+contract.currentInvoiceCode =
+    createdInvoice.invoiceCode;
+
+contract.invoiceCode =
+    createdInvoice.invoiceCode;
+
+contract.invoiceDate =
+    createdInvoice.invoiceDate;
+      contract.startDate =
+        newStartDate;
+
+      contract.expiryDate =
+        newExpiryDate;
+
+      contract.plan =
+        plan ||
+        contract.plan;
+
+      contract.licensedUsers =
+        Math.max(
+          Number(
+            licensedUsers ||
+            contract.licensedUsers ||
+            1
+          ),
+          1
+        );
+
+      /*
+       * Current financial state now belongs to the
+       * newly generated renewal invoice.
+       */
+
+      contract.totalAmount =
+        totalAmount;
+
+      contract.paidAmount =
+        0;
+
+      contract.pendingAmount =
+        totalAmount;
+
+      contract.status =
+        "Pending";
+
+      contract.updatedBy =
+        req.user._id;
+
+      contract.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      await contract.save();
+
+      /* =================================================
+         SYNCHRONIZE CLIENT PRODUCT
+      ================================================= */
+
+      const client =
+        await Client.findById(
+          contract.clientId
+        );
+
+      if (client) {
+        const clientProduct =
+          client.products.id(
+            contract.clientProductId
+          );
+
+        if (clientProduct) {
+          clientProduct.amcStatus =
+            "Pending";
+
+          clientProduct.expiryDate =
+            newExpiryDate
+              .toISOString()
+              .slice(0, 10);
+        }
+
+        /*
+         * Find nearest active AMC renewal for client.
+         */
+
+        client.amcStatus =
+          "Pending";
+
+        client.nextRenewal =
+          newExpiryDate
+            .toISOString()
+            .slice(0, 10);
+
+        client.updatedBy =
+          req.user._id;
+
+        client.updatedByName =
+          req.user.name ||
+          "Admin";
+
+        await client.save();
+      }
+
+      /* =================================================
+         ACTIVITY LOG
+      ================================================= */
+
+      await createActivityLog({
+        action:
+          "AMC Renewed",
+
+        category:
+          "AMC",
+
+        description:
+          `${contract.contractCode} was renewed and invoice ${createdInvoice.invoiceCode} was generated.`,
+
+        entityType:
+          "amc",
+
+        entityId:
+          contract._id,
+
+        entityCode:
+          contract.contractCode,
+
+        entityName:
+          `${contract.clientName} - ${contract.productName}`,
+
+        clientId:
+          contract.clientId,
+
+        clientName:
+          contract.clientName,
+
+        employeeId:
+          contract.assignedEmployeeId,
+
+        employeeName:
+          contract.assignedEmployeeName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          req.user.role ||
+          "admin",
+
+        metadata: {
+          previousInvoiceId:
+            previousInvoice._id,
+
+          previousInvoiceCode:
+            previousInvoice.invoiceCode,
+
+          newInvoiceId:
+            createdInvoice._id,
+
+          newInvoiceCode:
+            createdInvoice.invoiceCode,
+
+          startDate:
+            newStartDate,
+
+          expiryDate:
+            newExpiryDate,
+
+          taxableAmount:
+            newTaxableAmount,
+
+          totalAmount,
+        },
+      });
+
+      /* =================================================
+         RESPONSE
+      ================================================= */
+
+      const contractData =
+        mergeAmcContractWithInvoice(
+          contract,
+          createdInvoice
+        );
+
+      return res.status(201).json({
+        success: true,
+
+        message:
+          `AMC renewed successfully. Invoice ${createdInvoice.invoiceCode} has been generated.`,
+
+        data: {
+          contract:
+            contractData,
+
+          invoice:
+            amcInvoiceResponse(
+              createdInvoice
+            ),
+
+          previousInvoice:
+            amcInvoiceResponse(
+              previousInvoice
+            ),
+        },
+
+        contract:
+          contractData,
+
+        invoice:
+          amcInvoiceResponse(
+            createdInvoice
+          ),
+      });
+    } catch (error) {
+      console.error(
+        "AMC renewal error:",
+        error
+      );
+
+      /*
+       * If invoice was created but something after that
+       * failed, remove ONLY the new invoice.
+       *
+       * Old invoices/payments remain untouched.
+       */
+
+      if (
+        createdInvoice?._id
+      ) {
+        await AmcInvoice.deleteOne({
+          _id:
+            createdInvoice._id,
+        }).catch(() => {});
+      }
+
+      if (
+        error.code === 11000
+      ) {
+        return res.status(409).json({
+          success: false,
+          message:
+            "AMC renewal invoice number already exists. Please try again.",
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to renew AMC contract.",
+      });
+    }
   }
 );
 module.exports = router;

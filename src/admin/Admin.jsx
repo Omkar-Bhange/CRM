@@ -7,6 +7,8 @@ import NexoraLogo from "../assets/NexoraLogo.png";
 import Tasks from "./tasks/Tasks";
 import AmcBilling from "./billing/AmcBilling";
 import Team from "./team/Team";
+import ProductSales from "./billing/ProductSales";
+import PaymentsCollections from "./billing/PaymentsCollections";
 
 
 import SupportTickets from "./tickets/SupportTickets";
@@ -120,16 +122,26 @@ const menuItems = [
     label: "Projects",
     icon: BriefcaseBusiness,
 },
-    {
-        id: "billing",
-        label: "AMC & Billing",
-        icon: CreditCard,
-    },
-    {
-        id: "tickets",
-        label: "Support Tickets",
-        icon: Headphones,
-    },
+ {
+    id: "product-sales",
+    label: "Product Sales",
+    icon: ReceiptIndianRupee,
+},
+{
+    id: "billing",
+    label: "AMC & Billing",
+    icon: CreditCard,
+},
+{
+    id: "payments-collections",
+    label: "Payments & Collections",
+    icon: WalletCards,
+},
+{
+    id: "tickets",
+    label: "Support Tickets",
+    icon: Headphones,
+},
     {
         id: "team",
         label: "Team",
@@ -712,8 +724,70 @@ export default function Admin({ onLogout }) {
     const [clientDetailsTab, setClientDetailsTab] = useState("overview");
     const [editingClientId, setEditingClientId] = useState(null);
     const [productDrawerOpen, setProductDrawerOpen] = useState(false);
+
     const [savingProduct, setSavingProduct] = useState(false);
     const [editingProductId, setEditingProductId] = useState(null);
+    /* =====================================================
+   NEW PRODUCT SALE
+===================================================== */
+
+const [productSaleDrawerOpen, setProductSaleDrawerOpen] =
+    useState(false);
+
+const [savingProductSale, setSavingProductSale] =
+    useState(false);
+
+const [clientProductSales, setClientProductSales] =
+    useState([]);
+
+const [clientProductSalesLoading, setClientProductSalesLoading] =
+    useState(false);
+
+const [clientProductSalesError, setClientProductSalesError] =
+    useState("");
+
+const [productSaleForm, setProductSaleForm] =
+    useState({
+        saleDate: new Date()
+            .toISOString()
+            .slice(0, 10),
+
+        invoiceNo: "",
+
+        productId: "",
+        productCode: "",
+        productName: "",
+
+        version: "v1.0.0",
+
+        quantity: 1,
+
+        unitPrice: "",
+
+        discountAmount: 0,
+
+        cgstRate: 9,
+        sgstRate: 9,
+        igstRate: 0,
+
+        purchaseDate: new Date()
+            .toISOString()
+            .slice(0, 10),
+
+        installationDate: "",
+
+        licensedUsers: 1,
+
+        supportType: "Standard",
+
+        licenceType: "Perpetual Licence",
+
+       installationStatus: "Not Installed",
+
+        warrantyEndDate: "",
+
+        notes: "",
+    });
     const [clientAmcData, setClientAmcData] = useState(null);
     const [clientAmcLoading, setClientAmcLoading] = useState(false);
     const [clientAmcError, setClientAmcError] = useState("");
@@ -722,9 +796,45 @@ export default function Admin({ onLogout }) {
     setProjectForNewTask,
 ] = useState(null);
 
-    const [clientPaymentsData, setClientPaymentsData] = useState([]);
-    const [clientPaymentsLoading, setClientPaymentsLoading] = useState(false);
-    const [clientPaymentsError, setClientPaymentsError] = useState("");
+/* =====================================================
+   CLIENT PAYMENT HISTORY
+   Product Sales + AMC
+===================================================== */
+
+const [clientPaymentsData, setClientPaymentsData] =
+    useState([]);
+
+const [clientPaymentsSummary, setClientPaymentsSummary] =
+    useState({
+        totalReceived: 0,
+        productSalesReceived: 0,
+        amcReceived: 0,
+
+        totalPending: 0,
+        productSalesPending: 0,
+        amcPending: 0,
+
+        productSalesValue: 0,
+        amcValue: 0,
+        totalInvoiceValue: 0,
+
+        paymentCount: 0,
+        productSalePaymentCount: 0,
+        amcPaymentCount: 0,
+
+        lastPaymentDate: null,
+        lastPaymentAmount: 0,
+        lastPaymentType: null,
+    });
+
+const [clientPaymentFilter, setClientPaymentFilter] =
+    useState("All");
+
+const [clientPaymentsLoading, setClientPaymentsLoading] =
+    useState(false);
+
+const [clientPaymentsError, setClientPaymentsError] =
+    useState("");
 
     const [clientDocumentsData, setClientDocumentsData] = useState([]);
     const [clientDocumentsLoading, setClientDocumentsLoading] = useState(false);
@@ -811,27 +921,37 @@ export default function Admin({ onLogout }) {
         installationStatus: "Installed",
         notes: "",
     });
-    const [clientForm, setClientForm] = useState({
+const [clientForm, setClientForm] =
+    useState({
         code: "",
         companyName: "",
         contactPerson: "",
         email: "",
         mobile: "",
+
+        gstNo: "",
+        panNo: "",
+
+        addressLine1: "",
+        addressLine2: "",
         city: "",
+        state: "Maharashtra",
+        pinCode: "",
+        country: "India",
 
-        productId: "",
-        productVersion: "v1.0.0",
-        licensedUsers: 1,
-        supportType: "Standard",
-        installationStatus: "Installed",
+        billingContact: "",
+        billingEmail: "",
 
-        amcStatus: "Not Started",
-        nextRenewal: "",
+        preferredContact: "Phone",
+        supportLanguage: "English",
+
         assignedEmployeeId: "",
         assignedEmployeeCode: "",
         assignedEmployeeName: "",
+
         status: "Active",
-        createLogin: true,
+
+        createLogin: false,
         temporaryPassword: "",
     });
     const getAuthToken = () => {
@@ -880,6 +1000,49 @@ export default function Admin({ onLogout }) {
         mobile:
             client.mobile ||
             "",
+            gstNo:
+    client.gstNo ||
+    "",
+
+panNo:
+    client.panNo ||
+    "",
+
+addressLine1:
+    client.addressLine1 ||
+    "",
+
+addressLine2:
+    client.addressLine2 ||
+    "",
+
+state:
+    client.state ||
+    "",
+
+pinCode:
+    client.pinCode ||
+    "",
+
+country:
+    client.country ||
+    "India",
+
+billingContact:
+    client.billingContact ||
+    "",
+
+billingEmail:
+    client.billingEmail ||
+    "",
+
+preferredContact:
+    client.preferredContact ||
+    "Phone",
+
+supportLanguage:
+    client.supportLanguage ||
+    "English",
 
         city:
             client.city ||
@@ -1245,40 +1408,198 @@ export default function Admin({ onLogout }) {
         }
     };
 
-    const loadClientPayments = async (clientId) => {
-        if (!clientId) return;
+ const loadClientPayments = async (clientId) => {
+    if (!clientId) {
+        return;
+    }
 
-        try {
-            setClientPaymentsLoading(true);
-            setClientPaymentsError("");
+    try {
+        setClientPaymentsLoading(true);
+        setClientPaymentsError("");
 
-            const response = await fetch(
-                `${API_URL}/api/admin/client/${clientId}/payments`,
-                {
-                    method: "GET",
-                    headers: {
-                        Accept: "application/json",
-                        Authorization: `Bearer ${getAuthToken()}`,
-                    },
-                }
-            );
+        const response = await fetch(
+            `${API_URL}/api/admin/client/${clientId}/payments`,
+            {
+                method: "GET",
 
-            const result = await response.json();
+                headers: {
+                    Accept: "application/json",
 
-            if (!response.ok || !result.success) {
-                throw new Error(result.message || "Unable to load payments.");
+                    Authorization:
+                        `Bearer ${getAuthToken()}`,
+                },
             }
+        );
 
-            setClientPaymentsData(result.data || []);
-        } catch (error) {
-            console.error("Load client payments error:", error);
-            setClientPaymentsError(error.message || "Unable to load payments.");
-            setClientPaymentsData([]);
-        } finally {
-            setClientPaymentsLoading(false);
+        const result =
+            await response.json();
+
+        if (
+            !response.ok ||
+            !result.success
+        ) {
+            throw new Error(
+                result.message ||
+                "Unable to load payments."
+            );
         }
-    };
 
+        /*
+         * Combined payment records returned by backend:
+         *
+         * Product Sale
+         * AMC
+         */
+        const payments =
+            Array.isArray(result.data)
+                ? result.data
+                : Array.isArray(result.payments)
+                    ? result.payments
+                    : [];
+
+        setClientPaymentsData(
+            payments
+        );
+
+        /*
+         * Financial summary returned by backend.
+         */
+        setClientPaymentsSummary({
+            totalReceived:
+                Number(
+                    result.summary?.totalReceived ||
+                    0
+                ),
+
+            productSalesReceived:
+                Number(
+                    result.summary?.productSalesReceived ||
+                    0
+                ),
+
+            amcReceived:
+                Number(
+                    result.summary?.amcReceived ||
+                    0
+                ),
+
+            totalPending:
+                Number(
+                    result.summary?.totalPending ||
+                    0
+                ),
+
+            productSalesPending:
+                Number(
+                    result.summary?.productSalesPending ||
+                    0
+                ),
+
+            amcPending:
+                Number(
+                    result.summary?.amcPending ||
+                    0
+                ),
+
+            productSalesValue:
+                Number(
+                    result.summary?.productSalesValue ||
+                    0
+                ),
+
+            amcValue:
+                Number(
+                    result.summary?.amcValue ||
+                    0
+                ),
+
+            totalInvoiceValue:
+                Number(
+                    result.summary?.totalInvoiceValue ||
+                    0
+                ),
+
+            paymentCount:
+                Number(
+                    result.summary?.paymentCount ||
+                    payments.length
+                ),
+
+            productSalePaymentCount:
+                Number(
+                    result.summary?.productSalePaymentCount ||
+                    payments.filter(
+                        (payment) =>
+                            payment.sourceType ===
+                            "Product Sale"
+                    ).length
+                ),
+
+            amcPaymentCount:
+                Number(
+                    result.summary?.amcPaymentCount ||
+                    payments.filter(
+                        (payment) =>
+                            payment.sourceType ===
+                            "AMC"
+                    ).length
+                ),
+
+            lastPaymentDate:
+                result.summary?.lastPaymentDate ||
+                payments[0]?.paymentDate ||
+                null,
+
+            lastPaymentAmount:
+                Number(
+                    result.summary?.lastPaymentAmount ||
+                    payments[0]?.amount ||
+                    0
+                ),
+
+            lastPaymentType:
+                result.summary?.lastPaymentType ||
+                payments[0]?.sourceType ||
+                null,
+        });
+    } catch (error) {
+        console.error(
+            "Load client payments error:",
+            error
+        );
+
+        setClientPaymentsError(
+            error.message ||
+            "Unable to load payments."
+        );
+
+        setClientPaymentsData([]);
+
+        setClientPaymentsSummary({
+            totalReceived: 0,
+            productSalesReceived: 0,
+            amcReceived: 0,
+
+            totalPending: 0,
+            productSalesPending: 0,
+            amcPending: 0,
+
+            productSalesValue: 0,
+            amcValue: 0,
+            totalInvoiceValue: 0,
+
+            paymentCount: 0,
+            productSalePaymentCount: 0,
+            amcPaymentCount: 0,
+
+            lastPaymentDate: null,
+            lastPaymentAmount: 0,
+            lastPaymentType: null,
+        });
+    } finally {
+        setClientPaymentsLoading(false);
+    }
+};
     const loadClientDocuments = async (clientId) => {
         if (!clientId) return;
 
@@ -1984,28 +2305,34 @@ export default function Admin({ onLogout }) {
         }
     }, [clientDetailsTab, selectedClient]);
 
-    useEffect(() => {
-        if (
-            !sidebarOpen &&
-            !clientDrawerOpen &&
-            !productDrawerOpen &&
-            !paymentDrawerOpen
-        ) {
-            return undefined;
-        }
+  useEffect(() => {
+    if (
+        !sidebarOpen &&
+        !clientDrawerOpen &&
+        !productDrawerOpen &&
+        !productSaleDrawerOpen &&
+        !paymentDrawerOpen
+    ) {
+        return undefined;
+    }
 
-        const previousOverflow = document.body.style.overflow;
-        document.body.style.overflow = "hidden";
+    const previousOverflow =
+        document.body.style.overflow;
 
-        return () => {
-            document.body.style.overflow = previousOverflow;
-        };
-    }, [
-        sidebarOpen,
-        clientDrawerOpen,
-        productDrawerOpen,
-        paymentDrawerOpen,
-    ]);
+    document.body.style.overflow =
+        "hidden";
+
+    return () => {
+        document.body.style.overflow =
+            previousOverflow;
+    };
+}, [
+    sidebarOpen,
+    clientDrawerOpen,
+    productDrawerOpen,
+    productSaleDrawerOpen,
+    paymentDrawerOpen,
+]);
 
     const selectedMenu =
         menuItems.find((item) => item.id === activeMenu) || menuItems[0];
@@ -2057,59 +2384,136 @@ export default function Admin({ onLogout }) {
         }));
     };
 
-    const resetClientForm = () => {
-        setClientForm({
-            code: "",
-            companyName: "",
-            contactPerson: "",
-            email: "",
-            mobile: "",
-            city: "",
+const resetClientForm = () => {
+    setClientForm({
+        code: "",
+        companyName: "",
+        contactPerson: "",
+        email: "",
+        mobile: "",
 
-            productId: "",
-            productVersion: "v1.0.0",
-            licensedUsers: 1,
-            supportType: "Standard",
-            installationStatus: "Installed",
+        gstNo: "",
+        panNo: "",
 
-            amcStatus: "Not Started",
-            nextRenewal: "",
-            assignedEmployeeId: "",
-            assignedEmployeeCode: "",
-            assignedEmployeeName: "",
-            status: "Active",
-        });
-    };
+        addressLine1: "",
+        addressLine2: "",
+        city: "",
+        state: "Maharashtra",
+        pinCode: "",
+        country: "India",
+
+        billingContact: "",
+        billingEmail: "",
+
+        preferredContact: "Phone",
+        supportLanguage: "English",
+
+        assignedEmployeeId: "",
+        assignedEmployeeCode: "",
+        assignedEmployeeName: "",
+
+        status: "Active",
+
+        createLogin: false,
+        temporaryPassword: "",
+    });
+};
     const openClientDrawer = (client = null) => {
         if (client) {
             setEditingClientId(client._id || client.id);
 
-            setClientForm({
-                code: client.clientCode || client.code || "",
-                companyName: client.companyName || "",
-                contactPerson: client.contactPerson || "",
-                email: client.email || "",
-                mobile: client.mobile || "",
-                city: client.city || "",
+setClientForm({
+    code:
+        client.clientCode ||
+        client.code ||
+        "",
 
-                productId: "",
-                productVersion: "v1.0.0",
-                licensedUsers: 1,
-                supportType: "Standard",
-                installationStatus: "Installed",
+    companyName:
+        client.companyName ||
+        "",
 
-                amcStatus: client.amcStatus || "Not Started",
-                nextRenewal: client.nextRenewal || "",
-                assignedEmployeeId:
-                    client.assignedEmployeeId || "",
+    contactPerson:
+        client.contactPerson ||
+        "",
 
-                assignedEmployeeCode:
-                    client.assignedEmployeeCode || "",
+    email:
+        client.email ||
+        "",
 
-                assignedEmployeeName:
-                    client.assignedEmployeeName || "",
-                status: client.status || "Active",
-            });
+    mobile:
+        client.mobile ||
+        "",
+
+    gstNo:
+        client.gstNo ||
+        "",
+
+    panNo:
+        client.panNo ||
+        "",
+
+    addressLine1:
+        client.addressLine1 ||
+        "",
+
+    addressLine2:
+        client.addressLine2 ||
+        "",
+
+    city:
+        client.city ||
+        "",
+
+    state:
+        client.state ||
+        "Maharashtra",
+
+    pinCode:
+        client.pinCode ||
+        "",
+
+    country:
+        client.country ||
+        "India",
+
+    billingContact:
+        client.billingContact ||
+        "",
+
+    billingEmail:
+        client.billingEmail ||
+        "",
+
+    preferredContact:
+        client.preferredContact ||
+        "Phone",
+
+    supportLanguage:
+        client.supportLanguage ||
+        "English",
+
+    assignedEmployeeId:
+        client.assignedEmployeeId ||
+        "",
+
+    assignedEmployeeCode:
+        client.assignedEmployeeCode ||
+        "",
+
+    assignedEmployeeName:
+        client.assignedEmployeeName ||
+        "",
+
+    status:
+        client.status ||
+        "Active",
+
+    createLogin:
+        false,
+
+    temporaryPassword:
+        "",
+});
 
             setClientDrawerOpen(true);
             return;
@@ -2147,33 +2551,40 @@ export default function Admin({ onLogout }) {
             );
 
         setEditingClientId(null);
+setClientForm({
+    code:
+        `CL-${highestClientNumber + 1}`,
 
-        setClientForm({
-            code:
-                `CL-${highestClientNumber + 1}`,
+    companyName: "",
+    contactPerson: "",
+    email: "",
+    mobile: "",
 
-            companyName: "",
-            contactPerson: "",
-            email: "",
-            mobile: "",
-            city: "",
+    gstNo: "",
+    panNo: "",
 
-            productId: "",
-            productVersion: "v1.0.0",
-            licensedUsers: 1,
-            supportType: "Standard",
-            installationStatus:
-                "Installed",
+    addressLine1: "",
+    addressLine2: "",
+    city: "",
+    state: "Maharashtra",
+    pinCode: "",
+    country: "India",
 
-            amcStatus:
-                "Not Started",
+    billingContact: "",
+    billingEmail: "",
 
-            nextRenewal: "",
-            assignedEmployeeId: "",
-            assignedEmployeeCode: "",
-            assignedEmployeeName: "",
-            status: "Active",
-        });
+    preferredContact: "Phone",
+    supportLanguage: "English",
+
+    assignedEmployeeId: "",
+    assignedEmployeeCode: "",
+    assignedEmployeeName: "",
+
+    status: "Active",
+
+    createLogin: false,
+    temporaryPassword: "",
+});
 
         setClientDrawerOpen(true);
     };
@@ -2212,6 +2623,29 @@ export default function Admin({ onLogout }) {
 
         setClientAmcData(null);
         setClientPaymentsData([]);
+        setClientPaymentFilter("All");
+
+setClientPaymentsSummary({
+    totalReceived: 0,
+    productSalesReceived: 0,
+    amcReceived: 0,
+
+    totalPending: 0,
+    productSalesPending: 0,
+    amcPending: 0,
+
+    productSalesValue: 0,
+    amcValue: 0,
+    totalInvoiceValue: 0,
+
+    paymentCount: 0,
+    productSalePaymentCount: 0,
+    amcPaymentCount: 0,
+
+    lastPaymentDate: null,
+    lastPaymentAmount: 0,
+    lastPaymentType: null,
+});
         setClientDocumentsData([]);
         setClientActivityData([]);
 
@@ -2257,12 +2691,103 @@ export default function Admin({ onLogout }) {
 
     const closeClientDetails = () => {
         setSelectedClient(null);
+        setClientPaymentFilter("All");
+
+setClientPaymentsSummary({
+    totalReceived: 0,
+    productSalesReceived: 0,
+    amcReceived: 0,
+
+    totalPending: 0,
+    productSalesPending: 0,
+    amcPending: 0,
+
+    productSalesValue: 0,
+    amcValue: 0,
+    totalInvoiceValue: 0,
+
+    paymentCount: 0,
+    productSalePaymentCount: 0,
+    amcPaymentCount: 0,
+
+    lastPaymentDate: null,
+    lastPaymentAmount: 0,
+    lastPaymentType: null,
+});
         setClientDetailsTab("overview");
         setClientAmcData(null);
         setClientPaymentsData([]);
         setClientDocumentsData([]);
         setClientActivityData([]);
     };
+    const resetProductSaleForm = () => {
+    const today =
+        new Date()
+            .toISOString()
+            .slice(0, 10);
+
+    setProductSaleForm({
+        saleDate:
+            today,
+
+        invoiceNo:
+            "",
+
+        productId:
+            "",
+
+        productCode:
+            "",
+
+        productName:
+            "",
+
+        version:
+            "v1.0.0",
+
+        quantity:
+            1,
+
+        unitPrice:
+            "",
+
+        discountAmount:
+            0,
+
+        cgstRate:
+            9,
+
+        sgstRate:
+            9,
+
+        igstRate:
+            0,
+
+        purchaseDate:
+            today,
+
+        installationDate:
+            "",
+
+        licensedUsers:
+            1,
+
+        supportType:
+            "Standard",
+
+        licenceType:
+            "Perpetual Licence",
+
+        installationStatus:
+            "Not Installed",
+
+        warrantyEndDate:
+            "",
+
+        notes:
+            "",
+    });
+};
     const resetProductForm = () => {
         setProductForm({
             productId: "",
@@ -2278,6 +2803,305 @@ export default function Admin({ onLogout }) {
             installationStatus: "Installed",
             notes: "",
         });
+    };
+    const openProductSaleDrawer =
+    async () => {
+        if (!selectedClient) {
+            alert(
+                "Please select a client first."
+            );
+            return;
+        }
+
+        /*
+         * Always reload Product Master so
+         * newly created products are available.
+         */
+        await loadProductMasters();
+
+        resetProductSaleForm();
+
+        setProductSaleDrawerOpen(
+            true
+        );
+    };
+    const closeProductSaleDrawer =
+    () => {
+        if (
+            savingProductSale
+        ) {
+            return;
+        }
+
+        setProductSaleDrawerOpen(
+            false
+        );
+
+        resetProductSaleForm();
+    };
+    const handleCreateProductSale =
+    async (event) => {
+        event.preventDefault();
+
+        if (!selectedClient) {
+            alert(
+                "Client information is missing."
+            );
+            return;
+        }
+
+        const clientId =
+            selectedClient._id ||
+            selectedClient.id;
+
+        if (!clientId) {
+            alert(
+                "Client ID is missing."
+            );
+            return;
+        }
+
+        if (
+            !productSaleForm.productId
+        ) {
+            alert(
+                "Please select a product."
+            );
+            return;
+        }
+
+        const unitPrice =
+            Number(
+                productSaleForm.unitPrice ||
+                0
+            );
+
+        if (
+            !Number.isFinite(unitPrice) ||
+            unitPrice <= 0
+        ) {
+            alert(
+                "Please enter a valid unit price."
+            );
+            return;
+        }
+
+        const quantity =
+            Math.max(
+                Number(
+                    productSaleForm.quantity ||
+                    1
+                ),
+                1
+            );
+
+        const discountAmount =
+            Math.max(
+                Number(
+                    productSaleForm.discountAmount ||
+                    0
+                ),
+                0
+            );
+
+        const gstRate =
+            Math.max(
+                Number(
+                    productSaleForm.cgstRate ||
+                    0
+                ) +
+                Number(
+                    productSaleForm.sgstRate ||
+                    0
+                ) +
+                Number(
+                    productSaleForm.igstRate ||
+                    0
+                ),
+                0
+            );
+
+        try {
+            setSavingProductSale(
+                true
+            );
+
+            const response =
+                await fetch(
+                    `${API_URL}/api/admin/product-sales`,
+                    {
+                        method:
+                            "POST",
+
+                        headers: {
+                            "Content-Type":
+                                "application/json",
+
+                            Accept:
+                                "application/json",
+
+                            Authorization:
+                                `Bearer ${getAuthToken()}`,
+                        },
+
+                        body:
+                            JSON.stringify({
+                                clientId,
+
+                                saleDate:
+                                    productSaleForm.saleDate,
+
+                                invoiceNo:
+                                    productSaleForm.invoiceNo.trim(),
+
+                                invoiceDate:
+                                    productSaleForm.saleDate,
+
+                                items: [
+                                    {
+                                        productId:
+                                            productSaleForm.productId,
+
+                                        version:
+                                            productSaleForm.version.trim() ||
+                                            "v1.0.0",
+
+                                        quantity,
+
+                                        rate:
+                                            unitPrice,
+
+                                        discountAmount,
+
+                                        gstRate,
+
+                                        purchaseDate:
+                                            productSaleForm.purchaseDate ||
+                                            productSaleForm.saleDate,
+
+                                        installationDate:
+                                            productSaleForm.installationDate ||
+                                            null,
+
+                                        licensedUsers:
+                                            Math.max(
+                                                Number(
+                                                    productSaleForm.licensedUsers ||
+                                                    1
+                                                ),
+                                                1
+                                            ),
+
+                                        licenceType:
+                                            productSaleForm.licenceType,
+
+                                        supportType:
+                                            productSaleForm.supportType,
+
+                                        installationStatus:
+                                            productSaleForm.installationStatus,
+
+                                        warrantyEndDate:
+                                            productSaleForm.warrantyEndDate ||
+                                            null,
+
+                                        notes:
+                                            productSaleForm.notes.trim(),
+                                    },
+                                ],
+
+                                discountAmount:
+                                    0,
+
+                                roundOff:
+                                    0,
+
+                                notes:
+                                    productSaleForm.notes.trim(),
+                            }),
+                    }
+                );
+
+            const result =
+                await response.json();
+
+            if (
+                !response.ok ||
+                !result.success
+            ) {
+                throw new Error(
+                    result.message ||
+                    "Unable to create product sale."
+                );
+            }
+
+            /*
+             * Refresh client after sale.
+             *
+             * Backend automatically adds
+             * the sold product into
+             * client.products[].
+             */
+            const updatedClient =
+                await loadClientDetails(
+                    clientId
+                );
+
+            setSelectedClient(
+                updatedClient
+            );
+
+            setClients(
+                (currentClients) =>
+                    currentClients.map(
+                        (client) =>
+                            String(
+                                client._id ||
+                                client.id
+                            ) ===
+                            String(
+                                clientId
+                            )
+                                ? updatedClient
+                                : client
+                    )
+            );
+
+            /*
+             * Refresh Product Sale history
+             * later once we connect the list.
+             */
+            setClientProductSales(
+                (current) => [
+                    result.data,
+                    ...current,
+                ]
+            );
+
+            setProductSaleDrawerOpen(
+                false
+            );
+
+            resetProductSaleForm();
+
+            alert(
+                `Product sale ${result.data?.saleCode || ""} created successfully.`
+            );
+        } catch (error) {
+            console.error(
+                "Create Product Sale error:",
+                error
+            );
+
+            alert(
+                error.message ||
+                "Unable to create product sale."
+            );
+        } finally {
+            setSavingProductSale(
+                false
+            );
+        }
     };
 
     const openProductDrawer = async (
@@ -2853,95 +3677,91 @@ export default function Admin({ onLogout }) {
                     ? `${API_URL}/api/admin/client/${editingClientId}`
                     : `${API_URL}/api/admin/client`;
 
-            const body = {
-                clientCode,
-                companyName,
+ const body = {
+    clientCode,
+    companyName,
 
-                contactPerson:
-                    clientForm.contactPerson.trim(),
+    contactPerson:
+        clientForm.contactPerson.trim(),
 
-                email:
-                    clientForm.email
-                        .trim()
-                        .toLowerCase(),
-                createLogin: clientForm.createLogin,
-                temporaryPassword:
-                    clientForm.temporaryPassword,
+    email:
+        clientForm.email
+            .trim()
+            .toLowerCase(),
 
-                mobile,
+    mobile,
 
-                city:
-                    clientForm.city.trim(),
+    gstNo:
+        clientForm.gstNo
+            .trim()
+            .toUpperCase(),
 
-                amcStatus:
-                    clientForm.amcStatus,
+    panNo:
+        clientForm.panNo
+            .trim()
+            .toUpperCase(),
 
-                nextRenewal:
-                    clientForm.nextRenewal ||
-                    "",
+    addressLine1:
+        clientForm.addressLine1.trim(),
 
-                assignedEmployeeId:
-                    clientForm.assignedEmployeeId || "",
+    addressLine2:
+        clientForm.addressLine2.trim(),
 
-                status:
-                    clientForm.status,
-            };
+    city:
+        clientForm.city.trim(),
 
-            /*
-             * Only new clients receive an empty
-             * product list. Editing a client must
-             * not remove assigned products.
-             */
-            if (!isEditing) {
-                body.products =
-                    clientForm.productId
-                        ? [
-                            {
-                                productId:
-                                    clientForm.productId,
+    state:
+        clientForm.state.trim(),
 
-                                version:
-                                    clientForm.productVersion.trim() ||
-                                    "v1.0.0",
+    pinCode:
+        clientForm.pinCode.trim(),
 
-                                purchaseDate:
-                                    new Date()
-                                        .toISOString()
-                                        .slice(0, 10),
+    country:
+        clientForm.country.trim() ||
+        "India",
 
-                                installationDate:
-                                    "",
+    billingContact:
+        clientForm.billingContact.trim(),
 
-                                licensedUsers:
-                                    Math.max(
-                                        Number(
-                                            clientForm.licensedUsers ||
-                                            1
-                                        ),
-                                        1
-                                    ),
+    billingEmail:
+        clientForm.billingEmail
+            .trim()
+            .toLowerCase(),
 
-                                supportType:
-                                    clientForm.supportType ||
-                                    "Standard",
+    preferredContact:
+        clientForm.preferredContact,
 
-                                amcStatus:
-                                    clientForm.amcStatus ||
-                                    "Not Started",
+    supportLanguage:
+        clientForm.supportLanguage,
 
-                                expiryDate:
-                                    clientForm.nextRenewal ||
-                                    "",
+    assignedEmployeeId:
+        clientForm.assignedEmployeeId ||
+        "",
 
-                                installationStatus:
-                                    clientForm.installationStatus ||
-                                    "Installed",
+    status:
+        clientForm.status,
 
-                                notes: "",
-                            },
-                        ]
-                        : [];
-            }
+    createLogin:
+        clientForm.createLogin,
+
+    temporaryPassword:
+        clientForm.temporaryPassword,
+};
+         /*
+ * New client creation must create only
+ * the Client Master.
+ *
+ * Products are added later through:
+ *
+ * 1. New Product Sale
+ * 2. Add Existing Product
+ *
+ * This prevents financial sales from being
+ * bypassed during client creation.
+ */
+if (!isEditing) {
+    body.products = [];
+}
 
             const response =
                 await fetch(
@@ -3298,22 +4118,162 @@ export default function Admin({ onLogout }) {
             (ticket) => ticket.status === clientTicketFilter
         );
     };
-    const getSelectedClientAmcRecords = () => {
-        if (!clientAmcData?.invoices) return [];
+   const getSelectedClientAmcRecords = () => {
+    const invoices =
+        Array.isArray(clientAmcData?.invoiceHistory)
+            ? clientAmcData.invoiceHistory
+            : Array.isArray(clientAmcData?.invoices)
+                ? clientAmcData.invoices
+                : [];
 
-        return clientAmcData.invoices.map((invoice) => ({
-            id: invoice.id,
-            invoiceNo: invoice.invoiceCode,
-            invoiceDate: invoice.invoiceDate,
-            product: invoice.productName,
-            period: `${invoice.startDate} - ${invoice.endDate}`,
-            amount: invoice.totalAmount,
-            paidAmount: invoice.paidAmount,
-            dueDate: invoice.dueDate,
-            status: invoice.paymentStatus,
-            reminderStatus: invoice.reminderStatus || 'Not Sent',
-        }));
-    };
+    return invoices.map((invoice) => {
+        const totalAmount =
+            Number(
+                invoice.totalAmount ||
+                0
+            );
+
+        const paidAmount =
+            Number(
+                invoice.paidAmount ||
+                0
+            );
+
+        const pendingAmount =
+            Number(
+                invoice.pendingAmount ??
+                Math.max(
+                    totalAmount - paidAmount,
+                    0
+                )
+            );
+
+        return {
+            id:
+                invoice.id ||
+                invoice._id ||
+                "",
+
+            amcInvoiceId:
+                invoice.amcInvoiceId ||
+                invoice.id ||
+                invoice._id ||
+                "",
+
+            amcContractId:
+                invoice.amcContractId ||
+                "",
+
+            contractCode:
+                invoice.contractCode ||
+                "",
+
+            invoiceNo:
+                invoice.invoiceCode ||
+                invoice.invoiceNo ||
+                "",
+
+            invoiceCode:
+                invoice.invoiceCode ||
+                invoice.invoiceNo ||
+                "",
+
+            invoiceDate:
+                invoice.invoiceDate ||
+                null,
+
+            product:
+                invoice.productName ||
+                "AMC",
+
+            productName:
+                invoice.productName ||
+                "AMC",
+
+            productCode:
+                invoice.productCode ||
+                "",
+
+            productVersion:
+                invoice.productVersion ||
+                "",
+
+            plan:
+                invoice.plan ||
+                "",
+
+            licensedUsers:
+                Number(
+                    invoice.licensedUsers ||
+                    0
+                ),
+
+            startDate:
+                invoice.startDate ||
+                invoice.contractStartDate ||
+                null,
+
+            endDate:
+                invoice.endDate ||
+                invoice.contractExpiryDate ||
+                null,
+
+            contractStartDate:
+                invoice.contractStartDate ||
+                invoice.startDate ||
+                null,
+
+            contractExpiryDate:
+                invoice.contractExpiryDate ||
+                invoice.endDate ||
+                null,
+
+            amount:
+                totalAmount,
+
+            totalAmount,
+
+            paidAmount,
+
+            pendingAmount,
+
+            dueDate:
+                invoice.dueDate ||
+                null,
+
+            status:
+                invoice.paymentStatus ||
+                "Pending",
+
+            paymentStatus:
+                invoice.paymentStatus ||
+                "Pending",
+
+            reminderStatus:
+                invoice.reminderStatus ||
+                "Not Sent",
+
+            payments:
+                Array.isArray(
+                    invoice.payments
+                )
+                    ? invoice.payments
+                    : [],
+
+            paymentCount:
+                Number(
+                    invoice.paymentCount ||
+                    (
+                        Array.isArray(
+                            invoice.payments
+                        )
+                            ? invoice.payments.length
+                            : 0
+                    )
+                ),
+        };
+    });
+};
 
     const getAmcPaymentStatusClasses = (status) => {
         if (status === "Paid") {
@@ -3338,30 +4298,171 @@ export default function Admin({ onLogout }) {
             maximumFractionDigits: 0,
         }).format(amount);
     };
+    const formatBusinessDate = (value) => {
+    if (!value) {
+        return "—";
+    }
 
-    const getSelectedClientPayments = () => {
-        if (!selectedClient) return [];
+    const date =
+        new Date(value);
 
-        return clientPaymentsData;
-    };
+    if (
+        Number.isNaN(
+            date.getTime()
+        )
+    ) {
+        return "—";
+    }
 
-    const getSelectedClientPendingAmount = () => {
-        return getSelectedClientAmcRecords().reduce(
-            (total, record) =>
-                total + Math.max(record.amount - record.paidAmount, 0),
+    return date.toLocaleDateString(
+        "en-IN",
+        {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+        }
+    );
+};
+
+/* =====================================================
+   CLIENT PAYMENT HELPERS
+===================================================== */
+
+const getSelectedClientPayments = () => {
+    if (!selectedClient) {
+        return [];
+    }
+
+    if (
+        clientPaymentFilter ===
+        "Product Sales"
+    ) {
+        return clientPaymentsData.filter(
+            (payment) =>
+                payment.sourceType ===
+                "Product Sale"
+        );
+    }
+
+    if (
+        clientPaymentFilter ===
+        "AMC"
+    ) {
+        return clientPaymentsData.filter(
+            (payment) =>
+                payment.sourceType ===
+                "AMC"
+        );
+    }
+
+    return clientPaymentsData;
+};
+
+const getSelectedClientReceivedAmount = () => {
+    if (
+        clientPaymentFilter ===
+        "Product Sales"
+    ) {
+        return Number(
+            clientPaymentsSummary.productSalesReceived ||
             0
         );
-    };
+    }
 
-    const getLatestClientPayment = () => {
-        const payments = getSelectedClientPayments();
+    if (
+        clientPaymentFilter ===
+        "AMC"
+    ) {
+        return Number(
+            clientPaymentsSummary.amcReceived ||
+            0
+        );
+    }
 
-        if (payments.length === 0) {
-            return null;
-        }
+    return Number(
+        clientPaymentsSummary.totalReceived ||
+        0
+    );
+};
 
-        return payments[0];
-    };
+const getSelectedClientPendingAmount = () => {
+    if (
+        clientPaymentFilter ===
+        "Product Sales"
+    ) {
+        return Number(
+            clientPaymentsSummary.productSalesPending ||
+            0
+        );
+    }
+
+    if (
+        clientPaymentFilter ===
+        "AMC"
+    ) {
+        return Number(
+            clientPaymentsSummary.amcPending ||
+            0
+        );
+    }
+
+    return Number(
+        clientPaymentsSummary.totalPending ||
+        0
+    );
+};
+
+const getSelectedClientInvoiceValue = () => {
+    if (
+        clientPaymentFilter ===
+        "Product Sales"
+    ) {
+        return Number(
+            clientPaymentsSummary.productSalesValue ||
+            0
+        );
+    }
+
+    if (
+        clientPaymentFilter ===
+        "AMC"
+    ) {
+        return Number(
+            clientPaymentsSummary.amcValue ||
+            0
+        );
+    }
+
+    return Number(
+        clientPaymentsSummary.totalInvoiceValue ||
+        0
+    );
+};
+
+const getLatestClientPayment = () => {
+    const payments =
+        getSelectedClientPayments();
+
+    if (
+        payments.length === 0
+    ) {
+        return null;
+    }
+
+    return [...payments].sort(
+        (first, second) =>
+            new Date(
+                second.paymentDate ||
+                second.createdAt ||
+                0
+            ).getTime() -
+            new Date(
+                first.paymentDate ||
+                first.createdAt ||
+                0
+            ).getTime()
+    )[0];
+};
 
     const getSelectedClientDocuments = () => {
         if (!selectedClient) return [];
@@ -5023,14 +6124,31 @@ export default function Admin({ onLogout }) {
                                                                     </p>
                                                                 </div>
 
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => openProductDrawer()}
-                                                                    className="flex h-9 items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700"
-                                                                >
-                                                                    <Plus size={15} />
-                                                                    Assign Product
-                                                                </button>
+                                                              <div className="flex flex-wrap items-center gap-2">
+<button
+    type="button"
+    onClick={
+        openProductSaleDrawer
+    }
+    className="inline-flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700"
+>
+    <Plus className="h-4 w-4" />
+
+    New Product Sale
+</button>
+
+    <button
+        type="button"
+        onClick={() =>
+            openProductDrawer()
+        }
+        className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
+    >
+        <Plus className="h-4 w-4" />
+
+        Add Existing Product
+    </button>
+</div>
                                                             </div>
 
                                                             {/* Product Summary */}
@@ -5639,13 +6757,17 @@ export default function Admin({ onLogout }) {
                                                                     </p>
 
                                                                     <p className="mt-2 text-xl font-semibold text-amber-700">
-                                                                        {formatCurrency(
-                                                                            getSelectedClientAmcRecords().reduce(
-                                                                                (total, record) =>
-                                                                                    total + (record.amount - record.paidAmount),
-                                                                                0
-                                                                            )
-                                                                        )}
+                                                                      {formatCurrency(
+    getSelectedClientAmcRecords().reduce(
+        (total, record) =>
+            total +
+            Number(
+                record.pendingAmount ||
+                0
+            ),
+        0
+    )
+)}
                                                                     </p>
                                                                 </div>
 
@@ -5744,7 +6866,22 @@ export default function Admin({ onLogout }) {
                                                                                         <td className="px-5 py-4">
                                                                                             <div className="min-w-[175px]">
                                                                                                 <p className="text-xs font-medium text-slate-700">
-                                                                                                    {record.period}
+                                                                                                   <div>
+    <p className="text-xs font-semibold text-slate-700">
+        {formatBusinessDate(
+            record.startDate
+        )}
+        {" → "}
+        {formatBusinessDate(
+            record.endDate
+        )}
+    </p>
+
+    <p className="mt-1 text-[10px] text-slate-400">
+        {record.contractCode ||
+            "AMC Cycle"}
+    </p>
+</div>
                                                                                                 </p>
                                                                                             </div>
                                                                                         </td>
@@ -5774,7 +6911,9 @@ export default function Admin({ onLogout }) {
                                                                                                     size={14}
                                                                                                     className="text-slate-400"
                                                                                                 />
-                                                                                                {record.dueDate}
+                                                                                              {formatBusinessDate(
+    record.dueDate
+)}  
                                                                                             </span>
                                                                                         </td>
 
@@ -5862,273 +7001,720 @@ export default function Admin({ onLogout }) {
                                                         </div>
                                                     </div>
 
-                                                ) : clientDetailsTab === "payments" ? (
-                                                    <div>
-                                                        {clientPaymentsLoading && (
-                                                            <div className="px-5 py-3 text-xs text-slate-500 lg:px-6">Loading payments...</div>
-                                                        )}
-                                                        {clientPaymentsError && (
-                                                            <div className="px-5 py-3 text-xs text-rose-600 lg:px-6">{clientPaymentsError}</div>
-                                                        )}
-                                                        {/* Payments Header */}
-                                                        <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 lg:flex-row lg:items-center lg:justify-between lg:px-6">
-                                                            <div>
-                                                                <h3 className="text-sm font-semibold text-slate-950">
-                                                                    Payment History
-                                                                </h3>
+                                               ) : clientDetailsTab === "payments" ? (
+    <div>
+        {/* =========================================
+            LOADING / ERROR
+        ========================================== */}
 
-                                                                <p className="mt-1 text-xs text-slate-500">
-                                                                    AMC collections, receipts and payment references for this client.
-                                                                </p>
-                                                            </div>
+        {clientPaymentsLoading && (
+            <div className="flex items-center gap-2 border-b border-slate-200 px-5 py-3 text-xs font-medium text-slate-500 lg:px-6">
+                <RefreshCw
+                    size={14}
+                    className="animate-spin text-violet-500"
+                />
 
-                                                            <button
-                                                                type="button"
-                                                                className="flex h-9 items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700"
-                                                            >
-                                                                <Plus size={15} />
-                                                                Record Payment
-                                                            </button>
-                                                        </div>
+                Loading client financial history...
+            </div>
+        )}
 
-                                                        {/* Payment Summary */}
-                                                        <div className="grid border-b border-slate-200 sm:grid-cols-2 xl:grid-cols-4">
-                                                            <div className="border-b border-slate-200 px-5 py-4 sm:border-r xl:border-b-0 lg:px-6">
-                                                                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                                    Total Received
-                                                                </p>
+        {clientPaymentsError && (
+            <div className="border-b border-rose-200 bg-rose-50 px-5 py-3 text-xs font-medium text-rose-700 lg:px-6">
+                {clientPaymentsError}
+            </div>
+        )}
 
-                                                                <p className="mt-2 text-xl font-semibold text-emerald-700">
-                                                                    {formatCurrency(
-                                                                        getSelectedClientPayments().reduce(
-                                                                            (total, payment) => total + payment.amount,
-                                                                            0
-                                                                        )
-                                                                    )}
-                                                                </p>
-                                                            </div>
+        {/* =========================================
+            HEADER
+        ========================================== */}
 
-                                                            <div className="border-b border-slate-200 px-5 py-4 xl:border-b-0 xl:border-r lg:px-6">
-                                                                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                                    Pending Amount
-                                                                </p>
+        <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 lg:flex-row lg:items-center lg:justify-between lg:px-6">
+            <div>
+                <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-sm font-semibold text-slate-950">
+                        Payment History
+                    </h3>
 
-                                                                <p className="mt-2 text-xl font-semibold text-amber-700">
-                                                                    {formatCurrency(getSelectedClientPendingAmount())}
-                                                                </p>
-                                                            </div>
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-600">
+                        {
+                            clientPaymentsSummary.paymentCount
+                        }{" "}
+                        Receipts
+                    </span>
+                </div>
 
-                                                            <div className="border-b border-slate-200 px-5 py-4 sm:border-r xl:border-b-0 lg:px-6">
-                                                                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                                    Last Payment
-                                                                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                    Complete Product Sale and AMC
+                    collection history for this client.
+                </p>
+            </div>
 
-                                                                <p className="mt-2 text-sm font-semibold text-slate-900">
-                                                                    {getLatestClientPayment()
-                                                                        ? getLatestClientPayment().paymentDate
-                                                                        : "No payments"}
-                                                                </p>
+            <button
+                type="button"
+                onClick={() => {
+                    const clientId =
+                        selectedClient?._id ||
+                        selectedClient?.id;
 
-                                                                {getLatestClientPayment() && (
-                                                                    <p className="mt-1 text-[10px] text-slate-400">
-                                                                        {formatCurrency(getLatestClientPayment().amount)}
-                                                                    </p>
-                                                                )}
-                                                            </div>
+                    if (clientId) {
+                        loadClientPayments(
+                            clientId
+                        );
+                    }
+                }}
+                disabled={
+                    clientPaymentsLoading
+                }
+                className="flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+                <RefreshCw
+                    size={14}
+                    className={
+                        clientPaymentsLoading
+                            ? "animate-spin"
+                            : ""
+                    }
+                />
 
-                                                            <div className="px-5 py-4 lg:px-6">
-                                                                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                                    Payment Records
-                                                                </p>
+                Refresh
+            </button>
+        </div>
 
-                                                                <p className="mt-2 text-xl font-semibold text-slate-900">
-                                                                    {getSelectedClientPayments().length}
-                                                                </p>
-                                                            </div>
-                                                        </div>
+        {/* =========================================
+            FILTERS
+        ========================================== */}
 
-                                                        {/* Payments Table */}
-                                                        <div className="overflow-x-auto">
-                                                            <table className="min-w-[1100px] w-full">
-                                                                <thead>
-                                                                    <tr className="border-b border-slate-200 bg-slate-50/80">
-                                                                        <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400 lg:px-6">
-                                                                            Receipt
-                                                                        </th>
+        <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/60 px-5 py-4 sm:flex-row sm:items-center sm:justify-between lg:px-6">
+            <div className="flex flex-wrap gap-2">
+                {[
+                    {
+                        label: "All",
+                        count:
+                            clientPaymentsData.length,
+                    },
 
-                                                                        <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                                            Invoice
-                                                                        </th>
+                    {
+                        label:
+                            "Product Sales",
 
-                                                                        <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                                            Product
-                                                                        </th>
+                        count:
+                            clientPaymentsData.filter(
+                                (payment) =>
+                                    payment.sourceType ===
+                                    "Product Sale"
+                            ).length,
+                    },
 
-                                                                        <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                                            Date
-                                                                        </th>
+                    {
+                        label: "AMC",
 
-                                                                        <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                                            Amount
-                                                                        </th>
+                        count:
+                            clientPaymentsData.filter(
+                                (payment) =>
+                                    payment.sourceType ===
+                                    "AMC"
+                            ).length,
+                    },
+                ].map((filter) => (
+                    <button
+                        key={
+                            filter.label
+                        }
+                        type="button"
+                        onClick={() =>
+                            setClientPaymentFilter(
+                                filter.label
+                            )
+                        }
+                        className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition ${
+                            clientPaymentFilter ===
+                            filter.label
+                                ? "border-violet-600 bg-violet-600 text-white shadow-sm"
+                                : "border-slate-200 bg-white text-slate-600 hover:border-violet-300 hover:text-violet-700"
+                        }`}
+                    >
+                        {filter.label}
 
-                                                                        <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                                            Mode
-                                                                        </th>
+                        <span
+                            className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
+                                clientPaymentFilter ===
+                                filter.label
+                                    ? "bg-white/20 text-white"
+                                    : "bg-slate-100 text-slate-500"
+                            }`}
+                        >
+                            {
+                                filter.count
+                            }
+                        </span>
+                    </button>
+                ))}
+            </div>
 
-                                                                        <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                                            Reference
-                                                                        </th>
+            <p className="text-[11px] text-slate-500">
+                Showing{" "}
+                <span className="font-semibold text-slate-700">
+                    {
+                        getSelectedClientPayments()
+                            .length
+                    }
+                </span>{" "}
+                payment records
+            </p>
+        </div>
 
-                                                                        <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                                            Received By
-                                                                        </th>
+        {/* =========================================
+            FINANCIAL SUMMARY
+        ========================================== */}
 
-                                                                        <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                                            Status
-                                                                        </th>
+        <div className="grid border-b border-slate-200 sm:grid-cols-2 xl:grid-cols-4">
+            {/* RECEIVED */}
 
-                                                                        <th className="px-5 py-3 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400 lg:px-6">
-                                                                            Receipt
-                                                                        </th>
-                                                                    </tr>
-                                                                </thead>
+            <div className="border-b border-slate-200 px-5 py-5 sm:border-r xl:border-b-0 lg:px-6">
+                <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                        Total Received
+                    </p>
 
-                                                                <tbody>
-                                                                    {getSelectedClientPayments().length > 0 ? (
-                                                                        getSelectedClientPayments().map((payment) => (
-                                                                            <tr
-                                                                                key={payment.id}
-                                                                                className="border-b border-slate-100 transition last:border-b-0 hover:bg-slate-50/70"
-                                                                            >
-                                                                                <td className="px-5 py-4 lg:px-6">
-                                                                                    <div className="flex min-w-[150px] items-center gap-3">
-                                                                                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
-                                                                                            <Receipt size={18} />
-                                                                                        </div>
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
+                        <BadgeIndianRupee
+                            size={16}
+                        />
+                    </div>
+                </div>
 
-                                                                                        <div>
-                                                                                            <p className="text-xs font-semibold text-slate-900">
-                                                                                                {payment.receiptNo}
-                                                                                            </p>
+                <p className="mt-3 text-xl font-semibold text-emerald-700">
+                    {formatCurrency(
+                        getSelectedClientReceivedAmount()
+                    )}
+                </p>
 
-                                                                                            <p className="mt-1 text-[10px] text-slate-400">
-                                                                                                Payment receipt
-                                                                                            </p>
-                                                                                        </div>
-                                                                                    </div>
-                                                                                </td>
+                <p className="mt-1 text-[10px] text-slate-400">
+                    {
+                        clientPaymentFilter ===
+                        "All"
+                            ? "Product Sales + AMC"
+                            : clientPaymentFilter
+                    }
+                </p>
+            </div>
 
-                                                                                <td className="px-5 py-4 text-xs font-semibold text-violet-600">
-                                                                                    {payment.invoiceNo}
-                                                                                </td>
+            {/* PENDING */}
 
-                                                                                <td className="px-5 py-4">
-                                                                                    <span className="rounded-lg bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">
-                                                                                        {payment.product}
-                                                                                    </span>
-                                                                                </td>
+            <div className="border-b border-slate-200 px-5 py-5 xl:border-b-0 xl:border-r lg:px-6">
+                <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                        Pending Amount
+                    </p>
 
-                                                                                <td className="px-5 py-4">
-                                                                                    <span className="inline-flex items-center gap-1.5 text-xs text-slate-600">
-                                                                                        <Calendar
-                                                                                            size={14}
-                                                                                            className="text-slate-400"
-                                                                                        />
-                                                                                        {payment.paymentDate}
-                                                                                    </span>
-                                                                                </td>
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-50 text-amber-700">
+                        <Clock3
+                            size={16}
+                        />
+                    </div>
+                </div>
 
-                                                                                <td className="px-5 py-4 text-xs font-semibold text-emerald-700">
-                                                                                    {formatCurrency(payment.amount)}
-                                                                                </td>
+                <p className="mt-3 text-xl font-semibold text-amber-700">
+                    {formatCurrency(
+                        getSelectedClientPendingAmount()
+                    )}
+                </p>
 
-                                                                                <td className="px-5 py-4">
-                                                                                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                                                                                        {payment.mode === "Bank Transfer" ? (
-                                                                                            <Landmark
-                                                                                                size={14}
-                                                                                                className="text-blue-500"
-                                                                                            />
-                                                                                        ) : payment.mode === "UPI" ? (
-                                                                                            <CreditCardIcon
-                                                                                                size={14}
-                                                                                                className="text-violet-500"
-                                                                                            />
-                                                                                        ) : (
-                                                                                            <Banknote
-                                                                                                size={14}
-                                                                                                className="text-emerald-500"
-                                                                                            />
-                                                                                        )}
+                <p className="mt-1 text-[10px] text-slate-400">
+                    Outstanding invoice balance
+                </p>
+            </div>
 
-                                                                                        {payment.mode}
-                                                                                    </span>
-                                                                                </td>
+            {/* INVOICE VALUE */}
 
-                                                                                <td className="px-5 py-4 text-xs font-medium text-slate-600">
-                                                                                    {payment.referenceNo}
-                                                                                </td>
+            <div className="border-b border-slate-200 px-5 py-5 sm:border-r xl:border-b-0 lg:px-6">
+                <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                        Invoice Value
+                    </p>
 
-                                                                                <td className="px-5 py-4 text-xs font-medium text-slate-600">
-                                                                                    {payment.receivedBy}
-                                                                                </td>
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+                        <ReceiptText
+                            size={16}
+                        />
+                    </div>
+                </div>
 
-                                                                                <td className="px-5 py-4">
-                                                                                    <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700 ring-1 ring-inset ring-emerald-600/10">
-                                                                                        {payment.status}
-                                                                                    </span>
-                                                                                </td>
+                <p className="mt-3 text-xl font-semibold text-slate-900">
+                    {formatCurrency(
+                        getSelectedClientInvoiceValue()
+                    )}
+                </p>
 
-                                                                                <td className="px-5 py-4 lg:px-6">
-                                                                                    <div className="flex justify-end">
-                                                                                        <button
-                                                                                            type="button"
-                                                                                            className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
-                                                                                            title="Download receipt"
-                                                                                        >
-                                                                                            <FileDown size={15} />
-                                                                                        </button>
-                                                                                    </div>
-                                                                                </td>
-                                                                            </tr>
-                                                                        ))
-                                                                    ) : (
-                                                                        <tr>
-                                                                            <td colSpan="10" className="px-6 py-16 text-center">
-                                                                                <WalletCards
-                                                                                    size={30}
-                                                                                    className="mx-auto text-slate-300"
-                                                                                />
+                <p className="mt-1 text-[10px] text-slate-400">
+                    Total billed value
+                </p>
+            </div>
 
-                                                                                <p className="mt-3 text-sm font-semibold text-slate-700">
-                                                                                    No payments found
-                                                                                </p>
+            {/* LAST PAYMENT */}
 
-                                                                                <p className="mt-1 text-xs text-slate-500">
-                                                                                    No payment has been recorded for this client.
-                                                                                </p>
-                                                                            </td>
-                                                                        </tr>
-                                                                    )}
-                                                                </tbody>
-                                                            </table>
-                                                        </div>
+            <div className="px-5 py-5 lg:px-6">
+                <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                        Last Payment
+                    </p>
 
-                                                        <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50/60 px-5 py-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between lg:px-6">
-                                                            <p>
-                                                                Showing {getSelectedClientPayments().length} payment records
-                                                            </p>
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-50 text-violet-700">
+                        <Calendar
+                            size={16}
+                        />
+                    </div>
+                </div>
 
-                                                            <button
-                                                                type="button"
-                                                                className="flex items-center gap-1 font-semibold text-violet-600 transition hover:text-violet-700"
-                                                            >
-                                                                View complete payment history
-                                                                <ArrowUpRight size={14} />
-                                                            </button>
-                                                        </div>
-                                                    </div>
+                {getLatestClientPayment() ? (
+                    <>
+                        <p className="mt-3 text-sm font-semibold text-slate-900">
+                            {formatDate(
+                                getLatestClientPayment()
+                                    .paymentDate
+                            )}
+                        </p>
+
+                        <div className="mt-1 flex items-center gap-2">
+                            <span className="text-[10px] font-semibold text-emerald-700">
+                                {formatCurrency(
+                                    getLatestClientPayment()
+                                        .amount
+                                )}
+                            </span>
+
+                            <span className="text-slate-300">
+                                •
+                            </span>
+
+                            <span className="text-[10px] text-slate-500">
+                                {
+                                    getLatestClientPayment()
+                                        .sourceType
+                                }
+                            </span>
+                        </div>
+                    </>
+                ) : (
+                    <p className="mt-3 text-sm font-semibold text-slate-500">
+                        No payments
+                    </p>
+                )}
+            </div>
+        </div>
+
+        {/* =========================================
+            RECEIVED BREAKDOWN
+        ========================================== */}
+
+        {clientPaymentFilter === "All" && (
+            <div className="grid border-b border-slate-200 bg-white md:grid-cols-2">
+                <div className="border-b border-slate-200 px-5 py-4 md:border-b-0 md:border-r lg:px-6">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                Product Sales Received
+                            </p>
+
+                            <p className="mt-1 text-base font-semibold text-blue-700">
+                                {formatCurrency(
+                                    clientPaymentsSummary.productSalesReceived
+                                )}
+                            </p>
+                        </div>
+
+                        <div className="text-right">
+                            <p className="text-[10px] text-slate-400">
+                                Pending
+                            </p>
+
+                            <p className="mt-1 text-xs font-semibold text-amber-700">
+                                {formatCurrency(
+                                    clientPaymentsSummary.productSalesPending
+                                )}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="px-5 py-4 lg:px-6">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                AMC Received
+                            </p>
+
+                            <p className="mt-1 text-base font-semibold text-violet-700">
+                                {formatCurrency(
+                                    clientPaymentsSummary.amcReceived
+                                )}
+                            </p>
+                        </div>
+
+                        <div className="text-right">
+                            <p className="text-[10px] text-slate-400">
+                                Pending
+                            </p>
+
+                            <p className="mt-1 text-xs font-semibold text-amber-700">
+                                {formatCurrency(
+                                    clientPaymentsSummary.amcPending
+                                )}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* =========================================
+            PAYMENT TABLE
+        ========================================== */}
+
+        <div className="overflow-x-auto">
+            <table className="w-full min-w-[1250px]">
+                <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50/80">
+                        <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400 lg:px-6">
+                            Receipt
+                        </th>
+
+                        <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                            Source
+                        </th>
+
+                        <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                            Invoice
+                        </th>
+
+                        <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                            Product
+                        </th>
+
+                        <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                            Date
+                        </th>
+
+                        <th className="px-4 py-3 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                            Amount
+                        </th>
+
+                        <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                            Mode
+                        </th>
+
+                        <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                            Reference
+                        </th>
+
+                        <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                            Received By
+                        </th>
+
+                        <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400 lg:px-6">
+                            Status
+                        </th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {!clientPaymentsLoading &&
+                    getSelectedClientPayments()
+                        .length > 0 ? (
+                        getSelectedClientPayments().map(
+                            (payment) => {
+                                const isProductSale =
+                                    payment.sourceType ===
+                                    "Product Sale";
+
+                                return (
+                                    <tr
+                                        key={
+                                            payment.id ||
+                                            payment._id
+                                        }
+                                        className="border-b border-slate-100 transition last:border-b-0 hover:bg-slate-50/70"
+                                    >
+                                        {/* RECEIPT */}
+
+                                        <td className="px-5 py-4 lg:px-6">
+                                            <div className="flex min-w-[155px] items-center gap-3">
+                                                <div
+                                                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                                                        isProductSale
+                                                            ? "bg-blue-50 text-blue-700"
+                                                            : "bg-violet-50 text-violet-700"
+                                                    }`}
+                                                >
+                                                    {isProductSale ? (
+                                                        <ReceiptIndianRupee
+                                                            size={
+                                                                18
+                                                            }
+                                                        />
+                                                    ) : (
+                                                        <RefreshCw
+                                                            size={
+                                                                18
+                                                            }
+                                                        />
+                                                    )}
+                                                </div>
+
+                                                <div>
+                                                    <p className="text-xs font-semibold text-slate-900">
+                                                        {payment.receiptNo ||
+                                                            payment.paymentCode ||
+                                                            "—"}
+                                                    </p>
+
+                                                    <p className="mt-1 text-[10px] text-slate-400">
+                                                        Payment receipt
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </td>
+
+                                        {/* SOURCE */}
+
+                                        <td className="px-4 py-4">
+                                            <span
+                                                className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ring-inset ${
+                                                    isProductSale
+                                                        ? "bg-blue-50 text-blue-700 ring-blue-600/10"
+                                                        : "bg-violet-50 text-violet-700 ring-violet-600/10"
+                                                }`}
+                                            >
+                                                {isProductSale
+                                                    ? "Product Sale"
+                                                    : "AMC"}
+                                            </span>
+                                        </td>
+
+                                        {/* INVOICE */}
+
+                                        <td className="px-4 py-4">
+                                            <div className="min-w-[120px]">
+                                                <p className="text-xs font-semibold text-violet-700">
+                                                    {payment.invoiceNo ||
+                                                        "—"}
+                                                </p>
+
+                                                {payment.saleCode && (
+                                                    <p className="mt-1 text-[10px] text-slate-400">
+                                                        {
+                                                            payment.saleCode
+                                                        }
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </td>
+
+                                        {/* PRODUCT */}
+
+                                        <td className="px-4 py-4">
+                                            <div className="max-w-[220px]">
+                                                <p className="truncate text-xs font-semibold text-slate-700">
+                                                    {payment.product ||
+                                                        "—"}
+                                                </p>
+
+                                                {Array.isArray(
+                                                    payment.productNames
+                                                ) &&
+                                                    payment
+                                                        .productNames
+                                                        .length >
+                                                        1 && (
+                                                        <p className="mt-1 text-[10px] text-slate-400">
+                                                            {
+                                                                payment
+                                                                    .productNames
+                                                                    .length
+                                                            }{" "}
+                                                            products
+                                                        </p>
+                                                    )}
+                                            </div>
+                                        </td>
+
+                                        {/* DATE */}
+
+                                        <td className="px-4 py-4">
+                                            <span className="inline-flex whitespace-nowrap items-center gap-1.5 text-xs text-slate-600">
+                                                <Calendar
+                                                    size={
+                                                        14
+                                                    }
+                                                    className="text-slate-400"
+                                                />
+
+                                                {formatDate(
+                                                    payment.paymentDate
+                                                )}
+                                            </span>
+                                        </td>
+
+                                        {/* AMOUNT */}
+
+                                        <td className="px-4 py-4 text-right">
+                                            <p className="text-xs font-bold text-emerald-700">
+                                                {formatCurrency(
+                                                    Number(
+                                                        payment.amount ||
+                                                        0
+                                                    )
+                                                )}
+                                            </p>
+                                        </td>
+
+                                        {/* MODE */}
+
+                                        <td className="px-4 py-4">
+                                            <span className="inline-flex whitespace-nowrap items-center gap-1.5 text-xs font-semibold text-slate-700">
+                                                {payment.mode ===
+                                                "Bank Transfer" ? (
+                                                    <Landmark
+                                                        size={
+                                                            14
+                                                        }
+                                                        className="text-blue-500"
+                                                    />
+                                                ) : payment.mode ===
+                                                  "UPI" ? (
+                                                    <CreditCardIcon
+                                                        size={
+                                                            14
+                                                        }
+                                                        className="text-violet-500"
+                                                    />
+                                                ) : payment.mode ===
+                                                  "Cash" ? (
+                                                    <Banknote
+                                                        size={
+                                                            14
+                                                        }
+                                                        className="text-emerald-500"
+                                                    />
+                                                ) : (
+                                                    <WalletCards
+                                                        size={
+                                                            14
+                                                        }
+                                                        className="text-slate-400"
+                                                    />
+                                                )}
+
+                                                {payment.mode ||
+                                                    "—"}
+                                            </span>
+                                        </td>
+
+                                        {/* REFERENCE */}
+
+                                        <td className="px-4 py-4">
+                                            <p className="max-w-[150px] truncate text-xs font-medium text-slate-600">
+                                                {payment.referenceNo ||
+                                                    "—"}
+                                            </p>
+                                        </td>
+
+                                        {/* RECEIVED BY */}
+
+                                        <td className="px-4 py-4">
+                                            <div className="flex min-w-[120px] items-center gap-2">
+                                                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500">
+                                                    <UserRound
+                                                        size={
+                                                            13
+                                                        }
+                                                    />
+                                                </div>
+
+                                                <span className="text-xs font-medium text-slate-600">
+                                                    {payment.receivedBy ||
+                                                        "Admin"}
+                                                </span>
+                                            </div>
+                                        </td>
+
+                                        {/* STATUS */}
+
+                                        <td className="px-5 py-4 lg:px-6">
+                                            <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700 ring-1 ring-inset ring-emerald-600/10">
+                                                {payment.status ||
+                                                    "Completed"}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                );
+                            }
+                        )
+                    ) : !clientPaymentsLoading ? (
+                        <tr>
+                            <td
+                                colSpan="10"
+                                className="px-6 py-16 text-center"
+                            >
+                                <WalletCards
+                                    size={32}
+                                    className="mx-auto text-slate-300"
+                                />
+
+                                <p className="mt-3 text-sm font-semibold text-slate-700">
+                                    No payments found
+                                </p>
+
+                                <p className="mt-1 text-xs text-slate-500">
+                                    {clientPaymentFilter ===
+                                    "All"
+                                        ? "No Product Sale or AMC payments have been recorded for this client."
+                                        : `No ${clientPaymentFilter} payments have been recorded for this client.`}
+                                </p>
+                            </td>
+                        </tr>
+                    ) : null}
+                </tbody>
+            </table>
+        </div>
+
+        {/* =========================================
+            FOOTER
+        ========================================== */}
+
+        <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50/60 px-5 py-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between lg:px-6">
+            <p>
+                Showing{" "}
+                <span className="font-semibold text-slate-700">
+                    {
+                        getSelectedClientPayments()
+                            .length
+                    }
+                </span>{" "}
+                of{" "}
+                <span className="font-semibold text-slate-700">
+                    {
+                        clientPaymentsData.length
+                    }
+                </span>{" "}
+                payment records
+            </p>
+
+            <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-blue-500" />
+
+                <span>
+                    Product Sale
+                </span>
+
+                <span className="ml-2 h-2 w-2 rounded-full bg-violet-500" />
+
+                <span>
+                    AMC
+                </span>
+            </div>
+        </div>
+    </div>
 
                                                 ) : clientDetailsTab === "documents" ? (
 
@@ -7048,8 +8634,16 @@ export default function Admin({ onLogout }) {
     </div>
                         ) : activeMenu === "tickets" ? (
                             <div className="enterprise-page"><SupportTickets /></div>
+                            ) : activeMenu === "product-sales" ? (
+    <div className="enterprise-page">
+        <ProductSales />
+    </div>
                         ) : activeMenu === "billing" ? (
                             <div className="enterprise-page"><AmcBilling /></div>
+                            ) : activeMenu === "payments-collections" ? (
+    <div className="enterprise-page">
+        <PaymentsCollections />
+    </div>
                         ) : activeMenu === "team" ? (
                             <div className="enterprise-page"><Team /></div>
                         ) : activeMenu === "tasks" ? (
@@ -7116,9 +8710,9 @@ export default function Admin({ onLogout }) {
                                 </h2>
 
                                 <p className="mt-1 text-xs text-slate-500">
-                                    {editingClientId
-                                        ? "Update the client, product and AMC details."
-                                        : "Enter the client, product and AMC details."}
+                                  {editingClientId
+    ? "Update client master information."
+    : "Create the client master. Products and sales can be added after saving."}
                                 </p>
                             </div>
 
@@ -7269,6 +8863,37 @@ export default function Admin({ onLogout }) {
                                         </div>
 
                                     </div>
+                                    <div>
+    <label className="mb-2 block text-xs font-semibold text-slate-700">
+        GST No
+    </label>
+
+    <input
+        type="text"
+        name="gstNo"
+        value={clientForm.gstNo}
+        onChange={handleClientInputChange}
+        maxLength={15}
+        placeholder="27ABCDE1234F1Z5"
+        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm uppercase text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+    />
+</div>
+
+<div>
+    <label className="mb-2 block text-xs font-semibold text-slate-700">
+        PAN No
+    </label>
+
+    <input
+        type="text"
+        name="panNo"
+        value={clientForm.panNo}
+        onChange={handleClientInputChange}
+        maxLength={10}
+        placeholder="ABCDE1234F"
+        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm uppercase text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+    />
+</div>
                                     {/* ================= CLIENT LOGIN ACCOUNT ================= */}
                                     {!editingClientId && (
                                         <div className="sm:col-span-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -7477,29 +9102,234 @@ export default function Admin({ onLogout }) {
                                         </div>
                                     )}
 
-                                    <div>
-                                        <label className="mb-2 block text-xs font-semibold text-slate-700">
-                                            City
-                                        </label>
+                               <div className="sm:col-span-2">
+    <div className="mb-3">
+        <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+            Address & Billing
+        </p>
+    </div>
 
-                                        <div className="relative">
-                                            <MapPin
-                                                size={17}
-                                                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-                                            />
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="sm:col-span-2">
+            <label className="mb-2 block text-xs font-semibold text-slate-700">
+                Address Line 1
+            </label>
 
-                                            <input
-                                                name="city"
-                                                value={clientForm.city}
-                                                onChange={handleClientInputChange}
-                                                placeholder="City"
-                                                required
-                                                className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-800 outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                            />
-                                        </div>
-                                    </div>
+            <input
+                type="text"
+                name="addressLine1"
+                value={clientForm.addressLine1}
+                onChange={handleClientInputChange}
+                placeholder="Office / building / street"
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+            />
+        </div>
 
-                                    <div className="sm:col-span-2">
+        <div className="sm:col-span-2">
+            <label className="mb-2 block text-xs font-semibold text-slate-700">
+                Address Line 2
+            </label>
+
+            <input
+                type="text"
+                name="addressLine2"
+                value={clientForm.addressLine2}
+                onChange={handleClientInputChange}
+                placeholder="Area / landmark / locality"
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+            />
+        </div>
+
+        <div>
+            <label className="mb-2 block text-xs font-semibold text-slate-700">
+                City
+            </label>
+
+            <input
+                type="text"
+                name="city"
+                value={clientForm.city}
+                onChange={handleClientInputChange}
+                placeholder="City"
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+            />
+        </div>
+
+        <div>
+            <label className="mb-2 block text-xs font-semibold text-slate-700">
+                State
+            </label>
+
+            <select
+                name="state"
+                value={clientForm.state}
+                onChange={handleClientInputChange}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+            >
+                <option value="">
+                    Select state
+                </option>
+
+                <option value="Maharashtra">
+                    Maharashtra
+                </option>
+
+                <option value="Gujarat">
+                    Gujarat
+                </option>
+
+                <option value="Karnataka">
+                    Karnataka
+                </option>
+
+                <option value="Madhya Pradesh">
+                    Madhya Pradesh
+                </option>
+
+                <option value="Goa">
+                    Goa
+                </option>
+
+                <option value="Rajasthan">
+                    Rajasthan
+                </option>
+
+                <option value="Delhi">
+                    Delhi
+                </option>
+
+                <option value="Telangana">
+                    Telangana
+                </option>
+
+                <option value="Tamil Nadu">
+                    Tamil Nadu
+                </option>
+
+                <option value="Uttar Pradesh">
+                    Uttar Pradesh
+                </option>
+
+                <option value="Other">
+                    Other
+                </option>
+            </select>
+        </div>
+
+        <div>
+            <label className="mb-2 block text-xs font-semibold text-slate-700">
+                PIN Code
+            </label>
+
+            <input
+                type="text"
+                name="pinCode"
+                value={clientForm.pinCode}
+                onChange={handleClientInputChange}
+                maxLength={6}
+                placeholder="411001"
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+            />
+        </div>
+
+        <div>
+            <label className="mb-2 block text-xs font-semibold text-slate-700">
+                Country
+            </label>
+
+            <input
+                type="text"
+                name="country"
+                value={clientForm.country}
+                onChange={handleClientInputChange}
+                placeholder="India"
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+            />
+        </div>
+
+        <div>
+            <label className="mb-2 block text-xs font-semibold text-slate-700">
+                Billing Contact
+            </label>
+
+            <input
+                type="text"
+                name="billingContact"
+                value={clientForm.billingContact}
+                onChange={handleClientInputChange}
+                placeholder="Accounts / billing person"
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+            />
+        </div>
+
+        <div>
+            <label className="mb-2 block text-xs font-semibold text-slate-700">
+                Billing Email
+            </label>
+
+            <input
+                type="email"
+                name="billingEmail"
+                value={clientForm.billingEmail}
+                onChange={handleClientInputChange}
+                placeholder="accounts@company.com"
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+            />
+        </div>
+
+        <div>
+            <label className="mb-2 block text-xs font-semibold text-slate-700">
+                Preferred Contact
+            </label>
+
+            <select
+                name="preferredContact"
+                value={clientForm.preferredContact}
+                onChange={handleClientInputChange}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+            >
+                <option value="Phone">
+                    Phone
+                </option>
+
+                <option value="Email">
+                    Email
+                </option>
+
+                <option value="WhatsApp">
+                    WhatsApp
+                </option>
+            </select>
+        </div>
+
+        <div>
+            <label className="mb-2 block text-xs font-semibold text-slate-700">
+                Support Language
+            </label>
+
+            <select
+                name="supportLanguage"
+                value={clientForm.supportLanguage}
+                onChange={handleClientInputChange}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+            >
+                <option value="English">
+                    English
+                </option>
+
+                <option value="Marathi">
+                    Marathi
+                </option>
+
+                <option value="Hindi">
+                    Hindi
+                </option>
+            </select>
+        </div>
+    </div>
+</div>  
+
+                                    {/* <div className="sm:col-span-2">
                                         <label className="mb-2 block text-xs font-semibold text-slate-700">
                                             Product
                                         </label>
@@ -7635,9 +9465,9 @@ export default function Admin({ onLogout }) {
                                                 </select>
                                             </div>
                                         </>
-                                    )}
+                                    )} */}
 
-                                    <div>
+                                    {/* <div>
                                         <label className="mb-2 block text-xs font-semibold text-slate-700">
                                             AMC Status
                                         </label>
@@ -7667,7 +9497,7 @@ export default function Admin({ onLogout }) {
                                             onChange={handleClientInputChange}
                                             className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                                         />
-                                    </div>
+                                    </div> */}
 
                                     <div>
                                         <label className="mb-2 block text-xs font-semibold text-slate-700">
@@ -7750,7 +9580,7 @@ export default function Admin({ onLogout }) {
                                         )}
                                     </div>
 
-                                    <div>
+                                    {/* <div>
                                         <label className="mb-2 block text-xs font-semibold text-slate-700">
                                             Opening Tickets
                                         </label>
@@ -7763,7 +9593,7 @@ export default function Admin({ onLogout }) {
                                             onChange={handleClientInputChange}
                                             className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                                         />
-                                    </div>
+                                    </div> */}
                                 </div>
                             </div>
 
@@ -7856,21 +9686,91 @@ export default function Admin({ onLogout }) {
                         >
                             <div className="flex-1 overflow-y-auto px-5 py-6 sm:px-6">
                                 <div className="grid gap-5 sm:grid-cols-2">
-                                    <div className="sm:col-span-2">
-                                        <label className="mb-2 block text-xs font-semibold text-slate-700">
-                                            Product Name *
-                                        </label>
+                                 <div className="sm:col-span-2">
+    <label className="mb-2 block text-xs font-semibold text-slate-700">
+        Product Name *
+    </label>
 
-                                        <input
-                                            type="text"
-                                            name="productName"
-                                            value={productForm.productName}
-                                            onChange={handleProductInputChange}
-                                            placeholder="Example: NexERP"
-                                            required
-                                            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
-                                        />
-                                    </div>
+    <select
+        name="productId"
+        value={productForm.productId}
+        disabled={
+            productMastersLoading ||
+            savingProduct ||
+            Boolean(editingProductId)
+        }
+        onChange={(event) => {
+            const selectedProduct =
+                productMasters.find(
+                    (product) =>
+                        String(
+                            product.id ||
+                            product._id
+                        ) ===
+                        String(
+                            event.target.value
+                        )
+                );
+
+            setProductForm((current) => ({
+                ...current,
+
+                productId:
+                    selectedProduct?.id ||
+                    selectedProduct?._id ||
+                    "",
+
+                productCode:
+                    selectedProduct?.productCode ||
+                    "",
+
+                productName:
+                    selectedProduct?.productName ||
+                    "",
+
+                version:
+                    selectedProduct?.currentVersion ||
+                    "v1.0.0",
+            }));
+        }}
+        required
+        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100 disabled:cursor-not-allowed disabled:bg-slate-100"
+    >
+        <option value="">
+            {productMastersLoading
+                ? "Loading products..."
+                : "Select product"}
+        </option>
+
+        {productMasters
+            .filter(
+                (product) =>
+                    product.status === "Active"
+            )
+            .map((product) => (
+                <option
+                    key={
+                        product.id ||
+                        product._id
+                    }
+                    value={
+                        product.id ||
+                        product._id
+                    }
+                >
+                    {product.productCode
+                        ? `${product.productCode} — ${product.productName}`
+                        : product.productName}
+                </option>
+            ))}
+    </select>
+
+    {productMastersError && (
+        <p className="mt-2 text-[10px] font-medium text-rose-600">
+            {productMastersError}
+        </p>
+    )}
+</div>
 
                                     <div>
                                         <label className="mb-2 block text-xs font-semibold text-slate-700">
@@ -8194,6 +10094,662 @@ export default function Admin({ onLogout }) {
                     </form>
                 </div>
             )}
+            {productSaleDrawerOpen && (
+    <div className="fixed inset-0 z-[80]">
+        {/* BACKDROP */}
+        <button
+            type="button"
+            aria-label="Close product sale drawer"
+            onClick={closeProductSaleDrawer}
+            className="absolute inset-0 bg-slate-950/35 backdrop-blur-[1px]"
+        />
+
+        {/* DRAWER */}
+        <div className="absolute right-0 top-0 flex h-full w-full max-w-[620px] flex-col border-l border-slate-200 bg-white shadow-2xl">
+            {/* HEADER */}
+            <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
+                <div>
+                    <div className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-violet-600">
+                        <CircleDot className="h-3.5 w-3.5" />
+                        Product Sale
+                    </div>
+
+                    <h2 className="text-xl font-bold text-slate-950">
+                        New Product Sale
+                    </h2>
+
+                    <p className="mt-1 text-xs text-slate-500">
+                        Sell and assign a new product to{" "}
+                        <span className="font-semibold text-slate-700">
+                            {selectedClient?.companyName || "client"}
+                        </span>
+                        .
+                    </p>
+                </div>
+
+                <button
+                    type="button"
+                    onClick={closeProductSaleDrawer}
+                    disabled={savingProductSale}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                    <X className="h-4 w-4" />
+                </button>
+            </div>
+
+            {/* FORM BODY */}
+            <form
+                  onSubmit={
+        handleCreateProductSale
+    }
+                className="flex min-h-0 flex-1 flex-col"
+            >
+                <div className="flex-1 overflow-y-auto px-6 py-5">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        {/* SALE DATE */}
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold text-slate-700">
+                                Sale Date *
+                            </label>
+
+                            <input
+                                type="date"
+                                value={productSaleForm.saleDate}
+                                onChange={(event) =>
+                                    setProductSaleForm((current) => ({
+                                        ...current,
+                                        saleDate: event.target.value,
+                                        purchaseDate:
+                                            current.purchaseDate ||
+                                            event.target.value,
+                                    }))
+                                }
+                                required
+                                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+                            />
+                        </div>
+
+                        {/* INVOICE NO */}
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold text-slate-700">
+                                Invoice No
+                            </label>
+
+                            <input
+                                type="text"
+                                value={productSaleForm.invoiceNo}
+                                onChange={(event) =>
+                                    setProductSaleForm((current) => ({
+                                        ...current,
+                                        invoiceNo:
+                                            event.target.value.toUpperCase(),
+                                    }))
+                                }
+                                placeholder="Leave blank for auto/reference"
+                                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+                            />
+                        </div>
+
+                        {/* PRODUCT */}
+                        <div className="sm:col-span-2">
+                            <label className="mb-2 block text-xs font-semibold text-slate-700">
+                                Product *
+                            </label>
+
+                            <select
+                                value={productSaleForm.productId}
+                                disabled={
+                                    productMastersLoading ||
+                                    savingProductSale
+                                }
+                                onChange={(event) => {
+                                    const selectedProduct =
+                                        productMasters.find(
+                                            (product) =>
+                                                String(
+                                                    product.id ||
+                                                    product._id
+                                                ) ===
+                                                String(
+                                                    event.target.value
+                                                )
+                                        );
+
+                                    setProductSaleForm((current) => ({
+                                        ...current,
+
+                                        productId:
+                                            selectedProduct?.id ||
+                                            selectedProduct?._id ||
+                                            "",
+
+                                        productCode:
+                                            selectedProduct?.productCode ||
+                                            "",
+
+                                        productName:
+                                            selectedProduct?.productName ||
+                                            "",
+
+                                        version:
+                                            selectedProduct?.currentVersion ||
+                                            "v1.0.0",
+                                    }));
+                                }}
+                                required
+                                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100 disabled:bg-slate-100"
+                            >
+                                <option value="">
+                                    {productMastersLoading
+                                        ? "Loading products..."
+                                        : "Select product"}
+                                </option>
+
+                                {productMasters.map((product) => (
+                                    <option
+                                        key={
+                                            product.id ||
+                                            product._id
+                                        }
+                                        value={
+                                            product.id ||
+                                            product._id
+                                        }
+                                    >
+                                        {product.productCode
+                                            ? `${product.productCode} — ${product.productName}`
+                                            : product.productName}
+                                    </option>
+                                ))}
+                            </select>
+
+                            {productMastersError && (
+                                <p className="mt-2 text-[11px] font-medium text-rose-600">
+                                    {productMastersError}
+                                </p>
+                            )}
+                        </div>
+
+                        {/* VERSION */}
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold text-slate-700">
+                                Version
+                            </label>
+
+                            <input
+                                type="text"
+                                value={productSaleForm.version}
+                                onChange={(event) =>
+                                    setProductSaleForm((current) => ({
+                                        ...current,
+                                        version: event.target.value,
+                                    }))
+                                }
+                                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+                            />
+                        </div>
+
+                        {/* LICENSED USERS */}
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold text-slate-700">
+                                Licensed Users
+                            </label>
+
+                            <input
+                                type="number"
+                                min="1"
+                                value={productSaleForm.licensedUsers}
+                                onChange={(event) =>
+                                    setProductSaleForm((current) => ({
+                                        ...current,
+                                        licensedUsers:
+                                            event.target.value,
+                                    }))
+                                }
+                                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+                            />
+                        </div>
+
+                        {/* LICENCE TYPE */}
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold text-slate-700">
+                                Licence Type
+                            </label>
+
+                            <select
+                                value={productSaleForm.licenceType}
+                                onChange={(event) =>
+                                    setProductSaleForm((current) => ({
+                                        ...current,
+                                        licenceType:
+                                            event.target.value,
+                                    }))
+                                }
+                                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+                            >
+                                <option value="Perpetual Licence">
+                                    Perpetual Licence
+                                </option>
+                                <option value="Annual Licence">
+                                    Annual Licence
+                                </option>
+                                <option value="Monthly Subscription">
+                                    Monthly Subscription
+                                </option>
+                            </select>
+                        </div>
+
+                        {/* SUPPORT TYPE */}
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold text-slate-700">
+                                Support Type
+                            </label>
+
+                            <select
+                                value={productSaleForm.supportType}
+                                onChange={(event) =>
+                                    setProductSaleForm((current) => ({
+                                        ...current,
+                                        supportType:
+                                            event.target.value,
+                                    }))
+                                }
+                                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+                            >
+                                <option value="Basic">
+                                    Basic
+                                </option>
+                                <option value="Standard">
+                                    Standard
+                                </option>
+                                <option value="Premium">
+                                    Premium
+                                </option>
+                            </select>
+                        </div>
+
+                        {/* QUANTITY */}
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold text-slate-700">
+                                Quantity
+                            </label>
+
+                            <input
+                                type="number"
+                                min="1"
+                                value={productSaleForm.quantity}
+                                onChange={(event) =>
+                                    setProductSaleForm((current) => ({
+                                        ...current,
+                                        quantity:
+                                            event.target.value,
+                                    }))
+                                }
+                                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+                            />
+                        </div>
+
+                        {/* UNIT PRICE */}
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold text-slate-700">
+                                Unit Price *
+                            </label>
+
+                            <div className="relative">
+                                <IndianRupee className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+                                <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={productSaleForm.unitPrice}
+                                    onChange={(event) =>
+                                        setProductSaleForm((current) => ({
+                                            ...current,
+                                            unitPrice:
+                                                event.target.value,
+                                        }))
+                                    }
+                                    required
+                                    placeholder="0.00"
+                                    className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+                                />
+                            </div>
+                        </div>
+
+                        {/* DISCOUNT */}
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold text-slate-700">
+                                Discount Amount
+                            </label>
+
+                            <div className="relative">
+                                <IndianRupee className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+                                <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={productSaleForm.discountAmount}
+                                    onChange={(event) =>
+                                        setProductSaleForm((current) => ({
+                                            ...current,
+                                            discountAmount:
+                                                event.target.value,
+                                        }))
+                                    }
+                                    className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3.5 text-sm text-slate-900 outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+                                />
+                            </div>
+                        </div>
+
+                        {/* GST */}
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold text-slate-700">
+                                GST Rate %
+                            </label>
+
+                            <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={
+                                    Number(productSaleForm.cgstRate || 0) +
+                                    Number(productSaleForm.sgstRate || 0) +
+                                    Number(productSaleForm.igstRate || 0)
+                                }
+                                onChange={(event) => {
+                                    const gstRate =
+                                        Math.max(
+                                            Number(
+                                                event.target.value || 0
+                                            ),
+                                            0
+                                        );
+
+                                    setProductSaleForm((current) => ({
+                                        ...current,
+
+                                        cgstRate:
+                                            gstRate / 2,
+
+                                        sgstRate:
+                                            gstRate / 2,
+
+                                        igstRate:
+                                            0,
+                                    }));
+                                }}
+                                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+                            />
+                        </div>
+
+                        {/* PURCHASE DATE */}
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold text-slate-700">
+                                Purchase Date
+                            </label>
+
+                            <input
+                                type="date"
+                                value={productSaleForm.purchaseDate}
+                                onChange={(event) =>
+                                    setProductSaleForm((current) => ({
+                                        ...current,
+                                        purchaseDate:
+                                            event.target.value,
+                                    }))
+                                }
+                                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+                            />
+                        </div>
+
+                        {/* INSTALL DATE */}
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold text-slate-700">
+                                Installation Date
+                            </label>
+
+                            <input
+                                type="date"
+                                value={productSaleForm.installationDate}
+                                onChange={(event) =>
+                                    setProductSaleForm((current) => ({
+                                        ...current,
+                                        installationDate:
+                                            event.target.value,
+                                    }))
+                                }
+                                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+                            />
+                        </div>
+
+                        {/* INSTALLATION STATUS */}
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold text-slate-700">
+                                Installation Status
+                            </label>
+
+                            <select
+                                value={productSaleForm.installationStatus}
+                                onChange={(event) =>
+                                    setProductSaleForm((current) => ({
+                                        ...current,
+                                        installationStatus:
+                                            event.target.value,
+                                    }))
+                                }
+                                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+                            >
+                                <option value="Not Installed">
+                                    Not Installed
+                                </option>
+                                <option value="Installation Pending">
+                                    Installation Pending
+                                </option>
+                                <option value="Installed">
+                                    Installed
+                                </option>
+                                <option value="Inactive">
+                                    Inactive
+                                </option>
+                            </select>
+                        </div>
+
+                        {/* WARRANTY END */}
+                        <div>
+                            <label className="mb-2 block text-xs font-semibold text-slate-700">
+                                Warranty End Date
+                            </label>
+
+                            <input
+                                type="date"
+                                value={productSaleForm.warrantyEndDate}
+                                onChange={(event) =>
+                                    setProductSaleForm((current) => ({
+                                        ...current,
+                                        warrantyEndDate:
+                                            event.target.value,
+                                    }))
+                                }
+                                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+                            />
+                        </div>
+
+                        {/* NOTES */}
+                        <div className="sm:col-span-2">
+                            <label className="mb-2 block text-xs font-semibold text-slate-700">
+                                Notes
+                            </label>
+
+                            <textarea
+                                rows="4"
+                                value={productSaleForm.notes}
+                                onChange={(event) =>
+                                    setProductSaleForm((current) => ({
+                                        ...current,
+                                        notes: event.target.value,
+                                    }))
+                                }
+                                placeholder="Commercial, installation or licence notes..."
+                                className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+                            />
+                        </div>
+                    </div>
+
+                    {/* PREVIEW */}
+                    <div className="mt-5 rounded-2xl border border-violet-100 bg-violet-50/60 p-4">
+                        <div className="mb-3 flex items-center justify-between">
+                            <div>
+                                <p className="text-xs font-bold text-slate-900">
+                                    Sale Summary
+                                </p>
+
+                                <p className="mt-0.5 text-[11px] text-slate-500">
+                                    Preview before saving the sale.
+                                </p>
+                            </div>
+
+                            <ReceiptText className="h-5 w-5 text-violet-600" />
+                        </div>
+
+                        {(() => {
+                            const quantity =
+                                Math.max(
+                                    Number(
+                                        productSaleForm.quantity || 1
+                                    ),
+                                    1
+                                );
+
+                            const unitPrice =
+                                Math.max(
+                                    Number(
+                                        productSaleForm.unitPrice || 0
+                                    ),
+                                    0
+                                );
+
+                            const discount =
+                                Math.max(
+                                    Number(
+                                        productSaleForm.discountAmount || 0
+                                    ),
+                                    0
+                                );
+
+                            const gross =
+                                quantity * unitPrice;
+
+                            const taxable =
+                                Math.max(
+                                    gross - discount,
+                                    0
+                                );
+
+                            const gstRate =
+                                Number(
+                                    productSaleForm.cgstRate || 0
+                                ) +
+                                Number(
+                                    productSaleForm.sgstRate || 0
+                                ) +
+                                Number(
+                                    productSaleForm.igstRate || 0
+                                );
+
+                            const gstAmount =
+                                taxable * gstRate / 100;
+
+                            const total =
+                                taxable + gstAmount;
+
+                            return (
+                                <div className="grid grid-cols-2 gap-3 text-xs">
+                                    <div className="rounded-xl bg-white p-3">
+                                        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                                            Gross
+                                        </p>
+
+                                        <p className="mt-1 font-bold text-slate-900">
+                                            ₹{gross.toLocaleString("en-IN", {
+                                                maximumFractionDigits: 2,
+                                            })}
+                                        </p>
+                                    </div>
+
+                                    <div className="rounded-xl bg-white p-3">
+                                        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                                            Discount
+                                        </p>
+
+                                        <p className="mt-1 font-bold text-slate-900">
+                                            ₹{discount.toLocaleString("en-IN", {
+                                                maximumFractionDigits: 2,
+                                            })}
+                                        </p>
+                                    </div>
+
+                                    <div className="rounded-xl bg-white p-3">
+                                        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                                            GST
+                                        </p>
+
+                                        <p className="mt-1 font-bold text-slate-900">
+                                            ₹{gstAmount.toLocaleString("en-IN", {
+                                                maximumFractionDigits: 2,
+                                            })}
+                                        </p>
+                                    </div>
+
+                                    <div className="rounded-xl bg-violet-600 p-3 text-white">
+                                        <p className="text-[10px] font-semibold uppercase tracking-wider text-violet-100">
+                                            Total
+                                        </p>
+
+                                        <p className="mt-1 text-base font-bold">
+                                            ₹{total.toLocaleString("en-IN", {
+                                                maximumFractionDigits: 2,
+                                            })}
+                                        </p>
+                                    </div>
+                                </div>
+                            );
+                        })()}
+                    </div>
+                </div>
+
+                {/* FOOTER */}
+                <div className="flex items-center justify-end gap-3 border-t border-slate-200 bg-white px-6 py-4">
+                    <button
+                        type="button"
+                        onClick={closeProductSaleDrawer}
+                        disabled={savingProductSale}
+                        className="h-10 rounded-xl border border-slate-200 bg-white px-5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+                    >
+                        Cancel
+                    </button>
+
+                    <button
+                        type="submit"
+                        disabled={
+                            savingProductSale ||
+                            !productSaleForm.productId ||
+                            !productSaleForm.unitPrice
+                        }
+                        className="inline-flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-5 text-xs font-semibold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        <Save className="h-4 w-4" />
+
+                        {savingProductSale
+                            ? "Saving..."
+                            : "Create Product Sale"}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+)}
         </div >
     );
 }

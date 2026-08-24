@@ -701,6 +701,32 @@ function formatCurrency(amount) {
         maximumFractionDigits: 0,
     }).format(Number(amount || 0));
 }
+const formatBusinessDate = (value) => {
+    if (!value) {
+        return "—";
+    }
+
+    const date =
+        new Date(value);
+
+    if (
+        Number.isNaN(
+            date.getTime()
+        )
+    ) {
+        return "—";
+    }
+
+    return date.toLocaleDateString(
+        "en-IN",
+        {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+        }
+    );
+};
+
 
 function StatusBadge({ status }) {
     const classes = {
@@ -780,6 +806,249 @@ function AmcTimelineIcon({ type }) {
     );
 }
 
+const normalizeAmcInvoiceDetail = (
+    invoice = {},
+    contract = {}
+) => {
+    const payments =
+        Array.isArray(invoice.payments)
+            ? invoice.payments
+            : [];
+
+    return {
+        id: String(
+            invoice._id ||
+            invoice.id ||
+            ""
+        ),
+
+        amcInvoiceId: String(
+            invoice._id ||
+            invoice.id ||
+            ""
+        ),
+
+        invoiceCode:
+            invoice.invoiceCode ||
+            invoice.invoiceNo ||
+            "",
+
+        invoiceNo:
+            invoice.invoiceCode ||
+            invoice.invoiceNo ||
+            "",
+
+        invoiceDate:
+            invoice.invoiceDate ||
+            null,
+
+        dueDate:
+            invoice.dueDate ||
+            null,
+
+        amcContractId:
+            String(
+                invoice.amcContractId ||
+                contract._id ||
+                contract.id ||
+                ""
+            ),
+
+        contractCode:
+            invoice.contractCode ||
+            contract.contractCode ||
+            "",
+
+        clientId:
+            String(
+                invoice.clientId ||
+                contract.clientId ||
+                ""
+            ),
+
+        clientCode:
+            invoice.clientCode ||
+            contract.clientCode ||
+            "",
+
+        clientName:
+            invoice.clientName ||
+            contract.clientName ||
+            "",
+
+        contactPerson:
+            contract.contactPerson ||
+            "",
+
+        contactMobile:
+            contract.contactMobile ||
+            "",
+
+        contactEmail:
+            contract.contactEmail ||
+            "",
+
+        productId:
+            String(
+                invoice.productId ||
+                contract.productId ||
+                ""
+            ),
+
+        productCode:
+            invoice.productCode ||
+            contract.productCode ||
+            "",
+
+        productName:
+            invoice.productName ||
+            contract.productName ||
+            "",
+
+        productVersion:
+            invoice.productVersion ||
+            contract.productVersion ||
+            "",
+
+        plan:
+            invoice.plan ||
+            contract.plan ||
+            "Standard",
+
+        licensedUsers:
+            Number(
+                invoice.licensedUsers ||
+                contract.licensedUsers ||
+                1
+            ),
+
+        startDate:
+            invoice.contractStartDate ||
+            invoice.startDate ||
+            null,
+
+        expiryDate:
+            invoice.contractExpiryDate ||
+            invoice.endDate ||
+            null,
+
+        taxableAmount:
+            Number(
+                invoice.taxableAmount ||
+                0
+            ),
+
+        cgstRate:
+            Number(
+                invoice.cgstRate ||
+                0
+            ),
+
+        cgstAmount:
+            Number(
+                invoice.cgstAmount ||
+                0
+            ),
+
+        sgstRate:
+            Number(
+                invoice.sgstRate ||
+                0
+            ),
+
+        sgstAmount:
+            Number(
+                invoice.sgstAmount ||
+                0
+            ),
+
+        igstRate:
+            Number(
+                invoice.igstRate ||
+                0
+            ),
+
+        igstAmount:
+            Number(
+                invoice.igstAmount ||
+                0
+            ),
+
+        totalAmount:
+            Number(
+                invoice.totalAmount ||
+                0
+            ),
+
+        paidAmount:
+            Number(
+                invoice.paidAmount ||
+                0
+            ),
+
+        pendingAmount:
+            Number(
+                invoice.pendingAmount ||
+                0
+            ),
+
+        paymentStatus:
+            invoice.paymentStatus ||
+            "Pending",
+
+        status:
+            invoice.paymentStatus ||
+            invoice.status ||
+            "Pending",
+
+        isCurrent:
+            invoice.isCurrent === true,
+
+        notes:
+            invoice.notes ||
+            "",
+
+        payments:
+            payments.map(
+                (payment) => ({
+                    id:
+                        payment._id ||
+                        payment.id,
+
+                    paymentCode:
+                        payment.paymentCode ||
+                        "",
+
+                    paymentDate:
+                        payment.paymentDate ||
+                        null,
+
+                    amount:
+                        Number(
+                            payment.amount ||
+                            0
+                        ),
+
+                    mode:
+                        payment.mode ||
+                        "Other",
+
+                    referenceNo:
+                        payment.referenceNo ||
+                        "—",
+
+                    notes:
+                        payment.notes ||
+                        "",
+
+                    receivedBy:
+                        payment.receivedByName ||
+                        payment.createdByName ||
+                        "Admin",
+                })
+            ),
+    };
+};
 export default function AmcBilling() {
     const [invoiceRecord, setInvoiceRecord] = useState(null);
     const [reminderRecord, setReminderRecord] = useState(null);
@@ -811,6 +1080,16 @@ export default function AmcBilling() {
     const [filtersOpen, setFiltersOpen] = useState(false);
     const [activeSummary, setActiveSummary] = useState("All");
     const [selectedRecord, setSelectedRecord] = useState(null);
+    const [selectedInvoiceDetail, setSelectedInvoiceDetail] =
+    useState(null);
+
+const [invoiceDetailLoading, setInvoiceDetailLoading] =
+    useState(false);
+
+const [invoiceDetailError, setInvoiceDetailError] =
+    useState("");
+    const [selectedClientGroup, setSelectedClientGroup] =
+    useState(null);
     const [paymentRecord, setPaymentRecord] = useState(null);
     const [renewalRecord, setRenewalRecord] = useState(null);
     const [paymentForm, setPaymentForm] = useState(emptyPaymentForm);
@@ -1133,12 +1412,563 @@ export default function AmcBilling() {
         activeSummary,
     ]);
 
+    const groupedClients =
+    useMemo(() => {
+        const clientMap =
+            new Map();
+
+        filteredRecords.forEach(
+            (record) => {
+                const key =
+                    String(
+                        record.clientId ||
+                        record.clientCode ||
+                        record.client ||
+                        ""
+                    );
+
+                if (!key) {
+                    return;
+                }
+
+                if (
+                    !clientMap.has(
+                        key
+                    )
+                ) {
+                    clientMap.set(
+                        key,
+                        {
+                            key,
+
+                            clientId:
+                                record.clientId ||
+                                "",
+
+                            clientCode:
+                                record.clientCode ||
+                                "",
+
+                            clientName:
+                                record.client ||
+                                record.clientName ||
+                                "Unknown Client",
+
+                            contactPerson:
+                                record.contactPerson ||
+                                "",
+
+                            mobile:
+                                record.mobile ||
+                                "",
+
+                            records:
+                                [],
+
+                            productIds:
+                                new Set(),
+
+                            invoiceIds:
+                                new Set(),
+
+                            totalAmount:
+                                0,
+
+                            paidAmount:
+                                0,
+
+                            pendingAmount:
+                                0,
+
+                            overdueCount:
+                                0,
+
+                            upcomingCount:
+                                0,
+
+                            nextRenewalDate:
+                                null,
+                        }
+                    );
+                }
+
+                const group =
+                    clientMap.get(
+                        key
+                    );
+
+                group.records.push(
+                    record
+                );
+
+                if (
+                    record.clientProductId ||
+                    record.productId ||
+                    record.product
+                ) {
+                    group.productIds.add(
+                        String(
+                            record.clientProductId ||
+                            record.productId ||
+                            record.product
+                        )
+                    );
+                }
+
+                if (
+                    record.currentInvoiceId ||
+                    record.invoiceNo ||
+                    record.id
+                ) {
+                    group.invoiceIds.add(
+                        String(
+                            record.currentInvoiceId ||
+                            record.invoiceNo ||
+                            record.id
+                        )
+                    );
+                }
+
+                group.totalAmount +=
+                    Number(
+                        record.totalAmount ??
+                        record.amount ??
+                        0
+                    );
+
+                group.paidAmount +=
+                    Number(
+                        record.paidAmount ||
+                        0
+                    );
+
+                group.pendingAmount +=
+                    Number(
+                        record.pendingAmount ??
+                        Math.max(
+                            Number(
+                                record.totalAmount ||
+                                record.amount ||
+                                0
+                            ) -
+                            Number(
+                                record.paidAmount ||
+                                0
+                            ),
+                            0
+                        )
+                    );
+
+                if (
+                    record.status ===
+                    "Overdue"
+                ) {
+                    group.overdueCount++;
+                }
+
+                if (
+                    [
+                        "Upcoming",
+                        "Pending",
+                        "Partially Paid",
+                    ].includes(
+                        record.status
+                    )
+                ) {
+                    group.upcomingCount++;
+                }
+
+               /*
+ * NEXT RENEWAL
+ *
+ * Only future/current AMC expiry dates
+ * should be considered.
+ *
+ * Historical expired AMC periods must
+ * never become "Next Renewal".
+ */
+
+const renewalDate =
+    record.expiryDateValue ||
+    "";
+
+if (renewalDate) {
+    const renewal =
+        new Date(
+            `${renewalDate}T00:00:00`
+        );
+
+    const today =
+        new Date();
+
+    today.setHours(
+        0,
+        0,
+        0,
+        0
+    );
+
+    if (
+        !Number.isNaN(
+            renewal.getTime()
+        ) &&
+        renewal >= today &&
+        (
+            !group.nextRenewalDate ||
+            renewal <
+                group.nextRenewalDate
+        )
+    ) {
+        group.nextRenewalDate =
+            renewal;
+    }
+}
+            }
+        );
+
+        return Array.from(
+            clientMap.values()
+        )
+            .map(
+                (group) => ({
+                    ...group,
+
+                    productCount:
+                        group.productIds
+                            .size,
+
+                    invoiceCount:
+                        group.invoiceIds
+                            .size,
+
+                    nextRenewal:
+                        group.nextRenewalDate
+                            ? group.nextRenewalDate.toLocaleDateString(
+                                "en-GB",
+                                {
+                                    day:
+                                        "2-digit",
+
+                                    month:
+                                        "short",
+
+                                    year:
+                                        "numeric",
+                                }
+                            )
+                            : "—",
+                })
+            )
+            .sort(
+                (
+                    first,
+                    second
+                ) =>
+                    second.pendingAmount -
+                        first.pendingAmount ||
+                    first.clientName.localeCompare(
+                        second.clientName
+                    )
+            );
+    }, [
+        filteredRecords,
+    ]);
+    const selectedClientRecords =
+    useMemo(() => {
+        if (
+            !selectedClientGroup
+        ) {
+            return [];
+        }
+
+        return filteredRecords.filter(
+            (record) =>
+                String(
+                    record.clientId ||
+                    record.clientCode ||
+                    record.client ||
+                    ""
+                ) ===
+                String(
+                    selectedClientGroup.key
+                )
+        );
+    }, [
+        filteredRecords,
+        selectedClientGroup,
+    ]);
+
+    const selectedClientProducts =
+    useMemo(() => {
+        const map =
+            new Map();
+
+        selectedClientRecords.forEach(
+            (record) => {
+                const key =
+                    String(
+                        record.clientProductId ||
+                        record.productId ||
+                        record.product ||
+                        ""
+                    );
+
+                if (
+                    !map.has(
+                        key
+                    )
+                ) {
+                    map.set(
+                        key,
+                        {
+                            key,
+
+                            product:
+                                record.product ||
+                                "Unknown Product",
+
+                            productCode:
+                                record.productCode ||
+                                "",
+
+                            version:
+                                record.version ||
+                                "",
+
+                            plan:
+                                record.plan ||
+                                "Standard",
+
+                            users:
+                                record.users ||
+                                1,
+
+                            records:
+                                [],
+                        }
+                    );
+                }
+
+                map.get(
+                    key
+                ).records.push(
+                    record
+                );
+            }
+        );
+
+        return Array.from(
+            map.values()
+        );
+    }, [
+        selectedClientRecords,
+    ]);
     const clearFilters = () => {
         setSearchValue("");
         setStatusFilter("All");
         setProductFilter("All");
         setPlanFilter("All");
         setActiveSummary("All");
+    };
+    const handleOpenAmcInvoiceDetail =
+    async (record) => {
+        const contractId =
+            record.mongoId ||
+            record.id ||
+            "";
+
+        const targetInvoiceId =
+            String(
+                record.currentInvoiceId ||
+                record.amcInvoiceId ||
+                ""
+            );
+
+        const targetInvoiceCode =
+            record.invoiceCode ||
+            record.invoiceNo ||
+            "";
+
+        if (!contractId) {
+            alert(
+                "AMC contract ID was not found."
+            );
+
+            return;
+        }
+
+        try {
+            setInvoiceDetailLoading(
+                true
+            );
+
+            setInvoiceDetailError(
+                ""
+            );
+
+            const token =
+                getAuthToken();
+
+            if (!token) {
+                throw new Error(
+                    "Login token was not found. Please login again."
+                );
+            }
+
+            const response =
+                await fetch(
+                    `${API_URL}/api/admin/amc/contract/${contractId}`,
+                    {
+                        method:
+                            "GET",
+
+                        headers: {
+                            Accept:
+                                "application/json",
+
+                            Authorization:
+                                `Bearer ${token}`,
+                        },
+                    }
+                );
+
+            const result =
+                await response.json();
+
+            if (
+                response.status ===
+                401
+            ) {
+                throw new Error(
+                    "Your login session has expired. Please login again."
+                );
+            }
+
+            if (
+                !response.ok ||
+                result.success !==
+                    true
+            ) {
+                throw new Error(
+                    result.message ||
+                    "Unable to load AMC invoice details."
+                );
+            }
+
+            const contract =
+                result.data ||
+                {};
+
+            const invoices =
+                Array.isArray(
+                    contract.invoiceHistory
+                )
+                    ? contract.invoiceHistory
+                    : Array.isArray(
+                          contract.invoices
+                      )
+                    ? contract.invoices
+                    : [];
+
+            let selectedInvoice =
+                null;
+
+            if (
+                targetInvoiceId
+            ) {
+                selectedInvoice =
+                    invoices.find(
+                        (invoice) =>
+                            String(
+                                invoice._id ||
+                                invoice.id ||
+                                ""
+                            ) ===
+                            targetInvoiceId
+                    ) ||
+                    null;
+            }
+
+            if (
+                !selectedInvoice &&
+                targetInvoiceCode
+            ) {
+                selectedInvoice =
+                    invoices.find(
+                        (invoice) =>
+                            String(
+                                invoice.invoiceCode ||
+                                invoice.invoiceNo ||
+                                ""
+                            ) ===
+                            String(
+                                targetInvoiceCode
+                            )
+                    ) ||
+                    null;
+            }
+
+            if (
+                !selectedInvoice
+            ) {
+                selectedInvoice =
+                    contract.currentInvoice ||
+                    contract.invoice ||
+                    invoices[0] ||
+                    null;
+            }
+
+            if (
+                !selectedInvoice
+            ) {
+                throw new Error(
+                    "AMC invoice was not found."
+                );
+            }
+
+            const normalizedInvoice =
+                normalizeAmcInvoiceDetail(
+                    selectedInvoice,
+                    contract
+                );
+
+            const normalizedHistory =
+                invoices.map(
+                    (invoice) =>
+                        normalizeAmcInvoiceDetail(
+                            invoice,
+                            contract
+                        )
+                );
+
+            setSelectedInvoiceDetail({
+                ...normalizedInvoice,
+
+                invoiceHistory:
+                    normalizedHistory,
+            });
+        } catch (
+            error
+        ) {
+            console.error(
+                "Load AMC invoice detail error:",
+                error
+            );
+
+            setInvoiceDetailError(
+                error.message ||
+                "Unable to load AMC invoice."
+            );
+
+            alert(
+                error.message ||
+                "Unable to load AMC invoice."
+            );
+        } finally {
+            setInvoiceDetailLoading(
+                false
+            );
+        }
     };
 
     const openPaymentModal = (record) => {
@@ -1386,18 +2216,108 @@ export default function AmcBilling() {
             }
         };
 
-    const openRenewalModal = (record) => {
-        setRenewalRecord(record);
-        setFormError("");
-        setRenewalForm({
-            amount: String(record.amount),
-            startDate: "",
-            expiryDate: "",
-            dueDate: "",
-            plan: record.plan,
-            notes: "",
-        });
-    };
+const openRenewalModal = (record) => {
+    
+    if (!record) {
+        return;
+    }
+
+    const isCurrent =
+        record.isCurrent === true;
+
+    const pendingAmount =
+        Number(
+            record.pendingAmount || 0
+        );
+
+    /*
+     * Renewal is allowed only from
+     * the current AMC cycle.
+     */
+
+    if (!isCurrent) {
+        alert(
+            "Only the current AMC cycle can be renewed."
+        );
+
+        return;
+    }
+
+    /*
+     * Do not renew while the current
+     * invoice still has outstanding.
+     */
+   if (pendingAmount > 0) {
+    const confirmed =
+        window.confirm(
+            `This AMC still has ${formatCurrency(
+                pendingAmount
+            )} outstanding.\n\n` +
+            `Renewal will create a NEW AMC invoice. ` +
+            `The old pending amount will remain against this invoice.\n\n` +
+            `Do you want to continue?`
+        );
+
+    if (!confirmed) {
+        return;
+    }
+}
+
+    /*
+     * New AMC starts one day after
+     * current AMC expiry.
+     */
+    let startDate = "";
+
+    if (record.expiryDate) {
+        const expiry =
+            new Date(
+                record.expiryDate
+            );
+
+        if (
+            !Number.isNaN(
+                expiry.getTime()
+            )
+        ) {
+            expiry.setDate(
+                expiry.getDate() + 1
+            );
+
+            startDate =
+                expiry
+                    .toISOString()
+                    .slice(0, 10);
+        }
+    }
+
+    setRenewalRecord(
+        record
+    );
+
+    setFormError("");
+
+    setRenewalForm({
+        amount: String(
+            record.taxableAmount ||
+            record.amount ||
+            record.totalAmount ||
+            ""
+        ),
+
+        startDate,
+
+        expiryDate: "",
+
+        dueDate: "",
+
+        plan:
+            record.plan ||
+            "Standard",
+
+        notes: "",
+    });
+};
 
     const closeRenewalModal = () => {
         setRenewalRecord(null);
@@ -1413,109 +2333,300 @@ export default function AmcBilling() {
         }));
     };
 
-    const handleGenerateRenewal = (event) => {
+   const handleGenerateRenewal =
+    async (event) => {
         event.preventDefault();
-        if (!renewalRecord) return;
+
+        if (
+            !renewalRecord ||
+            savingAmc
+        ) {
+            return;
+        }
+
         if (
             !renewalForm.amount ||
             !renewalForm.startDate ||
             !renewalForm.expiryDate ||
             !renewalForm.dueDate
         ) {
-            setFormError("Please complete all required renewal fields.");
+            setFormError(
+                "Please complete all required renewal fields."
+            );
+
             return;
         }
-        const amount = Number(renewalForm.amount);
-        if (!amount || amount <= 0) {
-            setFormError("Please enter a valid AMC amount.");
-            return;
-        }
-        const formatDateValue = (value) =>
-            new Date(`${value}T00:00:00`).toLocaleDateString("en-GB", {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-            });
-        const formattedStart = formatDateValue(renewalForm.startDate);
-        const formattedExpiry = formatDateValue(renewalForm.expiryDate);
-        const formattedDue = formatDateValue(renewalForm.dueDate);
-        const invoiceNo = `AMC-2026-${String(Date.now()).slice(-4)}`;
-        const previousPeriodEntry = {
-            id: `${renewalRecord.id}-${Date.now()}`,
-            startDate: renewalRecord.startDate,
-            expiryDate: renewalRecord.expiryDate,
-            dueDate: renewalRecord.dueDate,
-            invoiceNo: renewalRecord.invoiceNo || "Not generated",
-            invoiceDate: renewalRecord.invoiceDate || "—",
-            amount: renewalRecord.amount,
-            paidAmount: renewalRecord.paidAmount,
-            pendingAmount: renewalRecord.pendingAmount,
-            status: renewalRecord.status,
-            plan: renewalRecord.plan,
-            product: renewalRecord.product,
-            users: renewalRecord.users,
-            paymentHistory: renewalRecord.paymentHistory || [],
-            archivedAt: new Date().toLocaleString("en-IN", {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-            }),
-        };
-        const renewalTimelineEvent = createAmcTimelineEvent({
-            type: "renewal",
-            title: "AMC contract renewed",
-            description: `Previous AMC period ${renewalRecord.startDate} to ${renewalRecord.expiryDate} was archived. New AMC period created from ${formattedStart} to ${formattedExpiry}.`,
-        });
-        const invoiceTimelineEvent = createAmcTimelineEvent({
-            type: "invoice",
-            title: "Renewal invoice generated",
-            description: `Invoice ${invoiceNo} was generated for ${formatCurrency(
+
+        const amount =
+            Number(
+                renewalForm.amount
+            );
+
+        if (
+            !Number.isFinite(
                 amount
-            )}.`,
-        });
-        const updatedRecord = {
-            ...renewalRecord,
-            renewalHistory: [
-                ...(renewalRecord.renewalHistory || []),
-                previousPeriodEntry,
-            ],
-            startDate: formattedStart,
-            expiryDate: formattedExpiry,
-            dueDate: formattedDue,
-            plan: renewalForm.plan,
-            amount,
-            paidAmount: 0,
-            pendingAmount: amount,
-            invoiceNo,
-            invoiceDate: new Date().toLocaleDateString("en-GB", {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-            }),
-            status: "Pending",
-            reminderStatus: "Not Sent",
-            lastReminder: "—",
-            paymentHistory: [],
-            timeline: [
-                ...(renewalRecord.timeline || []),
-                renewalTimelineEvent,
-                invoiceTimelineEvent,
-            ],
-        };
-        setRecords((current) =>
-            current.map((record) =>
-                record.id === renewalRecord.id ? updatedRecord : record
-            )
-        );
-        setSelectedRecord((current) =>
-            current?.id === renewalRecord.id ? updatedRecord : current
-        );
-        setInvoiceRecord((current) =>
-            current?.id === renewalRecord.id ? updatedRecord : current
-        );
-        closeRenewalModal();
+            ) ||
+            amount <= 0
+        ) {
+            setFormError(
+                "Please enter a valid AMC taxable amount."
+            );
+
+            return;
+        }
+
+        const contractId =
+            renewalRecord.mongoId ||
+            renewalRecord.id;
+
+        if (
+            !contractId
+        ) {
+            setFormError(
+                "AMC contract ID was not found."
+            );
+
+            return;
+        }
+
+        try {
+            setSavingAmc(
+                true
+            );
+
+            setFormError(
+                ""
+            );
+
+            const token =
+                getAuthToken();
+
+            if (
+                !token
+            ) {
+                throw new Error(
+                    "Login token was not found. Please login again."
+                );
+            }
+
+            /*
+             * IMPORTANT:
+             *
+             * renewalForm.amount is currently the AMC
+             * taxable/basic amount used by the renewal form.
+             *
+             * Backend will calculate GST and final invoice total.
+             */
+            const response =
+                await fetch(
+                    `${API_URL}/api/admin/amc/contract/${contractId}/renew`,
+                    {
+                        method:
+                            "POST",
+
+                        headers: {
+                            "Content-Type":
+                                "application/json",
+
+                            Accept:
+                                "application/json",
+
+                            Authorization:
+                                `Bearer ${token}`,
+                        },
+
+                        body:
+                            JSON.stringify({
+                                startDate:
+                                    renewalForm.startDate,
+
+                                expiryDate:
+                                    renewalForm.expiryDate,
+
+                                dueDate:
+                                    renewalForm.dueDate,
+
+                                taxableAmount:
+                                    amount,
+
+                                plan:
+                                    renewalForm.plan,
+
+                                licensedUsers:
+                                    renewalRecord.licensedUsers ||
+                                    renewalRecord.users ||
+                                    1,
+
+                                /*
+                                 * Keep the same GST structure
+                                 * as the current AMC unless you
+                                 * later add GST controls to the
+                                 * renewal modal.
+                                 */
+                                cgstRate:
+                                    Number(
+                                        renewalRecord.cgstRate ||
+                                        0
+                                    ),
+
+                                sgstRate:
+                                    Number(
+                                        renewalRecord.sgstRate ||
+                                        0
+                                    ),
+
+                                igstRate:
+                                    Number(
+                                        renewalRecord.igstRate ||
+                                        0
+                                    ),
+
+                                notes:
+                                    renewalForm.notes.trim(),
+                            }),
+                    }
+                );
+
+            let result =
+                {};
+
+            try {
+                result =
+                    await response.json();
+            } catch {
+                throw new Error(
+                    "Invalid response received from server."
+                );
+            }
+
+            if (
+                response.status ===
+                401
+            ) {
+                throw new Error(
+                    "Your login session has expired. Please login again."
+                );
+            }
+
+            if (
+                response.status ===
+                409
+            ) {
+                throw new Error(
+                    result.message ||
+                    "AMC renewal already exists for this period."
+                );
+            }
+
+            if (
+                !response.ok ||
+                result.success !==
+                    true
+            ) {
+                throw new Error(
+                    result.message ||
+                    "Unable to renew AMC contract."
+                );
+            }
+
+            /*
+             * Backend returns the renewed contract
+             * already connected to the NEW invoice.
+             */
+            const backendContract =
+                result.data?.contract ||
+                result.contract;
+
+            if (
+                !backendContract
+            ) {
+                throw new Error(
+                    "AMC was renewed, but the updated contract was not returned."
+                );
+            }
+
+            const updatedRecord =
+                normalizeAmcContractFromApi(
+                    backendContract
+                );
+
+            /*
+             * Update current frontend state immediately.
+             */
+            setRecords(
+                (current) =>
+                    current.map(
+                        (record) =>
+                            record.id ===
+                            renewalRecord.id
+                                ? updatedRecord
+                                : record
+                    )
+            );
+
+            setSelectedRecord(
+                (current) =>
+                    current?.id ===
+                    renewalRecord.id
+                        ? updatedRecord
+                        : current
+            );
+
+            setInvoiceRecord(
+                (current) =>
+                    current?.id ===
+                    renewalRecord.id
+                        ? updatedRecord
+                        : current
+            );
+/*
+ * Keep the renewed contract because
+ * the backend has now connected it
+ * with the NEW current invoice.
+ */
+closeRenewalModal();
+
+/*
+ * Reload AMC list from MongoDB.
+ */
+await loadAmcContracts();
+
+/*
+ * Close the old invoice detail first.
+ */
+setSelectedInvoiceDetail(
+    null
+);
+
+/*
+ * Open the NEW current invoice created
+ * by the renewal endpoint.
+ */
+await handleOpenAmcInvoiceDetail(
+    updatedRecord
+);
+
+alert(
+    result.message ||
+    "AMC renewed successfully and the new invoice has been generated."
+);
+        } catch (
+            error
+        ) {
+            console.error(
+                "Renew AMC error:",
+                error
+            );
+
+            setFormError(
+                error.message ||
+                "Unable to renew AMC contract."
+            );
+        } finally {
+            setSavingAmc(
+                false
+            );
+        }
     };
 
     const handleSendReminder = (record) => {
@@ -2471,8 +3582,949 @@ const handleDocumentUpload =
                 "Unable to remove document."
             );
         }
+
     };
 
+    /* =====================================================
+   AMC INVOICE / CYCLE DETAIL
+===================================================== */
+
+if (selectedInvoiceDetail) {
+    const invoice =
+        selectedInvoiceDetail;
+
+    const invoiceHistory =
+        Array.isArray(
+            invoice.invoiceHistory
+        )
+            ? invoice.invoiceHistory
+            : [];
+
+    const collectionPercent =
+        invoice.totalAmount > 0
+            ? Math.min(
+                  Math.round(
+                      (
+                          invoice.paidAmount /
+                          invoice.totalAmount
+                      ) *
+                          100
+                  ),
+                  100
+              )
+            : 0;
+
+    return (
+        <>
+            <div className="enterprise-page space-y-6 bg-[radial-gradient(circle_at_top_right,rgba(124,58,237,0.055),transparent_28%)]">
+                {/* BACK */}
+
+                <button
+                    type="button"
+                    onClick={() =>
+                        setSelectedInvoiceDetail(
+                            null
+                        )
+                    }
+                    className="flex items-center gap-2 text-sm font-semibold text-slate-600 transition hover:text-violet-600"
+                >
+                    <ArrowLeft
+                        size={18}
+                    />
+
+                    Back to Client AMC
+                </button>
+
+                {/* HEADER */}
+
+                <section className="flex flex-col gap-5 border-b border-slate-200 pb-6 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-600">
+                                AMC Invoice
+                            </p>
+
+                            {invoice.isCurrent && (
+                                <span className="rounded-full bg-violet-100 px-2 py-1 text-[9px] font-semibold text-violet-700">
+                                    Current Cycle
+                                </span>
+                            )}
+                        </div>
+
+                        <h1 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-950">
+                            {invoice.invoiceCode ||
+                                "AMC Invoice"}
+                        </h1>
+
+                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+                            <span>
+                                {
+                                    invoice.clientName
+                                }
+                            </span>
+
+                            <span>
+                                {
+                                    invoice.clientCode
+                                }
+                            </span>
+
+                            <span>
+                                {
+                                    invoice.productName
+                                }
+                            </span>
+
+                            <span>
+                                {
+                                    invoice.productCode
+                                }
+                            </span>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-3">
+                        <button
+                            type="button"
+                            onClick={() =>
+                                setHistoryInvoiceRecord(
+                                    {
+                                        invoiceNo:
+                                            invoice.invoiceCode,
+
+                                        invoiceCode:
+                                            invoice.invoiceCode,
+
+                                        client:
+                                            invoice.clientName,
+
+                                        clientName:
+                                            invoice.clientName,
+
+                                        clientCode:
+                                            invoice.clientCode,
+
+                                        product:
+                                            invoice.productName,
+
+                                        productName:
+                                            invoice.productName,
+
+                                        productCode:
+                                            invoice.productCode,
+
+                                        plan:
+                                            invoice.plan,
+
+                                        users:
+                                            invoice.licensedUsers,
+
+                                        licensedUsers:
+                                            invoice.licensedUsers,
+
+                                        startDate:
+                                            formatBusinessDate(
+                                                invoice.startDate
+                                            ),
+
+                                        expiryDate:
+                                            formatBusinessDate(
+                                                invoice.expiryDate
+                                            ),
+
+                                        dueDate:
+                                            formatBusinessDate(
+                                                invoice.dueDate
+                                            ),
+
+                                        amount:
+                                            invoice.totalAmount,
+
+                                        totalAmount:
+                                            invoice.totalAmount,
+
+                                        paidAmount:
+                                            invoice.paidAmount,
+
+                                        pendingAmount:
+                                            invoice.pendingAmount,
+
+                                        taxableAmount:
+                                            invoice.taxableAmount,
+
+                                        cgstRate:
+                                            invoice.cgstRate,
+
+                                        cgstAmount:
+                                            invoice.cgstAmount,
+
+                                        sgstRate:
+                                            invoice.sgstRate,
+
+                                        sgstAmount:
+                                            invoice.sgstAmount,
+
+                                        igstRate:
+                                            invoice.igstRate,
+
+                                        igstAmount:
+                                            invoice.igstAmount,
+
+                                        status:
+                                            invoice.paymentStatus,
+                                    }
+                                )
+                            }
+                            className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                        >
+                            <FileText
+                                size={15}
+                            />
+
+                            Invoice Preview
+                        </button>
+
+                        {invoice.pendingAmount >
+                            0 && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const matchingRecord =
+                                        records.find(
+                                            (
+                                                record
+                                            ) =>
+                                                String(
+                                                    record.mongoId ||
+                                                    record.id
+                                                ) ===
+                                                String(
+                                                    invoice.amcContractId
+                                                )
+                                        );
+
+                                    if (
+                                        !matchingRecord
+                                    ) {
+                                        alert(
+                                            "AMC contract record was not found."
+                                        );
+
+                                        return;
+                                    }
+
+                                    openPaymentModal({
+                                        ...matchingRecord,
+
+                                        currentInvoiceId:
+                                            invoice.amcInvoiceId,
+
+                                        amcInvoiceId:
+                                            invoice.amcInvoiceId,
+
+                                        invoiceNo:
+                                            invoice.invoiceCode,
+
+                                        invoiceCode:
+                                            invoice.invoiceCode,
+
+                                        amount:
+                                            invoice.totalAmount,
+
+                                        totalAmount:
+                                            invoice.totalAmount,
+
+                                        paidAmount:
+                                            invoice.paidAmount,
+
+                                        pendingAmount:
+                                            invoice.pendingAmount,
+                                    });
+                                }}
+                                className="flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-xs font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700"
+                            >
+                                <IndianRupee
+                                    size={15}
+                                />
+
+                                Record Payment
+                            </button>
+                        )}
+                    </div>
+                </section>
+
+                {/* SUMMARY */}
+
+                <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                            Invoice Total
+                        </p>
+
+                        <p className="mt-3 text-2xl font-semibold text-slate-950">
+                            {formatCurrency(
+                                invoice.totalAmount
+                            )}
+                        </p>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                            Received
+                        </p>
+
+                        <p className="mt-3 text-2xl font-semibold text-emerald-700">
+                            {formatCurrency(
+                                invoice.paidAmount
+                            )}
+                        </p>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                            Outstanding
+                        </p>
+
+                        <p className="mt-3 text-2xl font-semibold text-rose-600">
+                            {formatCurrency(
+                                invoice.pendingAmount
+                            )}
+                        </p>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                            Collection
+                        </p>
+
+                        <p className="mt-3 text-2xl font-semibold text-violet-700">
+                            {
+                                collectionPercent
+                            }
+                            %
+                        </p>
+
+                        <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                            <div
+                                className="h-full rounded-full bg-violet-600"
+                                style={{
+                                    width:
+                                        `${collectionPercent}%`,
+                                }}
+                            />
+                        </div>
+                    </div>
+                </section>
+
+                {/* DETAILS */}
+
+                <section className="grid gap-6 xl:grid-cols-2">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                        <h2 className="text-sm font-semibold text-slate-950">
+                            AMC Cycle
+                        </h2>
+
+                        <dl className="mt-5 grid grid-cols-2 gap-5">
+                            <div>
+                                <dt className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                                    Start Date
+                                </dt>
+
+                                <dd className="mt-1 text-sm font-semibold text-slate-800">
+                                    {formatBusinessDate(
+                                        invoice.startDate
+                                    )}
+                                </dd>
+                            </div>
+
+                            <div>
+                                <dt className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                                    Expiry Date
+                                </dt>
+
+                                <dd className="mt-1 text-sm font-semibold text-slate-800">
+                                    {formatBusinessDate(
+                                        invoice.expiryDate
+                                    )}
+                                </dd>
+                            </div>
+
+                            <div>
+                                <dt className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                                    Invoice Date
+                                </dt>
+
+                                <dd className="mt-1 text-sm font-semibold text-slate-800">
+                                    {formatBusinessDate(
+                                        invoice.invoiceDate
+                                    )}
+                                </dd>
+                            </div>
+
+                            <div>
+                                <dt className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                                    Due Date
+                                </dt>
+
+                                <dd className="mt-1 text-sm font-semibold text-slate-800">
+                                    {formatBusinessDate(
+                                        invoice.dueDate
+                                    )}
+                                </dd>
+                            </div>
+
+                            <div>
+                                <dt className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                                    Contract
+                                </dt>
+
+                                <dd className="mt-1 text-sm font-semibold text-slate-800">
+                                    {invoice.contractCode ||
+                                        "—"}
+                                </dd>
+                            </div>
+
+                            <div>
+                                <dt className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                                    Status
+                                </dt>
+
+                                <dd className="mt-1">
+                                    <StatusBadge
+                                        status={
+                                            invoice.paymentStatus
+                                        }
+                                    />
+                                </dd>
+                            </div>
+                        </dl>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                        <h2 className="text-sm font-semibold text-slate-950">
+                            Product & Tax
+                        </h2>
+
+                        <dl className="mt-5 grid grid-cols-2 gap-5">
+                            <div>
+                                <dt className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                                    Product
+                                </dt>
+
+                                <dd className="mt-1 text-sm font-semibold text-slate-800">
+                                    {invoice.productName}
+                                </dd>
+                            </div>
+
+                            <div>
+                                <dt className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                                    Plan
+                                </dt>
+
+                                <dd className="mt-1 text-sm font-semibold text-slate-800">
+                                    {invoice.plan}
+                                </dd>
+                            </div>
+
+                            <div>
+                                <dt className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                                    Taxable
+                                </dt>
+
+                                <dd className="mt-1 text-sm font-semibold text-slate-800">
+                                    {formatCurrency(
+                                        invoice.taxableAmount
+                                    )}
+                                </dd>
+                            </div>
+
+                            <div>
+                                <dt className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                                    Licensed Users
+                                </dt>
+
+                                <dd className="mt-1 text-sm font-semibold text-slate-800">
+                                    {
+                                        invoice.licensedUsers
+                                    }
+                                </dd>
+                            </div>
+
+                            <div>
+                                <dt className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                                    CGST
+                                </dt>
+
+                                <dd className="mt-1 text-sm font-semibold text-slate-800">
+                                    {
+                                        invoice.cgstRate
+                                    }
+                                    % ·{" "}
+                                    {formatCurrency(
+                                        invoice.cgstAmount
+                                    )}
+                                </dd>
+                            </div>
+
+                            <div>
+                                <dt className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                                    SGST / IGST
+                                </dt>
+
+                                <dd className="mt-1 text-sm font-semibold text-slate-800">
+                                    {invoice.igstRate >
+                                    0
+                                        ? `${invoice.igstRate}% · ${formatCurrency(
+                                              invoice.igstAmount
+                                          )}`
+                                        : `${invoice.sgstRate}% · ${formatCurrency(
+                                              invoice.sgstAmount
+                                          )}`}
+                                </dd>
+                            </div>
+                        </dl>
+                    </div>
+                </section>
+
+                {/* INSTALLMENTS */}
+
+                <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                    <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+                        <div>
+                            <h2 className="text-sm font-semibold text-slate-950">
+                                Payment Installments
+                            </h2>
+
+                            <p className="mt-1 text-xs text-slate-500">
+                                {
+                                    invoice
+                                        .payments
+                                        .length
+                                }{" "}
+                                payment
+                                {invoice
+                                    .payments
+                                    .length ===
+                                1
+                                    ? ""
+                                    : "s"}{" "}
+                                recorded against this invoice.
+                            </p>
+                        </div>
+
+                        <p className="text-sm font-semibold text-emerald-700">
+                            {formatCurrency(
+                                invoice.paidAmount
+                            )}
+                        </p>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full">
+                            <thead>
+                                <tr className="border-b border-slate-200 bg-slate-50">
+                                    <th className="px-5 py-3 text-left text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                                        #
+                                    </th>
+
+                                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                                        Receipt
+                                    </th>
+
+                                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                                        Date
+                                    </th>
+
+                                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                                        Mode
+                                    </th>
+
+                                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                                        Reference
+                                    </th>
+
+                                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                                        Received By
+                                    </th>
+
+                                    <th className="px-5 py-3 text-right text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                                        Amount
+                                    </th>
+                                </tr>
+                            </thead>
+
+                            <tbody>
+                                {invoice.payments.map(
+                                    (
+                                        payment,
+                                        index
+                                    ) => (
+                                        <tr
+                                            key={
+                                                payment.id ||
+                                                index
+                                            }
+                                            className="border-b border-slate-100 last:border-b-0"
+                                        >
+                                            <td className="px-5 py-4 text-xs text-slate-500">
+                                                #
+                                                {index +
+                                                    1}
+                                            </td>
+
+                                            <td className="px-4 py-4 text-xs font-semibold text-violet-700">
+                                                {payment.paymentCode ||
+                                                    "—"}
+                                            </td>
+
+                                            <td className="px-4 py-4 text-xs text-slate-600">
+                                                {formatBusinessDate(
+                                                    payment.paymentDate
+                                                )}
+                                            </td>
+
+                                            <td className="px-4 py-4 text-xs text-slate-700">
+                                                {payment.mode}
+                                            </td>
+
+                                            <td className="px-4 py-4 text-xs text-slate-500">
+                                                {payment.referenceNo ||
+                                                    "—"}
+                                            </td>
+
+                                            <td className="px-4 py-4 text-xs text-slate-600">
+                                                {payment.receivedBy ||
+                                                    "Admin"}
+                                            </td>
+
+                                            <td className="px-5 py-4 text-right text-xs font-semibold text-emerald-700">
+                                                {formatCurrency(
+                                                    payment.amount
+                                                )}
+                                            </td>
+                                        </tr>
+                                    )
+                                )}
+
+                                {invoice.payments.length ===
+                                    0 && (
+                                    <tr>
+                                        <td
+                                            colSpan={
+                                                7
+                                            }
+                                            className="px-6 py-10 text-center text-xs text-slate-500"
+                                        >
+                                            No payments have been recorded against this AMC invoice.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                {/* CYCLE HISTORY */}
+
+                <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                    <div className="border-b border-slate-200 px-5 py-4">
+                        <h2 className="text-sm font-semibold text-slate-950">
+                            AMC Cycle History
+                        </h2>
+
+                        <p className="mt-1 text-xs text-slate-500">
+                            Previous and current AMC invoices under this contract.
+                        </p>
+                    </div>
+
+                    <div className="divide-y divide-slate-100">
+                        {invoiceHistory.map(
+                            (
+                                history
+                            ) => (
+                                <button
+                                    key={
+                                        history.id
+                                    }
+                                    type="button"
+                                    onClick={() =>
+                                        setSelectedInvoiceDetail(
+                                            {
+                                                ...history,
+
+                                                invoiceHistory,
+                                            }
+                                        )
+                                    }
+                                    className={`grid w-full gap-3 px-5 py-4 text-left transition hover:bg-slate-50 md:grid-cols-[1.2fr_1fr_1fr_1fr_auto] ${
+                                        history.id ===
+                                        invoice.id
+                                            ? "bg-violet-50/60"
+                                            : ""
+                                    }`}
+                                >
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-900">
+                                            {history.invoiceCode ||
+                                                "AMC Invoice"}
+                                        </p>
+
+                                        <p className="mt-1 text-[10px] text-slate-400">
+                                            {history.id ===
+                                            invoice.id
+                                                ? "Selected cycle"
+                                                : history.isCurrent
+                                                ? "Current cycle"
+                                                : "Historical cycle"}
+                                        </p>
+                                    </div>
+
+                                    <div>
+                                        <p className="text-[9px] font-semibold uppercase text-slate-400">
+                                            Period
+                                        </p>
+
+                                        <p className="mt-1 text-xs text-slate-700">
+                                            {formatBusinessDate(
+                                                history.startDate
+                                            )}
+                                            {" → "}
+                                            {formatBusinessDate(
+                                                history.expiryDate
+                                            )}
+                                        </p>
+                                    </div>
+
+                                    <div>
+                                        <p className="text-[9px] font-semibold uppercase text-slate-400">
+                                            Amount
+                                        </p>
+
+                                        <p className="mt-1 text-xs font-semibold text-slate-900">
+                                            {formatCurrency(
+                                                history.totalAmount
+                                            )}
+                                        </p>
+                                    </div>
+
+                                    <div>
+                                        <p className="text-[9px] font-semibold uppercase text-slate-400">
+                                            Balance
+                                        </p>
+
+                                        <p className="mt-1 text-xs font-semibold text-rose-600">
+                                            {formatCurrency(
+                                                history.pendingAmount
+                                            )}
+                                        </p>
+                                    </div>
+
+                                    <div className="flex items-center">
+                                        <StatusBadge
+                                            status={
+                                                history.paymentStatus
+                                            }
+                                        />
+                                    </div>
+                                </button>
+                            )
+                        )}
+                    </div>
+                </section>
+            </div>
+
+            {historyInvoiceRecord && (
+                <AmcInvoice
+                    record={
+                        historyInvoiceRecord
+                    }
+                    onClose={() =>
+                        setHistoryInvoiceRecord(
+                            null
+                        )
+                    }
+                />
+            )}
+
+            {paymentRecord && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <button
+                        type="button"
+                        onClick={
+                            closePaymentModal
+                        }
+                        className="enterprise-backdrop absolute inset-0 bg-slate-950/45 backdrop-blur-sm"
+                    />
+
+                    <form
+                        onSubmit={
+                            handleRecordPayment
+                        }
+                        className="enterprise-modal relative w-full max-w-[560px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+                    >
+                        <div className="border-b border-slate-200 px-6 py-5">
+                            <h2 className="text-lg font-semibold text-slate-950">
+                                Record AMC Payment
+                            </h2>
+
+                            <p className="mt-1 text-xs text-slate-500">
+                                {invoice.invoiceCode}
+                                {" · "}
+                                {formatCurrency(
+                                    invoice.pendingAmount
+                                )}{" "}
+                                pending
+                            </p>
+                        </div>
+
+                        <div className="space-y-4 p-6">
+                            {formError && (
+                                <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-700">
+                                    {
+                                        formError
+                                    }
+                                </div>
+                            )}
+
+                            <div>
+                                <label className="mb-1 block text-xs font-semibold text-slate-600">
+                                    Amount
+                                </label>
+
+                                <input
+                                    name="amount"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={
+                                        paymentForm.amount
+                                    }
+                                    onChange={
+                                        handlePaymentChange
+                                    }
+                                    className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-violet-400"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="mb-1 block text-xs font-semibold text-slate-600">
+                                    Payment Date
+                                </label>
+
+                                <input
+                                    name="paymentDate"
+                                    type="date"
+                                    value={
+                                        paymentForm.paymentDate
+                                    }
+                                    onChange={
+                                        handlePaymentChange
+                                    }
+                                    className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-violet-400"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="mb-1 block text-xs font-semibold text-slate-600">
+                                    Payment Mode
+                                </label>
+
+                                <select
+                                    name="mode"
+                                    value={
+                                        paymentForm.mode
+                                    }
+                                    onChange={
+                                        handlePaymentChange
+                                    }
+                                    className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-violet-400"
+                                >
+                                    <option>
+                                        Bank Transfer
+                                    </option>
+                                    <option>
+                                        Cash
+                                    </option>
+                                    <option>
+                                        UPI
+                                    </option>
+                                    <option>
+                                        Cheque
+                                    </option>
+                                    <option>
+                                        Card
+                                    </option>
+                                    <option>
+                                        Other
+                                    </option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="mb-1 block text-xs font-semibold text-slate-600">
+                                    Reference No
+                                </label>
+
+                                <input
+                                    name="referenceNo"
+                                    value={
+                                        paymentForm.referenceNo
+                                    }
+                                    onChange={
+                                        handlePaymentChange
+                                    }
+                                    className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-violet-400"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="mb-1 block text-xs font-semibold text-slate-600">
+                                    Notes
+                                </label>
+
+                                <textarea
+                                    name="notes"
+                                    rows={3}
+                                    value={
+                                        paymentForm.notes
+                                    }
+                                    onChange={
+                                        handlePaymentChange
+                                    }
+                                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-violet-400"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">
+                            <button
+                                type="button"
+                                onClick={
+                                    closePaymentModal
+                                }
+                                className="h-10 rounded-xl border border-slate-200 px-4 text-xs font-semibold text-slate-600"
+                            >
+                                Cancel
+                            </button>
+
+                            <button
+                                type="submit"
+                                disabled={
+                                    savingPayment
+                                }
+                                className="h-10 rounded-xl bg-emerald-600 px-5 text-xs font-semibold text-white disabled:opacity-50"
+                            >
+                                {savingPayment
+                                    ? "Saving..."
+                                    : "Save Payment"}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            )}
+        </>
+    );
+}
     // Render the detail view when a record is selected
     if (selectedRecord) {
         return (
@@ -2523,18 +4575,75 @@ const handleDocumentUpload =
                                 <FileText size={16} />
                                 Invoice Preview
                             </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    const record = selectedRecord;
-                                    setSelectedRecord(null);
-                                    openRenewalModal(record);
-                                }}
-                                className="flex h-11 items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 text-xs font-semibold text-violet-700 transition hover:bg-violet-100"
-                            >
-                                <RefreshCw size={15} />
-                                Renew AMC
-                            </button>
+{(() => {
+    if (!invoice.isCurrent) {
+        return false;
+    }
+
+    if (!invoice.expiryDate) {
+        return false;
+    }
+
+    const expiryDate =
+        new Date(invoice.expiryDate);
+
+    if (
+        Number.isNaN(
+            expiryDate.getTime()
+        )
+    ) {
+        return false;
+    }
+
+    const today =
+        new Date();
+
+    today.setHours(
+        0,
+        0,
+        0,
+        0
+    );
+
+    expiryDate.setHours(
+        0,
+        0,
+        0,
+        0
+    );
+
+    const diffMs =
+        expiryDate.getTime() -
+        today.getTime();
+
+    const daysRemaining =
+        Math.ceil(
+            diffMs /
+            (
+                1000 *
+                60 *
+                60 *
+                24
+            )
+        );
+
+    /*
+     * Show renewal when AMC expires
+     * within 30 days or is already expired.
+     */
+    return daysRemaining <= 30;
+})() && (
+    <button
+        type="button"
+        onClick={() =>
+            openRenewalModal(invoice)
+        }
+        className="flex h-10 items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 text-xs font-semibold text-violet-700 transition hover:bg-violet-100"
+    >
+        <RefreshCw size={16} />
+        Renew AMC
+    </button>
+)}
                             {selectedRecord.pendingAmount > 0 && (
                                 <button
                                     type="button"
@@ -3901,7 +6010,453 @@ const handleDocumentUpload =
             </>
         );
     }
+if (
+    selectedClientGroup
+) {
+    return (
+        <>
+            <div className="enterprise-page space-y-6">
+                {/* HEADER */}
+                <section className="flex flex-col gap-4 border-b border-slate-200 pb-5 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="flex items-start gap-4">
+                        <button
+                            type="button"
+                            onClick={() =>
+                                setSelectedClientGroup(
+                                    null
+                                )
+                            }
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50"
+                        >
+                            <ArrowLeft
+                                size={17}
+                            />
+                        </button>
 
+                        <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-600">
+                                Client AMC
+                            </p>
+
+                            <h1 className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-slate-950">
+                                {
+                                    selectedClientGroup.clientName
+                                }
+                            </h1>
+
+                            <p className="mt-1 text-xs text-slate-500">
+                                {
+                                    selectedClientGroup.clientCode ||
+                                    "No client code"
+                                }
+                                {" · "}
+                                {
+                                    selectedClientGroup.productCount
+                                }{" "}
+                                product
+                                {
+                                    selectedClientGroup.productCount ===
+                                    1
+                                        ? ""
+                                        : "s"
+                                }{" "}
+                                under AMC
+                            </p>
+                        </div>
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setNewAmcForm(
+                                {
+                                    ...emptyNewAmcForm,
+
+                                    clientId:
+                                        selectedClientGroup.clientId,
+
+                                    clientCode:
+                                        selectedClientGroup.clientCode,
+
+                                    clientName:
+                                        selectedClientGroup.clientName,
+                                }
+                            );
+
+                            setNewAmcOpen(
+                                true
+                            );
+                        }}
+                        className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700"
+                    >
+                        <Plus
+                            size={15}
+                        />
+
+                        New AMC Contract
+                    </button>
+                </section>
+
+                {/* CLIENT SUMMARY */}
+                <section className="grid overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.04)] sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="border-b border-slate-200 p-5 sm:border-r xl:border-b-0">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                            Total AMC Billed
+                        </p>
+
+                        <p className="mt-2 text-xl font-semibold text-slate-950">
+                            {formatCurrency(
+                                selectedClientGroup.totalAmount
+                            )}
+                        </p>
+                    </div>
+
+                    <div className="border-b border-slate-200 p-5 xl:border-b-0 xl:border-r">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                            Received
+                        </p>
+
+                        <p className="mt-2 text-xl font-semibold text-emerald-700">
+                            {formatCurrency(
+                                selectedClientGroup.paidAmount
+                            )}
+                        </p>
+                    </div>
+
+                    <div className="border-b border-slate-200 p-5 sm:border-r xl:border-b-0">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                            Outstanding
+                        </p>
+
+                        <p className="mt-2 text-xl font-semibold text-amber-700">
+                            {formatCurrency(
+                                selectedClientGroup.pendingAmount
+                            )}
+                        </p>
+                    </div>
+
+                    <div className="p-5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                            Next Renewal
+                        </p>
+
+                        <p className="mt-2 text-xl font-semibold text-slate-950">
+                            {
+                                selectedClientGroup.nextRenewal
+                            }
+                        </p>
+                    </div>
+                </section>
+
+                {/* PRODUCT GROUPS */}
+                <section className="space-y-4">
+                    {selectedClientProducts.map(
+                        (productGroup) => {
+                            const total =
+                                productGroup.records.reduce(
+                                    (
+                                        sum,
+                                        record
+                                    ) =>
+                                        sum +
+                                        Number(
+                                            record.totalAmount ||
+                                            record.amount ||
+                                            0
+                                        ),
+                                    0
+                                );
+
+                            const paid =
+                                productGroup.records.reduce(
+                                    (
+                                        sum,
+                                        record
+                                    ) =>
+                                        sum +
+                                        Number(
+                                            record.paidAmount ||
+                                            0
+                                        ),
+                                    0
+                                );
+
+                            const pending =
+                                productGroup.records.reduce(
+                                    (
+                                        sum,
+                                        record
+                                    ) =>
+                                        sum +
+                                        Number(
+                                            record.pendingAmount ||
+                                            0
+                                        ),
+                                    0
+                                );
+
+                            return (
+                                <article
+                                    key={
+                                        productGroup.key
+                                    }
+                                    className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.04)]"
+                                >
+                                    <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 lg:flex-row lg:items-center lg:justify-between">
+                                        <div>
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <h2 className="text-sm font-semibold text-slate-950">
+                                                    {
+                                                        productGroup.product
+                                                    }
+                                                </h2>
+
+                                                {productGroup.productCode && (
+                                                    <span className="rounded-md bg-slate-100 px-2 py-1 text-[9px] font-semibold text-slate-500">
+                                                        {
+                                                            productGroup.productCode
+                                                        }
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            <p className="mt-1 text-xs text-slate-500">
+                                                {
+                                                    productGroup.plan
+                                                }
+                                                {" · "}
+                                                {
+                                                    productGroup.users
+                                                }{" "}
+                                                users
+                                                {productGroup.version
+                                                    ? ` · ${productGroup.version}`
+                                                    : ""}
+                                            </p>
+                                        </div>
+
+                                        <div className="grid grid-cols-3 gap-5 text-right">
+                                            <div>
+                                                <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                                                    Billed
+                                                </p>
+
+                                                <p className="mt-1 text-xs font-semibold text-slate-800">
+                                                    {formatCurrency(
+                                                        total
+                                                    )}
+                                                </p>
+                                            </div>
+
+                                            <div>
+                                                <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                                                    Received
+                                                </p>
+
+                                                <p className="mt-1 text-xs font-semibold text-emerald-700">
+                                                    {formatCurrency(
+                                                        paid
+                                                    )}
+                                                </p>
+                                            </div>
+
+                                            <div>
+                                                <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                                                    Pending
+                                                </p>
+
+                                                <p className="mt-1 text-xs font-semibold text-amber-700">
+                                                    {formatCurrency(
+                                                        pending
+                                                    )}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="overflow-x-auto">
+                                        <table className="min-w-full">
+                                            <thead>
+                                                <tr className="border-b border-slate-200 bg-slate-50/80">
+                                                    <th className="px-5 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                        AMC Period
+                                                    </th>
+
+                                                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                        Invoice
+                                                    </th>
+
+                                                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                        Total
+                                                    </th>
+
+                                                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                        Paid
+                                                    </th>
+
+                                                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                        Pending
+                                                    </th>
+
+                                                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                        Status
+                                                    </th>
+
+                                                    <th className="px-5 py-3 text-right text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                        Actions
+                                                    </th>
+                                                </tr>
+                                            </thead>
+
+                                            <tbody>
+                                                {productGroup.records.map(
+                                                    (
+                                                        record
+                                                    ) => (
+                                                        <tr
+                                                            key={
+                                                                record.id
+                                                            }
+                                                            className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/60"
+                                                        >
+                                                            <td className="px-5 py-4 text-xs text-slate-600">
+                                                                {
+                                                                    record.startDate
+                                                                }
+                                                                <span className="mx-1 text-slate-300">
+                                                                    →
+                                                                </span>
+                                                                {
+                                                                    record.expiryDate
+                                                                }
+                                                            </td>
+
+                                                            <td className="px-4 py-4">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        setInvoiceRecord(
+                                                                            record
+                                                                        )
+                                                                    }
+                                                                    className="text-left text-xs font-semibold text-violet-700 hover:underline"
+                                                                >
+                                                                    {
+                                                                        record.invoiceNo ||
+                                                                        "Open invoice"
+                                                                    }
+                                                                </button>
+
+                                                                <p className="mt-1 text-[10px] text-slate-400">
+                                                                    Due{" "}
+                                                                    {
+                                                                        record.dueDate
+                                                                    }
+                                                                </p>
+                                                            </td>
+
+                                                            <td className="px-4 py-4 text-xs font-semibold text-slate-800">
+                                                                {formatCurrency(
+                                                                    record.totalAmount ||
+                                                                    record.amount
+                                                                )}
+                                                            </td>
+
+                                                            <td className="px-4 py-4 text-xs font-semibold text-emerald-700">
+                                                                {formatCurrency(
+                                                                    record.paidAmount
+                                                                )}
+                                                            </td>
+
+                                                            <td className="px-4 py-4 text-xs font-semibold text-amber-700">
+                                                                {formatCurrency(
+                                                                    record.pendingAmount
+                                                                )}
+                                                            </td>
+
+                                                            <td className="px-4 py-4">
+                                                                <StatusBadge
+                                                                    status={
+                                                                        record.status
+                                                                    }
+                                                                />
+                                                            </td>
+
+                                                            <td className="px-5 py-4">
+                                                                <div className="flex justify-end gap-2">
+                                                                    {record.pendingAmount >
+                                                                        0 && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() =>
+                                                                                openPaymentModal(
+                                                                                    record
+                                                                                )
+                                                                            }
+                                                                            className="flex h-9 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-100"
+                                                                        >
+                                                                            <IndianRupee
+                                                                                size={
+                                                                                    13
+                                                                                }
+                                                                            />
+                                                                            Payment
+                                                                        </button>
+                                                                    )}
+
+                                                                    <button
+                                                                        type="button"
+                                                               onClick={() =>
+    handleOpenAmcInvoiceDetail(
+        record
+    )
+}
+                                                                        className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-semibold text-slate-600 hover:bg-slate-50"
+                                                                    >
+                                                                        <Eye
+                                                                            size={
+                                                                                13
+                                                                            }
+                                                                        />
+                                                                        Open
+                                                                    </button>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    )
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </article>
+                            );
+                        }
+                    )}
+                </section>
+            </div>
+
+            {paymentRecord && (
+                // KEEP YOUR EXISTING PAYMENT MODAL HERE
+                // DO NOT COPY THIS COMMENT.
+                // Use the same payment modal currently used in the file.
+                null
+            )}
+
+            {invoiceRecord && (
+                <AmcInvoice
+                    record={
+                        invoiceRecord
+                    }
+                    onClose={() =>
+                        setInvoiceRecord(
+                            null
+                        )
+                    }
+                />
+            )}
+        </>
+    );
+}
     // Original main content (list view)
     return (
         <>
@@ -4057,7 +6612,7 @@ const handleDocumentUpload =
                                     AMC Contracts & Renewals
                                 </h2>
                                 <p className="mt-1 text-xs text-slate-500">
-                                    {filteredRecords.length} records found
+                                    {groupedClients.length} clients found
                                 </p>
                             </div>
                             <div className="flex flex-col gap-3 sm:flex-row">
@@ -4146,134 +6701,241 @@ const handleDocumentUpload =
                         )}
                     </div>
 
-                    <div className="hidden overflow-x-auto xl:block">
-                        <table className="enterprise-table min-w-full">
-                            <thead>
-                                <tr className="border-b border-slate-200 bg-slate-50/80">
-                                    <th className="px-6 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                        Client / Product
-                                    </th>
-                                    <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                        AMC Period
-                                    </th>
-                                    <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                        Invoice
-                                    </th>
-                                    <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                        Amount
-                                    </th>
-                                    <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                        Status
-                                    </th>
-                                    <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                        Reminder
-                                    </th>
-                                    <th className="px-6 py-3 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                        Actions
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {filteredRecords.map((record) => (
-                                    <tr
-                                        key={record.id}
-                                        className="border-b border-slate-100 transition last:border-b-0 hover:bg-slate-50/70"
+                   <div className="hidden overflow-x-auto xl:block">
+    <table className="enterprise-table min-w-full">
+        <thead>
+            <tr className="border-b border-slate-200 bg-slate-50/80">
+                <th className="px-6 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                    Client
+                </th>
+
+                <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                    Products
+                </th>
+
+                <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                    AMC Records
+                </th>
+
+                <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                    Total Billed
+                </th>
+
+                <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                    Received
+                </th>
+
+                <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                    Pending
+                </th>
+
+                <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                    Next Renewal
+                </th>
+
+                <th className="px-6 py-3 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                    Actions
+                </th>
+            </tr>
+        </thead>
+
+        <tbody>
+            {groupedClients.map(
+                (clientGroup) => (
+                    <tr
+                        key={
+                            clientGroup.key
+                        }
+                        className="border-b border-slate-100 transition last:border-b-0 hover:bg-slate-50/70"
+                    >
+                        {/* CLIENT */}
+                        <td className="px-6 py-4">
+                            <div className="flex min-w-[220px] items-center gap-3">
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-xs font-bold text-violet-700">
+                                    {clientGroup.clientName
+                                        ?.split(" ")
+                                        .slice(0, 2)
+                                        .map(
+                                            (word) =>
+                                                word[0]
+                                        )
+                                        .join("")
+                                        .toUpperCase() ||
+                                        "C"}
+                                </div>
+
+                                <div className="min-w-0">
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            setSelectedClientGroup(
+                                                clientGroup
+                                            )
+                                        }
+                                        className="max-w-[220px] truncate text-left text-sm font-semibold text-slate-900 transition hover:text-violet-700"
                                     >
-                                        <td className="px-6 py-4">
-                                            <div className="flex min-w-[270px] items-center gap-3">
-                                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-xs font-bold text-violet-700">
-                                                    {record.client
-                                                        .split(" ")
-                                                        .slice(0, 2)
-                                                        .map((word) => word[0])
-                                                        .join("")}
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setSelectedRecord(record)}
-                                                        className="max-w-[250px] truncate text-left text-sm font-semibold text-slate-900 transition hover:text-violet-700"
-                                                    >
-                                                        {record.client}
-                                                    </button>
-                                                    <p className="mt-1 text-[10px] text-slate-500">
-                                                        {record.product} · {record.plan} · {record.users}{" "}
-                                                        users
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-4">
-                                            <p className="whitespace-nowrap text-xs font-semibold text-slate-700">
-                                                {record.startDate}
-                                            </p>
-                                            <p className="mt-1 whitespace-nowrap text-[10px] text-slate-400">
-                                                to {record.expiryDate}
-                                            </p>
-                                        </td>
-                                        <td className="px-4 py-4">
-                                            <p className="text-xs font-semibold text-violet-600">
-                                                {record.invoiceNo || "Not generated"}
-                                            </p>
-                                            <p className="mt-1 text-[10px] text-slate-400">
-                                                Due {record.dueDate}
-                                            </p>
-                                        </td>
-                                        <td className="px-4 py-4">
-                                            <p className="text-xs font-semibold text-slate-900">
-                                                {formatCurrency(record.amount)}
-                                            </p>
-                                            <p
-                                                className={`mt-1 text-[10px] font-medium ${record.pendingAmount > 0
-                                                    ? "text-rose-600"
-                                                    : "text-emerald-600"
-                                                    }`}
-                                            >
-                                                Pending {formatCurrency(record.pendingAmount)}
-                                            </p>
-                                        </td>
-                                        <td className="px-4 py-4">
-                                            <StatusBadge status={record.status} />
-                                        </td>
-                                        <td className="px-4 py-4">
-                                            <ReminderBadge status={record.reminderStatus} />
-                                            <p className="mt-1 text-[9px] text-slate-400">
-                                                {record.lastReminder}
-                                            </p>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex justify-end gap-2">
-                                                {record.pendingAmount > 0 && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => openPaymentModal(record)}
-                                                        className="flex h-9 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
-                                                    >
-                                                        <IndianRupee size={14} />
-                                                        Payment
-                                                    </button>
-                                                )}
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setSelectedRecord(record)}
-                                                    className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
-                                                >
-                                                    <Eye size={14} />
-                                                    Open
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition hover:bg-slate-50 hover:text-slate-700"
-                                                >
-                                                    <MoreHorizontal size={16} />
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+                                        {
+                                            clientGroup.clientName
+                                        }
+                                    </button>
+
+                                    <p className="mt-1 text-[10px] text-slate-400">
+                                        {
+                                            clientGroup.clientCode ||
+                                            "No client code"
+                                        }
+                                    </p>
+                                </div>
+                            </div>
+                        </td>
+
+                        {/* PRODUCTS */}
+                        <td className="px-4 py-4">
+                            <p className="text-xs font-semibold text-slate-800">
+                                {
+                                    clientGroup.productCount
+                                }
+                            </p>
+
+                            <p className="mt-1 text-[10px] text-slate-400">
+                                Product
+                                {clientGroup.productCount ===
+                                1
+                                    ? ""
+                                    : "s"}
+                            </p>
+                        </td>
+
+                        {/* AMC RECORDS */}
+                        <td className="px-4 py-4">
+                            <p className="text-xs font-semibold text-slate-800">
+                                {
+                                    clientGroup.records
+                                        .length
+                                }
+                            </p>
+
+                            <p className="mt-1 text-[10px] text-slate-400">
+                                AMC invoice
+                                {clientGroup.records
+                                    .length ===
+                                1
+                                    ? ""
+                                    : "s"}
+                            </p>
+                        </td>
+
+                        {/* TOTAL BILLED */}
+                        <td className="px-4 py-4">
+                            <p className="text-xs font-semibold text-slate-900">
+                                {formatCurrency(
+                                    clientGroup.totalAmount
+                                )}
+                            </p>
+                        </td>
+
+                        {/* RECEIVED */}
+                        <td className="px-4 py-4">
+                            <p className="text-xs font-semibold text-emerald-700">
+                                {formatCurrency(
+                                    clientGroup.paidAmount
+                                )}
+                            </p>
+                        </td>
+
+                        {/* PENDING */}
+                        <td className="px-4 py-4">
+                            <p
+                                className={`text-xs font-semibold ${
+                                    clientGroup.pendingAmount >
+                                    0
+                                        ? "text-rose-600"
+                                        : "text-emerald-700"
+                                }`}
+                            >
+                                {formatCurrency(
+                                    clientGroup.pendingAmount
+                                )}
+                            </p>
+
+                            {clientGroup.overdueCount >
+                                0 && (
+                                <p className="mt-1 text-[10px] font-medium text-rose-500">
+                                    {
+                                        clientGroup.overdueCount
+                                    }{" "}
+                                    overdue
+                                </p>
+                            )}
+                        </td>
+
+                        {/* NEXT RENEWAL */}
+                        <td className="px-4 py-4">
+                            <p className="whitespace-nowrap text-xs font-semibold text-slate-700">
+                                {
+                                    clientGroup.nextRenewal
+                                }
+                            </p>
+
+                            {clientGroup.upcomingCount >
+                                0 && (
+                                <p className="mt-1 text-[10px] text-violet-500">
+                                    {
+                                        clientGroup.upcomingCount
+                                    }{" "}
+                                    active / upcoming
+                                </p>
+                            )}
+                        </td>
+
+                        {/* ACTION */}
+                        <td className="px-6 py-4">
+                            <div className="flex justify-end">
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        setSelectedClientGroup(
+                                            clientGroup
+                                        )
+                                    }
+                                    className="flex h-9 items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 text-xs font-semibold text-violet-700 transition hover:bg-violet-100"
+                                >
+                                    <Eye
+                                        size={14}
+                                    />
+
+                                    View AMC
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                )
+            )}
+
+            {!recordsLoading &&
+                groupedClients.length ===
+                    0 && (
+                    <tr>
+                        <td
+                            colSpan={8}
+                            className="px-6 py-12 text-center"
+                        >
+                            <p className="text-sm font-semibold text-slate-700">
+                                No AMC clients
+                                found
+                            </p>
+
+                            <p className="mt-1 text-xs text-slate-400">
+                                Try changing the
+                                filters or create a
+                                new AMC contract.
+                            </p>
+                        </td>
+                    </tr>
+                )}
+        </tbody>
+    </table>
+</div>
 
                     <div className="divide-y divide-slate-100 xl:hidden">
                         {filteredRecords.map((record) => (
@@ -4320,7 +6982,11 @@ const handleDocumentUpload =
                                     )}
                                     <button
                                         type="button"
-                                        onClick={() => setSelectedRecord(record)}
+                                        onClick={() =>
+    handleOpenAmcInvoiceDetail(
+        record
+    )
+}
                                         className="flex h-9 flex-1 items-center justify-center gap-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600"
                                     >
                                         Open
@@ -4344,9 +7010,10 @@ const handleDocumentUpload =
                     )}
 
                     <div className="flex flex-col gap-2 border-t border-slate-200 bg-slate-50/60 px-5 py-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between lg:px-6">
-                        <p>
-                            Showing {filteredRecords.length} of {records.length} AMC records
-                        </p>
+                     <p>
+    Showing {groupedClients.length} client
+    {groupedClients.length === 1 ? "" : "s"} with AMC
+</p>
                         <button
                             type="button"
                             onClick={loadAmcContracts}

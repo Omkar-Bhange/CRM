@@ -1657,7 +1657,7 @@ router.post("/tasks/:id/resume", authenticateUser, async (req, res, next) => {
           lastUpdated: new Date(),
         },
       },
-      { new: true }
+     { returnDocument: "after" }
     );
 
     if (!task) {
