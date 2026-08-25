@@ -4960,23 +4960,23 @@ const getLatestClientPayment = () => {
                     </div>
                 )}
                 {/* Page Content */}
-                <main className="enterprise-workspace p-4 sm:p-6 lg:p-8">
-                    <div className="mx-auto max-w-[1600px]">
+                <main className="enterprise-workspace bg-[#f8fafc] p-3 sm:p-4 lg:p-5">
+                    <div className="mx-auto max-w-[1680px]">
                         {activeMenu === "overview" ? (
                             <div className="enterprise-page">
                                 {/* Dashboard Heading */}
-                                <section className="flex flex-col gap-5 border-b border-slate-200 pb-7 sm:flex-row sm:items-end sm:justify-between">
+                                <section className="flex flex-col gap-4 pb-4 sm:flex-row sm:items-center sm:justify-between">
                                     <div>
-                                        <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-violet-600">
+                                        <div className="mb-1.5 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-violet-600">
                                             <span className="h-2 w-2 rounded-full bg-violet-600" />
                                             Admin Workspace
                                         </div>
 
-                                        <h1 className="text-2xl font-semibold tracking-[-0.03em] text-slate-950 sm:text-3xl">
+                                        <h1 className="text-[22px] font-semibold tracking-[-0.025em] text-slate-950 sm:text-[26px]">
                                             Good morning, Mangesh
                                         </h1>
 
-                                        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                                        <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">
                                             Here is a clear overview of your clients, AMC collections,
                                             support tickets and company workload.
                                         </p>
@@ -5012,7 +5012,7 @@ const getLatestClientPayment = () => {
                                 <section
                                     aria-busy={dashboardLoading}
                                     aria-live="polite"
-                                    className="mt-8 grid gap-5 sm:grid-cols-2 xl:grid-cols-4"
+                                    className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
                                 >
                                     {dashboardLoading ? (
                                         Array.from({ length: 4 }).map((_, index) => (
@@ -5062,7 +5062,7 @@ const getLatestClientPayment = () => {
                                         return (
                                             <article
                                                 key={stat.id}
-                                                className="enterprise-metric enterprise-surface--interactive group relative flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_8px_30px_rgba(15,23,42,0.04)] transition duration-200 hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_16px_40px_rgba(15,23,42,0.08)]"
+                                                className="enterprise-metric enterprise-surface--interactive group relative flex h-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-[0_4px_18px_rgba(15,23,42,0.035)] transition duration-200 hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_16px_40px_rgba(15,23,42,0.08)]"
                                                 style={{ "--ts-enter-delay": `${index * 55}ms` }}
                                             >
                                                 <div className="flex items-start justify-between gap-4">
@@ -5071,19 +5071,19 @@ const getLatestClientPayment = () => {
                                                             {stat.label}
                                                         </p>
 
-                                                        <p className="mt-3 text-2xl font-semibold tracking-[-0.03em] text-slate-950">
+                                                        <p className="mt-2 text-xl font-semibold tracking-[-0.03em] text-slate-950">
                                                             {stat.value}
                                                         </p>
                                                     </div>
 
                                                     <div
-                                                        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${stat.iconStyle}`}
+                                                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${stat.iconStyle}`}
                                                     >
                                                         <Icon size={20} strokeWidth={1.9} />
                                                     </div>
                                                 </div>
 
-                                                <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
+                                                <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
                                                     <div
                                                         className={`flex items-center gap-1.5 text-xs font-medium ${isPositive ? "text-emerald-600" : "text-amber-600"
                                                             }`}
@@ -5115,8 +5115,8 @@ const getLatestClientPayment = () => {
 
                                     {/* Temporary Next Section Placeholder */}
                                     {/* AMC Renewals */}
-                                    <section className="self-start overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-                                        <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 sm:flex-row sm:items-center sm:justify-between lg:px-6">
+                                    <section className="self-start overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)]">
+                                        <div className="flex flex-col gap-4 border-b border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between lg:px-6">
                                             <div>
                                                 <p className="text-sm font-semibold text-slate-950">
                                                     AMC Renewals — Due & Overdue
@@ -5264,8 +5264,8 @@ const getLatestClientPayment = () => {
                                         </div>
                                     </section>
                                     {/* Team Status */}
-                                    <section className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-                                        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-5">
+                                    <section className="flex h-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)]">
+                                        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
                                             <div>
                                                 <p className="text-sm font-semibold text-slate-950">
                                                     Team Status
@@ -5378,13 +5378,13 @@ const getLatestClientPayment = () => {
                                 </div>
 
                                 {/* SECOND DASHBOARD ROW */}
-                                <div className="mt-6 grid gap-6 xl:grid-cols-2">
+                                <div className="mt-4 grid gap-4 xl:grid-cols-2">
 
 
 
                                     {/* Recent Support Tickets */}
-                                    <section className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-                                        <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 sm:flex-row sm:items-center sm:justify-between lg:px-6">
+                                    <section className="flex h-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)]">
+                                        <div className="flex flex-col gap-4 border-b border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between lg:px-6">
                                             <div>
                                                 <p className="text-sm font-semibold text-slate-950">
                                                     Recent Support Tickets
@@ -5408,7 +5408,7 @@ const getLatestClientPayment = () => {
                                             {recentTickets.slice(0, 4).map((ticket) => (
                                                 <article
                                                     key={ticket.id}
-                                                    className="group px-5 py-4 transition hover:bg-slate-50/70 lg:px-6"
+                                                    className="group px-4 py-3 transition hover:bg-slate-50/70 lg:px-5"
                                                 >
                                                     <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
                                                         <div className="flex min-w-0 flex-1 items-start gap-3">
@@ -5486,8 +5486,8 @@ const getLatestClientPayment = () => {
                                     </section>
 
                                     {/* Active Tasks */}
-                                    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-                                        <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
+                                    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)]">
+                                        <div className="flex flex-col gap-4 border-b border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                                             <div>
                                                 <p className="text-sm font-semibold text-slate-950">
                                                     Active Tasks
@@ -5624,8 +5624,8 @@ const getLatestClientPayment = () => {
 
                                 {/* THIRD DASHBOARD ROW */}
                                 {/* Recent Client Activity */}
-                                <section className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-                                    <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 sm:flex-row sm:items-center sm:justify-between lg:px-6">
+                                <section className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)]">
+                                    <div className="flex flex-col gap-4 border-b border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between lg:px-6">
                                         <div>
                                             <p className="text-sm font-semibold text-slate-950">
                                                 Recent Client Activity
@@ -5708,8 +5708,8 @@ const getLatestClientPayment = () => {
                                 <div className="enterprise-page">
                                     <div>
                                         {/* Client Details Header */}
-                                        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-                                            <div className="border-b border-slate-200 px-5 py-5 lg:px-6">
+                                        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)]">
+                                            <div className="border-b border-slate-200 px-4 py-3 lg:px-6">
                                                 <button
                                                     type="button"
                                                     onClick={closeClientDetails}
@@ -5899,7 +5899,7 @@ const getLatestClientPayment = () => {
                                         </section>
 
                                         {/* Client Detail Tabs */}
-                                        <section className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+                                        <section className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)]">
                                             <div className="overflow-x-auto border-b border-slate-200 px-4">
                                                 <div className="flex min-w-max gap-1">
                                                     {[
@@ -6113,7 +6113,7 @@ const getLatestClientPayment = () => {
                                                     <div>
                                                         <div>
                                                             {/* Products Header */}
-                                                            <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 sm:flex-row sm:items-center sm:justify-between lg:px-6">
+                                                            <div className="flex flex-col gap-4 border-b border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between lg:px-6">
                                                                 <div>
                                                                     <h3 className="text-sm font-semibold text-slate-950">
                                                                         Client Products
@@ -6385,7 +6385,7 @@ const getLatestClientPayment = () => {
                                                     <div>
                                                         <div>
                                                             {/* Tickets Header */}
-                                                            <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 lg:flex-row lg:items-center lg:justify-between lg:px-6">
+                                                            <div className="flex flex-col gap-4 border-b border-slate-200 px-4 py-3 lg:flex-row lg:items-center lg:justify-between lg:px-6">
                                                                 <div>
                                                                     <h3 className="text-sm font-semibold text-slate-950">
                                                                         Client Support Tickets
@@ -6689,7 +6689,7 @@ const getLatestClientPayment = () => {
                                                         )}
                                                         <div>
                                                             {/* AMC Header */}
-                                                            <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 lg:flex-row lg:items-center lg:justify-between lg:px-6">
+                                                            <div className="flex flex-col gap-4 border-b border-slate-200 px-4 py-3 lg:flex-row lg:items-center lg:justify-between lg:px-6">
                                                                 <div>
                                                                     <h3 className="text-sm font-semibold text-slate-950">
                                                                         AMC Management
@@ -7028,7 +7028,7 @@ const getLatestClientPayment = () => {
             HEADER
         ========================================== */}
 
-        <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 lg:flex-row lg:items-center lg:justify-between lg:px-6">
+        <div className="flex flex-col gap-4 border-b border-slate-200 px-4 py-3 lg:flex-row lg:items-center lg:justify-between lg:px-6">
             <div>
                 <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-sm font-semibold text-slate-950">
@@ -7170,7 +7170,7 @@ const getLatestClientPayment = () => {
         <div className="grid border-b border-slate-200 sm:grid-cols-2 xl:grid-cols-4">
             {/* RECEIVED */}
 
-            <div className="border-b border-slate-200 px-5 py-5 sm:border-r xl:border-b-0 lg:px-6">
+            <div className="border-b border-slate-200 px-4 py-3 sm:border-r xl:border-b-0 lg:px-6">
                 <div className="flex items-center justify-between">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
                         Total Received
@@ -7201,7 +7201,7 @@ const getLatestClientPayment = () => {
 
             {/* PENDING */}
 
-            <div className="border-b border-slate-200 px-5 py-5 xl:border-b-0 xl:border-r lg:px-6">
+            <div className="border-b border-slate-200 px-4 py-3 xl:border-b-0 xl:border-r lg:px-6">
                 <div className="flex items-center justify-between">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
                         Pending Amount
@@ -7227,7 +7227,7 @@ const getLatestClientPayment = () => {
 
             {/* INVOICE VALUE */}
 
-            <div className="border-b border-slate-200 px-5 py-5 sm:border-r xl:border-b-0 lg:px-6">
+            <div className="border-b border-slate-200 px-4 py-3 sm:border-r xl:border-b-0 lg:px-6">
                 <div className="flex items-center justify-between">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
                         Invoice Value
@@ -7725,7 +7725,7 @@ const getLatestClientPayment = () => {
                                                         {clientDocumentsError && (
                                                             <div className="px-5 py-3 text-xs text-rose-600 lg:px-6">{clientDocumentsError}</div>
                                                         )}
-                                                        <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 lg:flex-row lg:items-center lg:justify-between lg:px-6">
+                                                        <div className="flex flex-col gap-4 border-b border-slate-200 px-4 py-3 lg:flex-row lg:items-center lg:justify-between lg:px-6">
 
                                                             <div>
                                                                 <h3 className="text-sm font-semibold text-slate-950">
@@ -8170,18 +8170,18 @@ const getLatestClientPayment = () => {
 
                                 <div className="enterprise-page">
                                     {/* Clients Page Header */}
-                                    <section className="flex flex-col gap-5 border-b border-slate-200 pb-6 sm:flex-row sm:items-end sm:justify-between">
+                                    <section className="flex flex-col gap-4 pb-4 sm:flex-row sm:items-center sm:justify-between">
                                         <div>
-                                            <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-violet-600">
+                                            <div className="mb-1.5 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-violet-600">
                                                 <span className="h-2 w-2 rounded-full bg-violet-600" />
                                                 Client Management
                                             </div>
 
-                                            <h1 className="text-2xl font-semibold tracking-[-0.03em] text-slate-950 sm:text-3xl">
+                                            <h1 className="text-[22px] font-semibold tracking-[-0.025em] text-slate-950 sm:text-[26px]">
                                                 Clients
                                             </h1>
 
-                                            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                                            <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">
                                                 Manage software clients, assigned products, AMC renewals,
                                                 support workload and account status.
                                             </p>
@@ -8198,8 +8198,8 @@ const getLatestClientPayment = () => {
                                     </section>
 
                                     {/* Client Summary */}
-                                    <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                                        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                                    <section className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                                        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-[0_3px_12px_rgba(15,23,42,0.025)]">
                                             <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
                                                 Total Clients
                                             </p>
@@ -8209,7 +8209,7 @@ const getLatestClientPayment = () => {
                                             </p>
                                         </div>
 
-                                        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                                        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-[0_3px_12px_rgba(15,23,42,0.025)]">
                                             <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
                                                 Active Clients
                                             </p>
@@ -8219,7 +8219,7 @@ const getLatestClientPayment = () => {
                                             </p>
                                         </div>
 
-                                        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                                        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-[0_3px_12px_rgba(15,23,42,0.025)]">
                                             <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
                                                 AMC Pending
                                             </p>
@@ -8233,7 +8233,7 @@ const getLatestClientPayment = () => {
                                             </p>
                                         </div>
 
-                                        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                                        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-[0_3px_12px_rgba(15,23,42,0.025)]">
                                             <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
                                                 AMC Overdue
                                             </p>
@@ -8249,8 +8249,8 @@ const getLatestClientPayment = () => {
                                     </section>
 
                                     {/* Filters and Table */}
-                                    <section className="enterprise-surface mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-                                        <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 lg:flex-row lg:items-center lg:justify-between lg:px-6">
+                                    <section className="enterprise-surface mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+                                        <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3 lg:flex-row lg:items-center lg:justify-between lg:px-5">
                                             <div className="relative w-full lg:max-w-[420px]">
                                                 <Search
                                                     size={17}
@@ -8264,7 +8264,7 @@ const getLatestClientPayment = () => {
                                                         setClientSearch(event.target.value)
                                                     }
                                                     placeholder="Search client, contact, product, city..."
-                                                    className="enterprise-input h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-400 focus:bg-white focus:ring-4 focus:ring-violet-100"
+                                                    className="enterprise-input h-9 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-400 focus:bg-white focus:ring-4 focus:ring-violet-100"
                                                 />
                                             </div>
 
@@ -8338,7 +8338,7 @@ const getLatestClientPayment = () => {
                                             <table className="enterprise-table min-w-[1200px] w-full">
                                                 <thead>
                                                     <tr className="border-b border-slate-200 bg-slate-50/80">
-                                                        <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400 lg:px-6">
+                                                        <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400 lg:px-5">
                                                             Client
                                                         </th>
 
@@ -8370,7 +8370,7 @@ const getLatestClientPayment = () => {
                                                             Status
                                                         </th>
 
-                                                        <th className="px-5 py-3 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400 lg:px-6">
+                                                        <th className="px-5 py-3 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400 lg:px-5">
                                                             Actions
                                                         </th>
                                                     </tr>
@@ -8420,7 +8420,7 @@ const getLatestClientPayment = () => {
                                                                 key={client.id}
                                                                 className="border-b border-slate-100 transition last:border-b-0 hover:bg-slate-50/70"
                                                             >
-                                                                <td className="px-5 py-4 lg:px-6">
+                                                                <td className="px-4 py-2.5 lg:px-5">
                                                                     <div className="flex items-center gap-3">
                                                                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-xs font-bold text-violet-700">
                                                                             {client.companyName
@@ -8447,7 +8447,7 @@ const getLatestClientPayment = () => {
                                                                     </div>
                                                                 </td>
 
-                                                                <td className="px-5 py-4">
+                                                                <td className="px-4 py-2.5">
                                                                     <p className="text-xs font-semibold text-slate-700">
                                                                         {client.contactPerson}
                                                                     </p>
@@ -8465,7 +8465,7 @@ const getLatestClientPayment = () => {
                                                                     </div>
                                                                 </td>
 
-                                                                <td className="px-5 py-4">
+                                                                <td className="px-4 py-2.5">
                                                                     <div className="flex max-w-[200px] flex-wrap gap-1.5">
                                                                         {(Array.isArray(client.products) ? client.products : []).map(
                                                                             (product, index) => {
@@ -8492,7 +8492,7 @@ const getLatestClientPayment = () => {
                                                                     </div>
                                                                 </td>
 
-                                                                <td className="px-5 py-4">
+                                                                <td className="px-4 py-2.5">
                                                                     <span
                                                                         className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ring-inset ${getClientAmcClasses(
                                                                             client.amcStatus
@@ -8502,11 +8502,11 @@ const getLatestClientPayment = () => {
                                                                     </span>
                                                                 </td>
 
-                                                                <td className="px-5 py-4 text-xs font-medium text-slate-600">
+                                                                <td className="px-4 py-2.5 text-xs font-medium text-slate-600">
                                                                     {client.nextRenewal}
                                                                 </td>
 
-                                                                <td className="px-5 py-4 text-center">
+                                                                <td className="px-4 py-2.5 text-center">
                                                                     <span
                                                                         className={`inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-[10px] font-bold ${client.openTickets > 0
                                                                             ? "bg-rose-50 text-rose-700"
@@ -8517,13 +8517,13 @@ const getLatestClientPayment = () => {
                                                                     </span>
                                                                 </td>
 
-                                                                <td className="px-5 py-4">
+                                                                <td className="px-4 py-2.5">
                                                                     <p className="text-xs font-semibold text-slate-700">
                                                                         {client.assignedEmployeeName || "Unassigned"}
                                                                     </p>
                                                                 </td>
 
-                                                                <td className="px-5 py-4">
+                                                                <td className="px-4 py-2.5">
                                                                     <span
                                                                         className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ${client.status === "Active"
                                                                             ? "bg-emerald-50 text-emerald-700"
@@ -8534,12 +8534,12 @@ const getLatestClientPayment = () => {
                                                                     </span>
                                                                 </td>
 
-                                                                <td className="px-5 py-4 lg:px-6">
+                                                                <td className="px-4 py-2.5 lg:px-5">
                                                                     <div className="flex justify-end gap-2">
                                                                         <button
                                                                             type="button"
                                                                             onClick={() => openClientDetails(client)}
-                                                                            className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
+                                                                            className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
                                                                         >
                                                                             View
                                                                             <ArrowUpRight size={14} />
@@ -8547,7 +8547,7 @@ const getLatestClientPayment = () => {
 
                                                                         <button
                                                                             type="button"
-                                                                            className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700"
+                                                                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700"
                                                                             aria-label={`More actions for ${client.companyName}`}
                                                                         >
                                                                             <MoreHorizontal size={16} />
@@ -8578,7 +8578,7 @@ const getLatestClientPayment = () => {
                                             </table>
                                         </div>
 
-                                        <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50/60 px-5 py-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between lg:px-6">
+                                        <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50/60 px-4 py-2.5 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between lg:px-5">
                                             <p>
                                                 Showing {filteredClients.length} of {clients.length} clients
                                             </p>

@@ -10,14 +10,18 @@ import {
     ArrowLeft,
     BriefcaseBusiness,
     CalendarDays,
+    CalendarClock,
     Check,
     CheckCircle2,
+    ChevronDown,
+    ChevronRight,
     CircleDot,
     Clock3,
     File,
     FileText,
     Filter,
     Headphones,
+    Inbox,
     Link2,
     ListTodo,
     Mail,
@@ -34,7 +38,6 @@ import {
     UserRound,
     X,
 } from "lucide-react";
-
 const initialTickets = [
     {
         id: 1,
@@ -285,7 +288,13 @@ const statusOptions = [
 const priorityOptions = ["Low", "Medium", "High", "Critical"];
 
 function getTodayDateKey() {
-    return "2026-07-14";
+    const now = new Date();
+
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
 }
 
 function parseDate(value) {
@@ -326,6 +335,73 @@ function isTicketDueToday(ticket) {
         ticket.dueDate === getTodayDateKey() &&
         !["Resolved", "Closed"].includes(ticket.status)
     );
+}
+function getDateKeyFromOffset(days) {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() + days);
+
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+}
+
+function getDaysDifference(dateValue) {
+    if (!dateValue) return null;
+
+    const due = parseDate(dateValue);
+    const today = parseDate(getTodayDateKey());
+
+    if (!due || !today) return null;
+
+    const difference = due.getTime() - today.getTime();
+
+    return Math.round(difference / (1000 * 60 * 60 * 24));
+}
+
+function getRelativeDueText(ticket) {
+    if (["Resolved", "Closed"].includes(ticket.status)) {
+        return ticket.status;
+    }
+
+    const difference = getDaysDifference(ticket.dueDate);
+
+    if (difference === null) {
+        return "No due date";
+    }
+
+    if (difference < 0) {
+        const days = Math.abs(difference);
+
+        return `${days} day${days !== 1 ? "s" : ""} overdue`;
+    }
+
+    if (difference === 0) {
+        return "Due today";
+    }
+
+    if (difference === 1) {
+        return "Due tomorrow";
+    }
+
+    return `Due in ${difference} days`;
+}
+
+function formatSectionDate(value) {
+    const date = parseDate(value);
+
+    if (!date) return "";
+
+    return date
+        .toLocaleDateString("en-IN", {
+            weekday: "short",
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+        })
+        .toUpperCase();
 }
 
 function formatMinutes(minutes) {
@@ -380,7 +456,7 @@ function getTimelineIcon(type) {
             className: "bg-blue-100 text-blue-700",
         };
     }
-      if (type === "reply") {                          // ← add this whole block
+    if (type === "reply") {                          // ← add this whole block
         return {
             icon: MessageSquare,
             className: "bg-blue-100 text-blue-700",
@@ -393,7 +469,7 @@ function getTimelineIcon(type) {
             className: "bg-amber-100 text-amber-700",
         };
     }
-      if (type === "attachment") {                     // ← add this whole block
+    if (type === "attachment") {                     // ← add this whole block
         return {
             icon: Paperclip,
             className: "bg-amber-100 text-amber-700",
@@ -455,16 +531,379 @@ function SummaryCard({
     );
 }
 
+function TicketQueueRow({ ticket, onOpen }) {
+    const overdue = isTicketOverdue(ticket);
+    const dueToday = isTicketDueToday(ticket);
+    const completed = ["Resolved", "Closed"].includes(ticket.status);
+
+    return (
+        <div
+            className={`group grid gap-3 border-t border-slate-100 px-4 py-2.5 transition first:border-t-0 hover:bg-slate-50/80 xl:grid-cols-[minmax(300px,1.8fr)_minmax(170px,1fr)_105px_125px_120px_82px] xl:items-center ${
+                overdue ? "bg-rose-50/30" : ""
+            }`}
+        >
+            {/* TICKET */}
+            <div className="flex min-w-0 items-center gap-3">
+                <div
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                        completed
+                            ? "bg-emerald-100 text-emerald-700"
+                            : ticket.priority === "Critical"
+                              ? "bg-rose-100 text-rose-700"
+                              : overdue
+                                ? "bg-orange-100 text-orange-700"
+                                : "bg-violet-100 text-violet-700"
+                    }`}
+                >
+                    {completed ? (
+                        <CheckCircle2 size={16} />
+                    ) : ticket.priority === "Critical" ? (
+                        <ShieldAlert size={16} />
+                    ) : (
+                        <MessageSquare size={16} />
+                    )}
+                </div>
+
+                <div className="min-w-0">
+                    <button
+                        type="button"
+                        onClick={() => onOpen(ticket)}
+                        className="block max-w-full truncate text-left text-[12px] font-semibold leading-4 text-slate-900 transition hover:text-violet-700"
+                    >
+                        {ticket.title}
+                    </button>
+
+                    <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                        {ticket.ticketNo && (
+                            <span className="text-[9px] font-bold text-violet-600">
+                                {ticket.ticketNo}
+                            </span>
+                        )}
+
+                        {ticket.ticketNo && ticket.source && (
+                            <span className="text-[8px] text-slate-300">
+                                •
+                            </span>
+                        )}
+
+                        {ticket.source && (
+                            <span className="text-[9px] text-slate-500">
+                                {ticket.source}
+                            </span>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* CLIENT / PROJECT */}
+            <div className="min-w-0">
+                <p className="truncate text-[11px] font-semibold leading-4 text-slate-800">
+                    {ticket.client || "—"}
+                </p>
+
+                <p className="mt-0.5 truncate text-[9px] leading-3 text-slate-500">
+                    {[ticket.project, ticket.module]
+                        .filter(Boolean)
+                        .join(" · ") || "General"}
+                </p>
+            </div>
+
+            {/* PRIORITY */}
+            <div>
+                <span
+                    className={`inline-flex rounded-full px-2 py-0.5 text-[9px] font-bold ring-1 ring-inset ${getPriorityClasses(
+                        ticket.priority
+                    )}`}
+                >
+                    {ticket.priority}
+                </span>
+            </div>
+
+            {/* STATUS */}
+            <div>
+                <span
+                    className={`inline-flex rounded-full px-2 py-0.5 text-[9px] font-bold ring-1 ring-inset ${getStatusClasses(
+                        ticket.status
+                    )}`}
+                >
+                    {ticket.status}
+                </span>
+            </div>
+
+            {/* DUE */}
+            <div className="min-w-0">
+                <p
+                    className={`truncate text-[10px] font-semibold leading-4 ${
+                        overdue
+                            ? "text-rose-700"
+                            : dueToday
+                              ? "text-amber-700"
+                              : completed
+                                ? "text-emerald-700"
+                                : "text-slate-700"
+                    }`}
+                >
+                    {getRelativeDueText(ticket)}
+                </p>
+
+                {ticket.dueDate && !completed && (
+                    <p className="mt-0.5 text-[8px] leading-3 text-slate-400">
+                        {formatDate(ticket.dueDate)}
+                    </p>
+                )}
+            </div>
+
+            {/* ACTION */}
+            <div className="flex justify-end">
+                <button
+                    type="button"
+                    onClick={() => onOpen(ticket)}
+                    className="flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-semibold text-slate-600 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+                >
+                    Open
+                </button>
+            </div>
+        </div>
+    );
+}
+
+function TicketDaySection({
+    section,
+    expanded,
+    onToggle,
+    onOpenTicket,
+}) {
+    const Icon = section.icon;
+
+    const toneClasses = {
+        danger: {
+            wrapper: "border-rose-200",
+            header: "bg-rose-50/70 hover:bg-rose-50",
+            icon: "bg-rose-100 text-rose-700",
+            count: "bg-rose-100 text-rose-700",
+        },
+
+        today: {
+            wrapper: "border-violet-200",
+            header: "bg-violet-50/60 hover:bg-violet-50",
+            icon: "bg-violet-100 text-violet-700",
+            count: "bg-violet-100 text-violet-700",
+        },
+
+        upcoming: {
+            wrapper: "border-blue-200",
+            header: "bg-blue-50/60 hover:bg-blue-50",
+            icon: "bg-blue-100 text-blue-700",
+            count: "bg-blue-100 text-blue-700",
+        },
+
+        success: {
+            wrapper: "border-emerald-200",
+            header: "bg-emerald-50/60 hover:bg-emerald-50",
+            icon: "bg-emerald-100 text-emerald-700",
+            count: "bg-emerald-100 text-emerald-700",
+        },
+
+        completed: {
+            wrapper: "border-slate-200",
+            header: "bg-slate-50/80 hover:bg-slate-100",
+            icon: "bg-slate-100 text-slate-600",
+            count: "bg-slate-200 text-slate-600",
+        },
+
+        normal: {
+            wrapper: "border-slate-200",
+            header: "bg-white hover:bg-slate-50",
+            icon: "bg-slate-100 text-slate-600",
+            count: "bg-slate-100 text-slate-600",
+        },
+        pending: {
+            wrapper:
+                "border-violet-200 shadow-[0_8px_30px_rgba(124,58,237,0.06)]",
+            header:
+                "bg-gradient-to-r from-violet-50 via-white to-white hover:from-violet-100/70",
+            icon:
+                "bg-violet-100 text-violet-700",
+            count:
+                "bg-violet-100 text-violet-700",
+        },
+
+        empty: {
+            wrapper: "border-slate-200",
+            header:
+                "bg-gradient-to-r from-slate-50 to-white hover:bg-slate-50",
+            icon:
+                "bg-emerald-50 text-emerald-600",
+            count:
+                "bg-slate-100 text-slate-500",
+        },
+    };
+
+    const tone =
+        toneClasses[section.tone] || toneClasses.normal;
+
+
+
+
+    return (
+        <section
+          className={`overflow-hidden rounded-xl border bg-white ${tone.wrapper}`}
+        >
+            <button
+                type="button"
+                onClick={onToggle}
+                className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition ${tone.header}`}
+            >
+                <div className="flex min-w-0 items-center gap-3">
+                    <div
+                       className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${tone.icon}`}
+                    >
+                        <Icon size={16} />
+                    </div>
+
+                    <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-xs font-bold text-slate-900">
+                                {section.title}
+                            </h3>
+
+                            <span
+                                className={`inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-[9px] font-bold ${tone.count}`}
+                            >
+                                {section.tickets.length}
+                            </span>
+                        </div>
+
+                        <p className="mt-1 text-[10px] text-slate-500">
+                            {section.subtitle}
+                        </p>
+                        {section.id === "pending" &&
+                            section.stats &&
+                            section.tickets.length > 0 && (
+                                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                    {section.stats.overdue > 0 && (
+                                        <span className="rounded-md bg-rose-100 px-2 py-1 text-[9px] font-semibold text-rose-700">
+                                            {section.stats.overdue} overdue
+                                        </span>
+                                    )}
+
+                                    {section.stats.today > 0 && (
+                                        <span className="rounded-md bg-amber-100 px-2 py-1 text-[9px] font-semibold text-amber-700">
+                                            {section.stats.today} today
+                                        </span>
+                                    )}
+
+                                    {section.stats.tomorrow > 0 && (
+                                        <span className="rounded-md bg-blue-100 px-2 py-1 text-[9px] font-semibold text-blue-700">
+                                            {section.stats.tomorrow} tomorrow
+                                        </span>
+                                    )}
+
+                                    {section.stats.upcoming > 0 && (
+                                        <span className="rounded-md bg-slate-100 px-2 py-1 text-[9px] font-semibold text-slate-600">
+                                            {section.stats.upcoming} upcoming
+                                        </span>
+                                    )}
+                                    {section.stats.unscheduled > 0 && (
+                                        <span className="rounded-md bg-slate-100 px-2 py-1 text-[9px] font-semibold text-slate-600">
+                                            {section.stats.unscheduled} unscheduled
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+                    </div>
+                </div>
+
+               <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 shadow-sm">
+                    {expanded ? (
+                        <ChevronDown size={14} />
+                    ) : (
+                        <ChevronRight size={14} />
+                    )}
+                </div>
+            </button>
+
+            {expanded && (
+                <div className="border-t border-slate-100">
+                   <div className="hidden grid-cols-[minmax(300px,1.8fr)_minmax(170px,1fr)_105px_125px_120px_82px] gap-3 border-b border-slate-100 bg-slate-50/60 px-4 py-2 xl:grid">
+                        <span className="text-[8px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                            Ticket
+                        </span>
+
+                        <span className="text-[8px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                            Client / Project
+                        </span>
+
+                        <span className="text-[8px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                            Priority
+                        </span>
+
+                        <span className="text-[8px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                            Status
+                        </span>
+
+                        <span className="text-[8px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                            Due
+                        </span>
+
+                        <span className="text-right text-[8px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                            Action
+                        </span>
+                    </div>
+
+                    {section.tickets.length > 0 ? (
+                        section.tickets.map((ticket) => (
+                            <TicketQueueRow
+                                key={ticket._id || ticket.id}
+                                ticket={ticket}
+                                onOpen={onOpenTicket}
+                            />
+                        ))
+                    ) : (
+                        <div className="flex min-h-[130px] items-center justify-center px-6 py-8">
+                            <div className="text-center">
+                                <div
+                                    className={`mx-auto flex h-11 w-11 items-center justify-center rounded-xl ${section.id === "pending"
+                                            ? "bg-emerald-50 text-emerald-600"
+                                            : "bg-slate-100 text-slate-500"
+                                        }`}
+                                >
+                                    <CheckCircle2 size={19} />
+                                </div>
+
+                                <p className="mt-3 text-xs font-semibold text-slate-800">
+                                    {section.id === "pending"
+                                        ? "No pending tickets"
+                                        : section.id === "completedToday"
+                                            ? "No tickets completed today"
+                                            : "No previous completed tickets"}
+                                </p>
+
+                                <p className="mt-1 text-[10px] text-slate-500">
+                                    {section.id === "pending"
+                                        ? "You're all caught up. New assigned tickets will appear here."
+                                        : section.id === "completedToday"
+                                            ? "Tickets resolved today will automatically appear here."
+                                            : "Older completed tickets will appear here."}
+                                </p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+        </section>
+    );
+}
 export default function MyTickets() {
     const fileInputRef = useRef(null);
 
-const [tickets, setTickets] =
-  useState([]);
+    const [tickets, setTickets] =
+        useState([]);
 
 
 
-const [loadingTickets, setLoadingTickets] =
-    useState(true);
+    const [loadingTickets, setLoadingTickets] =
+        useState(true);
     const [linkedTasks, setLinkedTasks] = useState(initialLinkedTasks);
     const [messages, setMessages] = useState(initialMessages);
     const [internalNotes, setInternalNotes] = useState(
@@ -483,6 +922,11 @@ const [loadingTickets, setLoadingTickets] =
     const [dueFilter, setDueFilter] = useState("All");
     const [filtersOpen, setFiltersOpen] = useState(false);
 
+const [openTicketSections, setOpenTicketSections] = useState({
+    pending: false,
+    completedToday: false,
+    completedPrevious: false,
+});
     const [replyText, setReplyText] = useState("");
     const [noteText, setNoteText] = useState("");
     const [selectedFile, setSelectedFile] = useState(null);
@@ -506,154 +950,333 @@ const [loadingTickets, setLoadingTickets] =
         description: "",
     });
 
-const selectedTicket =
-    tickets.find(
-        (ticket) =>
-            ticket._id === selectedTicketId
-    ) || null;
-        const loadTickets = async () => {
-    try {
-        setLoadingTickets(true);
+    const selectedTicket =
+        tickets.find(
+            (ticket) =>
+                ticket._id === selectedTicketId
+        ) || null;
+    const loadTickets = async () => {
+        try {
+            setLoadingTickets(true);
 
-        const token =
-    localStorage.getItem("client-connect-token") ||
-    sessionStorage.getItem("client-connect-token");
-    if (!token) {
-    throw new Error("Please login again.");
-}
-
-      const response = await fetch(
-    `${API_URL}/api/employee/my-tickets`,
-    {
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
-    }
-);
-
-        const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error(
-                data.message ||
-                    "Failed to load tickets."
-            );
-        }
-
-        setTickets(data.tickets || []);
-    } catch (error) {
-        console.error(error);
-        alert(error.message);
-    } finally {
-        setLoadingTickets(false);
-    }
-};
-useEffect(() => {
-    loadTickets();
-}, []);
-
-    const filteredTickets = useMemo(() => {
-    const priorityRank = {
-        Critical: 4,
-        High: 3,
-        Medium: 2,
-        Low: 1,
-    };
-
-    return tickets
-        .filter((ticket) => {
-            const search = searchValue.trim().toLowerCase();
-
-            const matchesSearch =
-                !search ||
-                [
-                    ticket.ticketNo,
-                    ticket.title,
-                    ticket.client,
-                    ticket.project,
-                    ticket.module,
-                    ticket.priority,
-                    ticket.status,
-                    ticket.source,
-                ].some((value) =>
-                    String(value || "")
-                        .toLowerCase()
-                        .includes(search)
-                );
-
-            const matchesStatus =
-                statusFilter === "All" ||
-                ticket.status === statusFilter;
-
-            const matchesPriority =
-                priorityFilter === "All" ||
-                ticket.priority === priorityFilter;
-
-            let matchesDue = true;
-
-            if (dueFilter === "Today") {
-                matchesDue = isTicketDueToday(ticket);
-            } else if (dueFilter === "Overdue") {
-                matchesDue = isTicketOverdue(ticket);
-            } else if (dueFilter === "Upcoming") {
-                matchesDue =
-                    !isTicketDueToday(ticket) &&
-                    !isTicketOverdue(ticket) &&
-                    !["Resolved", "Closed"].includes(ticket.status);
+            const token =
+                localStorage.getItem("client-connect-token") ||
+                sessionStorage.getItem("client-connect-token");
+            if (!token) {
+                throw new Error("Please login again.");
             }
 
-            return (
-                matchesSearch &&
-                matchesStatus &&
-                matchesPriority &&
-                matchesDue
+            const response = await fetch(
+                `${API_URL}/api/employee/my-tickets`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
             );
-        })
-      .sort((a, b) => {
-    const completedStatuses = ["Resolved", "Closed"];
 
-    const aCompleted =
-        completedStatuses.includes(a.status);
+            const data = await response.json();
 
-    const bCompleted =
-        completedStatuses.includes(b.status);
+            if (!response.ok) {
+                throw new Error(
+                    data.message ||
+                    "Failed to load tickets."
+                );
+            }
 
-    // Active tickets always before completed tickets
-    if (aCompleted !== bCompleted) {
-        return aCompleted ? 1 : -1;
-    }
+            setTickets(data.tickets || []);
+        } catch (error) {
+            console.error(error);
+            alert(error.message);
+        } finally {
+            setLoadingTickets(false);
+        }
+    };
+    useEffect(() => {
+        loadTickets();
+    }, []);
 
-    // Higher priority first
-    const priorityDifference =
-        (priorityRank[b.priority] || 0) -
-        (priorityRank[a.priority] || 0);
+    const filteredTickets = useMemo(() => {
+        const priorityRank = {
+            Critical: 4,
+            High: 3,
+            Medium: 2,
+            Low: 1,
+        };
 
-    if (priorityDifference !== 0) {
-        return priorityDifference;
-    }
+        return tickets
+            .filter((ticket) => {
+                const search = searchValue.trim().toLowerCase();
 
-    // Newest first within same priority
-    const aDate = new Date(
-        a.createdAt || a.createdOn || 0
-    ).getTime();
+                const matchesSearch =
+                    !search ||
+                    [
+                        ticket.ticketNo,
+                        ticket.title,
+                        ticket.client,
+                        ticket.project,
+                        ticket.module,
+                        ticket.priority,
+                        ticket.status,
+                        ticket.source,
+                    ].some((value) =>
+                        String(value || "")
+                            .toLowerCase()
+                            .includes(search)
+                    );
 
-    const bDate = new Date(
-        b.createdAt || b.createdOn || 0
-    ).getTime();
+                const matchesStatus =
+                    statusFilter === "All" ||
+                    ticket.status === statusFilter;
 
-    return bDate - aDate;
-});
-}, [
-    tickets,
-    searchValue,
-    statusFilter,
-    priorityFilter,
-    dueFilter,
-]);
+                const matchesPriority =
+                    priorityFilter === "All" ||
+                    ticket.priority === priorityFilter;
+
+                let matchesDue = true;
+
+                if (dueFilter === "Today") {
+                    matchesDue = isTicketDueToday(ticket);
+                } else if (dueFilter === "Overdue") {
+                    matchesDue = isTicketOverdue(ticket);
+                } else if (dueFilter === "Upcoming") {
+                    matchesDue =
+                        !isTicketDueToday(ticket) &&
+                        !isTicketOverdue(ticket) &&
+                        !["Resolved", "Closed"].includes(ticket.status);
+                }
+
+                return (
+                    matchesSearch &&
+                    matchesStatus &&
+                    matchesPriority &&
+                    matchesDue
+                );
+            })
+            .sort((a, b) => {
+                const completedStatuses = ["Resolved", "Closed"];
+
+                const aCompleted =
+                    completedStatuses.includes(a.status);
+
+                const bCompleted =
+                    completedStatuses.includes(b.status);
+
+                // Active tickets always before completed tickets
+                if (aCompleted !== bCompleted) {
+                    return aCompleted ? 1 : -1;
+                }
+
+                // Higher priority first
+                const priorityDifference =
+                    (priorityRank[b.priority] || 0) -
+                    (priorityRank[a.priority] || 0);
+
+                if (priorityDifference !== 0) {
+                    return priorityDifference;
+                }
+
+                // Newest first within same priority
+                const aDate = new Date(
+                    a.createdAt || a.createdOn || 0
+                ).getTime();
+
+                const bDate = new Date(
+                    b.createdAt || b.createdOn || 0
+                ).getTime();
+
+                return bDate - aDate;
+            });
+    }, [
+        tickets,
+        searchValue,
+        statusFilter,
+        priorityFilter,
+        dueFilter,
+    ]);
+    const ticketSections = useMemo(() => {
+        const todayKey = getTodayDateKey();
+        const tomorrowKey = getDateKeyFromOffset(1);
+
+        const activeTickets = filteredTickets
+            .filter(
+                (ticket) =>
+                    !["Resolved", "Closed"].includes(ticket.status)
+            )
+            .sort((a, b) => {
+                const priorityRank = {
+                    Critical: 4,
+                    High: 3,
+                    Medium: 2,
+                    Low: 1,
+                };
+
+                const aOverdue = isTicketOverdue(a);
+                const bOverdue = isTicketOverdue(b);
+
+                // Overdue first
+                if (aOverdue !== bOverdue) {
+                    return aOverdue ? -1 : 1;
+                }
+
+                const aToday = isTicketDueToday(a);
+                const bToday = isTicketDueToday(b);
+
+                // Then today's tickets
+                if (aToday !== bToday) {
+                    return aToday ? -1 : 1;
+                }
+
+                // Earlier due dates first
+                if (a.dueDate && b.dueDate) {
+                    const dateDifference =
+                        parseDate(a.dueDate) - parseDate(b.dueDate);
+
+                    if (dateDifference !== 0) {
+                        return dateDifference;
+                    }
+                }
+
+                // Higher priority
+                const priorityDifference =
+                    (priorityRank[b.priority] || 0) -
+                    (priorityRank[a.priority] || 0);
+
+                if (priorityDifference !== 0) {
+                    return priorityDifference;
+                }
+
+                // Newest assigned ticket
+                return (
+                    new Date(b.createdAt || 0).getTime() -
+                    new Date(a.createdAt || 0).getTime()
+                );
+            });
+
+        const pendingTickets = activeTickets;
+        const completedTickets = filteredTickets.filter((ticket) =>
+            ["Resolved", "Closed"].includes(ticket.status)
+        );
+
+        const overdueTickets = activeTickets.filter((ticket) =>
+            isTicketOverdue(ticket)
+        );
+
+        const todayTickets = activeTickets.filter(
+            (ticket) =>
+                !isTicketOverdue(ticket) &&
+                ticket.dueDate === todayKey
+        );
+
+        const tomorrowTickets = activeTickets.filter(
+            (ticket) => ticket.dueDate === tomorrowKey
+        );
+
+        const upcomingTickets = activeTickets.filter((ticket) => {
+            if (!ticket.dueDate) return false;
+
+            return (
+                ticket.dueDate > tomorrowKey &&
+                !isTicketOverdue(ticket)
+            );
+        });
+
+        const noDueDateTickets = activeTickets.filter(
+            (ticket) => !ticket.dueDate
+        );
+
+        const completedTodayTickets = completedTickets.filter((ticket) => {
+            const resolvedDate =
+                ticket.resolvedAt ||
+                ticket.updatedAt ||
+                ticket.modifiedAt;
+
+            if (!resolvedDate) return false;
+
+            const date = new Date(resolvedDate);
+
+            if (Number.isNaN(date.getTime())) return false;
+
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, "0");
+            const day = String(date.getDate()).padStart(2, "0");
+
+            return `${year}-${month}-${day}` === todayKey;
+        });
+
+        const completedPreviousTickets = completedTickets.filter(
+            (ticket) => !completedTodayTickets.includes(ticket)
+        );
+        return [
+            {
+                id: "pending",
+                title: "Pending Work",
+                subtitle:
+                    activeTickets.length > 0
+                        ? "Tickets that still require your action"
+                        : "You're caught up — no pending tickets",
+
+                tickets: activeTickets,
+
+                tone:
+                    activeTickets.length > 0
+                        ? "pending"
+                        : "empty",
+
+                icon:
+                    activeTickets.length > 0
+                        ? ListTodo
+                        : CheckCircle2,
+
+                alwaysVisible: true,
+
+                stats: {
+                    overdue: overdueTickets.length,
+                    today: todayTickets.length,
+                    tomorrow: tomorrowTickets.length,
+                    upcoming: upcomingTickets.length,
+                    unscheduled: noDueDateTickets.length,
+                },
+            },
+
+            {
+                id: "completedToday",
+                title: "Completed Today",
+                subtitle:
+                    completedTodayTickets.length > 0
+                        ? "Tickets successfully resolved today"
+                        : "No tickets completed today",
+
+                tickets: completedTodayTickets,
+                tone: "success",
+                icon: CheckCircle2,
+                alwaysVisible: true,
+            },
+
+            {
+                id: "completedPrevious",
+                title: "Previous Completed",
+                subtitle: "Historical resolved tickets",
+                tickets: completedPreviousTickets,
+                tone: "completed",
+                icon: CheckCircle2,
+                alwaysVisible: true,
+            },
+        ];
+    }, [filteredTickets]);
 
     const openCount = tickets.filter(
         (ticket) => !["Resolved", "Closed"].includes(ticket.status)
     ).length;
+
+    useEffect(() => {
+    if (openCount > 0) {
+        setOpenTicketSections((current) => ({
+            ...current,
+            pending: true,
+        }));
+    }
+}, [openCount]);
 
     const inProgressCount = tickets.filter(
         (ticket) => ticket.status === "In Progress"
@@ -671,43 +1294,43 @@ useEffect(() => {
         (ticket) => ticket.status === "Resolved"
     ).length;
 
-const selectedMessages =
-    selectedTicket?.replies || [];
+    const selectedMessages =
+        selectedTicket?.replies || [];
 
-const selectedNotes =
-    selectedTicket?.internalNotes || [];
-const selectedFiles = (selectedTicket?.attachments || []).map((file) => ({
-    id: file._id,
-    name: file.fileName,
-    type: file.fileType,
-    size: file.fileSize >= 1024 * 1024
-        ? `${(file.fileSize / (1024 * 1024)).toFixed(1)} MB`
-        : `${Math.max(1, Math.round(file.fileSize / 1024))} KB`,
-    uploadedBy: file.uploadedByName,
-    uploadedAt: new Date(file.uploadedAt).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
-}));
+    const selectedNotes =
+        selectedTicket?.internalNotes || [];
+    const selectedFiles = (selectedTicket?.attachments || []).map((file) => ({
+        id: file._id,
+        name: file.fileName,
+        type: file.fileType,
+        size: file.fileSize >= 1024 * 1024
+            ? `${(file.fileSize / (1024 * 1024)).toFixed(1)} MB`
+            : `${Math.max(1, Math.round(file.fileSize / 1024))} KB`,
+        uploadedBy: file.uploadedByName,
+        uploadedAt: new Date(file.uploadedAt).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
+    }));
 
-const selectedCalls = (selectedTicket?.callLogs || []).map((call) => ({
-    id: call._id,
-    callType: call.callType,
-    contactPerson: call.contactPerson,
-    mobile: call.mobile,
-    startedAt: new Date(call.createdAt).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
-    duration: call.duration,
-    summary: call.summary,
-}))
+    const selectedCalls = (selectedTicket?.callLogs || []).map((call) => ({
+        id: call._id,
+        callType: call.callType,
+        contactPerson: call.contactPerson,
+        mobile: call.mobile,
+        startedAt: new Date(call.createdAt).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
+        duration: call.duration,
+        summary: call.summary,
+    }))
 
-const selectedTasks =
-    selectedTicket?.linkedTask
-        ? [selectedTicket.linkedTask]
-        : [];
-const selectedTimeline = (selectedTicket?.timeline || []).map((item) => ({
-    id: item._id,
-    type: item.type,
-    title: item.title,
-    description: item.description,
-    createdAt: new Date(item.createdAt).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
-})).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const selectedTasks =
+        selectedTicket?.linkedTask
+            ? [selectedTicket.linkedTask]
+            : [];
+    const selectedTimeline = (selectedTicket?.timeline || []).map((item) => ({
+        id: item._id,
+        type: item.type,
+        title: item.title,
+        description: item.description,
+        createdAt: new Date(item.createdAt).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
+    })).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     const addTimelineEntry = (
         ticketId,
@@ -767,139 +1390,139 @@ const selectedTimeline = (selectedTicket?.timeline || []).map((item) => ({
 
         setTickets((current) =>
             current.map((ticket) =>
-                ticket.id === selectedTicket.id
+                ticket._id === selectedTicket._id
                     ? {
-                          ...ticket,
-                          ...updates,
-                      }
+                        ...ticket,
+                        ...updates,
+                    }
                     : ticket
             )
         );
     };
 
-const handleStatusChange = async (event) => {
-    if (!selectedTicket) return;
+    const handleStatusChange = async (event) => {
+        if (!selectedTicket) return;
 
-    try {
-        const token =
-            localStorage.getItem("client-connect-token") ||
-            sessionStorage.getItem("client-connect-token");
+        try {
+            const token =
+                localStorage.getItem("client-connect-token") ||
+                sessionStorage.getItem("client-connect-token");
 
-        const nextStatus = event.target.value;
+            const nextStatus = event.target.value;
 
-        const response = await fetch(
-            `${API_URL}/api/employee/my-tickets/${selectedTicket._id}/status`,
-            {
-                method: "PATCH",
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    status: nextStatus,
-                }),
-            }
-        );
-
-        const result = await response.json();
-
-        if (!response.ok || !result.success) {
-            throw new Error(
-                result.message || "Unable to update ticket."
+            const response = await fetch(
+                `${API_URL}/api/employee/my-tickets/${selectedTicket._id}/status`,
+                {
+                    method: "PATCH",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        status: nextStatus,
+                    }),
+                }
             );
-        }
 
-        // Reload latest tickets from MongoDB
-        await loadTickets();
+            const result = await response.json();
 
-    } catch (error) {
-        console.error(error);
-        alert(error.message);
-    }
-};
-
-  const addReply = async (event) => {
-    event.preventDefault();
-
-    if (!selectedTicket || !replyText.trim()) return;
-
-    try {
-        const token =
-            localStorage.getItem("client-connect-token") ||
-            sessionStorage.getItem("client-connect-token");
-
-        const response = await fetch(
-            `${API_URL}/api/employee/my-tickets/${selectedTicket._id}/reply`,
-            {
-                method: "POST",
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    message: replyText.trim(),
-                }),
+            if (!response.ok || !result.success) {
+                throw new Error(
+                    result.message || "Unable to update ticket."
+                );
             }
-        );
 
-        const result = await response.json();
+            // Reload latest tickets from MongoDB
+            await loadTickets();
 
-        if (!response.ok || !result.success) {
-            throw new Error(result.message);
+        } catch (error) {
+            console.error(error);
+            alert(error.message);
         }
+    };
 
-        setReplyText("");
+    const addReply = async (event) => {
+        event.preventDefault();
 
-        await loadTickets();
+        if (!selectedTicket || !replyText.trim()) return;
 
-    } catch (error) {
-        console.error(error);
-        alert(error.message);
-    }
-};
+        try {
+            const token =
+                localStorage.getItem("client-connect-token") ||
+                sessionStorage.getItem("client-connect-token");
 
-const addInternalNote = async (event) => {
-    event.preventDefault();
-
-    if (!selectedTicket || !noteText.trim()) return;
-
-    try {
-        const token =
-            localStorage.getItem("client-connect-token") ||
-            sessionStorage.getItem("client-connect-token");
-
-        const response = await fetch(
-            `${API_URL}/api/employee/my-tickets/${selectedTicket._id}/internal-note`,
-            {
-                method: "POST",
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    note: noteText.trim(),
-                }),
-            }
-        );
-
-        const result = await response.json();
-
-        if (!response.ok || !result.success) {
-            throw new Error(
-                result.message || "Unable to save internal note."
+            const response = await fetch(
+                `${API_URL}/api/employee/my-tickets/${selectedTicket._id}/reply`,
+                {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        message: replyText.trim(),
+                    }),
+                }
             );
+
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.message);
+            }
+
+            setReplyText("");
+
+            await loadTickets();
+
+        } catch (error) {
+            console.error(error);
+            alert(error.message);
         }
+    };
 
-        setNoteText("");
+    const addInternalNote = async (event) => {
+        event.preventDefault();
 
-        // Reload latest ticket data from MongoDB
-        await loadTickets();
+        if (!selectedTicket || !noteText.trim()) return;
 
-    } catch (error) {
-        console.error(error);
-        alert(error.message);
-    }
-};
+        try {
+            const token =
+                localStorage.getItem("client-connect-token") ||
+                sessionStorage.getItem("client-connect-token");
+
+            const response = await fetch(
+                `${API_URL}/api/employee/my-tickets/${selectedTicket._id}/internal-note`,
+                {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        note: noteText.trim(),
+                    }),
+                }
+            );
+
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(
+                    result.message || "Unable to save internal note."
+                );
+            }
+
+            setNoteText("");
+
+            // Reload latest ticket data from MongoDB
+            await loadTickets();
+
+        } catch (error) {
+            console.error(error);
+            alert(error.message);
+        }
+    };
 
     const handleFileSelection = (event) => {
         const file = event.target.files?.[0];
@@ -923,26 +1546,26 @@ const addInternalNote = async (event) => {
         });
     };
 
-   const uploadFile = async () => {
-    if (!selectedTicket || !selectedFile) return;
-    try {
-        const token = localStorage.getItem("client-connect-token") || sessionStorage.getItem("client-connect-token");
-        const formData = new FormData();
-        formData.append("attachment", selectedFile.file);
-       const response = await fetch(`${API_URL}/admin/ticket/${selectedTicket._id}/attachment`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}` },
-            body: formData,
-        });
-        const result = await response.json();
-        if (!response.ok || !result.success) throw new Error(result.message || "Unable to upload file.");
-        setSelectedFile(null);
-        if (fileInputRef.current) fileInputRef.current.value = "";
-        await loadTickets();
-    } catch (error) {
-        alert(error.message);
-    }
-};
+    const uploadFile = async () => {
+        if (!selectedTicket || !selectedFile) return;
+        try {
+            const token = localStorage.getItem("client-connect-token") || sessionStorage.getItem("client-connect-token");
+            const formData = new FormData();
+            formData.append("attachment", selectedFile.file);
+            const response = await fetch(`${API_URL}/admin/ticket/${selectedTicket._id}/attachment`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}` },
+                body: formData,
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) throw new Error(result.message || "Unable to upload file.");
+            setSelectedFile(null);
+            if (fileInputRef.current) fileInputRef.current.value = "";
+            await loadTickets();
+        } catch (error) {
+            alert(error.message);
+        }
+    };
 
     const handleCallFormChange = (event) => {
         const { name, value } = event.target;
@@ -952,9 +1575,9 @@ const addInternalNote = async (event) => {
             [name]: value,
         }));
     };
-    
 
-  const addCallLog = async (event) => {
+
+    const addCallLog = async (event) => {
         event.preventDefault();
 
         if (!selectedTicket) return;
@@ -980,7 +1603,7 @@ const addInternalNote = async (event) => {
                 sessionStorage.getItem("client-connect-token");
 
             const response = await fetch(
-               `${API_URL}/api/employee/my-tickets/${selectedTicket._id}/call-log`,
+                `${API_URL}/api/employee/my-tickets/${selectedTicket._id}/call-log`,
                 {
                     method: "POST",
                     headers: {
@@ -1112,68 +1735,74 @@ const addInternalNote = async (event) => {
         }));
     };
 
-const createLinkedTask = async (event) => {
-    event.preventDefault();
+    const createLinkedTask = async (event) => {
+        event.preventDefault();
 
-    if (!selectedTicket) return;
+        if (!selectedTicket) return;
 
-    if (!taskForm.title.trim()) {
-        alert("Please enter task title.");
-        return;
-    }
-
-    if (!taskForm.dueDate) {
-        alert("Please select task due date.");
-        return;
-    }
-
-    try {
-        const token =
-            localStorage.getItem("client-connect-token") ||
-            sessionStorage.getItem("client-connect-token");
-
-        const response = await fetch(
-           `${API_URL}/api/employee/my-tickets/${selectedTicket._id}/create-task`,
-            {
-                method: "POST",
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    title: taskForm.title,
-                    description: taskForm.description,
-                    priority: taskForm.priority,
-                    dueDate: taskForm.dueDate,
-                    estimatedMinutes:
-                        Number(taskForm.estimatedTime) || 0,
-                }),
-            }
-        );
-
-        const result = await response.json();
-
-        if (!response.ok || !result.success) {
-            throw new Error(
-                result.message || "Unable to create task."
-            );
+        if (!taskForm.title.trim()) {
+            alert("Please enter task title.");
+            return;
         }
 
-        alert(
-            result.alreadyExists
-                ? `Task already linked: ${result.task.taskCode}`
-                : `Task created successfully: ${result.task.taskCode}`
-        );
+        if (!taskForm.dueDate) {
+            alert("Please select task due date.");
+            return;
+        }
 
-        setTaskFormOpen(false);
+        try {
+            const token =
+                localStorage.getItem("client-connect-token") ||
+                sessionStorage.getItem("client-connect-token");
 
-        await loadTickets();
+            const response = await fetch(
+                `${API_URL}/api/employee/my-tickets/${selectedTicket._id}/create-task`,
+                {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        title: taskForm.title,
+                        description: taskForm.description,
+                        priority: taskForm.priority,
+                        dueDate: taskForm.dueDate,
+                        estimatedMinutes:
+                            Number(taskForm.estimatedTime) || 0,
+                    }),
+                }
+            );
 
-    } catch (error) {
-        console.error(error);
-        alert(error.message);
-    }
-};
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(
+                    result.message || "Unable to create task."
+                );
+            }
+
+            alert(
+                result.alreadyExists
+                    ? `Task already linked: ${result.task.taskCode}`
+                    : `Task created successfully: ${result.task.taskCode}`
+            );
+
+            setTaskFormOpen(false);
+
+            await loadTickets();
+
+        } catch (error) {
+            console.error(error);
+            alert(error.message);
+        }
+    };
+    const toggleTicketSection = (sectionId) => {
+        setOpenTicketSections((current) => ({
+            ...current,
+            [sectionId]: !current[sectionId],
+        }));
+    };
 
     return (
         <div>
@@ -1255,17 +1884,76 @@ const createLinkedTask = async (event) => {
                     descriptionClass="text-emerald-600"
                 />
             </div>
+            <div className="mt-6 flex flex-wrap items-center gap-2">
+                {[
+                    {
+                        label: "All",
+                        value: "All",
+                        count: tickets.length,
+                    },
+                    {
+                        label: "Pending",
+                        value: "Pending",
+                        count: openCount,
+                    },
+                    {
+                        label: "Today",
+                        value: "Today",
+                        count: tickets.filter(isTicketDueToday).length,
+                    },
+                    {
+                        label: "Overdue",
+                        value: "Overdue",
+                        count: overdueCount,
+                    },
+                    {
+                        label: "Completed",
+                        value: "Completed",
+                        count: tickets.filter((ticket) =>
+                            ["Resolved", "Closed"].includes(ticket.status)
+                        ).length,
+                    },
+                ].map((item) => (
+                    <button
+                        key={item.value}
+                        type="button"
+                        onClick={() => {
+                            if (item.value === "Today") {
+                                setDueFilter("Today");
+                                setStatusFilter("All");
+                            } else if (item.value === "Overdue") {
+                                setDueFilter("Overdue");
+                                setStatusFilter("All");
+                            } else if (item.value === "Completed") {
+                                setDueFilter("All");
+                                setStatusFilter("Resolved");
+                            } else if (item.value === "Pending") {
+                                setDueFilter("All");
+                                setStatusFilter("All");
+                            } else {
+                                setDueFilter("All");
+                                setStatusFilter("All");
+                            }
+                        }}
+                        className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-[10px] font-semibold text-slate-600 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+                    >
+                        {item.label}
 
-            <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 xl:flex-row xl:items-center xl:justify-between">
+                        <span className="flex min-w-5 items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[8px] font-bold text-slate-500">
+                            {item.count}
+                        </span>
+                    </button>
+                ))}
+            </div>
+           <div className="mt-5 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+               <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3.5 xl:flex-row xl:items-center xl:justify-between">
                     <div>
                         <h3 className="text-sm font-semibold text-slate-950">
-                            Assigned Support Tickets
+                            My Support Queue
                         </h3>
 
                         <p className="mt-1 text-[10px] text-slate-500">
-                            {filteredTickets.length} ticket
-                            {filteredTickets.length !== 1 ? "s" : ""} found
+                            {openCount} pending · {resolvedCount} resolved
                         </p>
                     </div>
 
@@ -1292,14 +1980,13 @@ const createLinkedTask = async (event) => {
                             onClick={() =>
                                 setFiltersOpen((current) => !current)
                             }
-                            className={`flex h-10 items-center justify-center gap-2 rounded-xl border px-4 text-xs font-semibold transition ${
-                                filtersOpen ||
+                            className={`flex h-10 items-center justify-center gap-2 rounded-xl border px-4 text-xs font-semibold transition ${filtersOpen ||
                                 statusFilter !== "All" ||
                                 priorityFilter !== "All" ||
                                 dueFilter !== "All"
-                                    ? "border-violet-200 bg-violet-50 text-violet-700"
-                                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                            }`}
+                                ? "border-violet-200 bg-violet-50 text-violet-700"
+                                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                                }`}
                         >
                             <Filter size={15} />
                             Filters
@@ -1386,209 +2073,35 @@ const createLinkedTask = async (event) => {
                         </div>
                     </div>
                 )}
+                {loadingTickets ? (
+    <div className="flex min-h-[260px] items-center justify-center">
+        <div className="text-center">
+            <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-violet-600" />
 
-                <div className="overflow-x-auto">
-                    <table className="w-full min-w-[1180px]">
-                        <thead>
-                            <tr className="border-b border-slate-200 bg-slate-50/80">
-                                <th className="px-5 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                    Ticket
-                                </th>
+            <p className="mt-3 text-xs font-medium text-slate-500">
+                Loading your support queue...
+            </p>
+        </div>
+    </div>
+) : (
+    <div className="space-y-2.5 bg-slate-50/40 p-3.5 sm:p-4">
+        {ticketSections.map((section) => (
+            <TicketDaySection
+                key={section.id}
+                section={section}
+                expanded={
+                    openTicketSections[section.id] ?? false
+                }
+                onToggle={() =>
+                    toggleTicketSection(section.id)
+                }
+                onOpenTicket={openTicket}
+            />
+        ))}
+    </div>
+)}
 
-                                <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                    Client / Product
-                                </th>
 
-                                <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                    Source
-                                </th>
-
-                                <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                    Priority
-                                </th>
-
-                                <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                    Status
-                                </th>
-
-                                <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                    Due
-                                </th>
-
-                                <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                    Time Spent
-                                </th>
-
-                                <th className="px-5 py-3 text-right text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                    Actions
-                                </th>
-                            </tr>
-                        </thead>
-
-                        <tbody className="divide-y divide-slate-100">
-                            {filteredTickets.map((ticket) => {
-                                const overdue = isTicketOverdue(ticket);
-                                const dueToday = isTicketDueToday(ticket);
-
-                                return (
-                                    <tr
-                                        key={ticket.id}
-                                        className={`transition hover:bg-slate-50/70 ${
-                                            overdue ? "bg-rose-50/30" : ""
-                                        }`}
-                                    >
-                                        <td className="px-5 py-4">
-                                            <div className="flex items-start gap-3">
-                                                <div
-                                                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-                                                        ticket.priority ===
-                                                        "Critical"
-                                                            ? "bg-rose-100 text-rose-700"
-                                                            : ticket.status ===
-                                                                "Resolved"
-                                                              ? "bg-emerald-100 text-emerald-700"
-                                                              : "bg-violet-100 text-violet-700"
-                                                    }`}
-                                                >
-                                                    {ticket.status ===
-                                                    "Resolved" ? (
-                                                        <CheckCircle2
-                                                            size={17}
-                                                        />
-                                                    ) : ticket.priority ===
-                                                      "Critical" ? (
-                                                        <AlertCircle
-                                                            size={17}
-                                                        />
-                                                    ) : (
-                                                        <MessageSquare
-                                                            size={17}
-                                                        />
-                                                    )}
-                                                </div>
-
-                                                <div className="min-w-0">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                            openTicket(ticket)
-                                                        }
-                                                        className="block max-w-80 truncate text-left text-xs font-semibold text-slate-900 hover:text-violet-700"
-                                                    >
-                                                        {ticket.title}
-                                                    </button>
-
-                                                    <p className="mt-1 text-[10px] font-semibold text-violet-600">
-                                                        {ticket.ticketNo}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </td>
-
-                                        <td className="px-4 py-4">
-                                            <p className="text-xs font-semibold text-slate-800">
-                                                {ticket.client}
-                                            </p>
-
-                                            <p className="mt-1 text-[10px] text-slate-500">
-                                                {ticket.project} ·{" "}
-                                                {ticket.module}
-                                            </p>
-                                        </td>
-
-                                        <td className="px-4 py-4 text-xs text-slate-600">
-                                            {ticket.source}
-                                        </td>
-
-                                        <td className="px-4 py-4">
-                                            <span
-                                                className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ring-inset ${getPriorityClasses(
-                                                    ticket.priority
-                                                )}`}
-                                            >
-                                                {ticket.priority}
-                                            </span>
-                                        </td>
-
-                                        <td className="px-4 py-4">
-                                            <span
-                                                className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ring-inset ${getStatusClasses(
-                                                    ticket.status
-                                                )}`}
-                                            >
-                                                {ticket.status}
-                                            </span>
-                                        </td>
-
-                                        <td className="px-4 py-4">
-                                            <p
-                                                className={`text-xs font-semibold ${
-                                                    overdue
-                                                        ? "text-rose-700"
-                                                        : dueToday
-                                                          ? "text-amber-700"
-                                                          : "text-slate-700"
-                                                }`}
-                                            >
-                                                {formatDate(ticket.dueDate)}
-                                            </p>
-
-                                            {(overdue || dueToday) && (
-                                                <p
-                                                    className={`mt-1 text-[9px] font-semibold uppercase tracking-[0.08em] ${
-                                                        overdue
-                                                            ? "text-rose-500"
-                                                            : "text-amber-500"
-                                                    }`}
-                                                >
-                                                    {overdue
-                                                        ? "Overdue"
-                                                        : "Due today"}
-                                                </p>
-                                            )}
-                                        </td>
-
-                                        <td className="px-4 py-4 text-xs font-semibold text-slate-800">
-                                            {formatMinutes(
-                                                ticket.timeSpentMinutes
-                                            )}
-                                        </td>
-
-                                        <td className="px-5 py-4">
-                                            <div className="flex justify-end">
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        openTicket(ticket)
-                                                    }
-                                                    className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-semibold text-slate-600 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
-                                                >
-                                                    Open Ticket
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
-
-                {filteredTickets.length === 0 && (
-                    <div className="flex min-h-[300px] flex-col items-center justify-center text-center">
-                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
-                            <Search size={22} />
-                        </div>
-
-                        <h3 className="mt-4 text-sm font-semibold text-slate-900">
-                            No tickets found
-                        </h3>
-
-                        <p className="mt-1 text-xs text-slate-500">
-                            Change your search or support filters.
-                        </p>
-                    </div>
-                )}
             </div>
 
             {selectedTicket && (
@@ -1671,11 +2184,10 @@ const createLinkedTask = async (event) => {
                                         onClick={() =>
                                             setDetailsTab(tab.id)
                                         }
-                                        className={`whitespace-nowrap border-b-2 px-4 py-4 text-[11px] font-semibold transition ${
-                                            detailsTab === tab.id
-                                                ? "border-violet-600 text-violet-700"
-                                                : "border-transparent text-slate-500 hover:text-slate-800"
-                                        }`}
+                                        className={`whitespace-nowrap border-b-2 px-4 py-4 text-[11px] font-semibold transition ${detailsTab === tab.id
+                                            ? "border-violet-600 text-violet-700"
+                                            : "border-transparent text-slate-500 hover:text-slate-800"
+                                            }`}
                                     >
                                         {tab.label}
                                     </button>
@@ -1732,11 +2244,11 @@ const createLinkedTask = async (event) => {
 
                                         {selectedTicket.attachments?.length > 0 && (
                                             <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-3">
-                                            <img
-    src={`${API_URL}${selectedTicket.attachments[0].fileUrl}`}
-    alt={selectedTicket.attachments[0].fileName}
-    className="rounded-xl border border-slate-200 max-w-full"
-/>
+                                                <img
+                                                    src={`${API_URL}${selectedTicket.attachments[0].fileUrl}`}
+                                                    alt={selectedTicket.attachments[0].fileName}
+                                                    className="rounded-xl border border-slate-200 max-w-full"
+                                                />
                                             </div>
                                         )}
                                     </div>
@@ -1807,13 +2319,12 @@ const createLinkedTask = async (event) => {
                                             </div>
 
                                             <p
-                                                className={`mt-3 text-xs font-semibold ${
-                                                    isTicketOverdue(
-                                                        selectedTicket
-                                                    )
-                                                        ? "text-rose-700"
-                                                        : "text-slate-900"
-                                                }`}
+                                                className={`mt-3 text-xs font-semibold ${isTicketOverdue(
+                                                    selectedTicket
+                                                )
+                                                    ? "text-rose-700"
+                                                    : "text-slate-900"
+                                                    }`}
                                             >
                                                 {formatDate(
                                                     selectedTicket.dueDate
@@ -1852,57 +2363,54 @@ const createLinkedTask = async (event) => {
                             {detailsTab === "conversation" && (
                                 <div>
                                     <div className="space-y-4">
-                                       {selectedMessages.map((message) => {
-    const employee =
-        message.authorRole === "employee";
+                                        {selectedMessages.map((message) => {
+                                            const employee =
+                                                message.authorRole === "employee";
 
-    return (
-        <div
-            key={message._id}
-            className={`flex gap-3 ${
-                employee
-                    ? "flex-row-reverse"
-                    : ""
-            }`}
-        >
-            <div
-                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[10px] font-bold ${
-                    employee
-                        ? "bg-violet-600 text-white"
-                        : "bg-slate-900 text-white"
-                }`}
-            >
-                {(message.authorName || "?")
-                    .substring(0, 2)
-                    .toUpperCase()}
-            </div>
+                                            return (
+                                                <div
+                                                    key={message._id}
+                                                    className={`flex gap-3 ${employee
+                                                        ? "flex-row-reverse"
+                                                        : ""
+                                                        }`}
+                                                >
+                                                    <div
+                                                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[10px] font-bold ${employee
+                                                            ? "bg-violet-600 text-white"
+                                                            : "bg-slate-900 text-white"
+                                                            }`}
+                                                    >
+                                                        {(message.authorName || "?")
+                                                            .substring(0, 2)
+                                                            .toUpperCase()}
+                                                    </div>
 
-            <div
-                className={`max-w-[80%] rounded-2xl p-4 ${
-                    employee
-                        ? "rounded-tr-md bg-violet-50"
-                        : "rounded-tl-md bg-slate-50"
-                }`}
-            >
-                <div className="flex items-center justify-between gap-5">
-                    <p className="text-xs font-semibold text-slate-900">
-                        {message.authorName}
-                    </p>
+                                                    <div
+                                                        className={`max-w-[80%] rounded-2xl p-4 ${employee
+                                                            ? "rounded-tr-md bg-violet-50"
+                                                            : "rounded-tl-md bg-slate-50"
+                                                            }`}
+                                                    >
+                                                        <div className="flex items-center justify-between gap-5">
+                                                            <p className="text-xs font-semibold text-slate-900">
+                                                                {message.authorName}
+                                                            </p>
 
-                    <span className="text-[9px] text-slate-400">
-                        {new Date(
-                            message.createdAt
-                        ).toLocaleString()}
-                    </span>
-                </div>
+                                                            <span className="text-[9px] text-slate-400">
+                                                                {new Date(
+                                                                    message.createdAt
+                                                                ).toLocaleString()}
+                                                            </span>
+                                                        </div>
 
-                <p className="mt-2 text-xs leading-5 text-slate-600">
-                    {message.message}
-                </p>
-            </div>
-        </div>
-    );
-})}
+                                                        <p className="mt-2 text-xs leading-5 text-slate-600">
+                                                            {message.message}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
 
                                     <form
@@ -1989,48 +2497,48 @@ const createLinkedTask = async (event) => {
                                         </div>
                                     </form>
 
-                                   <div className="mt-5 space-y-3">
-    {selectedNotes.map((note) => (
-        <div
-            key={note._id}
-            className="flex gap-3 rounded-2xl border border-amber-100 bg-amber-50/50 p-4"
-        >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-[10px] font-bold text-amber-700">
-                {(note.authorName || "?")
-                    .substring(0, 2)
-                    .toUpperCase()}
-            </div>
+                                    <div className="mt-5 space-y-3">
+                                        {selectedNotes.map((note) => (
+                                            <div
+                                                key={note._id}
+                                                className="flex gap-3 rounded-2xl border border-amber-100 bg-amber-50/50 p-4"
+                                            >
+                                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-[10px] font-bold text-amber-700">
+                                                    {(note.authorName || "?")
+                                                        .substring(0, 2)
+                                                        .toUpperCase()}
+                                                </div>
 
-            <div className="flex-1">
-                <div className="flex flex-wrap items-center gap-3">
-                    <p className="text-xs font-semibold text-slate-900">
-                        {note.authorName}
-                    </p>
+                                                <div className="flex-1">
+                                                    <div className="flex flex-wrap items-center gap-3">
+                                                        <p className="text-xs font-semibold text-slate-900">
+                                                            {note.authorName}
+                                                        </p>
 
-                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-medium text-amber-700">
-                        {note.authorRole}
-                    </span>
+                                                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-medium text-amber-700">
+                                                            {note.authorRole}
+                                                        </span>
 
-                    <span className="text-[9px] text-slate-400">
-                        {new Date(
-                            note.createdAt
-                        ).toLocaleString()}
-                    </span>
-                </div>
+                                                        <span className="text-[9px] text-slate-400">
+                                                            {new Date(
+                                                                note.createdAt
+                                                            ).toLocaleString()}
+                                                        </span>
+                                                    </div>
 
-                <p className="mt-2 text-xs leading-5 text-slate-600 whitespace-pre-wrap">
-                    {note.note}
-                </p>
-            </div>
-        </div>
-    ))}
+                                                    <p className="mt-2 text-xs leading-5 text-slate-600 whitespace-pre-wrap">
+                                                        {note.note}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ))}
 
-    {selectedNotes.length === 0 && (
-        <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-xs text-slate-500">
-            No internal notes added yet.
-        </div>
-    )}
-</div>
+                                        {selectedNotes.length === 0 && (
+                                            <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-xs text-slate-500">
+                                                No internal notes added yet.
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             )}
 
@@ -2427,27 +2935,27 @@ const createLinkedTask = async (event) => {
                                         <div className="mt-4 flex justify-end gap-3">
                                             {selectedTicket.status ===
                                                 "Resolved" && (
-                                                <button
-                                                    type="button"
-                                                    onClick={reopenTicket}
-                                                    className="flex h-10 items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 text-xs font-semibold text-amber-700"
-                                                >
-                                                    <RotateCcw size={15} />
-                                                    Reopen Ticket
-                                                </button>
-                                            )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={reopenTicket}
+                                                        className="flex h-10 items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 text-xs font-semibold text-amber-700"
+                                                    >
+                                                        <RotateCcw size={15} />
+                                                        Reopen Ticket
+                                                    </button>
+                                                )}
 
                                             {selectedTicket.status !==
                                                 "Resolved" && (
-                                                <button
-                                                    type="button"
-                                                    onClick={resolveTicket}
-                                                    className="flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-xs font-semibold text-white transition hover:bg-emerald-700"
-                                                >
-                                                    <CheckCircle2 size={15} />
-                                                    Mark Resolved
-                                                </button>
-                                            )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={resolveTicket}
+                                                        className="flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-xs font-semibold text-white transition hover:bg-emerald-700"
+                                                    >
+                                                        <CheckCircle2 size={15} />
+                                                        Mark Resolved
+                                                    </button>
+                                                )}
                                         </div>
                                     </div>
                                 </div>

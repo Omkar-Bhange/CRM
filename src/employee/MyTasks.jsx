@@ -1,4 +1,4 @@
-    import API_URL from "../config/api";
+import API_URL from "../config/api";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
     AlertCircle,
@@ -8,6 +8,8 @@ import {
     Check,
     CheckCircle2,
     ChevronDown,
+    ChevronRight,
+
     Circle,
     Clock3,
     File,
@@ -284,7 +286,13 @@ function parseDate(dateValue) {
 }
 
 function getTodayDateKey() {
-    return new Date().toISOString().slice(0, 10);
+    const now = new Date();
+
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
 }
 
 function isTaskOverdue(task) {
@@ -305,6 +313,60 @@ function isTaskDueToday(task) {
         task.dueDate === getTodayDateKey() &&
         !["Completed", "Resolved"].includes(task.status)
     );
+}
+function getDateKeyFromOffset(days) {
+    const date = new Date();
+
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() + days);
+
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+}
+
+function getTaskDaysDifference(dateValue) {
+    if (!dateValue) return null;
+
+    const due = parseDate(dateValue);
+    const today = parseDate(getTodayDateKey());
+
+    if (!due || !today) return null;
+
+    return Math.round(
+        (due.getTime() - today.getTime()) /
+        (1000 * 60 * 60 * 24)
+    );
+}
+
+function getRelativeTaskDueText(task) {
+    if (["Completed", "Resolved"].includes(task.status)) {
+        return "Completed";
+    }
+
+    const difference = getTaskDaysDifference(task.dueDate);
+
+    if (difference === null) {
+        return "No due date";
+    }
+
+    if (difference < 0) {
+        const days = Math.abs(difference);
+
+        return `${days} day${days !== 1 ? "s" : ""} overdue`;
+    }
+
+    if (difference === 0) {
+        return "Due today";
+    }
+
+    if (difference === 1) {
+        return "Due tomorrow";
+    }
+
+    return `Due in ${difference} days`;
 }
 
 function formatDate(dateValue) {
@@ -421,29 +483,452 @@ function SummaryCard({
     descriptionClass = "text-slate-500",
 }) {
     return (
-        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-start justify-between gap-4">
                 <div>
                     <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
                         {label}
                     </p>
 
-                    <p className="mt-2 text-2xl font-semibold text-slate-950">
+                    <p className="mt-1.5 text-xl font-semibold text-slate-950">
                         {value}
                     </p>
                 </div>
 
                 <div
-                    className={`flex h-10 w-10 items-center justify-center rounded-xl ${iconClass}`}
+                    className={`flex h-9 w-9 items-center justify-center  rounded-lg ${iconClass}`}
                 >
                     <Icon size={18} />
                 </div>
             </div>
 
-            <p className={`mt-4 text-xs ${descriptionClass}`}>
+            <p className={`mt-3 text-[10px] ${descriptionClass}`}>
                 {description}
             </p>
         </div>
+    );
+}
+
+function TaskQueueRow({
+    task,
+    onOpen,
+    onStart,
+    onComplete,
+    activeTaskId,
+    timerRunning,
+}) {
+    const overdue = isTaskOverdue(task);
+    const dueToday = isTaskDueToday(task);
+
+    const completed = [
+        "Completed",
+        "Resolved",
+    ].includes(task.status);
+
+    const taskIsActive =
+        activeTaskId === task.id;
+
+    return (
+        <div
+            className={`group grid gap-3 border-t border-slate-100 px-4 py-2.5 transition first:border-t-0 xl:grid-cols-[minmax(280px,1.7fr)_minmax(150px,1fr)_95px_110px_105px_150px_90px] xl:items-center ${overdue
+                    ? "bg-rose-50/30"
+                    : completed
+                        ? "bg-white hover:bg-slate-50/70"
+                        : "hover:bg-slate-50/80"
+                }`}
+        >
+            {/* TASK */}
+            <div className="flex min-w-0 items-center gap-3">
+                <button
+                    type="button"
+                    onClick={() => onStart(task)}
+                    disabled={completed}
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition ${taskIsActive
+                            ? "bg-violet-600 text-white"
+                            : completed
+                                ? "bg-emerald-100 text-emerald-700"
+                                : "bg-violet-50 text-violet-700 hover:bg-violet-100"
+                        } disabled:cursor-default`}
+                >
+                    {completed ? (
+                        <CheckCircle2 size={16} />
+                    ) : taskIsActive &&
+                        timerRunning ? (
+                        <Pause size={15} />
+                    ) : (
+                        <Play size={15} />
+                    )}
+                </button>
+
+                <div className="min-w-0">
+                    <button
+                        type="button"
+                        onClick={() => onOpen(task)}
+                        className={`block max-w-full truncate text-left text-[12px] font-semibold leading-4 transition hover:text-violet-700 ${completed
+                                ? "text-slate-700"
+                                : "text-slate-900"
+                            }`}
+                    >
+                        {task.title}
+                    </button>
+
+                    <div className="mt-1 flex flex-wrap items-center gap-x-1.5">
+                        <span className="text-[9px] font-bold text-violet-600">
+                            {task.taskNo}
+                        </span>
+
+                        {task.ticketNo && (
+                            <>
+                                <span className="text-[8px] text-slate-300">
+                                    •
+                                </span>
+
+                                <span className="text-[9px] text-blue-600">
+                                    {task.ticketNo}
+                                </span>
+                            </>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* CLIENT */}
+            <div className="min-w-0">
+                <p className="truncate text-[11px] font-semibold leading-4 text-slate-800">
+                    {task.client || "—"}
+                </p>
+
+                <p className="mt-0.5 truncate text-[9px] text-slate-500">
+                    {[task.project, task.module]
+                        .filter(Boolean)
+                        .join(" · ") || "General"}
+                </p>
+            </div>
+
+            {/* PRIORITY */}
+            <div>
+                <span
+                    className={`inline-flex rounded-full px-2 py-0.5 text-[9px] font-bold ring-1 ring-inset ${getPriorityClasses(
+                        task.priority
+                    )}`}
+                >
+                    {task.priority}
+                </span>
+            </div>
+
+            {/* STATUS */}
+            <div>
+                <span
+                    className={`inline-flex rounded-full px-2 py-0.5 text-[9px] font-bold ring-1 ring-inset ${getStatusClasses(
+                        task.status
+                    )}`}
+                >
+                    {task.status}
+                </span>
+            </div>
+
+            {/* DUE */}
+            <div className="min-w-0">
+                <p
+                    className={`truncate text-[10px] font-semibold ${overdue
+                            ? "text-rose-700"
+                            : dueToday
+                                ? "text-amber-700"
+                                : completed
+                                    ? "text-emerald-700"
+                                    : "text-slate-700"
+                        }`}
+                >
+                    {getRelativeTaskDueText(task)}
+                </p>
+
+                {task.dueDate && !completed && (
+                    <p className="mt-0.5 text-[8px] text-slate-400">
+                        {formatDate(task.dueDate)}
+                    </p>
+                )}
+            </div>
+
+            {/* PROGRESS / TIME */}
+            <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                            className={`h-full rounded-full ${completed
+                                    ? "bg-emerald-500"
+                                    : "bg-violet-500"
+                                }`}
+                        style={{
+    width: `${
+        completed
+            ? 100
+            : Math.min(Number(task.progress || 0), 100)
+    }%`,
+}}
+                        />
+                    </div>
+
+                  <span className="w-8 text-right text-[9px] font-semibold text-slate-600">
+    {completed ? 100 : task.progress || 0}%
+</span>
+                </div>
+
+                <p className="mt-1 text-[8px] text-slate-400">
+                    {formatDurationFromSeconds(
+                        task.spentSeconds
+                    )}{" "}
+                    /{" "}
+                    {formatEstimatedTime(
+                        task.estimatedMinutes
+                    )}
+                </p>
+            </div>
+
+            {/* ACTION */}
+            <div className="flex justify-end gap-1.5">
+                <button
+                    type="button"
+                    onClick={() => onOpen(task)}
+                    className="flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-semibold text-slate-600 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+                >
+                    Open
+                </button>
+
+                {!completed && (
+                    <button
+                        type="button"
+                        onClick={() =>
+                            onComplete(task)
+                        }
+                        title="Complete task"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 transition hover:bg-emerald-100"
+                    >
+                        <Check size={13} />
+                    </button>
+                )}
+            </div>
+        </div>
+    );
+}
+function TaskDaySection({
+    section,
+    expanded,
+    onToggle,
+    onOpenTask,
+    onStartTask,
+    onCompleteTask,
+    activeTaskId,
+    timerRunning,
+}) {
+    const Icon = section.icon;
+
+    const toneClasses = {
+        pending: {
+            wrapper:
+                "border-violet-200 shadow-[0_8px_30px_rgba(124,58,237,0.05)]",
+            header:
+                "bg-gradient-to-r from-violet-50 via-white to-white hover:from-violet-100/70",
+            icon:
+                "bg-violet-100 text-violet-700",
+            count:
+                "bg-violet-100 text-violet-700",
+        },
+
+        empty: {
+            wrapper: "border-slate-200",
+            header:
+                "bg-gradient-to-r from-slate-50 to-white hover:bg-slate-50",
+            icon:
+                "bg-emerald-50 text-emerald-600",
+            count:
+                "bg-slate-100 text-slate-500",
+        },
+
+        success: {
+            wrapper: "border-emerald-200",
+            header:
+                "bg-emerald-50/60 hover:bg-emerald-50",
+            icon:
+                "bg-emerald-100 text-emerald-700",
+            count:
+                "bg-emerald-100 text-emerald-700",
+        },
+
+        completed: {
+            wrapper: "border-slate-200",
+            header:
+                "bg-slate-50/80 hover:bg-slate-100",
+            icon:
+                "bg-slate-100 text-slate-600",
+            count:
+                "bg-slate-200 text-slate-600",
+        },
+    };
+
+    const tone =
+        toneClasses[section.tone] ||
+        toneClasses.completed;
+
+    return (
+        <section
+            className={`overflow-hidden rounded-xl border bg-white ${tone.wrapper}`}
+        >
+            <button
+                type="button"
+                onClick={onToggle}
+                className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition ${tone.header}`}
+            >
+                <div className="flex min-w-0 items-center gap-3">
+                    <div
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${tone.icon}`}
+                    >
+                        <Icon size={16} />
+                    </div>
+
+                    <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-xs font-bold text-slate-900">
+                                {section.title}
+                            </h3>
+
+                            <span
+                                className={`inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-[9px] font-bold ${tone.count}`}
+                            >
+                                {section.tasks.length}
+                            </span>
+                        </div>
+
+                        <p className="mt-1 text-[10px] text-slate-500">
+                            {section.subtitle}
+                        </p>
+
+                        {section.id === "pending" &&
+                            section.stats &&
+                            section.tasks.length > 0 && (
+                                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                    {section.stats.overdue > 0 && (
+                                        <span className="rounded-md bg-rose-100 px-2 py-1 text-[9px] font-semibold text-rose-700">
+                                            {section.stats.overdue} overdue
+                                        </span>
+                                    )}
+
+                                    {section.stats.blocked > 0 && (
+                                        <span className="rounded-md bg-rose-100 px-2 py-1 text-[9px] font-semibold text-rose-700">
+                                            {section.stats.blocked} blocked
+                                        </span>
+                                    )}
+
+                                    {section.stats.today > 0 && (
+                                        <span className="rounded-md bg-amber-100 px-2 py-1 text-[9px] font-semibold text-amber-700">
+                                            {section.stats.today} today
+                                        </span>
+                                    )}
+
+                                    {section.stats.tomorrow > 0 && (
+                                        <span className="rounded-md bg-blue-100 px-2 py-1 text-[9px] font-semibold text-blue-700">
+                                            {section.stats.tomorrow} tomorrow
+                                        </span>
+                                    )}
+
+                                    {section.stats.upcoming > 0 && (
+                                        <span className="rounded-md bg-slate-100 px-2 py-1 text-[9px] font-semibold text-slate-600">
+                                            {section.stats.upcoming} upcoming
+                                        </span>
+                                    )}
+
+                                    {section.stats.unscheduled > 0 && (
+                                        <span className="rounded-md bg-slate-100 px-2 py-1 text-[9px] font-semibold text-slate-600">
+                                            {section.stats.unscheduled} unscheduled
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+                    </div>
+                </div>
+
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 shadow-sm">
+                    {expanded ? (
+                        <ChevronDown size={14} />
+                    ) : (
+                        <ChevronRight size={14} />
+                    )}
+                </div>
+            </button>
+
+            {expanded && (
+                <div className="border-t border-slate-100">
+                    {section.tasks.length > 0 && (
+                        <div className="hidden grid-cols-[minmax(280px,1.7fr)_minmax(150px,1fr)_95px_110px_105px_150px_90px] gap-3 border-b border-slate-100 bg-slate-50/60 px-4 py-2 xl:grid">
+                            <span className="text-[8px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                                Task
+                            </span>
+
+                            <span className="text-[8px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                                Client / Project
+                            </span>
+
+                            <span className="text-[8px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                                Priority
+                            </span>
+
+                            <span className="text-[8px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                                Status
+                            </span>
+
+                            <span className="text-[8px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                                Due
+                            </span>
+
+                            <span className="text-[8px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                                Progress / Time
+                            </span>
+
+                            <span className="text-right text-[8px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                                Action
+                            </span>
+                        </div>
+                    )}
+
+                    {section.tasks.length > 0 ? (
+                        section.tasks.map((task) => (
+                            <TaskQueueRow
+                                key={task.id}
+                                task={task}
+                                onOpen={onOpenTask}
+                                onStart={onStartTask}
+                                onComplete={onCompleteTask}
+                                activeTaskId={activeTaskId}
+                                timerRunning={timerRunning}
+                            />
+                        ))
+                    ) : (
+                        <div className="flex min-h-[110px] items-center justify-center px-5 py-6">
+                            <div className="text-center">
+                                <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+                                    <CheckCircle2 size={18} />
+                                </div>
+
+                                <p className="mt-2.5 text-xs font-semibold text-slate-800">
+                                    {section.id === "pending"
+                                        ? "No pending tasks"
+                                        : section.id === "completedToday"
+                                            ? "No tasks completed today"
+                                            : "No previous completed tasks"}
+                                </p>
+
+                                <p className="mt-1 text-[10px] text-slate-500">
+                                    {section.id === "pending"
+                                        ? "You're all caught up. New assigned tasks will appear here."
+                                        : section.id === "completedToday"
+                                            ? "Tasks completed today will automatically appear here."
+                                            : "Older completed tasks will appear here."}
+                                </p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+        </section>
     );
 }
 
@@ -488,6 +973,11 @@ export default function MyTasks() {
     const [priorityFilter, setPriorityFilter] = useState("All");
     const [dueFilter, setDueFilter] = useState("All");
     const [filtersOpen, setFiltersOpen] = useState(false);
+    const [openTaskSections, setOpenTaskSections] = useState({
+        pending: false,
+        completedToday: false,
+        completedPrevious: false,
+    });
 
     const [activeTaskId, setActiveTaskId] = useState(null);
     const [timerRunning, setTimerRunning] = useState(true);
@@ -527,146 +1017,348 @@ export default function MyTasks() {
         return () => window.clearInterval(intervalId);
     }, []);
 
-const filteredTasks = useMemo(() => {
-    const priorityRank = {
-        Critical: 4,
-        High: 3,
-        Medium: 2,
-        Low: 1,
-    };
+    const filteredTasks = useMemo(() => {
+        const priorityRank = {
+            Critical: 4,
+            High: 3,
+            Medium: 2,
+            Low: 1,
+        };
 
-    const completedStatuses = [
-        "Completed",
-        "Resolved",
-    ];
+        const completedStatuses = [
+            "Completed",
+            "Resolved",
+        ];
 
-    return tasks
-        .filter((task) => {
-            const search =
-                searchValue.trim().toLowerCase();
+        return tasks
+            .filter((task) => {
+                const search =
+                    searchValue.trim().toLowerCase();
 
-            const matchesSearch =
-                !search ||
-                [
-                    task.taskNo,
-                    task.ticketNo,
-                    task.title,
-                    task.client,
-                    task.project,
-                    task.module,
-                    task.workType,
-                    task.status,
-                    task.priority,
-                ].some((value) =>
-                    String(value || "")
-                        .toLowerCase()
-                        .includes(search)
-                );
-
-            const matchesStatus =
-                statusFilter === "All" ||
-                task.status === statusFilter;
-
-            const matchesPriority =
-                priorityFilter === "All" ||
-                task.priority === priorityFilter;
-
-            let matchesDue = true;
-
-            if (dueFilter === "Today") {
-                matchesDue = isTaskDueToday(task);
-            } else if (dueFilter === "Overdue") {
-                matchesDue = isTaskOverdue(task);
-            } else if (dueFilter === "Upcoming") {
-                matchesDue =
-                    !isTaskOverdue(task) &&
-                    !isTaskDueToday(task) &&
-                    !completedStatuses.includes(
-                        task.status
+                const matchesSearch =
+                    !search ||
+                    [
+                        task.taskNo,
+                        task.ticketNo,
+                        task.title,
+                        task.client,
+                        task.project,
+                        task.module,
+                        task.workType,
+                        task.status,
+                        task.priority,
+                    ].some((value) =>
+                        String(value || "")
+                            .toLowerCase()
+                            .includes(search)
                     );
-            }
 
-            return (
-                matchesSearch &&
-                matchesStatus &&
-                matchesPriority &&
-                matchesDue
-            );
-        })
-        .sort((a, b) => {
-            /*
-             * RULE 1:
-             * Active tasks always appear
-             * before completed tasks.
-             */
-            const aCompleted =
-                completedStatuses.includes(a.status);
+                const matchesStatus =
+                    statusFilter === "All" ||
+                    task.status === statusFilter;
 
-            const bCompleted =
-                completedStatuses.includes(b.status);
+                const matchesPriority =
+                    priorityFilter === "All" ||
+                    task.priority === priorityFilter;
 
-            if (aCompleted !== bCompleted) {
-                return aCompleted ? 1 : -1;
-            }
+                let matchesDue = true;
 
-            /*
-             * RULE 2:
-             * Higher priority first.
-             *
-             * Critical
-             * High
-             * Medium
-             * Low
-             */
-            const priorityDifference =
-                (priorityRank[b.priority] || 0) -
-                (priorityRank[a.priority] || 0);
+                if (dueFilter === "Today") {
+                    matchesDue = isTaskDueToday(task);
+                } else if (dueFilter === "Overdue") {
+                    matchesDue = isTaskOverdue(task);
+                } else if (dueFilter === "Upcoming") {
+                    matchesDue =
+                        !isTaskOverdue(task) &&
+                        !isTaskDueToday(task) &&
+                        !completedStatuses.includes(
+                            task.status
+                        );
+                }
 
-            if (priorityDifference !== 0) {
-                return priorityDifference;
-            }
+                return (
+                    matchesSearch &&
+                    matchesStatus &&
+                    matchesPriority &&
+                    matchesDue
+                );
+            })
+            .sort((a, b) => {
+                /*
+                 * RULE 1:
+                 * Active tasks always appear
+                 * before completed tasks.
+                 */
+                const aCompleted =
+                    completedStatuses.includes(a.status);
 
-            /*
-             * RULE 3:
-             * Same priority =
-             * newest task first.
-             */
-            const aCreatedAt =
-                new Date(
-                    a.createdAt || 0
-                ).getTime();
+                const bCompleted =
+                    completedStatuses.includes(b.status);
 
-            const bCreatedAt =
-                new Date(
-                    b.createdAt || 0
-                ).getTime();
+                if (aCompleted !== bCompleted) {
+                    return aCompleted ? 1 : -1;
+                }
 
-            return bCreatedAt - aCreatedAt;
-        });
-}, [
-    tasks,
-    searchValue,
-    statusFilter,
-    priorityFilter,
-    dueFilter,
-]);
+                /*
+                 * RULE 2:
+                 * Higher priority first.
+                 *
+                 * Critical
+                 * High
+                 * Medium
+                 * Low
+                 */
+                const priorityDifference =
+                    (priorityRank[b.priority] || 0) -
+                    (priorityRank[a.priority] || 0);
+
+                if (priorityDifference !== 0) {
+                    return priorityDifference;
+                }
+
+                /*
+                 * RULE 3:
+                 * Same priority =
+                 * newest task first.
+                 */
+                const aCreatedAt =
+                    new Date(
+                        a.createdAt || 0
+                    ).getTime();
+
+                const bCreatedAt =
+                    new Date(
+                        b.createdAt || 0
+                    ).getTime();
+
+                return bCreatedAt - aCreatedAt;
+            });
+    }, [
+        tasks,
+        searchValue,
+        statusFilter,
+        priorityFilter,
+        dueFilter,
+    ]);
 
     const activeCount = summary.active;
+    const taskSections = useMemo(() => {
+        const todayKey = getTodayDateKey();
+        const tomorrowKey = getDateKeyFromOffset(1);
+
+        const completedStatuses = [
+            "Completed",
+            "Resolved",
+        ];
+
+        const activeTasks = filteredTasks
+            .filter(
+                (task) =>
+                    !completedStatuses.includes(task.status)
+            )
+            .sort((a, b) => {
+                const priorityRank = {
+                    Critical: 4,
+                    High: 3,
+                    Medium: 2,
+                    Low: 1,
+                };
+
+                const aOverdue = isTaskOverdue(a);
+                const bOverdue = isTaskOverdue(b);
+
+                // 1. Overdue first
+                if (aOverdue !== bOverdue) {
+                    return aOverdue ? -1 : 1;
+                }
+
+                // 2. Blocked tasks need attention
+                const aBlocked = a.status === "Blocked";
+                const bBlocked = b.status === "Blocked";
+
+                if (aBlocked !== bBlocked) {
+                    return aBlocked ? -1 : 1;
+                }
+
+                // 3. Due today
+                const aToday = isTaskDueToday(a);
+                const bToday = isTaskDueToday(b);
+
+                if (aToday !== bToday) {
+                    return aToday ? -1 : 1;
+                }
+
+                // 4. Earlier due date
+                if (a.dueDate && b.dueDate) {
+                    const dateDifference =
+                        parseDate(a.dueDate) -
+                        parseDate(b.dueDate);
+
+                    if (dateDifference !== 0) {
+                        return dateDifference;
+                    }
+                }
+
+                // 5. Higher priority
+                const priorityDifference =
+                    (priorityRank[b.priority] || 0) -
+                    (priorityRank[a.priority] || 0);
+
+                if (priorityDifference !== 0) {
+                    return priorityDifference;
+                }
+
+                // 6. Newest task
+                return (
+                    new Date(b.createdAt || 0).getTime() -
+                    new Date(a.createdAt || 0).getTime()
+                );
+            });
+
+        const completedTasks = filteredTasks.filter((task) =>
+            completedStatuses.includes(task.status)
+        );
+
+        const overdueTasks = activeTasks.filter((task) =>
+            isTaskOverdue(task)
+        );
+
+        const todayTasks = activeTasks.filter((task) =>
+            isTaskDueToday(task)
+        );
+
+        const tomorrowTasks = activeTasks.filter(
+            (task) => task.dueDate === tomorrowKey
+        );
+
+        const upcomingTasks = activeTasks.filter((task) => {
+            if (!task.dueDate) return false;
+
+            return (
+                task.dueDate > tomorrowKey &&
+                !isTaskOverdue(task)
+            );
+        });
+
+        const blockedTasks = activeTasks.filter(
+            (task) => task.status === "Blocked"
+        );
+
+        const unscheduledTasks = activeTasks.filter(
+            (task) => !task.dueDate
+        );
+
+        const completedTodayTasks = completedTasks.filter(
+            (task) => {
+                const completedDate =
+                    task.completedAt ||
+                    task.updatedAt ||
+                    task.modifiedAt;
+
+                if (!completedDate) return false;
+
+                const date = new Date(completedDate);
+
+                if (Number.isNaN(date.getTime())) {
+                    return false;
+                }
+
+                const year = date.getFullYear();
+                const month = String(
+                    date.getMonth() + 1
+                ).padStart(2, "0");
+                const day = String(
+                    date.getDate()
+                ).padStart(2, "0");
+
+                return `${year}-${month}-${day}` === todayKey;
+            }
+        );
+
+        const completedPreviousTasks =
+            completedTasks.filter(
+                (task) =>
+                    !completedTodayTasks.includes(task)
+            );
+
+        return [
+            {
+                id: "pending",
+                title: "Pending Work",
+                subtitle:
+                    activeTasks.length > 0
+                        ? "Tasks that still require your action"
+                        : "You're caught up — no pending tasks",
+
+                tasks: activeTasks,
+
+                tone:
+                    activeTasks.length > 0
+                        ? "pending"
+                        : "empty",
+
+                icon:
+                    activeTasks.length > 0
+                        ? ListChecks
+                        : CheckCircle2,
+
+                stats: {
+                    overdue: overdueTasks.length,
+                    blocked: blockedTasks.length,
+                    today: todayTasks.length,
+                    tomorrow: tomorrowTasks.length,
+                    upcoming: upcomingTasks.length,
+                    unscheduled: unscheduledTasks.length,
+                },
+            },
+
+            {
+                id: "completedToday",
+                title: "Completed Today",
+                subtitle:
+                    completedTodayTasks.length > 0
+                        ? "Tasks successfully completed today"
+                        : "No tasks completed today",
+
+                tasks: completedTodayTasks,
+                tone: "success",
+                icon: CheckCircle2,
+            },
+
+            {
+                id: "completedPrevious",
+                title: "Previous Completed",
+                subtitle: "Historical completed tasks",
+                tasks: completedPreviousTasks,
+                tone: "completed",
+                icon: CheckCircle2,
+            },
+        ];
+    }, [filteredTasks]);
     const inProgressCount = summary.inProgress;
     const dueTodayCount = summary.dueToday;
     const overdueCount = summary.overdue;
     const completedCount = summary.completed;
+    useEffect(() => {
+        if (activeCount > 0) {
+            setOpenTaskSections((current) => ({
+                ...current,
+                pending: true,
+            }));
+        }
+    }, [activeCount]);
+
 
     const selectedTaskChecklists = selectedTask
         ? checklists.filter(
-              (item) => item.taskId === selectedTask.id
-          )
+            (item) => item.taskId === selectedTask.id
+        )
         : [];
 
     const selectedTaskComments = selectedTask
         ? comments.filter(
-              (comment) => comment.taskId === selectedTask.id
-          )
+            (comment) => comment.taskId === selectedTask.id
+        )
         : [];
 
     const selectedTaskFiles = selectedTask
@@ -675,24 +1367,24 @@ const filteredTasks = useMemo(() => {
 
     const selectedTaskWorkLogs = selectedTask
         ? workLogs.filter(
-              (workLog) => workLog.taskId === selectedTask.id
-          )
+            (workLog) => workLog.taskId === selectedTask.id
+        )
         : [];
 
     const selectedTaskTimeline = selectedTask
         ? timeline.filter(
-              (item) => item.taskId === selectedTask.id
-          )
+            (item) => item.taskId === selectedTask.id
+        )
         : [];
 
     const checklistProgress = selectedTaskChecklists.length
         ? Math.round(
-              (selectedTaskChecklists.filter(
-                  (item) => item.completed
-              ).length /
-                  selectedTaskChecklists.length) *
-                  100
-          )
+            (selectedTaskChecklists.filter(
+                (item) => item.completed
+            ).length /
+                selectedTaskChecklists.length) *
+            100
+        )
         : 0;
 
     const openTaskDetails = async (task) => {
@@ -793,9 +1485,9 @@ const filteredTasks = useMemo(() => {
             current.map((task) =>
                 task.id === selectedTask.id
                     ? {
-                          ...task,
-                          ...updates,
-                      }
+                        ...task,
+                        ...updates,
+                    }
                     : task
             )
         );
@@ -825,9 +1517,9 @@ const filteredTasks = useMemo(() => {
             current.map((item) =>
                 item.id === itemId
                     ? {
-                          ...item,
-                          completed: !item.completed,
-                      }
+                        ...item,
+                        completed: !item.completed,
+                    }
                     : item
             )
         );
@@ -908,12 +1600,12 @@ const filteredTasks = useMemo(() => {
         const size =
             file.size >= 1024 * 1024
                 ? `${(file.size / (1024 * 1024)).toFixed(
-                      1
-                  )} MB`
+                    1
+                )} MB`
                 : `${Math.max(
-                      1,
-                      Math.round(file.size / 1024)
-                  )} KB`;
+                    1,
+                    Math.round(file.size / 1024)
+                )} KB`;
 
         setSelectedFile({
             file,
@@ -1027,6 +1719,12 @@ const filteredTasks = useMemo(() => {
         });
     };
 
+    const toggleTaskSection = (sectionId) => {
+        setOpenTaskSections((current) => ({
+            ...current,
+            [sectionId]: !current[sectionId],
+        }));
+    };
     return (
         <div>
             <div className="flex flex-col gap-4 border-b border-slate-200 pb-6 lg:flex-row lg:items-end lg:justify-between">
@@ -1125,61 +1823,55 @@ const filteredTasks = useMemo(() => {
                 />
             </div>
 
-            <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 xl:flex-row xl:items-center xl:justify-between">
-                    <div>
-                        <h3 className="text-sm font-semibold text-slate-950">
-                            Assigned Tasks
-                        </h3>
+          <div className="mt-5 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3.5 xl:flex-row xl:items-center xl:justify-between">
+        <div>
+            <h3 className="text-sm font-semibold text-slate-950">
+                My Work Queue
+            </h3>
 
-                        <p className="mt-1 text-[10px] text-slate-500">
-                            {filteredTasks.length} task
-                            {filteredTasks.length !== 1 ? "s" : ""}{" "}
-                            found
-                        </p>
-                    </div>
+            <p className="mt-1 text-[10px] text-slate-500">
+                {activeCount} pending · {completedCount} completed
+            </p>
+        </div>
 
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                        <div className="relative">
-                            <Search
-                                size={15}
-                                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                            />
+        <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="relative">
+                <Search
+                    size={15}
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                />
 
-                            <input
-                                type="text"
-                                value={searchValue}
-                                onChange={(event) =>
-                                    setSearchValue(
-                                        event.target.value
-                                    )
-                                }
-                                placeholder="Search task, client, project..."
-                                className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-xs text-slate-700 outline-none placeholder:text-slate-400 focus:border-violet-400 focus:ring-4 focus:ring-violet-100 sm:w-72"
-                            />
-                        </div>
+                <input
+                    type="text"
+                    value={searchValue}
+                    onChange={(event) =>
+                        setSearchValue(event.target.value)
+                    }
+                    placeholder="Search task, client, project..."
+                    className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs text-slate-700 outline-none placeholder:text-slate-400 focus:border-violet-400 focus:ring-4 focus:ring-violet-100 sm:w-72"
+                />
+            </div>
 
-                        <button
-                            type="button"
-                            onClick={() =>
-                                setFiltersOpen(
-                                    (current) => !current
-                                )
-                            }
-                            className={`flex h-10 items-center justify-center gap-2 rounded-xl border px-4 text-xs font-semibold transition ${
-                                filtersOpen ||
-                                statusFilter !== "All" ||
-                                priorityFilter !== "All" ||
-                                dueFilter !== "All"
-                                    ? "border-violet-200 bg-violet-50 text-violet-700"
-                                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                            }`}
-                        >
-                            <Filter size={15} />
-                            Filters
-                        </button>
-                    </div>
-                </div>
+            <button
+                type="button"
+                onClick={() =>
+                    setFiltersOpen((current) => !current)
+                }
+                className={`flex h-9 items-center justify-center gap-2 rounded-lg border px-3.5 text-[11px] font-semibold transition ${
+                    filtersOpen ||
+                    statusFilter !== "All" ||
+                    priorityFilter !== "All" ||
+                    dueFilter !== "All"
+                        ? "border-violet-200 bg-violet-50 text-violet-700"
+                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+            >
+                <Filter size={14} />
+                Filters
+            </button>
+        </div>
+    </div>
 
                 {filtersOpen && (
                     <div className="grid gap-3 border-b border-slate-200 bg-slate-50/70 px-5 py-4 md:grid-cols-4">
@@ -1271,293 +1963,27 @@ const filteredTasks = useMemo(() => {
                     </div>
                 )}
 
-                <div className="overflow-x-auto">
-                    <table className="w-full min-w-[1180px]">
-                        <thead>
-                            <tr className="border-b border-slate-200 bg-slate-50/80">
-                                <th className="px-5 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                    Task
-                                </th>
 
-                                <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                    Client / Project
-                                </th>
 
-                                <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                    Priority
-                                </th>
-
-                                <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                    Status
-                                </th>
-
-                                <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                    Due Date
-                                </th>
-
-                                <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                    Progress
-                                </th>
-
-                                <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                    Time
-                                </th>
-
-                                <th className="px-5 py-3 text-right text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                    Actions
-                                </th>
-                            </tr>
-                        </thead>
-
-                        <tbody className="divide-y divide-slate-100">
-                            {filteredTasks.map((task) => {
-                                const overdue =
-                                    isTaskOverdue(task);
-
-                                const dueToday =
-                                    isTaskDueToday(task);
-
-                                const taskIsActive =
-                                    activeTaskId === task.id;
-
-                                return (
-                                    <tr
-                                        key={task.id}
-                                        className={`transition hover:bg-slate-50/70 ${
-                                            overdue
-                                                ? "bg-rose-50/30"
-                                                : ""
-                                        }`}
-                                    >
-                                        <td className="px-5 py-4">
-                                            <div className="flex items-start gap-3">
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        startTask(task)
-                                                    }
-                                                    disabled={[
-                                                        "Completed",
-                                                        "Resolved",
-                                                    ].includes(
-                                                        task.status
-                                                    )}
-                                                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition ${
-                                                        taskIsActive
-                                                            ? "bg-violet-600 text-white"
-                                                            : "bg-violet-50 text-violet-700 hover:bg-violet-100"
-                                                    } disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-300`}
-                                                >
-                                                    {taskIsActive &&
-                                                    timerRunning ? (
-                                                        <Pause
-                                                            size={
-                                                                15
-                                                            }
-                                                        />
-                                                    ) : (
-                                                        <Play
-                                                            size={
-                                                                15
-                                                            }
-                                                        />
-                                                    )}
-                                                </button>
-
-                                                <div className="min-w-0">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                            openTaskDetails(
-                                                                task
-                                                            )
-                                                        }
-                                                        className="block max-w-72 truncate text-left text-xs font-semibold text-slate-900 hover:text-violet-700"
-                                                    >
-                                                        {task.title}
-                                                    </button>
-
-                                                    <div className="mt-1 flex flex-wrap items-center gap-2">
-                                                        <span className="text-[10px] font-semibold text-violet-600">
-                                                            {
-                                                                task.taskNo
-                                                            }
-                                                        </span>
-
-                                                        {task.ticketNo && (
-                                                            <>
-                                                                <span className="text-slate-300">
-                                                                    ·
-                                                                </span>
-
-                                                                <span className="text-[10px] text-blue-600">
-                                                                    {
-                                                                        task.ticketNo
-                                                                    }
-                                                                </span>
-                                                            </>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </td>
-
-                                        <td className="px-4 py-4">
-                                            <p className="text-xs font-semibold text-slate-800">
-                                                {task.client}
-                                            </p>
-
-                                            <p className="mt-1 text-[10px] text-slate-500">
-                                                {task.project} ·{" "}
-                                                {task.module}
-                                            </p>
-                                        </td>
-
-                                        <td className="px-4 py-4">
-                                            <span
-                                                className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ring-inset ${getPriorityClasses(
-                                                    task.priority
-                                                )}`}
-                                            >
-                                                {task.priority}
-                                            </span>
-                                        </td>
-
-                                        <td className="px-4 py-4">
-                                            <span
-                                                className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ring-inset ${getStatusClasses(
-                                                    task.status
-                                                )}`}
-                                            >
-                                                {task.status}
-                                            </span>
-                                        </td>
-
-                                        <td className="px-4 py-4">
-                                            <p
-                                                className={`text-xs font-semibold ${
-                                                    overdue
-                                                        ? "text-rose-700"
-                                                        : dueToday
-                                                          ? "text-amber-700"
-                                                          : "text-slate-700"
-                                                }`}
-                                            >
-                                                {formatDate(
-                                                    task.dueDate
-                                                )}
-                                            </p>
-
-                                            {(overdue ||
-                                                dueToday) && (
-                                                <p
-                                                    className={`mt-1 text-[9px] font-semibold uppercase tracking-[0.08em] ${
-                                                        overdue
-                                                            ? "text-rose-500"
-                                                            : "text-amber-500"
-                                                    }`}
-                                                >
-                                                    {overdue
-                                                        ? "Overdue"
-                                                        : "Due today"}
-                                                </p>
-                                            )}
-                                        </td>
-
-                                        <td className="px-4 py-4">
-                                            <div className="flex items-center gap-3">
-                                                <div className="h-2 w-24 overflow-hidden rounded-full bg-slate-100">
-                                                    <div
-                                                        className="h-full rounded-full bg-violet-500"
-                                                        style={{
-                                                            width: `${Math.min(
-                                                                task.progress,
-                                                                100
-                                                            )}%`,
-                                                        }}
-                                                    />
-                                                </div>
-
-                                                <span className="text-[10px] font-semibold text-slate-600">
-                                                    {
-                                                        task.progress
-                                                    }
-                                                    %
-                                                </span>
-                                            </div>
-                                        </td>
-
-                                        <td className="px-4 py-4">
-                                            <p className="text-xs font-semibold text-slate-800">
-                                                {formatDurationFromSeconds(
-                                                    task.spentSeconds
-                                                )}
-                                            </p>
-
-                                            <p className="mt-1 text-[9px] text-slate-400">
-                                                of{" "}
-                                                {formatEstimatedTime(
-                                                    task.estimatedMinutes
-                                                )}
-                                            </p>
-                                        </td>
-
-                                        <td className="px-5 py-4">
-                                            <div className="flex justify-end gap-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        openTaskDetails(
-                                                            task
-                                                        )
-                                                    }
-                                                    className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-semibold text-slate-600 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
-                                                >
-                                                    Open
-                                                </button>
-
-                                                {task.status !==
-                                                    "Completed" && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                            completeTask(
-                                                                task
-                                                            )
-                                                        }
-                                                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 transition hover:bg-emerald-100"
-                                                    >
-                                                        <Check
-                                                            size={
-                                                                14
-                                                            }
-                                                        />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
+                <div className="space-y-2.5 bg-slate-50/40 p-3.5 sm:p-4">
+                    {taskSections.map((section) => (
+                        <TaskDaySection
+                            key={section.id}
+                            section={section}
+                            expanded={
+                                openTaskSections[section.id] ?? false
+                            }
+                            onToggle={() =>
+                                toggleTaskSection(section.id)
+                            }
+                            onOpenTask={openTaskDetails}
+                            onStartTask={startTask}
+                            onCompleteTask={completeTask}
+                            activeTaskId={activeTaskId}
+                            timerRunning={timerRunning}
+                        />
+                    ))}
                 </div>
-
-                {filteredTasks.length === 0 && (
-                    <div className="flex min-h-[300px] flex-col items-center justify-center text-center">
-                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
-                            <Search size={22} />
-                        </div>
-
-                        <h3 className="mt-4 text-sm font-semibold text-slate-900">
-                            No tasks found
-                        </h3>
-
-                        <p className="mt-1 text-xs text-slate-500">
-                            Change your search or task filters.
-                        </p>
-                    </div>
-                )}
             </div>
 
             {selectedTask && (
@@ -1647,11 +2073,10 @@ const filteredTasks = useMemo(() => {
                                         onClick={() =>
                                             setDetailsTab(tab.id)
                                         }
-                                        className={`whitespace-nowrap border-b-2 px-4 py-4 text-[11px] font-semibold transition ${
-                                            detailsTab === tab.id
+                                        className={`whitespace-nowrap border-b-2 px-4 py-4 text-[11px] font-semibold transition ${detailsTab === tab.id
                                                 ? "border-violet-600 text-violet-700"
                                                 : "border-transparent text-slate-500 hover:text-slate-800"
-                                        }`}
+                                            }`}
                                     >
                                         {tab.label}
                                     </button>
@@ -1701,30 +2126,30 @@ const filteredTasks = useMemo(() => {
                                                         size={15}
                                                     />
                                                     {activeTaskId ===
-                                                    selectedTask.id
+                                                        selectedTask.id
                                                         ? "Resume"
                                                         : "Start"}
                                                 </button>
 
                                                 {selectedTask.status !==
                                                     "Completed" && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                            completeTask(
-                                                                selectedTask
-                                                            )
-                                                        }
-                                                        className="flex h-10 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
-                                                    >
-                                                        <CheckCircle2
-                                                            size={
-                                                                15
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                completeTask(
+                                                                    selectedTask
+                                                                )
                                                             }
-                                                        />
-                                                        Complete
-                                                    </button>
-                                                )}
+                                                            className="flex h-10 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
+                                                        >
+                                                            <CheckCircle2
+                                                                size={
+                                                                    15
+                                                                }
+                                                            />
+                                                            Complete
+                                                        </button>
+                                                    )}
                                             </div>
                                         </div>
                                     </div>
@@ -1814,13 +2239,12 @@ const filteredTasks = useMemo(() => {
                                             </div>
 
                                             <p
-                                                className={`mt-3 text-xs font-semibold ${
-                                                    isTaskOverdue(
-                                                        selectedTask
-                                                    )
+                                                className={`mt-3 text-xs font-semibold ${isTaskOverdue(
+                                                    selectedTask
+                                                )
                                                         ? "text-rose-700"
                                                         : "text-slate-900"
-                                                }`}
+                                                    }`}
                                             >
                                                 {formatDate(
                                                     selectedTask.dueDate
@@ -1977,11 +2401,10 @@ const filteredTasks = useMemo(() => {
                                                                 item.id
                                                             )
                                                         }
-                                                        className={`flex h-5 w-5 items-center justify-center rounded-md border ${
-                                                            item.completed
+                                                        className={`flex h-5 w-5 items-center justify-center rounded-md border ${item.completed
                                                                 ? "border-emerald-500 bg-emerald-500 text-white"
                                                                 : "border-slate-300 text-transparent"
-                                                        }`}
+                                                            }`}
                                                     >
                                                         <Check
                                                             size={
@@ -1991,11 +2414,10 @@ const filteredTasks = useMemo(() => {
                                                     </button>
 
                                                     <p
-                                                        className={`flex-1 text-xs ${
-                                                            item.completed
+                                                        className={`flex-1 text-xs ${item.completed
                                                                 ? "text-slate-400 line-through"
                                                                 : "text-slate-700"
-                                                        }`}
+                                                            }`}
                                                     >
                                                         {
                                                             item.title

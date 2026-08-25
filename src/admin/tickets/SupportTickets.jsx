@@ -10,6 +10,7 @@ import {
   CalendarDays,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
   CircleDot,
   Clock3,
   Filter,
@@ -27,6 +28,8 @@ import {
   TicketCheck,
   UserRound,
   Users,
+  Inbox,
+  ShieldAlert,
   X,
   FileText,
   Activity,
@@ -322,6 +325,8 @@ const normalizeTicketFromApi = (
         ticket.resolvedAt
       )
       : "",
+  resolvedAtValue:
+    ticket.resolvedAt || null,
   linkedTaskId:
     ticket.linkedTaskId
       ? String(ticket.linkedTaskId)
@@ -835,6 +840,309 @@ function AttachmentFile({ attachment }) {
   );
 }
 
+
+const getTodayKey = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const isTicketCompleted = (ticket) =>
+  ["Resolved", "Verified", "Closed"].includes(ticket?.status);
+
+const isAdminTicketOverdue = (ticket) => {
+  if (!ticket?.dueDateValue || isTicketCompleted(ticket)) return false;
+  return ticket.dueDateValue < getTodayKey();
+};
+
+const isAdminTicketDueToday = (ticket) =>
+  Boolean(ticket?.dueDateValue) &&
+  !isTicketCompleted(ticket) &&
+  ticket.dueDateValue === getTodayKey();
+
+function AdminTicketQueueRow({ ticket, onOpen }) {
+  const overdue = isAdminTicketOverdue(ticket);
+  const dueToday = isAdminTicketDueToday(ticket);
+  const completed = isTicketCompleted(ticket);
+
+  return (
+    <div
+      onClick={() => onOpen(ticket)}
+      className={`group grid cursor-pointer gap-3 border-t border-slate-100 px-4 py-2.5 transition first:border-t-0 hover:bg-slate-50/80 xl:grid-cols-[minmax(280px,1.7fr)_minmax(170px,1fr)_minmax(150px,1fr)_90px_120px_115px_90px] xl:items-center ${
+        overdue ? "bg-rose-50/30" : completed ? "bg-white" : ""
+      }`}
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <div
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+            completed
+              ? "bg-emerald-100 text-emerald-700"
+              : ticket.priority === "Critical"
+                ? "bg-rose-100 text-rose-700"
+                : ticket.status === "In Progress"
+                  ? "bg-violet-100 text-violet-700"
+                  : "bg-blue-100 text-blue-700"
+          }`}
+        >
+          {completed ? (
+            <CheckCircle2 size={16} />
+          ) : ticket.priority === "Critical" ? (
+            <AlertCircle size={16} />
+          ) : ticket.status === "In Progress" ? (
+            <CircleDot size={16} />
+          ) : (
+            <MessageSquare size={16} />
+          )}
+        </div>
+
+        <div className="min-w-0">
+          <p className="truncate text-[12px] font-semibold leading-4 text-slate-900">
+            {ticket.title}
+          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-x-1.5">
+            <span className="text-[9px] font-bold text-violet-600">
+              {ticket.id}
+            </span>
+            <span className="text-[8px] text-slate-300">•</span>
+            <span className="truncate text-[9px] text-slate-500">
+              {ticket.source}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="min-w-0">
+        <p className="truncate text-[11px] font-semibold text-slate-800">
+          {ticket.client || "—"}
+        </p>
+        <p className="mt-0.5 truncate text-[9px] text-slate-500">
+          {[ticket.product, ticket.module].filter(Boolean).join(" · ") || "General"}
+        </p>
+      </div>
+
+      <div className="flex min-w-0 items-center gap-2">
+        <div
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[9px] font-bold ${
+            ticket.assignedEmployeeId
+              ? "bg-slate-900 text-white"
+              : "bg-rose-100 text-rose-700"
+          }`}
+        >
+          {ticket.assignedEmployeeId ? ticket.assignedInitials : "!"}
+        </div>
+        <div className="min-w-0">
+          <p
+            className={`truncate text-[10px] font-semibold ${
+              ticket.assignedEmployeeId ? "text-slate-700" : "text-rose-700"
+            }`}
+          >
+            {ticket.assignedTo}
+          </p>
+          {ticket.assignedEmployeeCode && (
+            <p className="mt-0.5 text-[8px] text-slate-400">
+              {ticket.assignedEmployeeCode}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <PriorityBadge priority={ticket.priority} />
+      </div>
+
+      <div>
+        <StatusBadge status={ticket.status} />
+      </div>
+
+      <div className="min-w-0">
+        <p
+          className={`truncate text-[10px] font-semibold ${
+            overdue
+              ? "text-rose-700"
+              : dueToday
+                ? "text-amber-700"
+                : completed
+                  ? "text-emerald-700"
+                  : "text-slate-700"
+          }`}
+        >
+          {completed ? "Completed" : ticket.dueDate}
+        </p>
+        {(overdue || dueToday) && !completed && (
+          <p className={`mt-0.5 text-[8px] font-semibold ${overdue ? "text-rose-500" : "text-amber-500"}`}>
+            {overdue ? "Overdue" : "Due today"}
+          </p>
+        )}
+      </div>
+
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpen(ticket);
+          }}
+          className="flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-semibold text-slate-600 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+        >
+          Open
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AdminTicketSection({ section, expanded, onToggle, onOpenTicket }) {
+  const Icon = section.icon;
+  const toneClasses = {
+    danger: {
+      wrapper: "border-rose-200",
+      header: "bg-gradient-to-r from-rose-50 via-white to-white hover:from-rose-100/70",
+      icon: "bg-rose-100 text-rose-700",
+      count: "bg-rose-100 text-rose-700",
+    },
+    active: {
+      wrapper: "border-violet-200 shadow-[0_8px_30px_rgba(124,58,237,0.05)]",
+      header: "bg-gradient-to-r from-violet-50 via-white to-white hover:from-violet-100/70",
+      icon: "bg-violet-100 text-violet-700",
+      count: "bg-violet-100 text-violet-700",
+    },
+    success: {
+      wrapper: "border-emerald-200",
+      header: "bg-emerald-50/60 hover:bg-emerald-50",
+      icon: "bg-emerald-100 text-emerald-700",
+      count: "bg-emerald-100 text-emerald-700",
+    },
+    completed: {
+      wrapper: "border-slate-200",
+      header: "bg-slate-50/80 hover:bg-slate-100",
+      icon: "bg-slate-100 text-slate-600",
+      count: "bg-slate-200 text-slate-600",
+    },
+    empty: {
+      wrapper: "border-slate-200",
+      header: "bg-gradient-to-r from-slate-50 to-white hover:bg-slate-50",
+      icon: "bg-emerald-50 text-emerald-600",
+      count: "bg-slate-100 text-slate-500",
+    },
+  };
+
+  const tone = toneClasses[section.tone] || toneClasses.completed;
+
+  return (
+    <section className={`overflow-hidden rounded-xl border bg-white ${tone.wrapper}`}>
+      <button
+        type="button"
+        onClick={onToggle}
+        className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition ${tone.header}`}
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${tone.icon}`}>
+            <Icon size={16} />
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-xs font-bold text-slate-900">{section.title}</h3>
+              <span className={`inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-[9px] font-bold ${tone.count}`}>
+                {section.tickets.length}
+              </span>
+            </div>
+            <p className="mt-1 text-[10px] text-slate-500">{section.subtitle}</p>
+            {section.stats && section.tickets.length > 0 && (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                {section.stats.overdue > 0 && (
+                  <span className="rounded-md bg-rose-100 px-2 py-1 text-[9px] font-semibold text-rose-700">
+                    {section.stats.overdue} overdue
+                  </span>
+                )}
+                {section.stats.critical > 0 && (
+                  <span className="rounded-md bg-rose-100 px-2 py-1 text-[9px] font-semibold text-rose-700">
+                    {section.stats.critical} critical
+                  </span>
+                )}
+                {section.stats.today > 0 && (
+                  <span className="rounded-md bg-amber-100 px-2 py-1 text-[9px] font-semibold text-amber-700">
+                    {section.stats.today} due today
+                  </span>
+                )}
+                {section.stats.inProgress > 0 && (
+                  <span className="rounded-md bg-violet-100 px-2 py-1 text-[9px] font-semibold text-violet-700">
+                    {section.stats.inProgress} in progress
+                  </span>
+                )}
+                {section.stats.waiting > 0 && (
+                  <span className="rounded-md bg-orange-100 px-2 py-1 text-[9px] font-semibold text-orange-700">
+                    {section.stats.waiting} waiting
+                  </span>
+                )}
+                {section.stats.unassigned > 0 && (
+                  <span className="rounded-md bg-slate-200 px-2 py-1 text-[9px] font-semibold text-slate-700">
+                    {section.stats.unassigned} unassigned
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 shadow-sm">
+          {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="border-t border-slate-100">
+          {section.tickets.length > 0 && (
+            <div className="hidden grid-cols-[minmax(280px,1.7fr)_minmax(170px,1fr)_minmax(150px,1fr)_90px_120px_115px_90px] gap-3 border-b border-slate-100 bg-slate-50/60 px-4 py-2 xl:grid">
+              {[
+                "Ticket",
+                "Client / Product",
+                "Assigned To",
+                "Priority",
+                "Status",
+                "Due",
+                "Action",
+              ].map((label) => (
+                <span
+                  key={label}
+                  className={`${label === "Action" ? "text-right" : ""} text-[8px] font-bold uppercase tracking-[0.14em] text-slate-400`}
+                >
+                  {label}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {section.tickets.length > 0 ? (
+            section.tickets.map((ticket) => (
+              <AdminTicketQueueRow
+                key={ticket.mongoId || ticket.id}
+                ticket={ticket}
+                onOpen={onOpenTicket}
+              />
+            ))
+          ) : (
+            <div className="flex min-h-[105px] items-center justify-center px-5 py-6">
+              <div className="text-center">
+                <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+                  <CheckCircle2 size={18} />
+                </div>
+                <p className="mt-2.5 text-xs font-semibold text-slate-800">
+                  {section.emptyTitle}
+                </p>
+                <p className="mt-1 text-[10px] text-slate-500">
+                  {section.emptyText}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function SupportTickets() {
   const [ticketFormError, setTicketFormError] = useState("");
   const [tickets, setTickets] = useState([]);
@@ -873,6 +1181,12 @@ export default function SupportTickets() {
   const [createTicketAttachment, setCreateTicketAttachment] = useState(null);
   const [attachmentSaving, setAttachmentSaving] = useState(false);
   const [attachmentError, setAttachmentError] = useState("");
+  const [openTicketSections, setOpenTicketSections] = useState({
+    attention: true,
+    active: true,
+    resolvedToday: false,
+    resolvedPrevious: false,
+  });
 
   const loadTickets = async () => {
     try {
@@ -1041,6 +1355,128 @@ export default function SupportTickets() {
     employeeFilter,
     activeView,
   ]);
+
+
+  const inProgressCount = tickets.filter(
+    (ticket) => ticket.status === "In Progress"
+  ).length;
+  const overdueCount = tickets.filter(isAdminTicketOverdue).length;
+  const unassignedCount = tickets.filter(
+    (ticket) => !isTicketCompleted(ticket) && !ticket.assignedEmployeeId
+  ).length;
+
+  const ticketSections = useMemo(() => {
+    const activeTickets = filteredTickets
+      .filter((ticket) => !isTicketCompleted(ticket))
+      .sort((a, b) => {
+        const priorityRank = { Critical: 4, High: 3, Medium: 2, Low: 1 };
+        const aOverdue = isAdminTicketOverdue(a);
+        const bOverdue = isAdminTicketOverdue(b);
+        if (aOverdue !== bOverdue) return aOverdue ? -1 : 1;
+        const aToday = isAdminTicketDueToday(a);
+        const bToday = isAdminTicketDueToday(b);
+        if (aToday !== bToday) return aToday ? -1 : 1;
+        return (priorityRank[b.priority] || 0) - (priorityRank[a.priority] || 0);
+      });
+
+    const completedTickets = filteredTickets.filter(isTicketCompleted);
+    const overdueTickets = activeTickets.filter(isAdminTicketOverdue);
+    const criticalTickets = activeTickets.filter((ticket) => ticket.priority === "Critical");
+    const dueTodayTickets = activeTickets.filter(isAdminTicketDueToday);
+    const waitingTickets = activeTickets.filter((ticket) => ticket.status === "Waiting for Client");
+    const unassignedTickets = activeTickets.filter((ticket) => !ticket.assignedEmployeeId);
+
+    const attentionMap = new Map();
+    [...overdueTickets, ...criticalTickets, ...waitingTickets, ...unassignedTickets].forEach((ticket) => {
+      attentionMap.set(String(ticket.mongoId || ticket.id), ticket);
+    });
+    const attentionTickets = Array.from(attentionMap.values());
+
+    const resolvedTodayTickets = completedTickets.filter((ticket) => {
+      const raw = ticket.resolvedAtValue || ticket.updatedAtValue;
+      if (!raw) return false;
+      const date = new Date(raw);
+      if (Number.isNaN(date.getTime())) return false;
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}` === getTodayKey();
+    });
+
+    const resolvedPreviousTickets = completedTickets.filter(
+      (ticket) => !resolvedTodayTickets.includes(ticket)
+    );
+
+    return [
+      {
+        id: "attention",
+        title: "Attention Required",
+        subtitle: attentionTickets.length
+          ? "Critical, overdue, waiting or unassigned tickets"
+          : "No urgent support issues",
+        tickets: attentionTickets,
+        tone: attentionTickets.length ? "danger" : "empty",
+        icon: attentionTickets.length ? ShieldAlert : CheckCircle2,
+        stats: {
+          overdue: overdueTickets.length,
+          critical: criticalTickets.length,
+          waiting: waitingTickets.length,
+          unassigned: unassignedTickets.length,
+        },
+        emptyTitle: "No tickets require attention",
+        emptyText: "Critical and overdue support issues will appear here.",
+      },
+      {
+        id: "active",
+        title: "Active Support Queue",
+        subtitle: activeTickets.length
+          ? "Current unresolved tickets across the support team"
+          : "No active support tickets",
+        tickets: activeTickets,
+        tone: activeTickets.length ? "active" : "empty",
+        icon: activeTickets.length ? Headphones : CheckCircle2,
+        stats: {
+          overdue: overdueTickets.length,
+          critical: criticalTickets.length,
+          today: dueTodayTickets.length,
+          inProgress: activeTickets.filter((ticket) => ticket.status === "In Progress").length,
+          waiting: waitingTickets.length,
+          unassigned: unassignedTickets.length,
+        },
+        emptyTitle: "No active support tickets",
+        emptyText: "New and reopened tickets will appear here automatically.",
+      },
+      {
+        id: "resolvedToday",
+        title: "Resolved Today",
+        subtitle: resolvedTodayTickets.length
+          ? "Tickets successfully completed today"
+          : "No tickets resolved today",
+        tickets: resolvedTodayTickets,
+        tone: "success",
+        icon: CheckCircle2,
+        emptyTitle: "No tickets resolved today",
+        emptyText: "Tickets completed today will appear here.",
+      },
+      {
+        id: "resolvedPrevious",
+        title: "Previous Resolved",
+        subtitle: "Historical resolved, verified and closed tickets",
+        tickets: resolvedPreviousTickets,
+        tone: "completed",
+        icon: CheckCircle2,
+        emptyTitle: "No previous resolved tickets",
+        emptyText: "Older completed support tickets will appear here.",
+      },
+    ];
+  }, [filteredTickets]);
+
+  const toggleTicketSection = (sectionId) => {
+    setOpenTicketSections((current) => ({
+      ...current,
+      [sectionId]: !current[sectionId],
+    }));
+  };
 
   const openTicketDetails = async (ticket) => {
     const ticketId = ticket.mongoId || ticket._id;
@@ -2779,450 +3215,234 @@ export default function SupportTickets() {
   </div>
 </section>
 
-      {/* Statistics */}
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <button
-          type="button"
-          onClick={() => setActiveView("Open")}
-          className={`enterprise-surface--interactive rounded-2xl border bg-white p-5 text-left shadow-[0_8px_30px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:shadow-md ${activeView === "Open"
-            ? "border-violet-300 ring-4 ring-violet-50"
-            : "border-slate-200"
-            }`}
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                Open Tickets
-              </p>
-              <p className="mt-3 text-2xl font-semibold text-slate-950">
-                {stats.openTickets}
-              </p>
-              <p className="mt-1 text-xs text-slate-500">
-                Require team attention
-              </p>
-            </div>
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
-              <TicketCheck size={20} />
-            </div>
-          </div>
-        </button>
+      {/* Support KPI cards */}
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        {[
+          {
+            id: "Open",
+            label: "Open Tickets",
+            value: stats.openTickets,
+            text: "Require team attention",
+            Icon: TicketCheck,
+            iconClass: "bg-violet-100 text-violet-700",
+            activeClass: "border-violet-300 ring-4 ring-violet-50",
+          },
+          {
+            id: "InProgress",
+            label: "In Progress",
+            value: inProgressCount,
+            text: "Currently under investigation",
+            Icon: CircleDot,
+            iconClass: "bg-blue-100 text-blue-700",
+            activeClass: "border-blue-300 ring-4 ring-blue-50",
+          },
+          {
+            id: "Critical",
+            label: "Critical",
+            value: stats.criticalTickets,
+            text: "Immediate action needed",
+            Icon: AlertCircle,
+            iconClass: "bg-rose-100 text-rose-700",
+            activeClass: "border-rose-300 ring-4 ring-rose-50",
+          },
+          {
+            id: "Waiting",
+            label: "Waiting",
+            value: stats.waitingTickets,
+            text: "Waiting for client reply",
+            Icon: Clock3,
+            iconClass: "bg-amber-100 text-amber-700",
+            activeClass: "border-amber-300 ring-4 ring-amber-50",
+          },
+          {
+            id: "Resolved",
+            label: "Resolved",
+            value: stats.resolvedTickets,
+            text: "Successfully completed",
+            Icon: CheckCircle2,
+            iconClass: "bg-emerald-100 text-emerald-700",
+            activeClass: "border-emerald-300 ring-4 ring-emerald-50",
+          },
+        ].map((item) => {
+          const active =
+            (item.id === "InProgress" && statusFilter === "In Progress") ||
+            (item.id !== "InProgress" && activeView === item.id);
 
-        <button
-          type="button"
-          onClick={() => setActiveView("Critical")}
-          className={`enterprise-surface--interactive rounded-2xl border bg-white p-5 text-left shadow-[0_8px_30px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:shadow-md ${activeView === "Critical"
-            ? "border-rose-300 ring-4 ring-rose-50"
-            : "border-slate-200"
-            }`}
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                Critical
-              </p>
-              <p className="mt-3 text-2xl font-semibold text-slate-950">
-                {stats.criticalTickets}
-              </p>
-              <p className="mt-1 text-xs text-rose-600">
-                Immediate action needed
-              </p>
-            </div>
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-rose-100 text-rose-700">
-              <AlertCircle size={20} />
-            </div>
-          </div>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveView("Waiting")}
-          className={`enterprise-surface--interactive rounded-2xl border bg-white p-5 text-left shadow-[0_8px_30px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:shadow-md ${activeView === "Waiting"
-            ? "border-amber-300 ring-4 ring-amber-50"
-            : "border-slate-200"
-            }`}
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                Waiting
-              </p>
-              <p className="mt-3 text-2xl font-semibold text-slate-950">
-                {stats.waitingTickets}
-              </p>
-              <p className="mt-1 text-xs text-slate-500">
-                Waiting for client reply
-              </p>
-            </div>
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
-              <Clock3 size={20} />
-            </div>
-          </div>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveView("Resolved")}
-          className={`enterprise-surface--interactive rounded-2xl border bg-white p-5 text-left shadow-[0_8px_30px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:shadow-md ${activeView === "Resolved"
-            ? "border-emerald-300 ring-4 ring-emerald-50"
-            : "border-slate-200"
-            }`}
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                Resolved
-              </p>
-              <p className="mt-3 text-2xl font-semibold text-slate-950">
-                {stats.resolvedTickets}
-              </p>
-              <p className="mt-1 text-xs text-emerald-600">
-                Successfully completed
-              </p>
-            </div>
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
-              <CheckCircle2 size={20} />
-            </div>
-          </div>
-        </button>
-      </section>
-
-      {/* Ticket list */}
-      <section className="enterprise-surface overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-        <div className="border-b border-slate-200 px-5 py-5 lg:px-6">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div>
-              <h2 className="text-sm font-semibold text-slate-950">
-                All Support Tickets
-              </h2>
-              <p className="mt-1 text-xs text-slate-500">
-                {filteredTickets.length} tickets found
-              </p>
-            </div>
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <div className="relative min-w-0 sm:w-[330px]">
-                <Search
-                  size={17}
-                  className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-                />
-                <input
-                  type="search"
-                  value={searchValue}
-                  onChange={(event) => setSearchValue(event.target.value)}
-                  placeholder="Search ticket, client, product..."
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-4 text-xs text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-400 focus:bg-white focus:ring-4 focus:ring-violet-100"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() => setFiltersOpen((current) => !current)}
-                className={`flex h-10 items-center justify-center gap-2 rounded-xl border px-4 text-xs font-semibold transition ${filtersOpen
-                  ? "border-violet-300 bg-violet-50 text-violet-700"
-                  : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                  }`}
-              >
-                <SlidersHorizontal size={16} />
-                Filters
-              </button>
-            </div>
-          </div>
-
-          {filtersOpen && (
-            <div className="mt-4 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2 xl:grid-cols-4">
-              <div>
-                <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                  Status
-                </label>
-                <div className="relative">
-                  <select
-                    value={statusFilter}
-                    onChange={(event) => setStatusFilter(event.target.value)}
-                    className="h-10 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-9 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                  >
-                    <option value="All">All statuses</option>
-                    {statusOptions.map((status) => (
-                      <option key={status}>{status}</option>
-                    ))}
-                  </select>
-                  <ChevronDown
-                    size={15}
-                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => {
+                if (item.id === "InProgress") {
+                  setActiveView("All");
+                  setStatusFilter((current) =>
+                    current === "In Progress" ? "All" : "In Progress"
+                  );
+                } else {
+                  setStatusFilter("All");
+                  setActiveView((current) => (current === item.id ? "All" : item.id));
+                }
+              }}
+              className={`rounded-xl border bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
+                active ? item.activeClass : "border-slate-200"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    {item.label}
+                  </p>
+                  <p className="mt-1.5 text-xl font-semibold text-slate-950">
+                    {item.value}
+                  </p>
+                </div>
+                <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${item.iconClass}`}>
+                  <item.Icon size={18} />
                 </div>
               </div>
+              <p className="mt-3 text-[10px] text-slate-500">{item.text}</p>
+            </button>
+          );
+        })}
+      </section>
 
-              <div>
-                <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                  Priority
-                </label>
-                <select
-                  value={priorityFilter}
-                  onChange={(event) => setPriorityFilter(event.target.value)}
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                >
-                  <option value="All">All priorities</option>
-                  {priorityOptions.map((priority) => (
-                    <option key={priority}>{priority}</option>
-                  ))}
-                </select>
-              </div>
+      {/* Support queue */}
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3.5 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-950">
+              Support Operations Queue
+            </h2>
+            <p className="mt-1 text-[10px] text-slate-500">
+              {stats.openTickets} open · {overdueCount} overdue · {unassignedCount} unassigned · {stats.resolvedTickets} resolved
+            </p>
+          </div>
 
-              <div>
-                <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                  Assigned Employee
-                </label>
-                <select
-                  value={employeeFilter}
-                  onChange={(event) => setEmployeeFilter(event.target.value)}
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                >
-                  <option value="All">All employees</option>
-                  {employees.map((employee) => (
-                    <option key={employee.id} value={employee.name}>
-                      {employee.name} — {employee.availability}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex items-end">
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600 transition hover:bg-slate-100"
-                >
-                  <Filter size={15} />
-                  Clear Filters
-                </button>
-              </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="relative min-w-0 sm:w-[300px]">
+              <Search
+                size={15}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+              <input
+                type="search"
+                value={searchValue}
+                onChange={(event) => setSearchValue(event.target.value)}
+                placeholder="Search ticket, client, product..."
+                className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs text-slate-700 outline-none placeholder:text-slate-400 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+              />
             </div>
-          )}
+
+            <button
+              type="button"
+              onClick={() => setFiltersOpen((current) => !current)}
+              className={`flex h-9 items-center justify-center gap-2 rounded-lg border px-3.5 text-[11px] font-semibold transition ${
+                filtersOpen || statusFilter !== "All" || priorityFilter !== "All" || employeeFilter !== "All"
+                  ? "border-violet-200 bg-violet-50 text-violet-700"
+                  : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              <SlidersHorizontal size={14} />
+              Filters
+            </button>
+          </div>
         </div>
 
-        {/* Loading State */}
-        {ticketsLoading && (
-          <div className="flex min-h-[260px] items-center justify-center">
-            <div className="text-center">
-              <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-violet-600" />
-              <p className="mt-3 text-xs font-semibold text-slate-600">
-                Loading support tickets...
-              </p>
+        {filtersOpen && (
+          <div className="grid gap-3 border-b border-slate-200 bg-slate-50/60 px-4 py-3.5 sm:grid-cols-2 xl:grid-cols-4">
+            <div>
+              <label className="mb-1.5 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                Status
+              </label>
+              <select
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+              >
+                <option value="All">All statuses</option>
+                {statusOptions.map((status) => (
+                  <option key={status} value={status}>{status}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                Priority
+              </label>
+              <select
+                value={priorityFilter}
+                onChange={(event) => setPriorityFilter(event.target.value)}
+                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+              >
+                <option value="All">All priorities</option>
+                {priorityOptions.map((priority) => (
+                  <option key={priority} value={priority}>{priority}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                Employee
+              </label>
+              <select
+                value={employeeFilter}
+                onChange={(event) => setEmployeeFilter(event.target.value)}
+                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+              >
+                <option value="All">All employees</option>
+                {employees.map((employee) => (
+                  <option key={employee.id} value={employee.name}>{employee.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100"
+              >
+                <Filter size={14} />
+                Clear Filters
+              </button>
             </div>
           </div>
         )}
 
-        {/* Error State */}
-        {!ticketsLoading && ticketsError && (
-          <div className="enterprise-empty-state m-5 flex min-h-[260px] flex-col items-center justify-center px-6 text-center">
-            <AlertCircle size={26} className="text-rose-500" />
-            <p className="mt-3 text-sm font-semibold text-slate-900">
-              Unable to load tickets
-            </p>
-            <p className="mt-1 text-xs text-slate-500">
-              {ticketsError}
-            </p>
+        {ticketsLoading ? (
+          <div className="flex min-h-[220px] items-center justify-center">
+            <div className="text-center">
+              <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-violet-600" />
+              <p className="mt-3 text-xs font-semibold text-slate-600">Loading support tickets...</p>
+            </div>
+          </div>
+        ) : ticketsError ? (
+          <div className="flex min-h-[220px] flex-col items-center justify-center px-6 text-center">
+            <AlertCircle size={24} className="text-rose-500" />
+            <p className="mt-3 text-sm font-semibold text-slate-900">Unable to load tickets</p>
+            <p className="mt-1 text-xs text-slate-500">{ticketsError}</p>
             <button
               type="button"
               onClick={loadTickets}
-              className="mt-4 rounded-xl bg-violet-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-violet-700"
+              className="mt-4 rounded-lg bg-violet-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-violet-700"
             >
               Try Again
             </button>
           </div>
-        )}
-
-        {/* Ticket Table */}
-        {!ticketsLoading && !ticketsError && (
-          <>
-            <div className="hidden overflow-x-auto xl:block">
-              <table className="enterprise-table min-w-full">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50/80">
-                    <th className="px-6 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                      Ticket
-                    </th>
-                    <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                      Client / Product
-                    </th>
-                    <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                      Assigned To
-                    </th>
-                    <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                      Priority
-                    </th>
-                    <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                      Status
-                    </th>
-                    <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                      Due Date
-                    </th>
-                    <th className="px-6 py-3 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                      Action
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredTickets.map((ticket) => (
-                    <tr
-                      key={ticket.id}
-                      className="border-b border-slate-100 transition last:border-b-0 hover:bg-slate-50/70"
-                    >
-                      <td className="px-6 py-4">
-                        <div className="flex min-w-[320px] items-start gap-3">
-                          <TicketIcon
-                            priority={ticket.priority}
-                            status={ticket.status}
-                          />
-                          <div className="min-w-0">
-                            <button
-                              type="button"
-                              onClick={() => openTicketDetails(ticket)}
-                              className="max-w-[340px] truncate text-left text-sm font-semibold text-slate-900 transition hover:text-violet-700"
-                            >
-                              {ticket.title}
-                            </button>
-                            <div className="mt-1 flex items-center gap-2 text-[10px]">
-                              <span className="font-bold text-violet-600">
-                                {ticket.id}
-                              </span>
-                              <span className="text-slate-300">•</span>
-                              <span className="text-slate-500">
-                                {ticket.source}
-                              </span>
-                              <span className="text-slate-300">•</span>
-                              <span className="text-slate-400">
-                                {ticket.updatedAt}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4">
-                        <p className="max-w-[220px] truncate text-xs font-semibold text-slate-800">
-                          {ticket.client}
-                        </p>
-                        <p className="mt-1 text-[10px] text-slate-500">
-                          {ticket.product} · {ticket.module}
-                        </p>
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="flex items-center gap-2.5">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 text-[10px] font-bold text-white">
-                            {ticket.assignedInitials}
-                          </div>
-                          <span className="whitespace-nowrap text-xs font-medium text-slate-700">
-                            {ticket.assignedTo}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4">
-                        <PriorityBadge priority={ticket.priority} />
-                      </td>
-                      <td className="px-4 py-4">
-                        <StatusBadge status={ticket.status} />
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="flex items-center gap-1.5 whitespace-nowrap text-xs text-slate-600">
-                          <CalendarDays size={14} className="text-slate-400" />
-                          {ticket.dueDate}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() => openTicketDetails(ticket)}
-                            className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
-                          >
-                            Open
-                            <ArrowUpRight size={14} />
-                          </button>
-                          <button
-                            type="button"
-                            className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition hover:bg-slate-50 hover:text-slate-700"
-                          >
-                            <MoreHorizontal size={16} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Mobile and tablet ticket cards */}
-            <div className="divide-y divide-slate-100 xl:hidden">
-              {filteredTickets.map((ticket) => (
-                <article key={ticket.id} className="p-5">
-                  <div className="flex items-start gap-3">
-                    <TicketIcon
-                      priority={ticket.priority}
-                      status={ticket.status}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-[10px] font-bold text-violet-600">
-                            {ticket.id}
-                          </p>
-                          <h3 className="mt-1 text-sm font-semibold text-slate-900">
-                            {ticket.title}
-                          </h3>
-                        </div>
-                        <PriorityBadge priority={ticket.priority} />
-                      </div>
-                      <p className="mt-2 text-xs text-slate-500">
-                        {ticket.client} · {ticket.product}
-                      </p>
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <StatusBadge status={ticket.status} />
-                        <span className="text-[10px] text-slate-400">
-                          Assigned to {ticket.assignedTo}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => openTicketDetails(ticket)}
-                        className="mt-4 flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-600"
-                      >
-                        View Ticket
-                        <ArrowUpRight size={14} />
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              ))}
-            </div>
-
-            {filteredTickets.length === 0 && (
-              <div className="enterprise-empty-state m-5 flex min-h-[320px] flex-col items-center justify-center px-6 text-center">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
-                  <Search size={24} />
-                </div>
-                <h3 className="mt-4 text-sm font-semibold text-slate-900">
-                  No tickets found
-                </h3>
-                <p className="mt-1 max-w-sm text-xs leading-5 text-slate-500">
-                  Try changing the search text or clearing the selected filters.
-                </p>
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="mt-4 text-xs font-semibold text-violet-600"
-                >
-                  Clear all filters
-                </button>
-              </div>
-            )}
-
-            <div className="flex flex-col gap-2 border-t border-slate-200 bg-slate-50/60 px-5 py-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between lg:px-6">
-              <p>
-                Showing {filteredTickets.length} of {tickets.length} support
-                tickets
-              </p>
-              <p>Updated a few seconds ago</p>
-            </div>
-          </>
+        ) : (
+          <div className="space-y-2.5 bg-slate-50/40 p-3.5 sm:p-4">
+            {ticketSections.map((section) => (
+              <AdminTicketSection
+                key={section.id}
+                section={section}
+                expanded={openTicketSections[section.id] ?? false}
+                onToggle={() => toggleTicketSection(section.id)}
+                onOpenTicket={openTicketDetails}
+              />
+            ))}
+          </div>
         )}
       </section>
 
