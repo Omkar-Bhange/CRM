@@ -172,6 +172,7 @@ export default function Team() {
     const [selectedEmployee, setSelectedEmployee] = useState(null);
     const [employeeTab, setEmployeeTab] = useState("overview");
     const [teamView, setTeamView] = useState("table");
+    const [teamBoardStatus, setTeamBoardStatus] = useState("Completed");
     const [pcActivityDate, setPcActivityDate] = useState(
         new Date().toISOString().split("T")[0]
     );
@@ -266,30 +267,129 @@ export default function Team() {
             : `${hours}h`;
     };
 
-    const normalizeEmployeeFromApi = (employee = {}) => ({
-        ...employee,
-        id: employee._id || employee.id || "",
-        employeeCode: employee.employeeCode || "",
-        name: employee.name || "",
-        initials: employee.initials ||
-            String(employee.name || "")
-                .split(" ")
-                .filter(Boolean)
-                .slice(0, 2)
-                .map((word) => word.charAt(0).toUpperCase())
-                .join("") || "NA",
-        client: employee.client || employee.currentClient || "—",
-        project: employee.project || employee.currentProject || "—",
-        currentTask: employee.currentTask || "Available for assignment",
-        loginTime: formatEmployeeTime(employee.loginTime),
-        activeTime: formatActiveTime(employee.activeMinutes),
-        openTasks: Number(employee.openTasks || 0),
-        completedToday: Number(employee.completedToday || 0),
-        lastActivity: employee.lastActivityAt
-            ? new Date(employee.lastActivityAt).toLocaleString("en-IN")
+const normalizeEmployeeFromApi = (
+    employee = {}
+) => ({
+    ...employee,
+
+    id:
+        employee._id ||
+        employee.id ||
+        "",
+
+    employeeCode:
+        employee.employeeCode ||
+        "",
+
+    name:
+        employee.name ||
+        "",
+
+    initials:
+        employee.initials ||
+        String(
+            employee.name ||
+            ""
+        )
+            .split(" ")
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((word) =>
+                word
+                    .charAt(0)
+                    .toUpperCase()
+            )
+            .join("") ||
+        "NA",
+
+    client:
+        employee.client ||
+        employee.currentClient ||
+        "—",
+
+    project:
+        employee.project ||
+        employee.currentProject ||
+        "—",
+
+    currentTask:
+        employee.currentTask ||
+        "Available for assignment",
+
+    loginTime:
+        formatEmployeeTime(
+            employee.loginTime
+        ),
+
+    activeTime:
+        formatActiveTime(
+            employee.activeMinutes
+        ),
+
+    /*
+     * TASK COUNTS NOW COME
+     * FROM LIVE BACKEND CALCULATION.
+     */
+    openTasks:
+        Number(
+            employee.openTasks ||
+            0
+        ),
+
+    completedToday:
+        Number(
+            employee.completedToday ??
+            employee.completedTasks ??
+            0
+        ),
+
+    completedTasks:
+        Number(
+            employee.completedTasks ??
+            employee.completedToday ??
+            0
+        ),
+
+    /*
+     * WINDOWS AGENT / CURRENT APP
+     */
+    agentConnected:
+        employee.agentConnected ===
+        true,
+
+    currentApplication:
+        employee.currentApplication ||
+        "",
+
+    currentWindowTitle:
+        employee.currentWindowTitle ||
+        "",
+
+    pcName:
+        employee.pcName ||
+        "",
+
+    agentLastSeen:
+        employee.agentLastSeen ||
+        null,
+
+    currentActivityStartedAt:
+        employee.currentActivityStartedAt ||
+        null,
+
+    lastActivity:
+        employee.lastActivityAt
+            ? new Date(
+                  employee.lastActivityAt
+              ).toLocaleString(
+                  "en-IN"
+              )
             : "No activity yet",
-        isActive: employee.isActive !== false,
-    });
+
+    isActive:
+        employee.isActive !==
+        false,
+});
 
     const workingCount = employeeList.filter(
         (employee) => employee.status === "Working"
@@ -2548,29 +2648,86 @@ export default function Team() {
                                                     {employee.client} · {employee.project}
                                                 </p>
                                             </td>
-                                            <td className="px-4 py-4">
-                                                {pcActivityData[employee.id]?.[pcActivityDate]?.currentActivity ? (
-                                                    <div>
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                                                            <p className="max-w-[180px] truncate text-xs font-semibold text-slate-800">
-                                                                {pcActivityData[employee.id][pcActivityDate].currentActivity.application}
-                                                            </p>
-                                                        </div>
-                                                        <p className="mt-1 max-w-[180px] truncate text-[10px] text-slate-500">
-                                                            {pcActivityData[employee.id][pcActivityDate].currentActivity.windowTitle}
-                                                        </p>
-                                                    </div>
-                                                ) : (
-                                                    <div>
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="h-2 w-2 rounded-full bg-slate-300" />
-                                                            <p className="text-xs font-semibold text-slate-500">Not connected</p>
-                                                        </div>
-                                                        <p className="mt-1 text-[10px] text-slate-400">PC service offline</p>
-                                                    </div>
-                                                )}
-                                            </td>
+                                        <td className="px-4 py-4">
+    {employee.agentConnected &&
+    employee.currentApplication ? (
+        <div className="max-w-[210px]">
+
+            <div className="flex items-center gap-2">
+
+                <span className="relative flex h-2.5 w-2.5 shrink-0">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-40" />
+
+                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                </span>
+
+                <p className="truncate text-xs font-semibold text-slate-800">
+                    {employee.currentApplication}
+                </p>
+            </div>
+
+            <p
+                title={
+                    employee.currentWindowTitle
+                }
+                className="mt-1 truncate text-[10px] text-slate-500"
+            >
+                {employee.currentWindowTitle ||
+                    "Application active"}
+            </p>
+
+            <div className="mt-1.5 flex items-center gap-2 text-[9px] text-slate-400">
+
+                {employee.pcName && (
+                    <span>
+                        {employee.pcName}
+                    </span>
+                )}
+
+                {employee.agentLastSeen && (
+                    <>
+                        <span>•</span>
+
+                        <span>
+                            Synced{" "}
+                            {new Date(
+                                employee.agentLastSeen
+                            ).toLocaleTimeString(
+                                "en-IN",
+                                {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                }
+                            )}
+                        </span>
+                    </>
+                )}
+            </div>
+        </div>
+    ) : (
+        <div>
+            <div className="flex items-center gap-2">
+
+                <span className="h-2 w-2 rounded-full bg-slate-300" />
+
+                <p className="text-xs font-semibold text-slate-500">
+                    Not connected
+                </p>
+            </div>
+
+            <p className="mt-1 text-[10px] text-slate-400">
+                {employee.agentLastSeen
+                    ? `Last sync ${new Date(
+                          employee.agentLastSeen
+                      ).toLocaleString(
+                          "en-IN"
+                      )}`
+                    : "No PC activity today"}
+            </p>
+        </div>
+    )}
+</td>
+
                                             <td className="px-4 py-4">
                                                 <div className="flex items-center gap-2 text-xs text-slate-600">
                                                     <Clock3 size={14} className="text-slate-400" />
@@ -2582,16 +2739,22 @@ export default function Team() {
                                                     {employee.activeTime}
                                                 </p>
                                             </td>
-                                            <td className="px-4 py-4">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="rounded-full bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-700">
-                                                        {employee.openTasks} open
-                                                    </span>
-                                                    <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700">
-                                                        {employee.completedToday} done
-                                                    </span>
-                                                </div>
-                                            </td>
+                                          <td className="px-4 py-4">
+    <div className="flex items-center gap-2">
+
+        <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2.5 py-1 text-[9px] font-bold text-violet-700 ring-1 ring-inset ring-violet-100">
+            <span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
+
+            {employee.openTasks} open
+        </span>
+
+        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[9px] font-bold text-emerald-700 ring-1 ring-inset ring-emerald-100">
+            <CheckCircle size={10} />
+
+            {employee.completedTasks} done
+        </span>
+    </div>
+</td>
                                             <td className="px-4 py-4 text-xs text-slate-500">
                                                 {employee.lastActivity}
                                             </td>
@@ -2640,214 +2803,533 @@ export default function Team() {
                 </div>
             )}
 
-            {teamView === "board" && (
-                <div className="mt-6">
-                    <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                            <h3 className="text-sm font-semibold text-slate-950">Task Assignment Board</h3>
-                            <p className="mt-1 text-xs text-slate-500">
-                                Track assigned, active and completed work across the team.
-                            </p>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={() => {
-                                const availableEmployee =
-                                    employeeList.find((employee) => employee.status === "Free") ||
-                                    employeeList[0];
-                                if (availableEmployee) {
-                                    openAssignTaskDrawer(availableEmployee);
-                                }
-                            }}
-                            className="flex h-10 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700"
-                        >
-                            <BriefcaseBusiness size={15} />
-                            Create Task
-                        </button>
-                    </div>
-                    {tasksLoading && (
-                        <div className="mb-4 rounded-xl border border-slate-200 bg-white px-5 py-4">
-                            <div className="flex items-center gap-3">
-                                <RefreshCw size={18} className="animate-spin text-violet-600" />
-                                <p className="text-xs font-semibold text-slate-600">Loading tasks...</p>
-                            </div>
-                        </div>
-                    )}
-                    {tasksError && !tasksLoading && (
-                        <div className="mb-4 flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 px-5 py-4">
-                            <div className="flex items-center gap-3">
-                                <AlertCircle size={18} className="text-rose-600" />
-                                <p className="text-xs font-semibold text-rose-700">{tasksError}</p>
-                            </div>
+           {teamView === "board" && (() => {
+    const boardStatuses = [
+        {
+            name: "Assigned",
+            label: "Assigned",
+            icon: ListTodo,
+        },
+        {
+            name: "In Progress",
+            label: "In Progress",
+            icon: Clock3,
+        },
+        {
+            name: "Testing",
+            label: "Testing",
+            icon: CheckCircle,
+        },
+        {
+            name: "Waiting",
+            label: "Waiting",
+            icon: Clock,
+        },
+        {
+            name: "Completed",
+            label: "Completed",
+            icon: CheckCircle,
+        },
+    ];
+
+    const getTasksForStatus = (status) => {
+        if (status === "Completed") {
+            return assignedTasks.filter((task) =>
+                ["Completed", "Closed"].includes(task.status)
+            );
+        }
+
+        return assignedTasks.filter(
+            (task) => task.status === status
+        );
+    };
+
+    const selectedBoardTasks =
+        getTasksForStatus(teamBoardStatus);
+
+    const selectedBoardConfig =
+        boardStatuses.find(
+            (item) => item.name === teamBoardStatus
+        ) || boardStatuses[0];
+
+    const SelectedStatusIcon =
+        selectedBoardConfig.icon;
+
+    return (
+        <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+
+            {/* =====================================================
+                BOARD HEADER
+            ====================================================== */}
+            <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+
+                <div>
+                    <h3 className="text-sm font-bold text-slate-950">
+                        Workforce Task Queue
+                    </h3>
+
+                    <p className="mt-1 text-[11px] text-slate-500">
+                        {
+                            assignedTasks.filter(
+                                (task) =>
+                                    !["Completed", "Closed"].includes(
+                                        task.status
+                                    )
+                            ).length
+                        } active ·{" "}
+                        {
+                            assignedTasks.filter((task) =>
+                                ["Completed", "Closed"].includes(
+                                    task.status
+                                )
+                            ).length
+                        } completed ·{" "}
+                        {
+                            assignedTasks.filter(
+                                (task) =>
+                                    !task.assignedEmployeeId
+                            ).length
+                        } unassigned
+                    </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+
+                    <button
+                        type="button"
+                        onClick={() => {
+                            const availableEmployee =
+                                employeeList.find(
+                                    (employee) =>
+                                        employee.status === "Free"
+                                ) || employeeList[0];
+
+                            if (availableEmployee) {
+                                openAssignTaskDrawer(
+                                    availableEmployee
+                                );
+                            } else {
+                                alert(
+                                    "No employee is available."
+                                );
+                            }
+                        }}
+                        className="flex h-10 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white shadow-lg shadow-violet-200 transition hover:bg-violet-700"
+                    >
+                        <BriefcaseBusiness size={15} />
+                        Create Task
+                    </button>
+                </div>
+            </div>
+
+            {/* =====================================================
+                STATUS NAVIGATION
+            ====================================================== */}
+            <div className="border-b border-slate-200 bg-slate-50/50 p-4">
+
+                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
+
+                    {boardStatuses.map((statusItem) => {
+                        const StatusIcon =
+                            statusItem.icon;
+
+                        const count =
+                            getTasksForStatus(
+                                statusItem.name
+                            ).length;
+
+                        const active =
+                            teamBoardStatus ===
+                            statusItem.name;
+
+                        const isCompleted =
+                            statusItem.name ===
+                            "Completed";
+
+                        return (
                             <button
+                                key={statusItem.name}
                                 type="button"
-                                onClick={loadTasks}
-                                className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-semibold text-white"
+                                onClick={() =>
+                                    setTeamBoardStatus(
+                                        statusItem.name
+                                    )
+                                }
+                                className={`flex h-10 min-w-[135px] items-center justify-center gap-2 rounded-lg px-4 text-xs font-semibold transition ${
+                                    active
+                                        ? isCompleted
+                                            ? "bg-emerald-600 text-white shadow-sm"
+                                            : "bg-slate-900 text-white shadow-sm"
+                                        : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+                                }`}
                             >
-                                Retry
+                                <StatusIcon size={15} />
+
+                                {statusItem.label}
+
+                                <span
+                                    className={`inline-flex min-w-[22px] items-center justify-center rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
+                                        active
+                                            ? "bg-white/20 text-white"
+                                            : "bg-slate-100 text-slate-500"
+                                    }`}
+                                >
+                                    {count}
+                                </span>
                             </button>
+                        );
+                    })}
+                </div>
+            </div>
+
+            {/* =====================================================
+                SELECTED STATUS HEADER
+            ====================================================== */}
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+
+                <div className="flex items-center gap-3">
+
+                    <div
+                        className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+                            teamBoardStatus === "Completed"
+                                ? "bg-emerald-100 text-emerald-700"
+                                : teamBoardStatus === "In Progress"
+                                ? "bg-violet-100 text-violet-700"
+                                : "bg-blue-100 text-blue-700"
+                        }`}
+                    >
+                        <SelectedStatusIcon size={17} />
+                    </div>
+
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <h4 className="text-sm font-bold text-slate-950">
+                                {selectedBoardConfig.label} Tasks
+                            </h4>
+
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                                {selectedBoardTasks.length}
+                            </span>
                         </div>
-                    )}
-                    <div className="grid gap-4 xl:grid-cols-3">
-                        {[
-                            { id: "Assigned", title: "Assigned", description: "Tasks waiting to start", headerClass: "bg-blue-50 text-blue-700" },
-                            { id: "In Progress", title: "In Progress", description: "Tasks currently being worked on", headerClass: "bg-violet-50 text-violet-700" },
-                            { id: "Completed", title: "Completed", description: "Finished tasks", headerClass: "bg-emerald-50 text-emerald-700" },
-                        ].map((column) => {
-                            const columnTasks = assignedTasks.filter(
-                                (task) => task.status === column.id
-                            );
-                            return (
-                                <div key={column.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/70">
-                                    <div className="border-b border-slate-200 bg-white px-4 py-4">
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${column.headerClass}`}>
-                                                        {column.title}
-                                                    </span>
-                                                    <span className="text-xs font-semibold text-slate-500">
-                                                        {columnTasks.length}
-                                                    </span>
-                                                </div>
-                                                <p className="mt-2 text-[11px] text-slate-500">{column.description}</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="min-h-[420px] space-y-3 p-3">
-                                        {columnTasks.length > 0 ? (
-                                            columnTasks.map((task) => (
-                                                <div key={task.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-                                                    <div className="flex items-start justify-between gap-3">
-                                                        <div className="min-w-0">
-                                                            <p className="truncate text-xs font-semibold text-slate-950">
-                                                                {task.title}
-                                                            </p>
-                                                            <p className="mt-1 text-[10px] font-semibold text-violet-600">
-                                                                {task.taskNo}
-                                                            </p>
-                                                        </div>
-                                                        <span
-                                                            className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-bold ${task.priority === "Critical"
-                                                                    ? "bg-rose-50 text-rose-700"
-                                                                    : task.priority === "High"
-                                                                        ? "bg-orange-50 text-orange-700"
-                                                                        : task.priority === "Medium"
-                                                                            ? "bg-amber-50 text-amber-700"
-                                                                            : "bg-slate-100 text-slate-600"
-                                                                }`}
-                                                        >
-                                                            {task.priority}
-                                                        </span>
-                                                    </div>
-                                                    <div className="mt-4 space-y-2">
-                                                        <div className="flex items-center justify-between gap-3 text-[10px]">
-                                                            <span className="text-slate-400">Employee</span>
-                                                            <span className="font-semibold text-slate-700">
-                                                                <div className="text-right">
-                                                                    <p className="font-semibold text-slate-700">
-                                                                        {task.assignedEmployeeName || "Not assigned"}
-                                                                    </p>
-                                                                    {task.assignedEmployeeCode && (
-                                                                        <p className="mt-0.5 text-[9px] text-slate-400">
-                                                                            {task.assignedEmployeeCode}
-                                                                        </p>
-                                                                    )}
-                                                                </div>
-                                                            </span>
-                                                        </div>
-                                                        <div className="flex items-center justify-between gap-3 text-[10px]">
-                                                            <span className="text-slate-400">Client</span>
-                                                            <span className="max-w-[170px] truncate font-semibold text-slate-700">
-                                                                {task.client}
-                                                            </span>
-                                                        </div>
-                                                        <div className="flex items-center justify-between gap-3 text-[10px]">
-                                                            <span className="text-slate-400">Project</span>
-                                                            <span className="font-semibold text-slate-700">
-                                                                {task.project}
-                                                            </span>
-                                                        </div>
-                                                        <div className="flex items-center justify-between gap-3 text-[10px]">
-                                                            <span className="text-slate-400">Due</span>
-                                                            <span className="font-semibold text-slate-700">
-                                                                {task.dueDate}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                    <div className="mt-4">
-                                                        <div className="mb-2 flex items-center justify-between text-[10px]">
-                                                            <span className="text-slate-400">Progress</span>
-                                                            <span className="font-semibold text-slate-700">
-                                                                {task.progress}%
-                                                            </span>
-                                                        </div>
-                                                        <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                                                            <div
-                                                                className="h-full rounded-full bg-violet-500"
-                                                                style={{ width: `${task.progress}%` }}
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                    <div className="mt-4 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
-                                                        <span className="text-[10px] text-slate-400">
-                                                            {task.estimatedTime}
-                                                        </span>
-                                                        {task.status === "Assigned" && (
-                                                            <button
-                                                                type="button"
-                                                                disabled={updatingTaskId === task.id}
-                                                                onClick={() => updateTaskStatus(task.id, "In Progress")}
-                                                                className="rounded-lg bg-violet-50 px-3 py-2 text-[10px] font-semibold text-violet-700 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60"
-                                                            >
-                                                                {updatingTaskId === task.id ? (
-                                                                    <RefreshCw size={14} className="animate-spin" />
-                                                                ) : (
-                                                                    "Start"
-                                                                )}
-                                                            </button>
-                                                        )}
-                                                        {task.status === "In Progress" && (
-                                                            <button
-                                                                type="button"
-                                                                disabled={updatingTaskId === task.id}
-                                                                onClick={() => updateTaskStatus(task.id, "Completed")}
-                                                                className="rounded-lg bg-emerald-50 px-3 py-2 text-[10px] font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
-                                                            >
-                                                                {updatingTaskId === task.id ? (
-                                                                    <RefreshCw size={14} className="animate-spin" />
-                                                                ) : (
-                                                                    "Complete"
-                                                                )}
-                                                            </button>
-                                                        )}
-                                                        {task.status === "Completed" && (
-                                                            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700">
-                                                                Done
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            ))
-                                        ) : (
-                                            <div className="flex min-h-[360px] items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white/60 p-6 text-center">
-                                                <div>
-                                                    <p className="text-xs font-semibold text-slate-600">
-                                                        No {column.title.toLowerCase()} tasks
-                                                    </p>
-                                                    <p className="mt-2 text-[10px] text-slate-400">
-                                                        Tasks will appear here when their status changes.
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            );
-                        })}
+
+                        <p className="mt-1 text-[10px] text-slate-500">
+                            {teamBoardStatus === "Assigned"
+                                ? "Tasks waiting to start"
+                                : teamBoardStatus === "In Progress"
+                                ? "Tasks currently being worked on"
+                                : teamBoardStatus === "Testing"
+                                ? "Tasks currently under testing"
+                                : teamBoardStatus === "Waiting"
+                                ? "Tasks temporarily waiting"
+                                : "Successfully finished tasks"}
+                        </p>
+                    </div>
+                </div>
+
+                <p className="hidden text-[10px] text-slate-400 lg:block">
+                    Team-wide task status overview
+                </p>
+            </div>
+
+            {/* =====================================================
+                LOADING / ERROR
+            ====================================================== */}
+
+            {tasksLoading && (
+                <div className="flex min-h-[220px] items-center justify-center">
+                    <div className="flex items-center gap-2 text-sm font-medium text-slate-500">
+                        <RefreshCw
+                            size={17}
+                            className="animate-spin"
+                        />
+                        Loading tasks...
                     </div>
                 </div>
             )}
+
+            {!tasksLoading && tasksError && (
+                <div className="m-5 flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                    <AlertCircle
+                        size={17}
+                        className="mt-0.5 shrink-0"
+                    />
+
+                    {tasksError}
+                </div>
+            )}
+
+            {/* =====================================================
+                TASK CARDS
+            ====================================================== */}
+
+            {!tasksLoading &&
+                !tasksError &&
+                selectedBoardTasks.length > 0 && (
+                    <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
+
+                        {selectedBoardTasks.map((task) => {
+                            const employee =
+                                employeeList.find(
+                                    (item) =>
+                                        String(item.id) ===
+                                        String(
+                                            task.assignedEmployeeId
+                                        )
+                                );
+
+                            const priorityClass =
+                                task.priority === "Critical"
+                                    ? "bg-rose-50 text-rose-700 ring-rose-200"
+                                    : task.priority === "High"
+                                    ? "bg-orange-50 text-orange-700 ring-orange-200"
+                                    : task.priority === "Medium"
+                                    ? "bg-amber-50 text-amber-700 ring-amber-200"
+                                    : "bg-slate-100 text-slate-600 ring-slate-200";
+
+                            const progress =
+                                Math.min(
+                                    Math.max(
+                                        Number(
+                                            task.progress || 0
+                                        ),
+                                        0
+                                    ),
+                                    100
+                                );
+
+                            return (
+                                <article
+                                    key={task.id}
+                                    className="group rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-md"
+                                >
+                                    {/* TOP */}
+                                    <div className="flex items-start justify-between gap-3">
+
+                                        <div className="min-w-0">
+                                            <h5 className="truncate text-xs font-bold uppercase text-slate-950">
+                                                {task.title}
+                                            </h5>
+
+                                            <p className="mt-1 text-[9px] font-bold text-violet-600">
+                                                {task.taskNo || "TASK"}
+                                            </p>
+                                        </div>
+
+                                        <span
+                                            className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-bold ring-1 ring-inset ${priorityClass}`}
+                                        >
+                                            {task.priority || "Normal"}
+                                        </span>
+                                    </div>
+
+                                    {/* DIVIDER */}
+                                    <div className="my-3 border-t border-slate-100" />
+
+                                    {/* INFO */}
+                                    <div className="grid grid-cols-2 gap-x-5 gap-y-3">
+
+                                        <div>
+                                            <p className="text-[8px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                                                Client
+                                            </p>
+
+                                            <p className="mt-1 truncate text-[10px] font-semibold text-slate-700">
+                                                {task.client || "—"}
+                                            </p>
+                                        </div>
+
+                                        <div>
+                                            <p className="text-[8px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                                                Project
+                                            </p>
+
+                                            <p className="mt-1 truncate text-[10px] font-semibold text-slate-700">
+                                                {task.project || "—"}
+                                            </p>
+                                        </div>
+
+                                        <div>
+                                            <p className="text-[8px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                                                Assigned
+                                            </p>
+
+                                            <p className="mt-1 truncate text-[10px] font-semibold text-slate-700">
+                                                {employee?.name ||
+                                                    task.assignedEmployeeName ||
+                                                    "Unassigned"}
+                                            </p>
+                                        </div>
+
+                                        <div>
+                                            <p className="text-[8px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                                                Due
+                                            </p>
+
+                                            <p
+                                                className={`mt-1 text-[10px] font-semibold ${
+                                                    teamBoardStatus ===
+                                                    "Completed"
+                                                        ? "text-emerald-600"
+                                                        : "text-slate-700"
+                                                }`}
+                                            >
+                                                {teamBoardStatus ===
+                                                "Completed"
+                                                    ? "Completed"
+                                                    : task.dueDate ||
+                                                      "—"}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {/* PROGRESS */}
+                                    <div className="mt-4">
+
+                                        <div className="mb-1.5 flex items-center justify-between">
+                                            <span className="text-[8px] font-medium text-slate-400">
+                                                Progress
+                                            </span>
+
+                                            <span className="text-[8px] font-semibold text-slate-700">
+                                                {progress}%
+                                            </span>
+                                        </div>
+
+                                        <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                                            <div
+                                                className={`h-full rounded-full transition-all ${
+                                                    progress >= 100
+                                                        ? "bg-emerald-500"
+                                                        : "bg-violet-500"
+                                                }`}
+                                                style={{
+                                                    width: `${progress}%`,
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* TIME + ACTION */}
+                                    <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+
+                                        <div>
+                                            <p className="text-[9px] font-medium text-slate-400">
+                                                {task.spentTime || "0m"} of{" "}
+                                                {task.estimatedTime || "0m"}
+                                            </p>
+                                        </div>
+
+                                        <div className="flex items-center gap-2">
+
+                                            {task.status ===
+                                                "Assigned" && (
+                                                <button
+                                                    type="button"
+                                                    disabled={
+                                                        updatingTaskId ===
+                                                        task.id
+                                                    }
+                                                    onClick={() =>
+                                                        updateTaskStatus(
+                                                            task.id,
+                                                            "In Progress"
+                                                        )
+                                                    }
+                                                    className="rounded-lg bg-violet-50 px-3 py-1.5 text-[9px] font-bold text-violet-700 transition hover:bg-violet-100 disabled:opacity-50"
+                                                >
+                                                    {updatingTaskId ===
+                                                    task.id ? (
+                                                        <RefreshCw
+                                                            size={12}
+                                                            className="animate-spin"
+                                                        />
+                                                    ) : (
+                                                        "Start"
+                                                    )}
+                                                </button>
+                                            )}
+
+                                            {task.status ===
+                                                "In Progress" && (
+                                                <button
+                                                    type="button"
+                                                    disabled={
+                                                        updatingTaskId ===
+                                                        task.id
+                                                    }
+                                                    onClick={() =>
+                                                        updateTaskStatus(
+                                                            task.id,
+                                                            "Completed"
+                                                        )
+                                                    }
+                                                    className="rounded-lg bg-emerald-50 px-3 py-1.5 text-[9px] font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50"
+                                                >
+                                                    {updatingTaskId ===
+                                                    task.id ? (
+                                                        <RefreshCw
+                                                            size={12}
+                                                            className="animate-spin"
+                                                        />
+                                                    ) : (
+                                                        "Complete"
+                                                    )}
+                                                </button>
+                                            )}
+
+                                            {["Completed", "Closed"].includes(
+                                                task.status
+                                            ) && (
+                                                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-900 text-white">
+                                                    <CheckCircle
+                                                        size={13}
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </article>
+                            );
+                        })}
+                    </div>
+                )}
+
+            {/* =====================================================
+                EMPTY STATUS
+            ====================================================== */}
+
+            {!tasksLoading &&
+                !tasksError &&
+                selectedBoardTasks.length === 0 && (
+                    <div className="m-4 flex min-h-[260px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/40 px-6 text-center">
+
+                        <div
+                            className={`flex h-12 w-12 items-center justify-center rounded-2xl ${
+                                teamBoardStatus ===
+                                "Completed"
+                                    ? "bg-emerald-100 text-emerald-600"
+                                    : "bg-violet-100 text-violet-600"
+                            }`}
+                        >
+                            <SelectedStatusIcon
+                                size={21}
+                            />
+                        </div>
+
+                        <p className="mt-4 text-sm font-semibold text-slate-700">
+                            No{" "}
+                            {selectedBoardConfig.label.toLowerCase()}{" "}
+                            tasks
+                        </p>
+
+                        <p className="mt-1 text-xs text-slate-400">
+                            Tasks will appear here when their status changes.
+                        </p>
+                    </div>
+                )}
+        </div>
+    );
+})()}
 
             {/* Employee Form Drawer */}
       {/* =========================================================

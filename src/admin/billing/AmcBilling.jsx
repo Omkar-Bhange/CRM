@@ -33,12 +33,12 @@
         Search,
         SlidersHorizontal,
         TrendingUp,
-        UserRound,
-        WalletCards,
-        X,
-    } from "lucide-react";
+        UserRound,  
+        WalletCards,        
+        X,          
+    } from "lucide-react";      
 
-    import API_URL from "../../config/api";
+    import API_URL from "../../config/api";             
 
     const getAuthToken = () =>
         localStorage.getItem(
