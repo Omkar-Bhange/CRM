@@ -552,8 +552,8 @@ export default function Admin({ onLogout }) {
     const [savingProduct, setSavingProduct] = useState(false);
     const [editingProductId, setEditingProductId] = useState(null);
     /* =====================================================
-   NEW PRODUCT SALE
-===================================================== */
+        NEW PRODUCT SALE
+    ===================================================== */
 
     const [productSaleDrawerOpen, setProductSaleDrawerOpen] =
         useState(false);
@@ -620,10 +620,10 @@ export default function Admin({ onLogout }) {
         setProjectForNewTask,
     ] = useState(null);
 
-    /* =====================================================
-       CLIENT PAYMENT HISTORY
-       Product Sales + AMC
-    ===================================================== */
+        /* =====================================================
+        CLIENT PAYMENT HISTORY
+        Product Sales + AMC
+        ===================================================== */
 
     const [clientPaymentsData, setClientPaymentsData] =
         useState([]);

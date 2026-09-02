@@ -34,9 +34,9 @@ import {
     CalendarDays,
     UserMinus,
     Send,
-  ExternalLink,
-Plus,
-X,
+    ExternalLink,
+    Plus,
+    X,
 } from "lucide-react";
 
 import API_URL from "../../config/api";
@@ -267,129 +267,129 @@ export default function Team() {
             : `${hours}h`;
     };
 
-const normalizeEmployeeFromApi = (
-    employee = {}
-) => ({
-    ...employee,
+    const normalizeEmployeeFromApi = (
+        employee = {}
+    ) => ({
+        ...employee,
 
-    id:
-        employee._id ||
-        employee.id ||
-        "",
+        id:
+            employee._id ||
+            employee.id ||
+            "",
 
-    employeeCode:
-        employee.employeeCode ||
-        "",
+        employeeCode:
+            employee.employeeCode ||
+            "",
 
-    name:
-        employee.name ||
-        "",
-
-    initials:
-        employee.initials ||
-        String(
+        name:
             employee.name ||
-            ""
-        )
-            .split(" ")
-            .filter(Boolean)
-            .slice(0, 2)
-            .map((word) =>
-                word
-                    .charAt(0)
-                    .toUpperCase()
+            "",
+
+        initials:
+            employee.initials ||
+            String(
+                employee.name ||
+                ""
             )
-            .join("") ||
-        "NA",
+                .split(" ")
+                .filter(Boolean)
+                .slice(0, 2)
+                .map((word) =>
+                    word
+                        .charAt(0)
+                        .toUpperCase()
+                )
+                .join("") ||
+            "NA",
 
-    client:
-        employee.client ||
-        employee.currentClient ||
-        "—",
+        client:
+            employee.client ||
+            employee.currentClient ||
+            "—",
 
-    project:
-        employee.project ||
-        employee.currentProject ||
-        "—",
+        project:
+            employee.project ||
+            employee.currentProject ||
+            "—",
 
-    currentTask:
-        employee.currentTask ||
-        "Available for assignment",
+        currentTask:
+            employee.currentTask ||
+            "Available for assignment",
 
-    loginTime:
-        formatEmployeeTime(
-            employee.loginTime
-        ),
+        loginTime:
+            formatEmployeeTime(
+                employee.loginTime
+            ),
 
-    activeTime:
-        formatActiveTime(
-            employee.activeMinutes
-        ),
+        activeTime:
+            formatActiveTime(
+                employee.activeMinutes
+            ),
 
-    /*
-     * TASK COUNTS NOW COME
-     * FROM LIVE BACKEND CALCULATION.
-     */
-    openTasks:
-        Number(
-            employee.openTasks ||
-            0
-        ),
+        /*
+         * TASK COUNTS NOW COME
+         * FROM LIVE BACKEND CALCULATION.
+         */
+        openTasks:
+            Number(
+                employee.openTasks ||
+                0
+            ),
 
-    completedToday:
-        Number(
-            employee.completedToday ??
-            employee.completedTasks ??
-            0
-        ),
+        completedToday:
+            Number(
+                employee.completedToday ??
+                employee.completedTasks ??
+                0
+            ),
 
-    completedTasks:
-        Number(
-            employee.completedTasks ??
-            employee.completedToday ??
-            0
-        ),
+        completedTasks:
+            Number(
+                employee.completedTasks ??
+                employee.completedToday ??
+                0
+            ),
 
-    /*
-     * WINDOWS AGENT / CURRENT APP
-     */
-    agentConnected:
-        employee.agentConnected ===
-        true,
+        /*
+         * WINDOWS AGENT / CURRENT APP
+         */
+        agentConnected:
+            employee.agentConnected ===
+            true,
 
-    currentApplication:
-        employee.currentApplication ||
-        "",
+        currentApplication:
+            employee.currentApplication ||
+            "",
 
-    currentWindowTitle:
-        employee.currentWindowTitle ||
-        "",
+        currentWindowTitle:
+            employee.currentWindowTitle ||
+            "",
 
-    pcName:
-        employee.pcName ||
-        "",
+        pcName:
+            employee.pcName ||
+            "",
 
-    agentLastSeen:
-        employee.agentLastSeen ||
-        null,
+        agentLastSeen:
+            employee.agentLastSeen ||
+            null,
 
-    currentActivityStartedAt:
-        employee.currentActivityStartedAt ||
-        null,
+        currentActivityStartedAt:
+            employee.currentActivityStartedAt ||
+            null,
 
-    lastActivity:
-        employee.lastActivityAt
-            ? new Date(
-                  employee.lastActivityAt
-              ).toLocaleString(
-                  "en-IN"
-              )
-            : "No activity yet",
+        lastActivity:
+            employee.lastActivityAt
+                ? new Date(
+                    employee.lastActivityAt
+                ).toLocaleString(
+                    "en-IN"
+                )
+                : "No activity yet",
 
-    isActive:
-        employee.isActive !==
-        false,
-});
+        isActive:
+            employee.isActive !==
+            false,
+    });
 
     const workingCount = employeeList.filter(
         (employee) => employee.status === "Working"
@@ -1421,8 +1421,8 @@ const normalizeEmployeeFromApi = (
                                 type="button"
                                 onClick={() => setEmployeeTab(tab.id)}
                                 className={`relative whitespace-nowrap py-4 text-sm font-semibold transition ${employeeTab === tab.id
-                                        ? "text-violet-700"
-                                        : "text-slate-500 hover:text-slate-900"
+                                    ? "text-violet-700"
+                                    : "text-slate-500 hover:text-slate-900"
                                     }`}
                             >
                                 {tab.label}
@@ -1641,12 +1641,12 @@ const normalizeEmployeeFromApi = (
                                                         <td className="px-4 py-4">
                                                             <span
                                                                 className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${task.priority === "Critical"
-                                                                        ? "bg-rose-50 text-rose-700"
-                                                                        : task.priority === "High"
-                                                                            ? "bg-orange-50 text-orange-700"
-                                                                            : task.priority === "Medium"
-                                                                                ? "bg-amber-50 text-amber-700"
-                                                                                : "bg-slate-100 text-slate-600"
+                                                                    ? "bg-rose-50 text-rose-700"
+                                                                    : task.priority === "High"
+                                                                        ? "bg-orange-50 text-orange-700"
+                                                                        : task.priority === "Medium"
+                                                                            ? "bg-amber-50 text-amber-700"
+                                                                            : "bg-slate-100 text-slate-600"
                                                                     }`}
                                                             >
                                                                 {task.priority}
@@ -1705,8 +1705,8 @@ const normalizeEmployeeFromApi = (
                                                 </p>
                                                 <span
                                                     className={`mt-1.5 inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${selectedEmployee.status === "Leave"
-                                                            ? "bg-rose-50 text-rose-700"
-                                                            : "bg-emerald-50 text-emerald-700"
+                                                        ? "bg-rose-50 text-rose-700"
+                                                        : "bg-emerald-50 text-emerald-700"
                                                         }`}
                                                 >
                                                     {employeeAttendance?.attendanceStatus || "Present"}
@@ -1806,8 +1806,8 @@ const normalizeEmployeeFromApi = (
                                                     <td className="px-4 py-4">
                                                         <span
                                                             className={`rounded-full px-2 py-1 text-[10px] font-bold ${session.status === "Active"
-                                                                    ? "bg-violet-50 text-violet-700"
-                                                                    : "bg-emerald-50 text-emerald-700"
+                                                                ? "bg-violet-50 text-violet-700"
+                                                                : "bg-emerald-50 text-emerald-700"
                                                                 }`}
                                                         >
                                                             {session.status}
@@ -1928,12 +1928,12 @@ const normalizeEmployeeFromApi = (
                                                     <td className="px-4 py-4">
                                                         <span
                                                             className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${task.priority === "Critical"
-                                                                    ? "bg-rose-50 text-rose-700"
-                                                                    : task.priority === "High"
-                                                                        ? "bg-orange-50 text-orange-700"
-                                                                        : task.priority === "Medium"
-                                                                            ? "bg-amber-50 text-amber-700"
-                                                                            : "bg-slate-100 text-slate-600"
+                                                                ? "bg-rose-50 text-rose-700"
+                                                                : task.priority === "High"
+                                                                    ? "bg-orange-50 text-orange-700"
+                                                                    : task.priority === "Medium"
+                                                                        ? "bg-amber-50 text-amber-700"
+                                                                        : "bg-slate-100 text-slate-600"
                                                                 }`}
                                                         >
                                                             {task.priority}
@@ -2206,8 +2206,8 @@ const normalizeEmployeeFromApi = (
                                     </div>
                                     <span
                                         className={`inline-flex rounded-full px-3 py-1.5 text-[10px] font-bold ${selectedPcActivity?.currentActivity?.status === "Working"
-                                                ? "bg-emerald-50 text-emerald-700"
-                                                : "bg-slate-100 text-slate-600"
+                                            ? "bg-emerald-50 text-emerald-700"
+                                            : "bg-slate-100 text-slate-600"
                                             }`}
                                     >
                                         {selectedPcActivity?.currentActivity?.status || "Offline"}
@@ -2242,8 +2242,8 @@ const normalizeEmployeeFromApi = (
                                         <div className="mt-1 flex items-center gap-2">
                                             <span
                                                 className={`h-2 w-2 rounded-full ${selectedPcActivity?.currentActivity?.status === "Working"
-                                                        ? "bg-emerald-500"
-                                                        : "bg-slate-300"
+                                                    ? "bg-emerald-500"
+                                                    : "bg-slate-300"
                                                     }`}
                                             />
                                             <p className="text-sm font-semibold text-slate-900">
@@ -2320,10 +2320,10 @@ const normalizeEmployeeFromApi = (
                                                         <td className="px-4 py-4">
                                                             <span
                                                                 className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${activity.productivity === "Productive"
-                                                                        ? "bg-emerald-50 text-emerald-700"
-                                                                        : activity.productivity === "Unproductive"
-                                                                            ? "bg-rose-50 text-rose-700"
-                                                                            : "bg-slate-100 text-slate-600"
+                                                                    ? "bg-emerald-50 text-emerald-700"
+                                                                    : activity.productivity === "Unproductive"
+                                                                        ? "bg-rose-50 text-rose-700"
+                                                                        : "bg-slate-100 text-slate-600"
                                                                     }`}
                                                             >
                                                                 {activity.productivity}
@@ -2438,8 +2438,8 @@ const normalizeEmployeeFromApi = (
                             type="button"
                             onClick={() => setTeamView("table")}
                             className={`h-8 rounded-lg px-3 text-xs font-semibold transition ${teamView === "table"
-                                    ? "bg-slate-900 text-white"
-                                    : "text-slate-500 hover:bg-slate-100"
+                                ? "bg-slate-900 text-white"
+                                : "text-slate-500 hover:bg-slate-100"
                                 }`}
                         >
                             Team Table
@@ -2448,8 +2448,8 @@ const normalizeEmployeeFromApi = (
                             type="button"
                             onClick={() => setTeamView("board")}
                             className={`h-8 rounded-lg px-3 text-xs font-semibold transition ${teamView === "board"
-                                    ? "bg-slate-900 text-white"
-                                    : "text-slate-500 hover:bg-slate-100"
+                                ? "bg-slate-900 text-white"
+                                : "text-slate-500 hover:bg-slate-100"
                                 }`}
                         >
                             Task Board
@@ -2648,85 +2648,85 @@ const normalizeEmployeeFromApi = (
                                                     {employee.client} · {employee.project}
                                                 </p>
                                             </td>
-                                        <td className="px-4 py-4">
-    {employee.agentConnected &&
-    employee.currentApplication ? (
-        <div className="max-w-[210px]">
+                                            <td className="px-4 py-4">
+                                                {employee.agentConnected &&
+                                                    employee.currentApplication ? (
+                                                    <div className="max-w-[210px]">
 
-            <div className="flex items-center gap-2">
+                                                        <div className="flex items-center gap-2">
 
-                <span className="relative flex h-2.5 w-2.5 shrink-0">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-40" />
+                                                            <span className="relative flex h-2.5 w-2.5 shrink-0">
+                                                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-40" />
 
-                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                </span>
+                                                                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                                                            </span>
 
-                <p className="truncate text-xs font-semibold text-slate-800">
-                    {employee.currentApplication}
-                </p>
-            </div>
+                                                            <p className="truncate text-xs font-semibold text-slate-800">
+                                                                {employee.currentApplication}
+                                                            </p>
+                                                        </div>
 
-            <p
-                title={
-                    employee.currentWindowTitle
-                }
-                className="mt-1 truncate text-[10px] text-slate-500"
-            >
-                {employee.currentWindowTitle ||
-                    "Application active"}
-            </p>
+                                                        <p
+                                                            title={
+                                                                employee.currentWindowTitle
+                                                            }
+                                                            className="mt-1 truncate text-[10px] text-slate-500"
+                                                        >
+                                                            {employee.currentWindowTitle ||
+                                                                "Application active"}
+                                                        </p>
 
-            <div className="mt-1.5 flex items-center gap-2 text-[9px] text-slate-400">
+                                                        <div className="mt-1.5 flex items-center gap-2 text-[9px] text-slate-400">
 
-                {employee.pcName && (
-                    <span>
-                        {employee.pcName}
-                    </span>
-                )}
+                                                            {employee.pcName && (
+                                                                <span>
+                                                                    {employee.pcName}
+                                                                </span>
+                                                            )}
 
-                {employee.agentLastSeen && (
-                    <>
-                        <span>•</span>
+                                                            {employee.agentLastSeen && (
+                                                                <>
+                                                                    <span>•</span>
 
-                        <span>
-                            Synced{" "}
-                            {new Date(
-                                employee.agentLastSeen
-                            ).toLocaleTimeString(
-                                "en-IN",
-                                {
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                }
-                            )}
-                        </span>
-                    </>
-                )}
-            </div>
-        </div>
-    ) : (
-        <div>
-            <div className="flex items-center gap-2">
+                                                                    <span>
+                                                                        Synced{" "}
+                                                                        {new Date(
+                                                                            employee.agentLastSeen
+                                                                        ).toLocaleTimeString(
+                                                                            "en-IN",
+                                                                            {
+                                                                                hour: "2-digit",
+                                                                                minute: "2-digit",
+                                                                            }
+                                                                        )}
+                                                                    </span>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div>
+                                                        <div className="flex items-center gap-2">
 
-                <span className="h-2 w-2 rounded-full bg-slate-300" />
+                                                            <span className="h-2 w-2 rounded-full bg-slate-300" />
 
-                <p className="text-xs font-semibold text-slate-500">
-                    Not connected
-                </p>
-            </div>
+                                                            <p className="text-xs font-semibold text-slate-500">
+                                                                Not connected
+                                                            </p>
+                                                        </div>
 
-            <p className="mt-1 text-[10px] text-slate-400">
-                {employee.agentLastSeen
-                    ? `Last sync ${new Date(
-                          employee.agentLastSeen
-                      ).toLocaleString(
-                          "en-IN"
-                      )}`
-                    : "No PC activity today"}
-            </p>
-        </div>
-    )}
-</td>
+                                                        <p className="mt-1 text-[10px] text-slate-400">
+                                                            {employee.agentLastSeen
+                                                                ? `Last sync ${new Date(
+                                                                    employee.agentLastSeen
+                                                                ).toLocaleString(
+                                                                    "en-IN"
+                                                                )}`
+                                                                : "No PC activity today"}
+                                                        </p>
+                                                    </div>
+                                                )}
+                                            </td>
 
                                             <td className="px-4 py-4">
                                                 <div className="flex items-center gap-2 text-xs text-slate-600">
@@ -2739,22 +2739,22 @@ const normalizeEmployeeFromApi = (
                                                     {employee.activeTime}
                                                 </p>
                                             </td>
-                                          <td className="px-4 py-4">
-    <div className="flex items-center gap-2">
+                                            <td className="px-4 py-4">
+                                                <div className="flex items-center gap-2">
 
-        <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2.5 py-1 text-[9px] font-bold text-violet-700 ring-1 ring-inset ring-violet-100">
-            <span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
+                                                    <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2.5 py-1 text-[9px] font-bold text-violet-700 ring-1 ring-inset ring-violet-100">
+                                                        <span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
 
-            {employee.openTasks} open
-        </span>
+                                                        {employee.openTasks} open
+                                                    </span>
 
-        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[9px] font-bold text-emerald-700 ring-1 ring-inset ring-emerald-100">
-            <CheckCircle size={10} />
+                                                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[9px] font-bold text-emerald-700 ring-1 ring-inset ring-emerald-100">
+                                                        <CheckCircle size={10} />
 
-            {employee.completedTasks} done
-        </span>
-    </div>
-</td>
+                                                        {employee.completedTasks} done
+                                                    </span>
+                                                </div>
+                                            </td>
                                             <td className="px-4 py-4 text-xs text-slate-500">
                                                 {employee.lastActivity}
                                             </td>
@@ -2803,1078 +2803,1072 @@ const normalizeEmployeeFromApi = (
                 </div>
             )}
 
-           {teamView === "board" && (() => {
-    const boardStatuses = [
-        {
-            name: "Assigned",
-            label: "Assigned",
-            icon: ListTodo,
-        },
-        {
-            name: "In Progress",
-            label: "In Progress",
-            icon: Clock3,
-        },
-        {
-            name: "Testing",
-            label: "Testing",
-            icon: CheckCircle,
-        },
-        {
-            name: "Waiting",
-            label: "Waiting",
-            icon: Clock,
-        },
-        {
-            name: "Completed",
-            label: "Completed",
-            icon: CheckCircle,
-        },
-    ];
+            {teamView === "board" && (() => {
+                const boardStatuses = [
+                    {
+                        name: "Assigned",
+                        label: "Assigned",
+                        icon: ListTodo,
+                    },
+                    {
+                        name: "In Progress",
+                        label: "In Progress",
+                        icon: Clock3,
+                    },
+                    {
+                        name: "Testing",
+                        label: "Testing",
+                        icon: CheckCircle,
+                    },
+                    {
+                        name: "Waiting",
+                        label: "Waiting",
+                        icon: Clock,
+                    },
+                    {
+                        name: "Completed",
+                        label: "Completed",
+                        icon: CheckCircle,
+                    },
+                ];
 
-    const getTasksForStatus = (status) => {
-        if (status === "Completed") {
-            return assignedTasks.filter((task) =>
-                ["Completed", "Closed"].includes(task.status)
-            );
-        }
+                const getTasksForStatus = (status) => {
+                    if (status === "Completed") {
+                        return assignedTasks.filter((task) =>
+                            ["Completed", "Closed"].includes(task.status)
+                        );
+                    }
 
-        return assignedTasks.filter(
-            (task) => task.status === status
-        );
-    };
+                    return assignedTasks.filter(
+                        (task) => task.status === status
+                    );
+                };
 
-    const selectedBoardTasks =
-        getTasksForStatus(teamBoardStatus);
+                const selectedBoardTasks =
+                    getTasksForStatus(teamBoardStatus);
 
-    const selectedBoardConfig =
-        boardStatuses.find(
-            (item) => item.name === teamBoardStatus
-        ) || boardStatuses[0];
+                const selectedBoardConfig =
+                    boardStatuses.find(
+                        (item) => item.name === teamBoardStatus
+                    ) || boardStatuses[0];
 
-    const SelectedStatusIcon =
-        selectedBoardConfig.icon;
+                const SelectedStatusIcon =
+                    selectedBoardConfig.icon;
 
-    return (
-        <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                return (
+                    <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
 
-            {/* =====================================================
+                        {/* =====================================================
                 BOARD HEADER
             ====================================================== */}
-            <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
 
-                <div>
-                    <h3 className="text-sm font-bold text-slate-950">
-                        Workforce Task Queue
-                    </h3>
+                            <div>
+                                <h3 className="text-sm font-bold text-slate-950">
+                                    Workforce Task Queue
+                                </h3>
 
-                    <p className="mt-1 text-[11px] text-slate-500">
-                        {
-                            assignedTasks.filter(
-                                (task) =>
-                                    !["Completed", "Closed"].includes(
-                                        task.status
-                                    )
-                            ).length
-                        } active ·{" "}
-                        {
-                            assignedTasks.filter((task) =>
-                                ["Completed", "Closed"].includes(
-                                    task.status
-                                )
-                            ).length
-                        } completed ·{" "}
-                        {
-                            assignedTasks.filter(
-                                (task) =>
-                                    !task.assignedEmployeeId
-                            ).length
-                        } unassigned
-                    </p>
-                </div>
+                                <p className="mt-1 text-[11px] text-slate-500">
+                                    {
+                                        assignedTasks.filter(
+                                            (task) =>
+                                                !["Completed", "Closed"].includes(
+                                                    task.status
+                                                )
+                                        ).length
+                                    } active ·{" "}
+                                    {
+                                        assignedTasks.filter((task) =>
+                                            ["Completed", "Closed"].includes(
+                                                task.status
+                                            )
+                                        ).length
+                                    } completed ·{" "}
+                                    {
+                                        assignedTasks.filter(
+                                            (task) =>
+                                                !task.assignedEmployeeId
+                                        ).length
+                                    } unassigned
+                                </p>
+                            </div>
 
-                <div className="flex flex-wrap items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
 
-                    <button
-                        type="button"
-                        onClick={() => {
-                            const availableEmployee =
-                                employeeList.find(
-                                    (employee) =>
-                                        employee.status === "Free"
-                                ) || employeeList[0];
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const availableEmployee =
+                                            employeeList.find(
+                                                (employee) =>
+                                                    employee.status === "Free"
+                                            ) || employeeList[0];
 
-                            if (availableEmployee) {
-                                openAssignTaskDrawer(
-                                    availableEmployee
-                                );
-                            } else {
-                                alert(
-                                    "No employee is available."
-                                );
-                            }
-                        }}
-                        className="flex h-10 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white shadow-lg shadow-violet-200 transition hover:bg-violet-700"
-                    >
-                        <BriefcaseBusiness size={15} />
-                        Create Task
-                    </button>
-                </div>
-            </div>
-
-            {/* =====================================================
-                STATUS NAVIGATION
-            ====================================================== */}
-            <div className="border-b border-slate-200 bg-slate-50/50 p-4">
-
-                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
-
-                    {boardStatuses.map((statusItem) => {
-                        const StatusIcon =
-                            statusItem.icon;
-
-                        const count =
-                            getTasksForStatus(
-                                statusItem.name
-                            ).length;
-
-                        const active =
-                            teamBoardStatus ===
-                            statusItem.name;
-
-                        const isCompleted =
-                            statusItem.name ===
-                            "Completed";
-
-                        return (
-                            <button
-                                key={statusItem.name}
-                                type="button"
-                                onClick={() =>
-                                    setTeamBoardStatus(
-                                        statusItem.name
-                                    )
-                                }
-                                className={`flex h-10 min-w-[135px] items-center justify-center gap-2 rounded-lg px-4 text-xs font-semibold transition ${
-                                    active
-                                        ? isCompleted
-                                            ? "bg-emerald-600 text-white shadow-sm"
-                                            : "bg-slate-900 text-white shadow-sm"
-                                        : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-950"
-                                }`}
-                            >
-                                <StatusIcon size={15} />
-
-                                {statusItem.label}
-
-                                <span
-                                    className={`inline-flex min-w-[22px] items-center justify-center rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
-                                        active
-                                            ? "bg-white/20 text-white"
-                                            : "bg-slate-100 text-slate-500"
-                                    }`}
+                                        if (availableEmployee) {
+                                            openAssignTaskDrawer(
+                                                availableEmployee
+                                            );
+                                        } else {
+                                            alert(
+                                                "No employee is available."
+                                            );
+                                        }
+                                    }}
+                                    className="flex h-10 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white shadow-lg shadow-violet-200 transition hover:bg-violet-700"
                                 >
-                                    {count}
-                                </span>
-                            </button>
-                        );
-                    })}
-                </div>
-            </div>
-
-            {/* =====================================================
-                SELECTED STATUS HEADER
-            ====================================================== */}
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-
-                <div className="flex items-center gap-3">
-
-                    <div
-                        className={`flex h-10 w-10 items-center justify-center rounded-xl ${
-                            teamBoardStatus === "Completed"
-                                ? "bg-emerald-100 text-emerald-700"
-                                : teamBoardStatus === "In Progress"
-                                ? "bg-violet-100 text-violet-700"
-                                : "bg-blue-100 text-blue-700"
-                        }`}
-                    >
-                        <SelectedStatusIcon size={17} />
-                    </div>
-
-                    <div>
-                        <div className="flex items-center gap-2">
-                            <h4 className="text-sm font-bold text-slate-950">
-                                {selectedBoardConfig.label} Tasks
-                            </h4>
-
-                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-                                {selectedBoardTasks.length}
-                            </span>
+                                    <BriefcaseBusiness size={15} />
+                                    Create Task
+                                </button>
+                            </div>
                         </div>
 
-                        <p className="mt-1 text-[10px] text-slate-500">
-                            {teamBoardStatus === "Assigned"
-                                ? "Tasks waiting to start"
-                                : teamBoardStatus === "In Progress"
-                                ? "Tasks currently being worked on"
-                                : teamBoardStatus === "Testing"
-                                ? "Tasks currently under testing"
-                                : teamBoardStatus === "Waiting"
-                                ? "Tasks temporarily waiting"
-                                : "Successfully finished tasks"}
-                        </p>
-                    </div>
-                </div>
-
-                <p className="hidden text-[10px] text-slate-400 lg:block">
-                    Team-wide task status overview
-                </p>
-            </div>
-
-            {/* =====================================================
-                LOADING / ERROR
+                        {/* =====================================================
+                STATUS NAVIGATION
             ====================================================== */}
+                        <div className="border-b border-slate-200 bg-slate-50/50 p-4">
 
-            {tasksLoading && (
-                <div className="flex min-h-[220px] items-center justify-center">
-                    <div className="flex items-center gap-2 text-sm font-medium text-slate-500">
-                        <RefreshCw
-                            size={17}
-                            className="animate-spin"
-                        />
-                        Loading tasks...
-                    </div>
-                </div>
-            )}
+                            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
 
-            {!tasksLoading && tasksError && (
-                <div className="m-5 flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                    <AlertCircle
-                        size={17}
-                        className="mt-0.5 shrink-0"
-                    />
+                                {boardStatuses.map((statusItem) => {
+                                    const StatusIcon =
+                                        statusItem.icon;
 
-                    {tasksError}
-                </div>
-            )}
+                                    const count =
+                                        getTasksForStatus(
+                                            statusItem.name
+                                        ).length;
 
-            {/* =====================================================
-                TASK CARDS
-            ====================================================== */}
+                                    const active =
+                                        teamBoardStatus ===
+                                        statusItem.name;
 
-            {!tasksLoading &&
-                !tasksError &&
-                selectedBoardTasks.length > 0 && (
-                    <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
+                                    const isCompleted =
+                                        statusItem.name ===
+                                        "Completed";
 
-                        {selectedBoardTasks.map((task) => {
-                            const employee =
-                                employeeList.find(
-                                    (item) =>
-                                        String(item.id) ===
-                                        String(
-                                            task.assignedEmployeeId
-                                        )
-                                );
-
-                            const priorityClass =
-                                task.priority === "Critical"
-                                    ? "bg-rose-50 text-rose-700 ring-rose-200"
-                                    : task.priority === "High"
-                                    ? "bg-orange-50 text-orange-700 ring-orange-200"
-                                    : task.priority === "Medium"
-                                    ? "bg-amber-50 text-amber-700 ring-amber-200"
-                                    : "bg-slate-100 text-slate-600 ring-slate-200";
-
-                            const progress =
-                                Math.min(
-                                    Math.max(
-                                        Number(
-                                            task.progress || 0
-                                        ),
-                                        0
-                                    ),
-                                    100
-                                );
-
-                            return (
-                                <article
-                                    key={task.id}
-                                    className="group rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-md"
-                                >
-                                    {/* TOP */}
-                                    <div className="flex items-start justify-between gap-3">
-
-                                        <div className="min-w-0">
-                                            <h5 className="truncate text-xs font-bold uppercase text-slate-950">
-                                                {task.title}
-                                            </h5>
-
-                                            <p className="mt-1 text-[9px] font-bold text-violet-600">
-                                                {task.taskNo || "TASK"}
-                                            </p>
-                                        </div>
-
-                                        <span
-                                            className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-bold ring-1 ring-inset ${priorityClass}`}
+                                    return (
+                                        <button
+                                            key={statusItem.name}
+                                            type="button"
+                                            onClick={() =>
+                                                setTeamBoardStatus(
+                                                    statusItem.name
+                                                )
+                                            }
+                                            className={`flex h-10 min-w-[135px] items-center justify-center gap-2 rounded-lg px-4 text-xs font-semibold transition ${active
+                                                    ? isCompleted
+                                                        ? "bg-emerald-600 text-white shadow-sm"
+                                                        : "bg-slate-900 text-white shadow-sm"
+                                                    : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+                                                }`}
                                         >
-                                            {task.priority || "Normal"}
+                                            <StatusIcon size={15} />
+
+                                            {statusItem.label}
+
+                                            <span
+                                                className={`inline-flex min-w-[22px] items-center justify-center rounded-full px-1.5 py-0.5 text-[9px] font-bold ${active
+                                                        ? "bg-white/20 text-white"
+                                                        : "bg-slate-100 text-slate-500"
+                                                    }`}
+                                            >
+                                                {count}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* =====================================================
+                SELECTED STATUS HEADER
+            ====================================================== */}
+                        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+
+                            <div className="flex items-center gap-3">
+
+                                <div
+                                    className={`flex h-10 w-10 items-center justify-center rounded-xl ${teamBoardStatus === "Completed"
+                                            ? "bg-emerald-100 text-emerald-700"
+                                            : teamBoardStatus === "In Progress"
+                                                ? "bg-violet-100 text-violet-700"
+                                                : "bg-blue-100 text-blue-700"
+                                        }`}
+                                >
+                                    <SelectedStatusIcon size={17} />
+                                </div>
+
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h4 className="text-sm font-bold text-slate-950">
+                                            {selectedBoardConfig.label} Tasks
+                                        </h4>
+
+                                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                                            {selectedBoardTasks.length}
                                         </span>
                                     </div>
 
-                                    {/* DIVIDER */}
-                                    <div className="my-3 border-t border-slate-100" />
+                                    <p className="mt-1 text-[10px] text-slate-500">
+                                        {teamBoardStatus === "Assigned"
+                                            ? "Tasks waiting to start"
+                                            : teamBoardStatus === "In Progress"
+                                                ? "Tasks currently being worked on"
+                                                : teamBoardStatus === "Testing"
+                                                    ? "Tasks currently under testing"
+                                                    : teamBoardStatus === "Waiting"
+                                                        ? "Tasks temporarily waiting"
+                                                        : "Successfully finished tasks"}
+                                    </p>
+                                </div>
+                            </div>
 
-                                    {/* INFO */}
-                                    <div className="grid grid-cols-2 gap-x-5 gap-y-3">
+                            <p className="hidden text-[10px] text-slate-400 lg:block">
+                                Team-wide task status overview
+                            </p>
+                        </div>
 
-                                        <div>
-                                            <p className="text-[8px] font-bold uppercase tracking-[0.12em] text-slate-400">
-                                                Client
-                                            </p>
+                        {/* =====================================================
+                LOADING / ERROR
+            ====================================================== */}
 
-                                            <p className="mt-1 truncate text-[10px] font-semibold text-slate-700">
-                                                {task.client || "—"}
-                                            </p>
-                                        </div>
+                        {tasksLoading && (
+                            <div className="flex min-h-[220px] items-center justify-center">
+                                <div className="flex items-center gap-2 text-sm font-medium text-slate-500">
+                                    <RefreshCw
+                                        size={17}
+                                        className="animate-spin"
+                                    />
+                                    Loading tasks...
+                                </div>
+                            </div>
+                        )}
 
-                                        <div>
-                                            <p className="text-[8px] font-bold uppercase tracking-[0.12em] text-slate-400">
-                                                Project
-                                            </p>
+                        {!tasksLoading && tasksError && (
+                            <div className="m-5 flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                                <AlertCircle
+                                    size={17}
+                                    className="mt-0.5 shrink-0"
+                                />
 
-                                            <p className="mt-1 truncate text-[10px] font-semibold text-slate-700">
-                                                {task.project || "—"}
-                                            </p>
-                                        </div>
+                                {tasksError}
+                            </div>
+                        )}
 
-                                        <div>
-                                            <p className="text-[8px] font-bold uppercase tracking-[0.12em] text-slate-400">
-                                                Assigned
-                                            </p>
+                        {/* =====================================================
+                TASK CARDS
+            ====================================================== */}
 
-                                            <p className="mt-1 truncate text-[10px] font-semibold text-slate-700">
-                                                {employee?.name ||
-                                                    task.assignedEmployeeName ||
-                                                    "Unassigned"}
-                                            </p>
-                                        </div>
+                        {!tasksLoading &&
+                            !tasksError &&
+                            selectedBoardTasks.length > 0 && (
+                                <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
 
-                                        <div>
-                                            <p className="text-[8px] font-bold uppercase tracking-[0.12em] text-slate-400">
-                                                Due
-                                            </p>
+                                    {selectedBoardTasks.map((task) => {
+                                        const employee =
+                                            employeeList.find(
+                                                (item) =>
+                                                    String(item.id) ===
+                                                    String(
+                                                        task.assignedEmployeeId
+                                                    )
+                                            );
 
-                                            <p
-                                                className={`mt-1 text-[10px] font-semibold ${
-                                                    teamBoardStatus ===
-                                                    "Completed"
-                                                        ? "text-emerald-600"
-                                                        : "text-slate-700"
-                                                }`}
+                                        const priorityClass =
+                                            task.priority === "Critical"
+                                                ? "bg-rose-50 text-rose-700 ring-rose-200"
+                                                : task.priority === "High"
+                                                    ? "bg-orange-50 text-orange-700 ring-orange-200"
+                                                    : task.priority === "Medium"
+                                                        ? "bg-amber-50 text-amber-700 ring-amber-200"
+                                                        : "bg-slate-100 text-slate-600 ring-slate-200";
+
+                                        const progress =
+                                            Math.min(
+                                                Math.max(
+                                                    Number(
+                                                        task.progress || 0
+                                                    ),
+                                                    0
+                                                ),
+                                                100
+                                            );
+
+                                        return (
+                                            <article
+                                                key={task.id}
+                                                className="group rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-md"
                                             >
-                                                {teamBoardStatus ===
-                                                "Completed"
-                                                    ? "Completed"
-                                                    : task.dueDate ||
-                                                      "—"}
-                                            </p>
-                                        </div>
-                                    </div>
+                                                {/* TOP */}
+                                                <div className="flex items-start justify-between gap-3">
 
-                                    {/* PROGRESS */}
-                                    <div className="mt-4">
+                                                    <div className="min-w-0">
+                                                        <h5 className="truncate text-xs font-bold uppercase text-slate-950">
+                                                            {task.title}
+                                                        </h5>
 
-                                        <div className="mb-1.5 flex items-center justify-between">
-                                            <span className="text-[8px] font-medium text-slate-400">
-                                                Progress
-                                            </span>
+                                                        <p className="mt-1 text-[9px] font-bold text-violet-600">
+                                                            {task.taskNo || "TASK"}
+                                                        </p>
+                                                    </div>
 
-                                            <span className="text-[8px] font-semibold text-slate-700">
-                                                {progress}%
-                                            </span>
-                                        </div>
-
-                                        <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
-                                            <div
-                                                className={`h-full rounded-full transition-all ${
-                                                    progress >= 100
-                                                        ? "bg-emerald-500"
-                                                        : "bg-violet-500"
-                                                }`}
-                                                style={{
-                                                    width: `${progress}%`,
-                                                }}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* TIME + ACTION */}
-                                    <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
-
-                                        <div>
-                                            <p className="text-[9px] font-medium text-slate-400">
-                                                {task.spentTime || "0m"} of{" "}
-                                                {task.estimatedTime || "0m"}
-                                            </p>
-                                        </div>
-
-                                        <div className="flex items-center gap-2">
-
-                                            {task.status ===
-                                                "Assigned" && (
-                                                <button
-                                                    type="button"
-                                                    disabled={
-                                                        updatingTaskId ===
-                                                        task.id
-                                                    }
-                                                    onClick={() =>
-                                                        updateTaskStatus(
-                                                            task.id,
-                                                            "In Progress"
-                                                        )
-                                                    }
-                                                    className="rounded-lg bg-violet-50 px-3 py-1.5 text-[9px] font-bold text-violet-700 transition hover:bg-violet-100 disabled:opacity-50"
-                                                >
-                                                    {updatingTaskId ===
-                                                    task.id ? (
-                                                        <RefreshCw
-                                                            size={12}
-                                                            className="animate-spin"
-                                                        />
-                                                    ) : (
-                                                        "Start"
-                                                    )}
-                                                </button>
-                                            )}
-
-                                            {task.status ===
-                                                "In Progress" && (
-                                                <button
-                                                    type="button"
-                                                    disabled={
-                                                        updatingTaskId ===
-                                                        task.id
-                                                    }
-                                                    onClick={() =>
-                                                        updateTaskStatus(
-                                                            task.id,
-                                                            "Completed"
-                                                        )
-                                                    }
-                                                    className="rounded-lg bg-emerald-50 px-3 py-1.5 text-[9px] font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50"
-                                                >
-                                                    {updatingTaskId ===
-                                                    task.id ? (
-                                                        <RefreshCw
-                                                            size={12}
-                                                            className="animate-spin"
-                                                        />
-                                                    ) : (
-                                                        "Complete"
-                                                    )}
-                                                </button>
-                                            )}
-
-                                            {["Completed", "Closed"].includes(
-                                                task.status
-                                            ) && (
-                                                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-900 text-white">
-                                                    <CheckCircle
-                                                        size={13}
-                                                    />
+                                                    <span
+                                                        className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-bold ring-1 ring-inset ${priorityClass}`}
+                                                    >
+                                                        {task.priority || "Normal"}
+                                                    </span>
                                                 </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </article>
-                            );
-                        })}
-                    </div>
-                )}
 
-            {/* =====================================================
+                                                {/* DIVIDER */}
+                                                <div className="my-3 border-t border-slate-100" />
+
+                                                {/* INFO */}
+                                                <div className="grid grid-cols-2 gap-x-5 gap-y-3">
+
+                                                    <div>
+                                                        <p className="text-[8px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                                                            Client
+                                                        </p>
+
+                                                        <p className="mt-1 truncate text-[10px] font-semibold text-slate-700">
+                                                            {task.client || "—"}
+                                                        </p>
+                                                    </div>
+
+                                                    <div>
+                                                        <p className="text-[8px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                                                            Project
+                                                        </p>
+
+                                                        <p className="mt-1 truncate text-[10px] font-semibold text-slate-700">
+                                                            {task.project || "—"}
+                                                        </p>
+                                                    </div>
+
+                                                    <div>
+                                                        <p className="text-[8px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                                                            Assigned
+                                                        </p>
+
+                                                        <p className="mt-1 truncate text-[10px] font-semibold text-slate-700">
+                                                            {employee?.name ||
+                                                                task.assignedEmployeeName ||
+                                                                "Unassigned"}
+                                                        </p>
+                                                    </div>
+
+                                                    <div>
+                                                        <p className="text-[8px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                                                            Due
+                                                        </p>
+
+                                                        <p
+                                                            className={`mt-1 text-[10px] font-semibold ${teamBoardStatus ===
+                                                                    "Completed"
+                                                                    ? "text-emerald-600"
+                                                                    : "text-slate-700"
+                                                                }`}
+                                                        >
+                                                            {teamBoardStatus ===
+                                                                "Completed"
+                                                                ? "Completed"
+                                                                : task.dueDate ||
+                                                                "—"}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                {/* PROGRESS */}
+                                                <div className="mt-4">
+
+                                                    <div className="mb-1.5 flex items-center justify-between">
+                                                        <span className="text-[8px] font-medium text-slate-400">
+                                                            Progress
+                                                        </span>
+
+                                                        <span className="text-[8px] font-semibold text-slate-700">
+                                                            {progress}%
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                                                        <div
+                                                            className={`h-full rounded-full transition-all ${progress >= 100
+                                                                    ? "bg-emerald-500"
+                                                                    : "bg-violet-500"
+                                                                }`}
+                                                            style={{
+                                                                width: `${progress}%`,
+                                                            }}
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* TIME + ACTION */}
+                                                <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+
+                                                    <div>
+                                                        <p className="text-[9px] font-medium text-slate-400">
+                                                            {task.spentTime || "0m"} of{" "}
+                                                            {task.estimatedTime || "0m"}
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="flex items-center gap-2">
+
+                                                        {task.status ===
+                                                            "Assigned" && (
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={
+                                                                        updatingTaskId ===
+                                                                        task.id
+                                                                    }
+                                                                    onClick={() =>
+                                                                        updateTaskStatus(
+                                                                            task.id,
+                                                                            "In Progress"
+                                                                        )
+                                                                    }
+                                                                    className="rounded-lg bg-violet-50 px-3 py-1.5 text-[9px] font-bold text-violet-700 transition hover:bg-violet-100 disabled:opacity-50"
+                                                                >
+                                                                    {updatingTaskId ===
+                                                                        task.id ? (
+                                                                        <RefreshCw
+                                                                            size={12}
+                                                                            className="animate-spin"
+                                                                        />
+                                                                    ) : (
+                                                                        "Start"
+                                                                    )}
+                                                                </button>
+                                                            )}
+
+                                                        {task.status ===
+                                                            "In Progress" && (
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={
+                                                                        updatingTaskId ===
+                                                                        task.id
+                                                                    }
+                                                                    onClick={() =>
+                                                                        updateTaskStatus(
+                                                                            task.id,
+                                                                            "Completed"
+                                                                        )
+                                                                    }
+                                                                    className="rounded-lg bg-emerald-50 px-3 py-1.5 text-[9px] font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50"
+                                                                >
+                                                                    {updatingTaskId ===
+                                                                        task.id ? (
+                                                                        <RefreshCw
+                                                                            size={12}
+                                                                            className="animate-spin"
+                                                                        />
+                                                                    ) : (
+                                                                        "Complete"
+                                                                    )}
+                                                                </button>
+                                                            )}
+
+                                                        {["Completed", "Closed"].includes(
+                                                            task.status
+                                                        ) && (
+                                                                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-900 text-white">
+                                                                    <CheckCircle
+                                                                        size={13}
+                                                                    />
+                                                                </div>
+                                                            )}
+                                                    </div>
+                                                </div>
+                                            </article>
+                                        );
+                                    })}
+                                </div>
+                            )}
+
+                        {/* =====================================================
                 EMPTY STATUS
             ====================================================== */}
 
-            {!tasksLoading &&
-                !tasksError &&
-                selectedBoardTasks.length === 0 && (
-                    <div className="m-4 flex min-h-[260px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/40 px-6 text-center">
+                        {!tasksLoading &&
+                            !tasksError &&
+                            selectedBoardTasks.length === 0 && (
+                                <div className="m-4 flex min-h-[260px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/40 px-6 text-center">
 
-                        <div
-                            className={`flex h-12 w-12 items-center justify-center rounded-2xl ${
-                                teamBoardStatus ===
-                                "Completed"
-                                    ? "bg-emerald-100 text-emerald-600"
-                                    : "bg-violet-100 text-violet-600"
-                            }`}
-                        >
-                            <SelectedStatusIcon
-                                size={21}
-                            />
-                        </div>
+                                    <div
+                                        className={`flex h-12 w-12 items-center justify-center rounded-2xl ${teamBoardStatus ===
+                                                "Completed"
+                                                ? "bg-emerald-100 text-emerald-600"
+                                                : "bg-violet-100 text-violet-600"
+                                            }`}
+                                    >
+                                        <SelectedStatusIcon
+                                            size={21}
+                                        />
+                                    </div>
 
-                        <p className="mt-4 text-sm font-semibold text-slate-700">
-                            No{" "}
-                            {selectedBoardConfig.label.toLowerCase()}{" "}
-                            tasks
-                        </p>
+                                    <p className="mt-4 text-sm font-semibold text-slate-700">
+                                        No{" "}
+                                        {selectedBoardConfig.label.toLowerCase()}{" "}
+                                        tasks
+                                    </p>
 
-                        <p className="mt-1 text-xs text-slate-400">
-                            Tasks will appear here when their status changes.
-                        </p>
+                                    <p className="mt-1 text-xs text-slate-400">
+                                        Tasks will appear here when their status changes.
+                                    </p>
+                                </div>
+                            )}
                     </div>
-                )}
-        </div>
-    );
-})()}
+                );
+            })()}
 
             {/* Employee Form Drawer */}
-      {/* =========================================================
+            {/* =========================================================
     PREMIUM ADD / EDIT EMPLOYEE DRAWER
 ========================================================= */}
-{employeeFormOpen && (
-    <div className="fixed inset-0 z-[110]">
-        {/* Backdrop */}
-        <button
-            type="button"
-            aria-label="Close employee form"
-            onClick={closeEmployeeDrawer}
-            className="absolute inset-0 bg-slate-950/45 backdrop-blur-[3px]"
-        />
-
-        {/* Drawer */}
-        <aside className="absolute inset-y-0 right-0 flex w-full max-w-[860px] flex-col overflow-hidden border-l border-slate-200 bg-[#f8fafc] shadow-[-30px_0_80px_rgba(15,23,42,0.20)]">
-
-            {/* ================= HEADER ================= */}
-            <div className="relative shrink-0 overflow-hidden border-b border-slate-200 bg-white">
-                <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-600 via-indigo-500 to-blue-500" />
-
-                <div className="flex min-h-[100px] items-center justify-between gap-6 px-6 py-5 lg:px-8">
-                    <div className="flex min-w-0 items-center gap-4">
-
-                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-600/20">
-                            {editingEmployeeId ? (
-                                <Edit size={20} />
-                            ) : (
-                                <UserPlus size={20} />
-                            )}
-                        </div>
-
-                        <div className="min-w-0">
-                            <div className="mb-1 flex items-center gap-2">
-                                <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-600">
-                                    Employee Management
-                                </span>
-
-                                <span className="h-1 w-1 rounded-full bg-slate-300" />
-
-                                <span className="text-[10px] font-medium text-slate-400">
-                                    {editingEmployeeId
-                                        ? "Update Employee"
-                                        : "New Employee"}
-                                </span>
-                            </div>
-
-                            <h2 className="text-xl font-bold tracking-[-0.025em] text-slate-950">
-                                {editingEmployeeId
-                                    ? "Edit Employee Profile"
-                                    : "Add New Employee"}
-                            </h2>
-
-                            <p className="mt-1 text-xs leading-5 text-slate-500">
-                                {editingEmployeeId
-                                    ? "Update employee identity, organization details and login access."
-                                    : "Create the employee profile and configure their system login access."}
-                            </p>
-                        </div>
-                    </div>
-
+            {employeeFormOpen && (
+                <div className="fixed inset-0 z-[110]">
+                    {/* Backdrop */}
                     <button
                         type="button"
+                        aria-label="Close employee form"
                         onClick={closeEmployeeDrawer}
-                        disabled={savingEmployee}
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition-all hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
-                    >
-                        <X size={18} />
-                    </button>
-                </div>
-            </div>
+                        className="absolute inset-0 bg-slate-950/45 backdrop-blur-[3px]"
+                    />
 
-            <form
-                onSubmit={handleSaveEmployee}
-                className="flex min-h-0 flex-1 flex-col"
-            >
-                {/* ================= SCROLL AREA ================= */}
-                <div className="flex-1 overflow-y-auto">
-                    <div className="space-y-6 p-5 sm:p-6 lg:p-8">
+                    {/* Drawer */}
+                    <aside className="absolute inset-y-0 right-0 flex w-full max-w-[860px] flex-col overflow-hidden border-l border-slate-200 bg-[#f8fafc] shadow-[-30px_0_80px_rgba(15,23,42,0.20)]">
 
-                        {/* =====================================================
-                            SECTION 1 - EMPLOYEE IDENTITY
-                        ===================================================== */}
-                        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_6px_24px_rgba(15,23,42,0.04)]">
+                        {/* ================= HEADER ================= */}
+                        <div className="relative shrink-0 overflow-hidden border-b border-slate-200 bg-white">
+                            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-600 via-indigo-500 to-blue-500" />
 
-                            <div className="flex items-start gap-3 border-b border-slate-100 bg-slate-50/80 px-5 py-4">
-                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
-                                    <User size={17} />
-                                </div>
+                            <div className="flex min-h-[100px] items-center justify-between gap-6 px-6 py-5 lg:px-8">
+                                <div className="flex min-w-0 items-center gap-4">
 
-                                <div>
-                                    <h3 className="text-sm font-bold text-slate-900">
-                                        Employee Identity
-                                    </h3>
-
-                                    <p className="mt-0.5 text-[11px] text-slate-500">
-                                        Basic employee identification and contact information.
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div className="p-5">
-                                <div className="grid gap-5 md:grid-cols-2">
-
-                                    {/* Employee Code */}
-                                    <div>
-                                        <label className="mb-2 flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
-                                            Employee Code
-                                            <span className="text-rose-500">*</span>
-                                        </label>
-
-                                        <div className="relative">
-                                            <UserCheck
-                                                size={16}
-                                                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-                                            />
-
-                                            <input
-                                                required
-                                                name="employeeCode"
-                                                value={employeeForm.employeeCode}
-                                                onChange={handleEmployeeFormChange}
-                                                placeholder="EMP001"
-                                                className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm font-semibold uppercase text-slate-800 outline-none transition-all placeholder:font-normal placeholder:text-slate-400 hover:border-slate-300 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                            />
-                                        </div>
-
-                                        <p className="mt-1.5 text-[10px] text-slate-400">
-                                            Unique internal employee identification code.
-                                        </p>
-                                    </div>
-
-                                    {/* Employee Name */}
-                                    <div>
-                                        <label className="mb-2 flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
-                                            Full Name
-                                            <span className="text-rose-500">*</span>
-                                        </label>
-
-                                        <div className="relative">
-                                            <User
-                                                size={16}
-                                                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-                                            />
-
-                                            <input
-                                                required
-                                                name="name"
-                                                value={employeeForm.name}
-                                                onChange={handleEmployeeFormChange}
-                                                placeholder="Employee full name"
-                                                className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm font-medium text-slate-800 outline-none transition-all placeholder:font-normal placeholder:text-slate-400 hover:border-slate-300 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* Mobile */}
-                                    <div>
-                                        <label className="mb-2 block text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
-                                            Mobile Number
-                                        </label>
-
-                                        <div className="relative">
-                                            <Phone
-                                                size={16}
-                                                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-                                            />
-
-                                            <input
-                                                name="mobile"
-                                                value={employeeForm.mobile}
-                                                onChange={handleEmployeeFormChange}
-                                                placeholder="+91 98765 43210"
-                                                className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-700 outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* Email */}
-                                    <div>
-                                        <label className="mb-2 flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
-                                            Login Email
-                                            <span className="text-rose-500">*</span>
-                                        </label>
-
-                                        <div className="relative">
-                                            <Mail
-                                                size={16}
-                                                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-                                            />
-
-                                            <input
-                                                required
-                                                type="email"
-                                                name="email"
-                                                value={employeeForm.email}
-                                                onChange={handleEmployeeFormChange}
-                                                placeholder="employee@company.com"
-                                                className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-700 outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                            />
-                                        </div>
-
-                                        <p className="mt-1.5 text-[10px] text-slate-400">
-                                            This email will be used for employee login.
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        </section>
-
-                        {/* =====================================================
-                            SECTION 2 - ORGANIZATION INFORMATION
-                        ===================================================== */}
-                        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_6px_24px_rgba(15,23,42,0.04)]">
-
-                            <div className="flex items-start gap-3 border-b border-slate-100 bg-slate-50/80 px-5 py-4">
-                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-                                    <Building2 size={17} />
-                                </div>
-
-                                <div>
-                                    <h3 className="text-sm font-bold text-slate-900">
-                                        Organization Information
-                                    </h3>
-
-                                    <p className="mt-0.5 text-[11px] text-slate-500">
-                                        Define employee position, department and current availability.
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div className="p-5">
-                                <div className="grid gap-5 md:grid-cols-2">
-
-                                    {/* Role */}
-                                    <div>
-                                        <label className="mb-2 flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
-                                            Role / Designation
-                                            <span className="text-rose-500">*</span>
-                                        </label>
-
-                                        <div className="relative">
-                                            <Briefcase
-                                                size={16}
-                                                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-                                            />
-
-                                            <input
-                                                required
-                                                name="role"
-                                                value={employeeForm.role}
-                                                onChange={handleEmployeeFormChange}
-                                                placeholder="Support Executive"
-                                                className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-700 outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* Department */}
-                                    <div>
-                                        <label className="mb-2 block text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
-                                            Department
-                                        </label>
-
-                                        <div className="relative">
-                                            <Building2
-                                                size={16}
-                                                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-                                            />
-
-                                            <select
-                                                name="department"
-                                                value={employeeForm.department}
-                                                onChange={handleEmployeeFormChange}
-                                                className="h-12 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-10 pr-10 text-sm text-slate-700 outline-none transition-all hover:border-slate-300 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                            >
-                                                <option value="Support">
-                                                    Support
-                                                </option>
-                                                <option value="Development">
-                                                    Development
-                                                </option>
-                                                <option value="Implementation">
-                                                    Implementation
-                                                </option>
-                                                <option value="Sales">
-                                                    Sales
-                                                </option>
-                                                <option value="Accounts">
-                                                    Accounts
-                                                </option>
-                                                <option value="Management">
-                                                    Management
-                                                </option>
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    {/* Joining Date */}
-                                    <div>
-                                        <label className="mb-2 block text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
-                                            Joining Date
-                                        </label>
-
-                                        <div className="relative">
-                                            <CalendarDays
-                                                size={16}
-                                                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-                                            />
-
-                                            <input
-                                                type="date"
-                                                name="joiningDate"
-                                                value={employeeForm.joiningDate}
-                                                onChange={handleEmployeeFormChange}
-                                                className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-700 outline-none transition-all hover:border-slate-300 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* Status */}
-                                    <div>
-                                        <label className="mb-2 block text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
-                                            Current Status
-                                        </label>
-
-                                        <select
-                                            name="status"
-                                            value={employeeForm.status}
-                                            onChange={handleEmployeeFormChange}
-                                            className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition-all hover:border-slate-300 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                        >
-                                            <option value="Free">
-                                                Free
-                                            </option>
-
-                                            <option value="Working">
-                                                Working
-                                            </option>
-
-                                            <option value="Break">
-                                                Break
-                                            </option>
-
-                                            <option value="Leave">
-                                                Leave
-                                            </option>
-                                        </select>
-                                    </div>
-                                </div>
-
-                                {/* Status helper */}
-                                <div className="mt-5 flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/60 p-4">
-                                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-blue-600 shadow-sm">
-                                        <Activity size={16} />
-                                    </div>
-
-                                    <div>
-                                        <p className="text-xs font-semibold text-blue-950">
-                                            Employee availability
-                                        </p>
-
-                                        <p className="mt-1 text-[10px] leading-5 text-blue-700">
-                                            Free employees can receive new assignments.
-                                            Working employees are currently engaged with assigned tasks.
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        </section>
-
-                        {/* =====================================================
-                            SECTION 3 - LOGIN SECURITY
-                        ===================================================== */}
-                        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_6px_24px_rgba(15,23,42,0.04)]">
-
-                            <div className="flex items-start gap-3 border-b border-slate-100 bg-slate-50/80 px-5 py-4">
-
-                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
-                                    <Shield size={17} />
-                                </div>
-
-                                <div className="min-w-0 flex-1">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <h3 className="text-sm font-bold text-slate-900">
-                                            Login & Security
-                                        </h3>
-
-                                        {editingEmployeeId && (
-                                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-500">
-                                                Optional
-                                            </span>
+                                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-600/20">
+                                        {editingEmployeeId ? (
+                                            <Edit size={20} />
+                                        ) : (
+                                            <UserPlus size={20} />
                                         )}
                                     </div>
 
-                                    <p className="mt-0.5 text-[11px] text-slate-500">
-                                        {editingEmployeeId
-                                            ? "Leave both password fields blank to keep the existing password."
-                                            : "Set a temporary password for the employee's first login."}
-                                    </p>
-                                </div>
-                            </div>
+                                    <div className="min-w-0">
+                                        <div className="mb-1 flex items-center gap-2">
+                                            <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-600">
+                                                Employee Management
+                                            </span>
 
-                            <div className="p-5">
-                                <div className="grid gap-5 md:grid-cols-2">
+                                            <span className="h-1 w-1 rounded-full bg-slate-300" />
 
-                                    <div>
-                                        <label className="mb-2 flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
+                                            <span className="text-[10px] font-medium text-slate-400">
+                                                {editingEmployeeId
+                                                    ? "Update Employee"
+                                                    : "New Employee"}
+                                            </span>
+                                        </div>
+
+                                        <h2 className="text-xl font-bold tracking-[-0.025em] text-slate-950">
                                             {editingEmployeeId
-                                                ? "New Password"
-                                                : "Temporary Password"}
+                                                ? "Edit Employee Profile"
+                                                : "Add New Employee"}
+                                        </h2>
 
-                                            {!editingEmployeeId && (
-                                                <span className="text-rose-500">*</span>
-                                            )}
-                                        </label>
-
-                                        <div className="relative">
-                                            <Shield
-                                                size={16}
-                                                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-                                            />
-
-                                            <input
-                                                type="password"
-                                                name="password"
-                                                value={employeeForm.password}
-                                                onChange={handleEmployeeFormChange}
-                                                placeholder={
-                                                    editingEmployeeId
-                                                        ? "Leave blank to keep existing"
-                                                        : "Minimum 6 characters"
-                                                }
-                                                className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-700 outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label className="mb-2 flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
-                                            Confirm Password
-
-                                            {!editingEmployeeId && (
-                                                <span className="text-rose-500">*</span>
-                                            )}
-                                        </label>
-
-                                        <div className="relative">
-                                            <Shield
-                                                size={16}
-                                                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-                                            />
-
-                                            <input
-                                                type="password"
-                                                name="confirmPassword"
-                                                value={employeeForm.confirmPassword}
-                                                onChange={handleEmployeeFormChange}
-                                                placeholder="Repeat password"
-                                                className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-700 outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                            />
-                                        </div>
+                                        <p className="mt-1 text-xs leading-5 text-slate-500">
+                                            {editingEmployeeId
+                                                ? "Update employee identity, organization details and login access."
+                                                : "Create the employee profile and configure their system login access."}
+                                        </p>
                                     </div>
                                 </div>
 
-                                <div className="mt-5 flex items-start gap-3 rounded-xl border border-amber-100 bg-amber-50/70 p-4">
-                                    <Shield
-                                        size={16}
-                                        className="mt-0.5 shrink-0 text-amber-600"
-                                    />
+                                <button
+                                    type="button"
+                                    onClick={closeEmployeeDrawer}
+                                    disabled={savingEmployee}
+                                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition-all hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+                        </div>
 
-                                    <div>
-                                        <p className="text-xs font-semibold text-amber-900">
-                                            Login Security
+                        <form
+                            onSubmit={handleSaveEmployee}
+                            className="flex min-h-0 flex-1 flex-col"
+                        >
+                            {/* ================= SCROLL AREA ================= */}
+                            <div className="flex-1 overflow-y-auto">
+                                <div className="space-y-6 p-5 sm:p-6 lg:p-8">
+
+                                    {/* =====================================================
+                            SECTION 1 - EMPLOYEE IDENTITY
+                        ===================================================== */}
+                                    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_6px_24px_rgba(15,23,42,0.04)]">
+
+                                        <div className="flex items-start gap-3 border-b border-slate-100 bg-slate-50/80 px-5 py-4">
+                                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
+                                                <User size={17} />
+                                            </div>
+
+                                            <div>
+                                                <h3 className="text-sm font-bold text-slate-900">
+                                                    Employee Identity
+                                                </h3>
+
+                                                <p className="mt-0.5 text-[11px] text-slate-500">
+                                                    Basic employee identification and contact information.
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="p-5">
+                                            <div className="grid gap-5 md:grid-cols-2">
+
+                                                {/* Employee Code */}
+                                                <div>
+                                                    <label className="mb-2 flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
+                                                        Employee Code
+                                                        <span className="text-rose-500">*</span>
+                                                    </label>
+
+                                                    <div className="relative">
+                                                        <UserCheck
+                                                            size={16}
+                                                            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+                                                        />
+
+                                                        <input
+                                                            required
+                                                            name="employeeCode"
+                                                            value={employeeForm.employeeCode}
+                                                            onChange={handleEmployeeFormChange}
+                                                            placeholder="EMP001"
+                                                            className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm font-semibold uppercase text-slate-800 outline-none transition-all placeholder:font-normal placeholder:text-slate-400 hover:border-slate-300 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                        />
+                                                    </div>
+
+                                                    <p className="mt-1.5 text-[10px] text-slate-400">
+                                                        Unique internal employee identification code.
+                                                    </p>
+                                                </div>
+
+                                                {/* Employee Name */}
+                                                <div>
+                                                    <label className="mb-2 flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
+                                                        Full Name
+                                                        <span className="text-rose-500">*</span>
+                                                    </label>
+
+                                                    <div className="relative">
+                                                        <User
+                                                            size={16}
+                                                            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+                                                        />
+
+                                                        <input
+                                                            required
+                                                            name="name"
+                                                            value={employeeForm.name}
+                                                            onChange={handleEmployeeFormChange}
+                                                            placeholder="Employee full name"
+                                                            className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm font-medium text-slate-800 outline-none transition-all placeholder:font-normal placeholder:text-slate-400 hover:border-slate-300 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* Mobile */}
+                                                <div>
+                                                    <label className="mb-2 block text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
+                                                        Mobile Number
+                                                    </label>
+
+                                                    <div className="relative">
+                                                        <Phone
+                                                            size={16}
+                                                            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+                                                        />
+
+                                                        <input
+                                                            name="mobile"
+                                                            value={employeeForm.mobile}
+                                                            onChange={handleEmployeeFormChange}
+                                                            placeholder="+91 98765 43210"
+                                                            className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-700 outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* Email */}
+                                                <div>
+                                                    <label className="mb-2 flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
+                                                        Login Email
+                                                        <span className="text-rose-500">*</span>
+                                                    </label>
+
+                                                    <div className="relative">
+                                                        <Mail
+                                                            size={16}
+                                                            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+                                                        />
+
+                                                        <input
+                                                            required
+                                                            type="email"
+                                                            name="email"
+                                                            value={employeeForm.email}
+                                                            onChange={handleEmployeeFormChange}
+                                                            placeholder="employee@company.com"
+                                                            className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-700 outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                        />
+                                                    </div>
+
+                                                    <p className="mt-1.5 text-[10px] text-slate-400">
+                                                        This email will be used for employee login.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </section>
+
+                                    {/* =====================================================
+                            SECTION 2 - ORGANIZATION INFORMATION
+                        ===================================================== */}
+                                    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_6px_24px_rgba(15,23,42,0.04)]">
+
+                                        <div className="flex items-start gap-3 border-b border-slate-100 bg-slate-50/80 px-5 py-4">
+                                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                                                <Building2 size={17} />
+                                            </div>
+
+                                            <div>
+                                                <h3 className="text-sm font-bold text-slate-900">
+                                                    Organization Information
+                                                </h3>
+
+                                                <p className="mt-0.5 text-[11px] text-slate-500">
+                                                    Define employee position, department and current availability.
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="p-5">
+                                            <div className="grid gap-5 md:grid-cols-2">
+
+                                                {/* Role */}
+                                                <div>
+                                                    <label className="mb-2 flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
+                                                        Role / Designation
+                                                        <span className="text-rose-500">*</span>
+                                                    </label>
+
+                                                    <div className="relative">
+                                                        <Briefcase
+                                                            size={16}
+                                                            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+                                                        />
+
+                                                        <input
+                                                            required
+                                                            name="role"
+                                                            value={employeeForm.role}
+                                                            onChange={handleEmployeeFormChange}
+                                                            placeholder="Support Executive"
+                                                            className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-700 outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* Department */}
+                                                <div>
+                                                    <label className="mb-2 block text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
+                                                        Department
+                                                    </label>
+
+                                                    <div className="relative">
+                                                        <Building2
+                                                            size={16}
+                                                            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+                                                        />
+
+                                                        <select
+                                                            name="department"
+                                                            value={employeeForm.department}
+                                                            onChange={handleEmployeeFormChange}
+                                                            className="h-12 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-10 pr-10 text-sm text-slate-700 outline-none transition-all hover:border-slate-300 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                        >
+                                                            <option value="Support">
+                                                                Support
+                                                            </option>
+                                                            <option value="Development">
+                                                                Development
+                                                            </option>
+                                                            <option value="Implementation">
+                                                                Implementation
+                                                            </option>
+                                                            <option value="Sales">
+                                                                Sales
+                                                            </option>
+                                                            <option value="Accounts">
+                                                                Accounts
+                                                            </option>
+                                                            <option value="Management">
+                                                                Management
+                                                            </option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+
+                                                {/* Joining Date */}
+                                                <div>
+                                                    <label className="mb-2 block text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
+                                                        Joining Date
+                                                    </label>
+
+                                                    <div className="relative">
+                                                        <CalendarDays
+                                                            size={16}
+                                                            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+                                                        />
+
+                                                        <input
+                                                            type="date"
+                                                            name="joiningDate"
+                                                            value={employeeForm.joiningDate}
+                                                            onChange={handleEmployeeFormChange}
+                                                            className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-700 outline-none transition-all hover:border-slate-300 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* Status */}
+                                                <div>
+                                                    <label className="mb-2 block text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
+                                                        Current Status
+                                                    </label>
+
+                                                    <select
+                                                        name="status"
+                                                        value={employeeForm.status}
+                                                        onChange={handleEmployeeFormChange}
+                                                        className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition-all hover:border-slate-300 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                    >
+                                                        <option value="Free">
+                                                            Free
+                                                        </option>
+
+                                                        <option value="Working">
+                                                            Working
+                                                        </option>
+
+                                                        <option value="Break">
+                                                            Break
+                                                        </option>
+
+                                                        <option value="Leave">
+                                                            Leave
+                                                        </option>
+                                                    </select>
+                                                </div>
+                                            </div>
+
+                                            {/* Status helper */}
+                                            <div className="mt-5 flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/60 p-4">
+                                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-blue-600 shadow-sm">
+                                                    <Activity size={16} />
+                                                </div>
+
+                                                <div>
+                                                    <p className="text-xs font-semibold text-blue-950">
+                                                        Employee availability
+                                                    </p>
+
+                                                    <p className="mt-1 text-[10px] leading-5 text-blue-700">
+                                                        Free employees can receive new assignments.
+                                                        Working employees are currently engaged with assigned tasks.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </section>
+
+                                    {/* =====================================================
+                            SECTION 3 - LOGIN SECURITY
+                        ===================================================== */}
+                                    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_6px_24px_rgba(15,23,42,0.04)]">
+
+                                        <div className="flex items-start gap-3 border-b border-slate-100 bg-slate-50/80 px-5 py-4">
+
+                                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                                                <Shield size={17} />
+                                            </div>
+
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <h3 className="text-sm font-bold text-slate-900">
+                                                        Login & Security
+                                                    </h3>
+
+                                                    {editingEmployeeId && (
+                                                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-500">
+                                                            Optional
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                <p className="mt-0.5 text-[11px] text-slate-500">
+                                                    {editingEmployeeId
+                                                        ? "Leave both password fields blank to keep the existing password."
+                                                        : "Set a temporary password for the employee's first login."}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="p-5">
+                                            <div className="grid gap-5 md:grid-cols-2">
+
+                                                <div>
+                                                    <label className="mb-2 flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
+                                                        {editingEmployeeId
+                                                            ? "New Password"
+                                                            : "Temporary Password"}
+
+                                                        {!editingEmployeeId && (
+                                                            <span className="text-rose-500">*</span>
+                                                        )}
+                                                    </label>
+
+                                                    <div className="relative">
+                                                        <Shield
+                                                            size={16}
+                                                            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+                                                        />
+
+                                                        <input
+                                                            type="password"
+                                                            name="password"
+                                                            value={employeeForm.password}
+                                                            onChange={handleEmployeeFormChange}
+                                                            placeholder={
+                                                                editingEmployeeId
+                                                                    ? "Leave blank to keep existing"
+                                                                    : "Minimum 6 characters"
+                                                            }
+                                                            className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-700 outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div>
+                                                    <label className="mb-2 flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
+                                                        Confirm Password
+
+                                                        {!editingEmployeeId && (
+                                                            <span className="text-rose-500">*</span>
+                                                        )}
+                                                    </label>
+
+                                                    <div className="relative">
+                                                        <Shield
+                                                            size={16}
+                                                            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+                                                        />
+
+                                                        <input
+                                                            type="password"
+                                                            name="confirmPassword"
+                                                            value={employeeForm.confirmPassword}
+                                                            onChange={handleEmployeeFormChange}
+                                                            placeholder="Repeat password"
+                                                            className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-700 outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="mt-5 flex items-start gap-3 rounded-xl border border-amber-100 bg-amber-50/70 p-4">
+                                                <Shield
+                                                    size={16}
+                                                    className="mt-0.5 shrink-0 text-amber-600"
+                                                />
+
+                                                <div>
+                                                    <p className="text-xs font-semibold text-amber-900">
+                                                        Login Security
+                                                    </p>
+
+                                                    <p className="mt-1 text-[10px] leading-5 text-amber-700">
+                                                        Password must contain at least 6 characters.
+                                                        Employee email must remain unique because it is used as the login identity.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </section>
+                                </div>
+                            </div>
+
+                            {/* ================= STICKY FOOTER ================= */}
+                            <div className="shrink-0 border-t border-slate-200 bg-white/95 px-5 py-4 shadow-[0_-8px_30px_rgba(15,23,42,0.05)] backdrop-blur sm:px-6 lg:px-8">
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+
+                                    <div className="hidden sm:block">
+                                        <p className="text-[10px] font-semibold text-slate-500">
+                                            <span className="text-rose-500">*</span>{" "}
+                                            Required information
                                         </p>
 
-                                        <p className="mt-1 text-[10px] leading-5 text-amber-700">
-                                            Password must contain at least 6 characters.
-                                            Employee email must remain unique because it is used as the login identity.
+                                        <p className="mt-0.5 text-[9px] text-slate-400">
+                                            Employee profile and login access will be saved together.
                                         </p>
+                                    </div>
+
+                                    <div className="flex items-center justify-end gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={closeEmployeeDrawer}
+                                            disabled={savingEmployee}
+                                            className="h-11 rounded-xl border border-slate-200 bg-white px-5 text-xs font-bold text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-50"
+                                        >
+                                            Cancel
+                                        </button>
+
+                                        <button
+                                            type="submit"
+                                            disabled={savingEmployee}
+                                            className="flex h-11 min-w-[155px] items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-6 text-xs font-bold text-white shadow-lg shadow-violet-600/20 transition-all hover:-translate-y-0.5 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                                        >
+                                            {savingEmployee ? (
+                                                <>
+                                                    <RefreshCw
+                                                        size={15}
+                                                        className="animate-spin"
+                                                    />
+                                                    Saving...
+                                                </>
+                                            ) : editingEmployeeId ? (
+                                                <>
+                                                    <Edit size={15} />
+                                                    Update Employee
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <UserPlus size={15} />
+                                                    Add Employee
+                                                </>
+                                            )}
+                                        </button>
                                     </div>
                                 </div>
                             </div>
-                        </section>
-                    </div>
-                </div>
-
-                {/* ================= STICKY FOOTER ================= */}
-                <div className="shrink-0 border-t border-slate-200 bg-white/95 px-5 py-4 shadow-[0_-8px_30px_rgba(15,23,42,0.05)] backdrop-blur sm:px-6 lg:px-8">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-
-                        <div className="hidden sm:block">
-                            <p className="text-[10px] font-semibold text-slate-500">
-                                <span className="text-rose-500">*</span>{" "}
-                                Required information
-                            </p>
-
-                            <p className="mt-0.5 text-[9px] text-slate-400">
-                                Employee profile and login access will be saved together.
-                            </p>
-                        </div>
-
-                        <div className="flex items-center justify-end gap-3">
-                            <button
-                                type="button"
-                                onClick={closeEmployeeDrawer}
-                                disabled={savingEmployee}
-                                className="h-11 rounded-xl border border-slate-200 bg-white px-5 text-xs font-bold text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-50"
-                            >
-                                Cancel
-                            </button>
-
-                            <button
-                                type="submit"
-                                disabled={savingEmployee}
-                                className="flex h-11 min-w-[155px] items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-6 text-xs font-bold text-white shadow-lg shadow-violet-600/20 transition-all hover:-translate-y-0.5 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
-                            >
-                                {savingEmployee ? (
-                                    <>
-                                        <RefreshCw
-                                            size={15}
-                                            className="animate-spin"
-                                        />
-                                        Saving...
-                                    </>
-                                ) : editingEmployeeId ? (
-                                    <>
-                                        <Edit size={15} />
-                                        Update Employee
-                                    </>
-                                ) : (
-                                    <>
-                                        <UserPlus size={15} />
-                                        Add Employee
-                                    </>
-                                )}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </form>
-        </aside>
-    </div>
-)}
+                        </form>
+                    </aside>
+                </div>  
+            )}
 
             {/* Assign Task Drawer */}
             {assignTaskOpen && taskEmployee && (
