@@ -467,26 +467,26 @@ function MetricCard({
     descriptionClass = "text-slate-500",
 }) {
     return (
-        <div className="rounded-2xl border border-slate-200 bg-white p-5">
-            <div className="flex items-start justify-between gap-4">
-                <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+        <div className="flex flex-col justify-between rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xs transition hover:border-slate-300">
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-slate-500 truncate">
                         {label}
                     </p>
 
-                    <p className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-950">
+                    <p className="mt-2 font-mono text-2xl font-bold tracking-tight text-slate-900">
                         {value}
                     </p>
                 </div>
 
                 <div
-                    className={`flex h-10 w-10 items-center justify-center rounded-xl ${iconClass}`}
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${iconClass}`}
                 >
                     <Icon size={18} />
                 </div>
             </div>
 
-            <p className={`mt-4 text-xs ${descriptionClass}`}>
+            <p className={`mt-3 truncate text-[11px] font-medium ${descriptionClass}`}>
                 {description}
             </p>
         </div>

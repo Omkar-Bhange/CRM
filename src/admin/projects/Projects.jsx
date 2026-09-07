@@ -1461,7 +1461,7 @@ const handleConversionChange =
                     }) => (
                         <div
                             key={label}
-                            className="rounded-2xl border border-slate-200 bg-white p-5"
+                            className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xs"
                         >
                             <div className="flex items-center justify-between">
                                 <div>
@@ -1469,12 +1469,12 @@ const handleConversionChange =
                                         {label}
                                     </p>
 
-                                    <p className="mt-2 text-2xl font-semibold text-slate-950">
+                                    <p className="mt-2 font-mono text-2xl font-bold text-slate-900">
                                         {value}
                                     </p>
                                 </div>
 
-                                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-700">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-50 text-violet-700">
                                     <Icon
                                         size={
                                             18
@@ -1487,12 +1487,12 @@ const handleConversionChange =
                 )}
             </div>
 
-            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                <div className="border-b border-slate-200 p-4">
+            <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
+                <div className="border-b border-slate-200 p-3.5 sm:p-4">
                     <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
                         <div className="relative flex-1">
                             <Search
-                                size={16}
+                                size={15}
                                 className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
                             />
 
@@ -1520,7 +1520,7 @@ const handleConversionChange =
                                     }
                                 }}
                                 placeholder="Search project, client, product or requirement..."
-                                className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-sm outline-none focus:border-violet-500"
+                                className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-4 text-xs outline-none transition focus:border-violet-600 focus:ring-2 focus:ring-violet-500/15"
                             />
                         </div>
 
@@ -1537,7 +1537,7 @@ const handleConversionChange =
                                         .value
                                 )
                             }
-                            className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none"
+                            className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none transition focus:border-violet-600"
                         >
                             {STATUS_OPTIONS.map(
                                 (status) => (
@@ -1570,7 +1570,7 @@ const handleConversionChange =
                                         .value
                                 )
                             }
-                            className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none"
+                            className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none transition focus:border-violet-600"
                         >
                             <option value="All">
                                 All Types
@@ -1605,7 +1605,7 @@ const handleConversionChange =
                                         .value
                                 )
                             }
-                            className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none"
+                            className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none transition focus:border-violet-600"
                         >
                             <option value="All">
                                 All Priority
@@ -1634,10 +1634,11 @@ const handleConversionChange =
                             onClick={
                                 loadProjects
                             }
-                            className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50"
+                            className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:bg-slate-50 hover:border-slate-300 shrink-0"
+                            title="Refresh projects"
                         >
                             <RefreshCw
-                                size={16}
+                                size={15}
                             />
                         </button>
                     </div>

@@ -3,32 +3,32 @@
 :root {
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
-  color: #172033;
-  background: #f4f6fa;
+  color: #0f172a;
+  background: #f8fafc;
   color-scheme: light;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 
-  /* Total Solution's shared enterprise palette. */
-  --ts-background: #f4f6fa;
+  /* Total Solution Nexora unified enterprise palette */
+  --ts-background: #f8fafc;
   --ts-surface: #ffffff;
   --ts-surface-muted: #f8fafc;
-  --ts-surface-emphasis: #eef2ff;
+  --ts-surface-emphasis: #f5f3ff;
   --ts-border: #e2e8f0;
   --ts-border-strong: #cbd5e1;
-  --ts-text: #172033;
+  --ts-text: #0f172a;
+  --ts-text-secondary: #64748b;
   --ts-text-muted: #64748b;
   --ts-text-subtle: #94a3b8;
-  --ts-brand: #6857d9;
-  --ts-brand-strong: #5644ca;
-  --ts-brand-soft: #f1efff;
-  --ts-success: #047857;
-  --ts-warning: #b45309;
-  --ts-danger: #be123c;
+  --ts-brand: #7c3aed;
+  --ts-brand-strong: #6d28d9;
+  --ts-brand-soft: #f5f3ff;
+  --ts-success: #059669;
+  --ts-warning: #d97706;
+  --ts-danger: #e11d48;
   --ts-info: #2563eb;
-  --ts-shadow-card: 0 1px 2px rgba(15, 23, 42, 0.025),
-    0 10px 30px rgba(15, 23, 42, 0.035);
-  --ts-shadow-float: 0 18px 45px rgba(15, 23, 42, 0.12);
+  --ts-shadow-card: 0 1px 3px 0 rgba(15, 23, 42, 0.04), 0 1px 2px -1px rgba(15, 23, 42, 0.04);
+  --ts-shadow-float: 0 12px 32px -4px rgba(15, 23, 42, 0.08);
   --ts-ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -48,10 +48,10 @@ body,
 body {
   min-height: 100vh;
   overflow-x: hidden;
-  background:
-    radial-gradient(circle at 88% -12%, rgba(104, 87, 217, 0.08), transparent 30rem),
-    var(--ts-background);
+  background: var(--ts-background);
   color: var(--ts-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 button,
@@ -102,8 +102,8 @@ a:focus-visible,
 }
 
 *::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 6px;
+  height: 6px;
 }
 
 *::-webkit-scrollbar-track {
@@ -111,7 +111,7 @@ a:focus-visible,
 }
 
 *::-webkit-scrollbar-thumb {
-  border: 3px solid transparent;
+  border: 1px solid transparent;
   border-radius: 999px;
   background-clip: padding-box;
   background-color: #cbd5e1;
@@ -124,17 +124,16 @@ a:focus-visible,
 /* Shared presentation primitives. They supplement existing Tailwind classes and
    deliberately contain no business-state or component behavior. */
 .enterprise-page {
-  animation: ts-page-enter 360ms var(--ts-ease) both;
+  animation: ts-page-enter 240ms var(--ts-ease) both;
 }
 
 .enterprise-shell {
   isolation: isolate;
+  background-color: var(--ts-background);
 }
 
 .enterprise-sidebar {
-  background:
-    radial-gradient(circle at 14% 2%, rgba(124, 110, 235, 0.18), transparent 18rem),
-    #101827;
+  background-color: #0f172a;
 }
 
 .enterprise-sidebar-nav-item {

@@ -163,7 +163,7 @@ export default function EmployeeLayout({ onLogout }) {
             )}
 
             <aside
-                className={`enterprise-sidebar fixed inset-y-0 left-0 z-50 flex w-[244px] flex-col border-r border-slate-800 bg-[#111827] transition-transform duration-300 lg:translate-x-0 ${sidebarOpen
+                className={`enterprise-sidebar fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-slate-800 bg-[#0f172a] transition-transform duration-300 lg:translate-x-0 ${sidebarOpen
                         ? "translate-x-0"
                         : "-translate-x-full"
                     }`}
@@ -311,7 +311,7 @@ export default function EmployeeLayout({ onLogout }) {
                 </div>
             </aside>
 
-            <div className="min-h-screen lg:pl-[244px]">
+            <div className="min-h-screen lg:pl-64">
                 <header className="sticky top-0 z-30 flex h-[72px] items-center justify-between border-b border-slate-200 bg-white/95 px-4 backdrop-blur-xl sm:px-6">
                     <div className="flex min-w-0 items-center gap-3">
                         <button
@@ -430,7 +430,7 @@ export default function EmployeeLayout({ onLogout }) {
                     </div>
                 </header>
 
-                <main className="enterprise-workspace min-h-[calc(100vh-72px)] p-4 sm:p-6">
+                <main className="enterprise-workspace min-h-[calc(100vh-72px)] p-4 sm:p-6 lg:p-8">
                     <div className="enterprise-page mx-auto max-w-[1600px]">
                         {renderPage()}
                     </div>

@@ -407,7 +407,7 @@ export default function ClientLayout({ onLogout }) {
             </aside>
 
             <div className="min-h-screen lg:pl-[260px]">
-                <header className="sticky top-0 z-30 flex h-[76px] items-center border-b border-slate-200 bg-white/90 px-4 backdrop-blur-xl sm:px-6 lg:px-8">
+                <header className="sticky top-0 z-30 flex h-[72px] items-center border-b border-slate-200 bg-white/95 px-4 backdrop-blur-md sm:px-6 lg:px-8">
                     <button
                         type="button"
                         onClick={() => setSidebarOpen(true)}

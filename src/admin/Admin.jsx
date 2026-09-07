@@ -4312,7 +4312,7 @@ export default function Admin({ onLogout }) {
 
             {/* Sidebar */}
             <aside
-                className={`enterprise-sidebar fixed inset-y-0 left-0 z-50 flex w-[272px] flex-col border-r border-white/10 text-white transition-transform duration-300 ease-out lg:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"
+                className={`enterprise-sidebar fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-slate-800 text-white transition-transform duration-300 ease-out lg:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"
                     }`}
             >
                 {/* Sidebar Brand */}
@@ -4488,20 +4488,20 @@ export default function Admin({ onLogout }) {
             </aside>
 
             {/* Main Area */}
-            <div className="min-h-screen lg:pl-[272px]">
+            <div className="min-h-screen lg:pl-64">
                 {/* Header */}
-                <header className="sticky top-0 z-30 flex h-[76px] items-center border-b border-slate-200 bg-white/90 px-4 backdrop-blur-xl sm:px-6 lg:px-8">
+                <header className="sticky top-0 z-30 flex h-[72px] items-center border-b border-slate-200 bg-white/95 px-4 backdrop-blur-md sm:px-6 lg:px-8">
                     <button
                         type="button"
                         aria-label="Open navigation"
                         onClick={() => setSidebarOpen(true)}
-                        className="mr-3 flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 lg:hidden"
+                        className="mr-3 flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 lg:hidden"
                     >
-                        <Menu size={20} />
+                        <Menu size={18} />
                     </button>
 
                     <div className="min-w-0">
-                        <h2 className="truncate text-lg font-semibold tracking-[-0.02em] text-slate-950">
+                        <h2 className="truncate text-base font-semibold tracking-[-0.02em] text-slate-900 sm:text-lg">
                             {activeMenu === "settings" ? "Settings" : selectedMenu.label}
                         </h2>
                         <p className="hidden text-xs text-slate-500 sm:block">
@@ -4565,11 +4565,15 @@ export default function Admin({ onLogout }) {
                 </header>
 
                 {attendanceApprovalOpen && (
-                    <div className="fixed right-5 top-20 z-[80] w-[420px] max-w-[calc(100vw-40px)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-
-                        {attendanceApprovalOpen && (
-                            <div className="fixed right-5 top-20 z-[80] w-[420px] max-w-[calc(100vw-40px)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-                                <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+                    <>
+                        <button
+                            type="button"
+                            aria-label="Close attendance approval"
+                            onClick={() => setAttendanceApprovalOpen(false)}
+                            className="enterprise-backdrop fixed inset-0 z-[70] bg-slate-950/20 backdrop-blur-[1px]"
+                        />
+                        <div className="fixed right-4 sm:right-6 top-[76px] z-[80] w-[420px] max-w-[calc(100vw-32px)] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+                            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
                                     <div>
                                         <p className="text-sm font-semibold text-slate-950">
                                             Attendance Approval
@@ -4779,13 +4783,11 @@ export default function Admin({ onLogout }) {
                                     )}
                                 </div>
                             </div>
-                        )}
-
-                    </div>
-                )}
+                        </>
+                    )}
                 {/* Page Content */}
-                <main className="enterprise-workspace bg-[#f8fafc] p-3 sm:p-4 lg:p-5">
-                    <div className="mx-auto max-w-[1680px]">
+                <main className="enterprise-workspace min-h-[calc(100vh-72px)] bg-[#f8fafc] p-4 sm:p-6 lg:p-8">
+                    <div className="mx-auto max-w-[1600px]">
                         {activeMenu === "overview" ? (
                             <div className="enterprise-page">
                                 {/* Dashboard Heading */}
