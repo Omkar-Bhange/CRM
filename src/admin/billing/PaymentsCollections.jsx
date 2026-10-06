@@ -5,6 +5,7 @@ import {
 } from "react";
 
 import API_URL from "../../config/api";
+import DataTable from "../../components/data/DataTable";
 
 /* =====================================================
    AUTH
@@ -1419,34 +1420,29 @@ export default function PaymentsCollections() {
                 PAGE HEADER
             ========================================= */}
 
-            <section className="flex flex-col gap-4 border-b border-slate-200 pb-5 lg:flex-row lg:items-center lg:justify-between">
+            <section className="flex flex-col gap-3 border-b border-slate-200/80 pb-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-600">
-                        Revenue Operations
-                    </p>
+                    <div className="flex items-center gap-2">
+                        <h1 className="text-lg font-bold tracking-tight text-slate-900">
+                            Payments & Collections
+                        </h1>
+                        <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                            Revenue Operations
+                        </span>
+                    </div>
 
-                    <h1 className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-slate-950">
-                        Payments & Collections
-                    </h1>
-
-                    <p className="mt-1 text-xs text-slate-500">
-                        Track Product Sale and AMC collections, payment cycles and installment history.
+                    <p className="mt-0.5 text-xs text-slate-500">
+                        Track Product Sale and AMC collections, payment cycles, and installment history.
                     </p>
                 </div>
 
                 <button
                     type="button"
-                    onClick={
-                        loadPayments
-                    }
-                    disabled={
-                        loading
-                    }
-                    className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={loadPayments}
+                    disabled={loading}
+                    className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                    {loading
-                        ? "Refreshing..."
-                        : "Refresh"}
+                    {loading ? "Refreshing..." : "Refresh"}
                 </button>
             </section>
 
@@ -1464,281 +1460,139 @@ export default function PaymentsCollections() {
                 FILTER PANEL
             ========================================= */}
 
-            <section className="rounded-2xl border border-slate-200 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.03)]">
-                <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+            <section className="rounded-xl border border-slate-200/90 bg-white shadow-2xs">
+                <div className="flex flex-col gap-2.5 border-b border-slate-200/80 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <div className="flex items-center gap-2">
                             <h2 className="text-sm font-semibold text-slate-950">
                                 Collection Filters
                             </h2>
 
-                            {activeFilterCount >
-                                0 && (
-                                <span className="rounded-full bg-violet-100 px-2 py-1 text-[9px] font-semibold text-violet-700">
-                                    {
-                                        activeFilterCount
-                                    }{" "}
-                                    Active
+                            {activeFilterCount > 0 && (
+                                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-[#1B59F8]">
+                                    {activeFilterCount} Active
                                 </span>
                             )}
                         </div>
 
-                        <p className="mt-1 text-[10px] text-slate-500">
+                        <p className="mt-0.5 text-[11px] text-slate-500">
                             Summary cards and client ledgers automatically follow these filters.
                         </p>
                     </div>
 
-                    {activeFilterCount >
-                        0 && (
+                    {activeFilterCount > 0 && (
                         <button
                             type="button"
-                            onClick={
-                                clearFilters
-                            }
-                            className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                            onClick={clearFilters}
+                            className="flex h-7 items-center rounded-md border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
                         >
                             Clear Filters
                         </button>
                     )}
                 </div>
 
-                <div className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-6">
+                <div className="grid gap-3 p-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
                     {/* SEARCH */}
-
                     <div className="sm:col-span-2 xl:col-span-2">
-                        <label className="mb-1.5 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                             Search
                         </label>
-
                         <input
                             type="text"
-                            value={
-                                searchValue
-                            }
-                            onChange={(
-                                event
-                            ) =>
-                                setSearchValue(
-                                    event
-                                        .target
-                                        .value
-                                )
-                            }
+                            value={searchValue}
+                            onChange={(event) => setSearchValue(event.target.value)}
                             placeholder="Client, invoice, product, reference..."
-                            className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                            className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none transition focus:border-[#1B59F8] focus:ring-2 focus:ring-blue-100"
                         />
                     </div>
 
                     {/* SOURCE */}
-
                     <div>
-                        <label className="mb-1.5 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                             Source
                         </label>
-
                         <select
-                            value={
-                                sourceFilter
-                            }
-                            onChange={(
-                                event
-                            ) =>
-                                setSourceFilter(
-                                    event
-                                        .target
-                                        .value
-                                )
-                            }
-                            className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                            value={sourceFilter}
+                            onChange={(event) => setSourceFilter(event.target.value)}
+                            className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none focus:border-[#1B59F8] focus:ring-2 focus:ring-blue-100"
                         >
-                            <option value="ALL">
-                                All Sources
-                            </option>
-
-                            <option value="PRODUCT_SALE">
-                                Product Sale
-                            </option>
-
-                            <option value="AMC">
-                                AMC
-                            </option>
+                            <option value="ALL">All Sources</option>
+                            <option value="PRODUCT_SALE">Product Sale</option>
+                            <option value="AMC">AMC</option>
                         </select>
                     </div>
 
                     {/* MODE */}
-
                     <div>
-                        <label className="mb-1.5 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                             Payment Mode
                         </label>
-
                         <select
-                            value={
-                                modeFilter
-                            }
-                            onChange={(
-                                event
-                            ) =>
-                                setModeFilter(
-                                    event
-                                        .target
-                                        .value
-                                )
-                            }
-                            className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                            value={modeFilter}
+                            onChange={(event) => setModeFilter(event.target.value)}
+                            className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none focus:border-[#1B59F8] focus:ring-2 focus:ring-blue-100"
                         >
-                            <option value="ALL">
-                                All Modes
-                            </option>
-
-                            {paymentModes.map(
-                                (
-                                    mode
-                                ) => (
-                                    <option
-                                        key={
-                                            mode
-                                        }
-                                        value={
-                                            mode
-                                        }
-                                    >
-                                        {
-                                            mode
-                                        }
-                                    </option>
-                                )
-                            )}
+                            <option value="ALL">All Modes</option>
+                            {paymentModes.map((mode) => (
+                                <option key={mode} value={mode}>{mode}</option>
+                            ))}
                         </select>
                     </div>
 
                     {/* FINANCIAL YEAR */}
-
                     <div>
-                        <label className="mb-1.5 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                             Financial Year
                         </label>
-
                         <select
-                            value={
-                                financialYearFilter
-                            }
-                            onChange={(
-                                event
-                            ) =>
-                                setFinancialYearFilter(
-                                    event
-                                        .target
-                                        .value
-                                )
-                            }
-                            className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                            value={financialYearFilter}
+                            onChange={(event) => setFinancialYearFilter(event.target.value)}
+                            className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none focus:border-[#1B59F8] focus:ring-2 focus:ring-blue-100"
                         >
-                            <option value="ALL">
-                                All Financial Years
-                            </option>
-
-                            {financialYears.map(
-                                (
-                                    year
-                                ) => (
-                                    <option
-                                        key={
-                                            year
-                                        }
-                                        value={
-                                            year
-                                        }
-                                    >
-                                        FY{" "}
-                                        {
-                                            year
-                                        }
-                                    </option>
-                                )
-                            )}
+                            <option value="ALL">All Financial Years</option>
+                            {financialYears.map((year) => (
+                                <option key={year} value={year}>FY {year}</option>
+                            ))}
                         </select>
                     </div>
 
                     {/* RESULT COUNT */}
-
                     <div>
-                        <label className="mb-1.5 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                             Result
                         </label>
-
-                        <div className="flex h-10 items-center rounded-xl border border-slate-200 bg-slate-50 px-3">
+                        <div className="flex h-8 items-center rounded-lg border border-slate-200 bg-slate-50 px-2.5">
                             <span className="text-xs font-semibold text-slate-700">
-                                {
-                                    filteredPayments.length
-                                }{" "}
-                                payment
-                                {filteredPayments.length ===
-                                1
-                                    ? ""
-                                    : "s"}
+                                {filteredPayments.length} payment{filteredPayments.length === 1 ? "" : "s"}
                             </span>
                         </div>
                     </div>
-                </div>
 
-                {/* CUSTOM DATE RANGE */}
-
-                <div className="grid gap-4 border-t border-slate-100 px-5 py-4 sm:grid-cols-2 lg:grid-cols-[220px_220px_1fr]">
+                    {/* FROM DATE */}
                     <div>
-                        <label className="mb-1.5 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                             From Date
                         </label>
-
                         <input
                             type="date"
-                            value={
-                                fromDate
-                            }
-                            onChange={(
-                                event
-                            ) =>
-                                setFromDate(
-                                    event
-                                        .target
-                                        .value
-                                )
-                            }
-                            className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                            value={fromDate}
+                            onChange={(event) => setFromDate(event.target.value)}
+                            className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none focus:border-[#1B59F8] focus:ring-2 focus:ring-blue-100"
                         />
                     </div>
 
+                    {/* TO DATE */}
                     <div>
-                        <label className="mb-1.5 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                             To Date
                         </label>
-
                         <input
                             type="date"
-                            value={
-                                toDate
-                            }
-                            min={
-                                fromDate ||
-                                undefined
-                            }
-                            onChange={(
-                                event
-                            ) =>
-                                setToDate(
-                                    event
-                                        .target
-                                        .value
-                                )
-                            }
-                            className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                            value={toDate}
+                            min={fromDate || undefined}
+                            onChange={(event) => setToDate(event.target.value)}
+                            className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none focus:border-[#1B59F8] focus:ring-2 focus:ring-blue-100"
                         />
-                    </div>
-
-                    <div className="flex items-end">
-                        <p className="pb-2 text-[10px] leading-5 text-slate-400">
-                            Financial Year and custom dates filter by the actual payment/receipt date. AMC cycle dates remain based on the AMC invoice period.
-                        </p>
                     </div>
                 </div>
             </section>
@@ -1747,270 +1601,175 @@ export default function PaymentsCollections() {
                 SUMMARY
             ========================================= */}
 
-            <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
                 {/* TOTAL */}
-
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.03)]">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                        Total Received
-                    </p>
-
-                    <p className="mt-3 text-2xl font-semibold text-slate-950">
-                        {formatCurrency(
-                            summary.totalReceived
-                        )}
-                    </p>
-
-                    <p className="mt-2 text-xs text-slate-500">
-                        Filtered combined collections
-                    </p>
+                <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Total Received</span>
+                        <span className="inline-flex items-center rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-[#1B59F8] border border-blue-100">All Collections</span>
+                    </div>
+                    <div className="mt-2 flex items-baseline gap-2">
+                        <span className="text-xl font-bold tracking-tight text-slate-900">{formatCurrency(summary.totalReceived)}</span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-slate-500">Filtered combined receipts</p>
                 </div>
 
                 {/* PRODUCT */}
-
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.03)]">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                        Product Sale Collection
-                    </p>
-
-                    <p className="mt-3 text-2xl font-semibold text-emerald-700">
-                        {formatCurrency(
-                            summary.productSaleReceived
-                        )}
-                    </p>
-
-                    <p className="mt-2 text-xs text-emerald-600">
-                        Product sale receipts
-                    </p>
+                <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Product Sales</span>
+                        <span className="inline-flex items-center rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-100">Product</span>
+                    </div>
+                    <div className="mt-2 flex items-baseline gap-2">
+                        <span className="text-xl font-bold tracking-tight text-emerald-700">{formatCurrency(summary.productSaleReceived)}</span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-slate-500">Product sale receipts</p>
                 </div>
 
                 {/* AMC */}
-
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.03)]">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                        AMC Collection
-                    </p>
-
-                    <p className="mt-3 text-2xl font-semibold text-violet-700">
-                        {formatCurrency(
-                            summary.amcReceived
-                        )}
-                    </p>
-
-                    <p className="mt-2 text-xs text-violet-600">
-                        AMC installment receipts
-                    </p>
+                <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">AMC Collection</span>
+                        <span className="inline-flex items-center rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-[#1B59F8] border border-blue-100">AMC</span>
+                    </div>
+                    <div className="mt-2 flex items-baseline gap-2">
+                        <span className="text-xl font-bold tracking-tight text-[#1B59F8]">{formatCurrency(summary.amcReceived)}</span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-slate-500">AMC installment receipts</p>
                 </div>
 
                 {/* TRANSACTIONS */}
-
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.03)]">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                        Payments
-                    </p>
-
-                    <p className="mt-3 text-2xl font-semibold text-slate-950">
-                        {
-                            summary.paymentCount
-                        }
-                    </p>
-
-                    <p className="mt-2 text-xs text-slate-500">
-                        Across{" "}
-                        {
-                            summary.clientCount
-                        }{" "}
-                        client
-                        {summary.clientCount ===
-                        1
-                            ? ""
-                            : "s"}
-                    </p>
-                </div>
-            </section>
-
-            {/* =========================================
-                CLIENT-WISE COLLECTIONS
-            ========================================= */}
-
-            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.03)]">
-                <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div>
-                        <h2 className="text-sm font-semibold text-slate-950">
-                            Client-wise Collections
-                        </h2>
-
-                        <p className="mt-1 text-xs text-slate-500">
-                            {
-                                groupedClients.length
-                            }{" "}
-                            client
-                            {groupedClients.length ===
-                            1
-                                ? ""
-                                : "s"}{" "}
-                            found
-                        </p>
+                <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Transactions</span>
+                        <span className="inline-flex items-center rounded-md bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 border border-slate-200">
+                            {summary.clientCount} client{summary.clientCount === 1 ? "" : "s"}
+                        </span>
                     </div>
-
-                    {activeFilterCount >
-                        0 && (
-                        <div className="rounded-lg bg-violet-50 px-3 py-2 text-[10px] font-semibold text-violet-700">
-                            Filtered View ·{" "}
-                            {
-                                filteredPayments.length
-                            }{" "}
-                            transactions
-                        </div>
-                    )}
-                </div>
-
-                <div className="overflow-x-auto">
-                    <table className="min-w-full">
-                        <thead>
-                            <tr className="border-b border-slate-200 bg-slate-50/80">
-                                <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                    Client
-                                </th>
-
-                                <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                    Product Sale
-                                </th>
-
-                                <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                    AMC
-                                </th>
-
-                                <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                    Total Received
-                                </th>
-
-                                <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                    Payments
-                                </th>
-
-                                <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                    Last Payment
-                                </th>
-
-                                <th className="px-5 py-3 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                    Action
-                                </th>
-                            </tr>
-                        </thead>
-
-                        <tbody>
-                            {groupedClients.map(
-                                (
-                                    client
-                                ) => (
-                                    <tr
-                                        key={
-                                            client.key
-                                        }
-                                        className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/60"
-                                    >
-                                        <td className="px-5 py-4">
-                                            <p className="text-sm font-semibold text-slate-900">
-                                                {
-                                                    client.clientName
-                                                }
-                                            </p>
-
-                                            <p className="mt-1 text-[10px] text-slate-400">
-                                                {client.clientCode ||
-                                                    "No client code"}
-                                            </p>
-                                        </td>
-
-                                        <td className="px-4 py-4 text-xs font-semibold text-emerald-700">
-                                            {formatCurrency(
-                                                client.productSaleReceived
-                                            )}
-                                        </td>
-
-                                        <td className="px-4 py-4 text-xs font-semibold text-violet-700">
-                                            {formatCurrency(
-                                                client.amcReceived
-                                            )}
-                                        </td>
-
-                                        <td className="px-4 py-4 text-xs font-semibold text-slate-900">
-                                            {formatCurrency(
-                                                client.totalReceived
-                                            )}
-                                        </td>
-
-                                        <td className="px-4 py-4 text-xs text-slate-700">
-                                            {
-                                                client
-                                                    .payments
-                                                    .length
-                                            }
-                                        </td>
-
-                                        <td className="px-4 py-4 text-xs text-slate-600">
-                                            {formatDate(
-                                                client.lastPaymentDate
-                                            )}
-                                        </td>
-
-                                        <td className="px-5 py-4">
-                                            <div className="flex justify-end">
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        setSelectedClientKey(
-                                                            client.key
-                                                        )
-                                                    }
-                                                    className="h-9 rounded-lg border border-violet-200 bg-violet-50 px-3 text-xs font-semibold text-violet-700 transition hover:bg-violet-100"
-                                                >
-                                                    View Ledger
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                )
-                            )}
-
-                            {!loading &&
-                                groupedClients.length ===
-                                    0 && (
-                                    <tr>
-                                        <td
-                                            colSpan={
-                                                7
-                                            }
-                                            className="px-6 py-14 text-center"
-                                        >
-                                            <p className="text-sm font-semibold text-slate-700">
-                                                No payment records found
-                                            </p>
-
-                                            <p className="mt-1 text-xs text-slate-400">
-                                                Change or clear the selected collection filters.
-                                            </p>
-
-                                            {activeFilterCount >
-                                                0 && (
-                                                <button
-                                                    type="button"
-                                                    onClick={
-                                                        clearFilters
-                                                    }
-                                                    className="mt-4 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700"
-                                                >
-                                                    Clear Filters
-                                                </button>
-                                            )}
-                                        </td>
-                                    </tr>
-                                )}
-                        </tbody>
-                    </table>
+                    <div className="mt-2 flex items-baseline gap-2">
+                        <span className="text-xl font-bold tracking-tight text-slate-900">{summary.paymentCount}</span>
+                        <span className="text-xs text-slate-500">records</span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-slate-500">Across active filtered clients</p>
                 </div>
             </section>
+
+            {/* Modern Zoho-Grade Client-wise Collections DataTable */}
+            <DataTable
+                moduleName="Collections"
+                viewTitle="All Collections"
+                views={[
+                    { id: "all", label: "All Collections" },
+                    { id: "products", label: "Product Sale Collections" },
+                    { id: "amc", label: "AMC Collections" },
+                ]}
+                selectable={true}
+                columns={[
+                    {
+                        key: "clientName",
+                        label: "Client",
+                        sortable: true,
+                        render: (_, client) => (
+                            <div className="flex min-w-[200px] items-center gap-3">
+                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-xs font-bold text-blue-700">
+                                    {client.clientName
+                                        ?.split(" ")
+                                        .slice(0, 2)
+                                        .map((w) => w[0])
+                                        .join("")
+                                        .toUpperCase() || "C"}
+                                </div>
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-900">
+                                        {client.clientName}
+                                    </p>
+                                    <p className="mt-0.5 text-[10px] text-slate-400">
+                                        {client.clientCode || "No code"}
+                                    </p>
+                                </div>
+                            </div>
+                        ),
+                    },
+                    {
+                        key: "productSaleReceived",
+                        label: "Product Sale",
+                        sortable: true,
+                        render: (val) => (
+                            <span className="text-xs font-medium text-slate-700">
+                                {formatCurrency(val)}
+                            </span>
+                        ),
+                    },
+                    {
+                        key: "amcReceived",
+                        label: "AMC",
+                        sortable: true,
+                        render: (val) => (
+                            <span className="text-xs font-medium text-slate-700">
+                                {formatCurrency(val)}
+                            </span>
+                        ),
+                    },
+                    {
+                        key: "totalReceived",
+                        label: "Total Received",
+                        sortable: true,
+                        render: (val) => (
+                            <span className="text-xs font-semibold text-emerald-700">
+                                {formatCurrency(val)}
+                            </span>
+                        ),
+                    },
+                    {
+                        key: "paymentCount",
+                        label: "Payments",
+                        sortable: true,
+                        render: (_, client) => (
+                            <span className="text-xs font-medium text-slate-600">
+                                {client.payments?.length || 0} txn
+                            </span>
+                        ),
+                    },
+                    {
+                        key: "lastPaymentDate",
+                        label: "Last Payment",
+                        sortable: true,
+                        render: (val) => (
+                            <span className="text-xs text-slate-500">
+                                {formatDate(val)}
+                            </span>
+                        ),
+                    },
+                ]}
+                data={groupedClients}
+                loading={loading}
+                error={error}
+                onRetry={loadPayments}
+                idKey="key"
+                onRowClick={(client) => setSelectedClientKey(client.key)}
+                searchPlaceholder="Search client collections..."
+                toolbarActions={
+                    activeFilterCount > 0 && (
+                        <button
+                            type="button"
+                            onClick={clearFilters}
+                            className="flex h-8 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-semibold text-[#1B59F8] hover:bg-blue-100 transition"
+                        >
+                            Reset Filters ({activeFilterCount})
+                        </button>
+                    )
+                }
+                rowActions={[
+                    {
+                        label: "View Ledger",
+                        icon: () => <span className="text-[11px] font-semibold text-[#1B59F8] px-2 py-0.5 bg-blue-50 rounded-md border border-blue-200 hover:bg-blue-100 transition">Ledger</span>,
+                        onClick: (client) => setSelectedClientKey(client.key),
+                    },
+                ]}
+                initialPageSize={25}
+                emptyTitle="No payment records found"
+                emptyDescription="Change or clear the selected collection filters."
+            />
 
             {/* =========================================
                 CLIENT PAYMENT LEDGER
@@ -2022,7 +1781,7 @@ export default function PaymentsCollections() {
 
                     <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-violet-600">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#1B59F8]">
                                 Client Payment Ledger
                             </p>
 
@@ -2063,7 +1822,7 @@ export default function PaymentsCollections() {
                                     ""
                                 )
                             }
-                            className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                            className="h-8 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
                         >
                             Close
                         </button>
@@ -2215,7 +1974,7 @@ export default function PaymentsCollections() {
                                                 AMC CYCLE HEADER
                                             ========================= */}
 
-                                            <div className="border-b border-slate-200 bg-violet-50/50 px-4 py-4">
+                                            <div className="border-b border-slate-200 bg-blue-50/30 px-4 py-4">
                                                 <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                                                     <div>
                                                         <div className="flex flex-wrap items-center gap-2">
@@ -2241,7 +2000,7 @@ export default function PaymentsCollections() {
                                                                         : cycle.invoicePaymentStatus ===
                                                                           "Partially Paid"
                                                                         ? "bg-amber-100 text-amber-700"
-                                                                        : "bg-violet-100 text-violet-700"
+                                                                        : "bg-blue-100 text-[#1B59F8]"
                                                                 }`}
                                                             >
                                                                 {cycle.invoicePaymentStatus ||
@@ -2266,7 +2025,7 @@ export default function PaymentsCollections() {
                                                             </p>
                                                         )}
 
-                                                        <p className="mt-2 text-[10px] font-semibold text-violet-700">
+                                                        <p className="mt-2 text-[10px] font-semibold text-[#1B59F8]">
                                                             AMC Cycle:{" "}
                                                             {formatDate(
                                                                 cycle.contractStartDate
@@ -2333,7 +2092,7 @@ export default function PaymentsCollections() {
                                                                 Filtered Receipt
                                                             </p>
 
-                                                            <p className="mt-1 text-xs font-semibold text-violet-700">
+                                                            <p className="mt-1 text-xs font-semibold text-[#1B59F8]">
                                                                 {formatCurrency(
                                                                     cycle.filteredInstallmentTotal
                                                                 )}
@@ -2453,7 +2212,7 @@ export default function PaymentsCollections() {
                                                                                 "—"}
                                                                         </td>
 
-                                                                        <td className="px-3 py-3 text-right text-xs font-semibold text-violet-700">
+                                                                        <td className="px-3 py-3 text-right text-xs font-semibold text-[#1B59F8]">
                                                                             {formatCurrency(
                                                                                 payment.amount
                                                                             )}

@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const fs = require("fs");
 const path = require("path");
 const multer = require("multer");
+const axios = require("axios");
 
 const allowedTicketFileTypes = [
   "image/jpeg",
@@ -1948,6 +1949,317 @@ const [
     formatClientAmcInvoice
   ),
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/* =========================================================
+   REAL AI ASSISTANT (ZIA COPILOT)
+   POST /api/client/ai/chat
+   GET  /api/client/ai/status
+========================================================= */
+
+router.get("/ai/status", async (req, res) => {
+  return res.json({
+    success: true,
+    hasApiKey: Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim()),
+    provider: process.env.GEMINI_API_KEY ? "Google Gemini AI" : "CRM Live Intelligence",
+  });
+});
+
+function buildCrmEngineReply(client, message, tickets, amcContracts, amcInvoices) {
+  const q = (message || "").toLowerCase().trim();
+  const openTickets = tickets.filter((t) => !["Resolved", "Closed"].includes(t.status));
+  const resolvedTickets = tickets.filter((t) => ["Resolved", "Closed"].includes(t.status));
+  const latestInvoice = amcInvoices[0] || null;
+  const products = client.products || [];
+
+  // 1. GREETINGS & INTRO
+  if (/^(hi|hello|hey|greetings|morning|afternoon|evening|help|who are you|what can you do)/i.test(q)) {
+    return {
+      reply: `Hello **${client.contactPerson || "there"}**! 👋 I am **Zia**, your dedicated CRM Assistant for **${client.companyName}**.\n\nHere is your live account snapshot:\n- 📦 **Active Products**: ${products.length} software licenses registered\n- 🛡️ **AMC Status**: **${client.amcStatus || "Active"}** (Renewal: ${client.nextRenewal || "Not scheduled"})\n- 🎫 **Support Tickets**: **${openTickets.length} open** / ${resolvedTickets.length} resolved\n\nHow can I assist you today? You can ask me about:\n- 💳 **Billing & Invoices**: *"What is my pending balance?"*\n- 🎫 **Support Tickets**: *"Check status of open tickets"*\n- 📦 **Products**: *"What software licenses do we have?"*\n- 📞 **Support**: *"Contact support desk"*`,
+      suggestedActions: [
+        { label: "Check AMC & Billing", action: "billing" },
+        { label: "View Support Tickets", action: "tickets" },
+        { label: "Raise New Ticket", action: "raise_ticket" },
+      ],
+    };
+  }
+
+  // 2. BILLING, INVOICE, PAYMENT, BALANCE
+  if (/(bill|invoice|payment|balance|due|pay|amount|charge|receipt|cost|money)/i.test(q)) {
+    if (latestInvoice) {
+      const balance = Number(latestInvoice.balanceAmount ?? latestInvoice.pendingAmount ?? 0);
+      const isPaid = (latestInvoice.paymentStatus || latestInvoice.status) === "Paid" || balance === 0;
+      return {
+        reply: `### 💳 Billing & Invoice Overview for ${client.companyName}\n\n- **Latest Invoice**: \`${latestInvoice.invoiceCode || latestInvoice.invoiceNo || "N/A"}\`\n- **Invoice Date**: ${latestInvoice.invoiceDate ? new Date(latestInvoice.invoiceDate).toLocaleDateString("en-IN") : "N/A"}\n- **Total Amount**: ₹${Number(latestInvoice.totalAmount ?? latestInvoice.amount ?? 0).toLocaleString("en-IN")}\n- **Balance Due**: **₹${balance.toLocaleString("en-IN")}**\n- **Due Date**: ${latestInvoice.dueDate ? new Date(latestInvoice.dueDate).toLocaleDateString("en-IN") : "N/A"}\n- **Payment Status**: ${isPaid ? "✅ **Fully Paid**" : "⚠️ **Payment Pending**"}\n\n${
+        isPaid
+          ? "Your account is in good standing! You can download your official GST invoice from the **Bills & AMC** section."
+          : "Please arrange payment before the due date to avoid any interruption to your software support services."
+      }`,
+        suggestedActions: [
+          { label: "Open Billing & Invoices", action: "billing" },
+          { label: "Download Current Bill", action: "download_bill" },
+        ],
+      };
+    }
+
+    return {
+      reply: `### 💳 Billing Information\n\n- **Account Name**: ${client.companyName}\n- **AMC Status**: **${client.amcStatus || "Up to date"}**\n- **Upcoming Renewal**: ${client.nextRenewal || "No pending renewals"}\n\nNo pending invoice balances found on file. You can view past payment receipts and invoices in the **Bills & AMC** portal.`,
+      suggestedActions: [{ label: "Open Billing", action: "billing" }],
+    };
+  }
+
+  // 3. AMC, RENEWAL, CONTRACT, VALIDITY
+  if (/(amc|renew|renewal|contract|validity|expiry|expire|coverage)/i.test(q)) {
+    return {
+      reply: `### 🛡️ Annual Maintenance Contract (AMC)\n\n- **Client**: ${client.companyName}\n- **Current AMC Status**: **${client.amcStatus || "Active"}**\n- **Next Renewal Date**: **${client.nextRenewal || "Active"}**\n- **Assigned Account Manager**: ${client.assignedEmployeeName || "Dedicated Support Desk"}\n\nYour AMC coverage guarantees priority helpdesk support, software version updates, and remote troubleshooting assistance.`,
+      suggestedActions: [
+        { label: "Review AMC Details", action: "billing" },
+        { label: "Contact Support Desk", action: "contact_desk" },
+      ],
+    };
+  }
+
+  // 4. TICKETS, ISSUES, BUGS, SUPPORT REQUESTS
+  if (/(ticket|issue|bug|problem|support|error|helpdesk|technician|engineer|glitch|down)/i.test(q)) {
+    if (openTickets.length > 0) {
+      const ticketList = openTickets
+        .slice(0, 4)
+        .map(
+          (t) =>
+            `- **\`${t.ticketCode}\`** — *${t.title}*\n  - Priority: **${t.priority}** | Status: **${t.status}**\n  - Assigned Engineer: **${t.assignedEmployeeName || "Support Team"}**`
+        )
+        .join("\n\n");
+
+      return {
+        reply: `### 🎫 Active Support Tickets (${openTickets.length} Open)\n\nHere are your current active tickets:\n\n${ticketList}\n\nOur engineers are actively working on resolving these requests. You can click on any ticket in the **Support Tickets** tab to review notes, send replies, or confirm resolution.`,
+        suggestedActions: [
+          { label: "View Support Tickets", action: "tickets" },
+          { label: "Raise Another Ticket", action: "raise_ticket" },
+        ],
+      };
+    }
+
+    return {
+      reply: `### 🎫 Support Tickets Status\n\nGreat news! You currently have **0 open support tickets** for **${client.companyName}**.\n\nAll previous support inquiries have been resolved. If you are experiencing any technical difficulty or have a new request, feel free to raise a new support ticket anytime.`,
+      suggestedActions: [
+        { label: "Raise New Ticket", action: "raise_ticket" },
+        { label: "View Ticket History", action: "tickets" },
+      ],
+    };
+  }
+
+  // 5. PRODUCTS, SOFTWARE, LICENSES, VERSIONS
+  if (/(product|software|license|licence|module|version|tally|erp)/i.test(q)) {
+    if (products.length > 0) {
+      const productList = products
+        .map(
+          (p) =>
+            `- **${p.name}** (${p.version || "Current"})\n  - Status: **${p.installationStatus || "Active"}** | Users: **${p.licensedUsers || 1} seat(s)**`
+        )
+        .join("\n");
+
+      return {
+        reply: `### 📦 Registered Software Products for ${client.companyName}\n\n${productList}\n\nAll listed software licenses are under active support. If you need to add user licenses or request an upgrade, you can raise an issue or reach out to our team.`,
+        suggestedActions: [
+          { label: "View Products & Licences", action: "products" },
+          { label: "Raise Product Issue", action: "raise_ticket" },
+        ],
+      };
+    }
+
+    return {
+      reply: `### 📦 Software Licences\n\nYour account is set up with standard software support coverage. Visit the **My Products** tab to view your software configurations and module details.`,
+      suggestedActions: [{ label: "View My Products", action: "products" }],
+    };
+  }
+
+  // 6. CONTACT, SUPPORT DESK, PHONE, EMAIL
+  if (/(contact|phone|call|email|reach|number|office|hours|desk)/i.test(q)) {
+    return {
+      reply: `### 📞 Technical Support & Billing Desk\n\n- **Support Hotline**: \`+91 98765 43210\`\n- **Support Email**: \`support@totalsolution.in\`\n- **Billing Department**: \`billing@totalsolution.in\`\n- **Working Hours**: Monday – Saturday, 9:30 AM – 6:30 PM IST\n- **Emergency Support**: Available 24/7 for Critical severity tickets\n\nOur team is ready to assist **${client.companyName}**.`,
+      suggestedActions: [
+        { label: "Raise Support Ticket", action: "raise_ticket" },
+        { label: "View Agreements & Files", action: "documents" },
+      ],
+    };
+  }
+
+  // 7. DEFAULT / EXECUTIVE SUMMARY
+  return {
+    reply: `### 🏢 Account Summary for ${client.companyName}\n\n- **Primary Contact**: ${client.contactPerson || "Client"} (${client.mobile || client.email || "Registered"})\n- **AMC Contract**: **${client.amcStatus || "Active"}** (Renewal: ${client.nextRenewal || "Upcoming"})\n- **Registered Software**: ${products.length} product(s)\n- **Active Tickets**: **${openTickets.length} open** ticket(s)\n\nI can help you check invoices, track tickets, look up contract dates, or guide you through raising support tickets. What would you like to know?`,
+    suggestedActions: [
+      { label: "View Support Tickets", action: "tickets" },
+      { label: "Check Bills & AMC", action: "billing" },
+      { label: "My Products", action: "products" },
+    ],
+  };
+}
+
+router.post("/ai/chat", async (req, res, next) => {
+  try {
+    const clientResult = await findOwnClient(req);
+    if (clientResult.error) {
+      return res.status(clientResult.error.status).json({
+        success: false,
+        message: clientResult.error.message,
+      });
+    }
+
+    const client = clientResult.client;
+    const { message, history = [] } = req.body || {};
+
+    if (!message || !String(message).trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Message prompt is required.",
+      });
+    }
+
+    // Load live CRM database records for grounding
+    const [tickets, amcContracts, amcInvoices] = await Promise.all([
+      SupportTicket.find({ clientId: client._id, isDeleted: false })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean(),
+      AmcContract.find({ clientId: client._id, isDeleted: false })
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .lean(),
+      AmcInvoice.find({ clientId: client._id, isDeleted: false })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean(),
+    ]);
+
+    const apiKey = (process.env.GEMINI_API_KEY || "").trim();
+
+    // If Gemini API Key is configured, attempt real LLM generation
+    if (apiKey) {
+      try {
+        const crmContext = {
+          companyName: client.companyName,
+          contactPerson: client.contactPerson,
+          email: client.email,
+          mobile: client.mobile,
+          city: client.city,
+          amcStatus: client.amcStatus,
+          nextRenewal: client.nextRenewal,
+          products: (client.products || []).map((p) => ({
+            name: p.name,
+            version: p.version,
+            status: p.installationStatus,
+            users: p.licensedUsers,
+          })),
+          openTickets: tickets
+            .filter((t) => !["Resolved", "Closed"].includes(t.status))
+            .map((t) => ({
+              ticketCode: t.ticketCode,
+              title: t.title,
+              priority: t.priority,
+              status: t.status,
+              assignedEmployee: t.assignedEmployeeName,
+            })),
+          resolvedTicketsCount: tickets.filter((t) => ["Resolved", "Closed"].includes(t.status)).length,
+          recentInvoices: amcInvoices.slice(0, 3).map((i) => ({
+            code: i.invoiceCode || i.invoiceNo,
+            total: i.totalAmount || i.amount,
+            balance: i.balanceAmount ?? i.pendingAmount ?? 0,
+            dueDate: i.dueDate,
+            status: i.paymentStatus || i.status,
+          })),
+        };
+
+        const systemInstruction = `You are Zia, the friendly, intelligent CRM AI Assistant for the Nexora Client Portal (provided by Total Solution).
+You are assisting ${client.contactPerson || "the client"} from "${client.companyName}".
+You have real-time live access to the client's CRM account data:
+${JSON.stringify(crmContext, null, 2)}
+
+Instructions:
+1. Always be professional, concise, helpful, and empathetic.
+2. Answer based on the provided live account data. Mention exact ticket codes (e.g. TKT-...), invoice numbers, dates, and amounts when relevant.
+3. Use formatted GitHub Markdown (bullet points, bold keys, clean section headers).
+4. If the user wants to take action (like view bills, raise ticket, see documents), inform them they can use the respective tabs in the portal or quick action buttons.
+5. Keep answers focused and avoid overly long essays.`;
+
+        // Format conversation history for Gemini API
+        const contents = [];
+        for (const item of history.slice(-6)) {
+          if (item.role && item.content) {
+            contents.push({
+              role: item.role === "assistant" ? "model" : "user",
+              parts: [{ text: item.content }],
+            });
+          }
+        }
+        contents.push({
+          role: "user",
+          parts: [{ text: String(message).trim() }],
+        });
+
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+        const response = await axios.post(
+          geminiUrl,
+          {
+            systemInstruction: {
+              parts: [{ text: systemInstruction }],
+            },
+            contents,
+            generationConfig: {
+              temperature: 0.4,
+              maxOutputTokens: 800,
+            },
+          },
+          { timeout: 12000 }
+        );
+
+        const replyText =
+          response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+        if (replyText) {
+          // Detect relevant suggested actions
+          const suggestedActions = [];
+          const lowerReply = (replyText + " " + message).toLowerCase();
+          if (lowerReply.includes("bill") || lowerReply.includes("invoice") || lowerReply.includes("amc")) {
+            suggestedActions.push({ label: "View Bills & AMC", action: "billing" });
+          }
+          if (lowerReply.includes("ticket") || lowerReply.includes("issue")) {
+            suggestedActions.push({ label: "View Tickets", action: "tickets" });
+            suggestedActions.push({ label: "Raise Ticket", action: "raise_ticket" });
+          }
+          if (lowerReply.includes("product") || lowerReply.includes("license")) {
+            suggestedActions.push({ label: "My Products", action: "products" });
+          }
+
+          return res.json({
+            success: true,
+            reply: replyText,
+            provider: "gemini",
+            suggestedActions: suggestedActions.slice(0, 3),
+          });
+        }
+      } catch (geminiError) {
+        console.warn("Gemini API call failed, falling back to CRM Intelligence engine:", geminiError.message);
+      }
+    }
+
+    // Intelligent CRM Grounded Fallback
+    const fallbackResponse = buildCrmEngineReply(
+      client,
+      message,
+      tickets,
+      amcContracts,
+      amcInvoices
+    );
+
+    return res.json({
+      success: true,
+      reply: fallbackResponse.reply,
+      provider: "crm-engine",
+      suggestedActions: fallbackResponse.suggestedActions || [],
     });
   } catch (error) {
     next(error);

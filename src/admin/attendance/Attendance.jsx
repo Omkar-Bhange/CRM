@@ -1,5 +1,6 @@
   import API_URL from "../../config/api";
 import { useEffect, useMemo, useState } from "react";
+import DataTable from "../../components/data/DataTable";
 import {
     AlertCircle,
     ArrowLeft,
@@ -231,28 +232,17 @@ function SummaryCard({
     descriptionClass = "text-slate-500",
 }) {
     return (
-        <div className="group relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.045)] transition-all duration-300 hover:-translate-y-1 hover:border-violet-200 hover:shadow-[0_16px_45px_rgba(15,23,42,0.09)]">
-            <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-slate-50 transition duration-300 group-hover:scale-110 group-hover:bg-violet-50" />
-
-            <div className="relative flex items-start justify-between gap-4">
-                <div>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
-                        {label}
-                    </p>
-
-                    <p className="mt-2 text-3xl font-bold tracking-[-0.04em] text-slate-950">
-                        {value}
-                    </p>
-                </div>
-
-                <div
-                    className={`flex h-11 w-11 items-center justify-center rounded-2xl shadow-sm ${iconClass}`}
-                >
-                    <Icon size={19} />
+        <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs transition-colors hover:border-slate-300">
+            <div className="flex items-center justify-between">
+                <span className="text-[11px] font-medium text-slate-500">{label}</span>
+                <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${iconClass}`}>
+                    <Icon size={15} />
                 </div>
             </div>
-
-            <p className={`relative mt-4 text-[11px] font-medium ${descriptionClass}`}>
+            <div className="mt-2">
+                <span className="text-xl font-bold tracking-tight text-slate-900">{value}</span>
+            </div>
+            <p className={`mt-1 truncate text-[11px] font-medium ${descriptionClass}`}>
                 {description}
             </p>
         </div>
@@ -1296,30 +1286,13 @@ const deactivateHoliday = async (holiday) => {
 
     const attendanceRows = useMemo(() => {
         return attendance.filter((record) => {
-            const search = searchValue.trim().toLowerCase();
-
-            const matchesSearch =
-                !search ||
-                [
-                    record.employeeName,
-                    record.employeeCode,
-                    record.role,
-                    record.department,
-                    record.attendanceStatus,
-                    record.workStatus,
-                ].some((value) =>
-                    String(value || "")
-                        .toLowerCase()
-                        .includes(search)
-                );
-
             const matchesStatus =
                 statusFilter === "All" ||
                 record.attendanceStatus === statusFilter;
 
-            return matchesSearch && matchesStatus;
+            return matchesStatus;
         });
-    }, [attendance, searchValue, statusFilter]);
+    }, [attendance, statusFilter]);
 
     const summary = useMemo(() => {
         const present = attendance.filter((record) =>
@@ -1558,465 +1531,299 @@ const getCalendarMonthKey = () => {
         );
     }
 return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-violet-50/30">
-        <div className="enterprise-page mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
-        <section className="relative overflow-hidden rounded-3xl border border-slate-200/80 bg-white px-6 py-6 shadow-[0_12px_40px_rgba(15,23,42,0.06)] sm:px-7 lg:px-8">
-
-    <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-violet-100/70 blur-3xl" />
-    <div className="pointer-events-none absolute -bottom-32 left-1/3 h-64 w-64 rounded-full bg-blue-100/50 blur-3xl" />
-
-    <div className="relative flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
-
-        <div className="flex items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-600/20">
-                <UserCheck size={21} />
-            </div>
-
-            <div>
-                <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-600">
-                        Employee Management
-                    </span>
-
-                    <span className="h-1 w-1 rounded-full bg-slate-300" />
-
-                    <span className="text-[10px] font-semibold text-slate-400">
-                        Attendance Control
-                    </span>
+    <div className="space-y-4">
+        {/* Module Header */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200/80 pb-4">
+            <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#1B59F8] text-white shadow-xs">
+                    <UserCheck size={18} />
                 </div>
-
-                <h1 className="mt-2 text-2xl font-bold tracking-[-0.035em] text-slate-950 sm:text-[28px]">
-                    Attendance & Leave
-                </h1>
-
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                    Monitor employee presence, login and logout activity,
-                    working hours, late arrivals and leave requests from one workspace.
-                </p>
-            </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3">
-
-            <div className="hidden rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-right xl:block">
-                <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
-                    Total Employees
-                </p>
-
-                <p className="mt-0.5 text-lg font-bold text-slate-900">
-                    {attendanceSummary.total || employees.length}
-                </p>
-            </div>
-
-            <button
-                type="button"
-                className="flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-600 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50"
-            >
-                <Download size={15} />
-                Export Report
-            </button>
-
-            <button
-                type="button"
-                onClick={() => setActiveTab("leaves")}
-                className="relative flex h-11 items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 text-xs font-bold text-white shadow-lg shadow-violet-600/20 transition-all hover:-translate-y-0.5 hover:shadow-xl"
-            >
-                <CalendarDays size={15} />
-                Leave Requests
-
-                {pendingLeaveCount > 0 && (
-                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1 text-[9px] font-bold text-violet-700">
-                        {pendingLeaveCount}
-                    </span>
-                )}
-            </button>
-        </div>
-    </div>
-</section>
-
-            <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-                <SummaryCard
-                    label="Present"
-                    value={attendanceSummary.present}
-                    description="Employees checked in today"
-                    icon={UserCheck}
-                    iconClass="bg-emerald-100 text-emerald-700"
-                    descriptionClass="text-emerald-600"
-                />
-
-                <SummaryCard
-                    label="Working"
-                    value={attendanceSummary.working}
-                    description="Currently active on work"
-                    icon={Timer}
-                    iconClass="bg-violet-100 text-violet-700"
-                    descriptionClass="text-violet-600"
-                />
-
-                <SummaryCard
-                    label="Late"
-                    value={attendanceSummary.late}
-                    description={
-    officeSettings.startTime
-        ? `After ${officeSettings.graceMinutes} min grace from ${formatTime(
-              officeSettings.startTime
-          )}`
-        : "Working hours not loaded"
-}
-                    icon={Clock3}
-                    iconClass="bg-amber-100 text-amber-700"
-                    descriptionClass="text-amber-600"
-                />
-
-                <SummaryCard
-                    label="On Leave"
-                    value={attendanceSummary.leave}
-                    description="Approved leave today"
-                    icon={CalendarDays}
-                    iconClass="bg-blue-100 text-blue-700"
-                    descriptionClass="text-blue-600"
-                />
-
-                <SummaryCard
-                    label="Absent"
-                    value={attendanceSummary.absent}
-                    description="No attendance recorded"
-                    icon={UserMinus}
-                    iconClass="bg-rose-100 text-rose-700"
-                    descriptionClass="text-rose-600"
-                />
-            </div>
-
-       <div className="enterprise-surface mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
-                   <div className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-slate-50 p-1">
-               {[
-    {
-        id: "today",
-        label: "Today",
-    },
-
-    {
-        id: "calendar",
-        label: "Monthly Calendar",
-    },
-
-    {
-        id: "leaves",
-        label: "Leave Requests",
-    },
-
-    {
-        id: "holidays",
-        label: "Holidays",
-    },
-
-    {
-        id: "regularization",
-        label: "Regularization",
-    },
-
-    {
-        id: "absence",
-        label: "Absence Analysis",
-    },
-
-    {
-        id: "summary",
-        label: "Summary",
-    },
-].map((tab) => (
-                            <button
-                                key={tab.id}
-                                type="button"
-                                onClick={() => setActiveTab(tab.id)}
-                                className={`relative whitespace-nowrap rounded-lg px-4 py-2.5 text-[11px] font-bold transition-all ${
-    activeTab === tab.id
-        ? "bg-white text-violet-700 shadow-sm ring-1 ring-slate-200"
-        : "text-slate-500 hover:bg-white/70 hover:text-slate-800"
-}`}
-                            >
-                                {tab.label}
-                            </button>
-                        ))}
+                <div>
+                    <div className="flex items-center gap-2">
+                        <h1 className="text-lg font-bold tracking-tight text-slate-900">Attendance & Leave</h1>
+                        <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                            {attendanceSummary.total || employees.length} Staff
+                        </span>
                     </div>
-
-                    {activeTab === "today" && (
-                        <div className="flex flex-col gap-2 sm:flex-row">
-                            <div className="relative">
-                                <Search
-                                    size={15}
-                                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                                />
-
-                                <input
-                                    type="text"
-                                    value={searchValue}
-                                    onChange={(event) =>
-                                        setSearchValue(event.target.value)
-                                    }
-                                    placeholder="Search employee..."
-                                    className="enterprise-input h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-xs text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-violet-400 focus:ring-4 focus:ring-violet-100 sm:w-64"
-                                />
-                            </div>
-
-                            <button
-                                type="button"
-                                onClick={() =>
-                                    setFiltersOpen((current) => !current)
-                                }
-                                className={`flex h-10 items-center justify-center gap-2 rounded-xl border px-4 text-xs font-semibold transition ${filtersOpen || statusFilter !== "All"
-                                        ? "border-violet-200 bg-violet-50 text-violet-700"
-                                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                                    }`}
-                            >
-                                <Filter size={15} />
-                                Filters
-                            </button>
-                        </div>
-                    )}
+                    <p className="text-xs text-slate-500">
+                        Monitor presence, check-ins, working hours, and employee leave requests.
+                    </p>
                 </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+                <button
+                    type="button"
+                    className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition-colors"
+                >
+                    <Download size={14} />
+                    Export Report
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => setActiveTab("leaves")}
+                    className="relative flex h-8 items-center gap-1.5 rounded-lg bg-[#1B59F8] px-3 text-xs font-semibold text-white shadow-2xs hover:bg-blue-600 transition-colors"
+                >
+                    <CalendarDays size={14} />
+                    Leave Requests
+                    {pendingLeaveCount > 0 && (
+                        <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-white px-1 text-[10px] font-bold text-blue-700">
+                            {pendingLeaveCount}
+                        </span>
+                    )}
+                </button>
+            </div>
+        </div>
+
+        {/* 5 Linear KPI Cards */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+            <SummaryCard
+                label="Present"
+                value={attendanceSummary.present}
+                description="Employees checked in today"
+                icon={UserCheck}
+                iconClass="bg-emerald-50 text-emerald-600"
+                descriptionClass="text-emerald-600"
+            />
+
+            <SummaryCard
+                label="Working"
+                value={attendanceSummary.working}
+                description="Currently active on work"
+                icon={Timer}
+                iconClass="bg-blue-50 text-[#1B59F8]"
+                descriptionClass="text-[#1B59F8]"
+            />
+
+            <SummaryCard
+                label="Late"
+                value={attendanceSummary.late}
+                description={
+                    officeSettings.startTime
+                        ? `After ${officeSettings.graceMinutes}m grace`
+                        : "Working hours not loaded"
+                }
+                icon={Clock3}
+                iconClass="bg-amber-50 text-amber-600"
+                descriptionClass="text-amber-600"
+            />
+
+            <SummaryCard
+                label="On Leave"
+                value={attendanceSummary.leave}
+                description="Approved leave today"
+                icon={CalendarDays}
+                iconClass="bg-indigo-50 text-indigo-600"
+                descriptionClass="text-indigo-600"
+            />
+
+            <SummaryCard
+                label="Absent"
+                value={attendanceSummary.absent}
+                description="No attendance recorded"
+                icon={UserMinus}
+                iconClass="bg-rose-50 text-rose-600"
+                descriptionClass="text-rose-600"
+            />
+        </div>
+
+        <div className="overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-2xs">
+            <div className="flex items-center justify-between border-b border-slate-200/80 px-4 py-2.5">
+                <div className="flex gap-1 overflow-x-auto rounded-lg border border-slate-200 bg-slate-50/80 p-0.5">
+                    {[
+                        { id: "today", label: "Today" },
+                        { id: "calendar", label: "Monthly Calendar" },
+                        { id: "leaves", label: "Leave Requests" },
+                        { id: "holidays", label: "Holidays" },
+                        { id: "regularization", label: "Regularization" },
+                        { id: "absence", label: "Absence Analysis" },
+                        { id: "summary", label: "Summary" },
+                    ].map((tab) => (
+                        <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`relative whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                                activeTab === tab.id
+                                    ? "bg-white text-[#1B59F8] shadow-2xs font-semibold"
+                                    : "text-slate-600 hover:text-slate-900"
+                            }`}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
+                </div>
+            </div>
 
                 {activeTab === "today" && (
-                    <>
-                        {filtersOpen && (
-                            <div className="border-b border-slate-200 bg-slate-50/70 px-5 py-4">
-                                <div className="flex flex-wrap items-end gap-3">
-                                    <div>
-                                        <label className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                            Attendance status
-                                        </label>
-
-                                        <select
-                                            value={statusFilter}
-                                            onChange={(event) =>
-                                                setStatusFilter(
-                                                    event.target.value
-                                                )
-                                            }
-                                            className="enterprise-input h-10 min-w-44 rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                        >
-                                       <option>All</option>
-<option>Present</option>
-<option>Late</option>
-<option>Half Day</option>
-<option>Absent</option>
-<option>On Leave</option>
-<option>Holiday</option>
-<option>Weekly Off</option>
-<option>Missed Punch</option>
-<option>Not Checked In</option>
-                                        </select>
-                                    </div>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setStatusFilter("All");
-                                            setSearchValue("");
-                                        }}
-                                        className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600 transition hover:bg-slate-100"
-                                    >
-                                        Clear filters
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="overflow-x-auto">
-                           <table className="w-full min-w-[1160px]">
-                                <thead>
-                                    <tr className="border-b border-slate-200 bg-slate-50/90">
-                                        <th className="px-5 py-3 text-left text-[10px] font-bolduppercase tracking-[0.14em] text-slate-400">
-                                            Employee
-                                        </th>
-                                        <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
-                                            Attendance
-                                        </th>
-                                        <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
-                                            Login
-                                        </th>
-                                        <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
-                                            Logout
-                                        </th>
-                                        <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
-                                            Break
-                                        </th>
-                                        <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
-                                            Working hours
-                                        </th>
-                                        <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
-                                            Current status
-                                        </th>
-                                        <th className="px-5 py-3 text-right text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
-                                            Actions
-                                        </th>
-                                    </tr>
-                                </thead>
-
-                                <tbody className="divide-y divide-slate-100">
-                                    {attendanceRows.map((record) => (
-                                        <tr
-                                            key={record.id}
-                                            className="group transition-all hover:bg-violet-50/35"
-                                        >
-                                            <td className="px-5 py-4">
-                                                <div className="flex items-center gap-3">
-                                                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-slate-800 to-slate-950 text-xs font-bold text-white shadow-sm">
-                                                        {record.employeeName
-                                                            ?.split(" ")
-                                                            .map(x => x[0])
-                                                            .join("")
-                                                            .substring(0, 2)
-                                                            .toUpperCase()}
-                                                    </div>
-
-                                                    <div>
-                                                        <p className="text-xs font-bold text-slate-900 transition group-hover:text-violet-700">
-                                                            {
-                                                                record.employeeName
-                                                            }
-                                                        </p>
-
-                                                        <p className="mt-1 text-[10px] text-slate-500">
-                                                            {
-                                                                record.employeeCode
-                                                            }{" "}
-                                                            ·{" "}
-                                                      {record.role}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            </td>
-
-                                            <td className="px-4 py-4">
-                                                <span
-                                                    className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ring-inset ${getStatusClasses(
-                                                        record.attendanceStatus
-                                                    )}`}
-                                                >
-                                                    {record.attendanceStatus}
-                                                </span>
-                                            </td>
-
-                                            <td className="px-4 py-4">
-                                                <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-                                                    <LogIn
-                                                        size={14}
-                                                        className="text-emerald-600"
-                                                    />
-                                                    {formatTime(
-                                                        record.loginTime
-                                                    )}
-                                                </div>
-                                            </td>
-
-                                            <td className="px-4 py-4">
-                                                <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-                                                    <LogOut
-                                                        size={14}
-                                                        className="text-slate-400"
-                                                    />
-                                                    {formatTime(
-                                                        record.logoutTime
-                                                    )}
-                                                </div>
-                                            </td>
-
-                                            <td className="px-4 py-4">
-                                                <div className="flex items-center gap-2 text-xs text-slate-600">
-                                                    <Coffee
-                                                        size={14}
-                                                        className="text-blue-500"
-                                                    />
-                                                    {record.breakMinutes}m
-                                                </div>
-                                            </td>
-
-                                            <td className="px-4 py-4">
-                                                <p className="text-xs font-semibold text-slate-900">
-                                                  {formatDuration(
-    Number(
-        record.totalWorkedMinutes ??
-        record.workingMinutes ??
-        0
-    )
-)}
+                    <div className="p-4">
+                        <DataTable
+                            moduleName="Attendance"
+                            viewTitle="Today's Attendance"
+                            views={[
+                                { id: "all", label: "All Attendance" },
+                                { id: "Present", label: "Present" },
+                                { id: "Late", label: "Late" },
+                                { id: "Absent", label: "Absent / Leave" },
+                            ]}
+                            activeView={statusFilter === "All" ? "all" : statusFilter}
+                            onViewChange={(id) => setStatusFilter(id === "all" ? "All" : id)}
+                            selectable={true}
+                            columns={[
+                                {
+                                    key: "employeeName",
+                                    label: "Employee",
+                                    sortable: true,
+                                    render: (_, record) => (
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-slate-800 to-slate-950 text-xs font-bold text-white shadow-xs">
+                                                {record.employeeName
+                                                    ?.split(" ")
+                                                    .slice(0, 2)
+                                                    .map((w) => w[0])
+                                                    .join("")
+                                                    .toUpperCase() || "E"}
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-semibold text-slate-950">
+                                                    {record.employeeName}
                                                 </p>
-
-                                               <div className="mt-2 h-2 w-28 overflow-hidden rounded-full bg-slate-100 ring-1 ring-inset ring-slate-200/60">
+                                                <p className="mt-0.5 text-[10px] text-slate-400">
+                                                    {record.employeeCode} · {record.designation || record.role || "Team"}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ),
+                                },
+                                {
+                                    key: "status",
+                                    label: "Attendance",
+                                    sortable: true,
+                                    render: (val) => (
+                                        <span
+                                            className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold ring-1 ring-inset ${getStatusClasses(
+                                                val
+                                            )}`}
+                                        >
+                                            {val}
+                                        </span>
+                                    ),
+                                },
+                                {
+                                    key: "loginTime",
+                                    label: "Login",
+                                    sortable: true,
+                                    render: (val) => (
+                                        <div className="flex items-center gap-1.5 text-xs font-medium text-slate-700">
+                                            <LogIn size={13} className="text-emerald-600" />
+                                            {formatTime(val)}
+                                        </div>
+                                    ),
+                                },
+                                {
+                                    key: "logoutTime",
+                                    label: "Logout",
+                                    sortable: true,
+                                    render: (val) => (
+                                        <div className="flex items-center gap-1.5 text-xs font-medium text-slate-700">
+                                            <LogOut size={13} className="text-slate-400" />
+                                            {formatTime(val)}
+                                        </div>
+                                    ),
+                                },
+                                {
+                                    key: "breakMinutes",
+                                    label: "Break",
+                                    sortable: true,
+                                    render: (val) => (
+                                        <div className="flex items-center gap-1 text-xs text-slate-600">
+                                            <Coffee size={13} className="text-blue-500" />
+                                            {val || 0}m
+                                        </div>
+                                    ),
+                                },
+                                {
+                                    key: "totalWorkedMinutes",
+                                    label: "Working Hours",
+                                    sortable: true,
+                                    render: (_, record) => {
+                                        const mins = Number(
+                                            record.totalWorkedMinutes ??
+                                                record.workingMinutes ??
+                                                0
+                                        );
+                                        const pct =
+                                            officeSettings.fullDayMinutes > 0
+                                                ? Math.min(
+                                                      (mins / officeSettings.fullDayMinutes) * 100,
+                                                      100
+                                                  )
+                                                : 0;
+                                        return (
+                                            <div>
+                                                <p className="text-xs font-semibold text-slate-900">
+                                                    {formatDuration(mins)}
+                                                </p>
+                                                <div className="mt-1 h-1.5 w-24 overflow-hidden rounded-full bg-slate-100 ring-1 ring-inset ring-slate-200/60">
                                                     <div
-                                                        className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 transition-all duration-500"
-                                                        style={{
-                                                      width: `${
-    officeSettings.fullDayMinutes > 0
-        ? Math.min(
-              (Number(
-                  record.totalWorkedMinutes ??
-                  record.workingMinutes ??
-                  0
-              ) /
-                  officeSettings.fullDayMinutes) *
-                  100,
-              100
-          )
-        : 0
-}%`,
-                                                        }}
+                                                        className="h-full rounded-full bg-violet-600"
+                                                        style={{ width: `${pct}%` }}
                                                     />
                                                 </div>
-                                            </td>
-
-                                            <td className="px-4 py-4">
-                                                <span
-                                                    className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ring-inset ${getWorkStatusClasses(
-                                                        record.workStatus
-                                                    )}`}
-                                                >
-                                                    {record.workStatus}
-                                                </span>
-                                            </td>
-
-                                            <td className="px-5 py-4">
-                                                <div className="flex justify-end">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                            openAttendanceEditor(
-                                                                record
-                                                            )
-                                                        }
-                                                       className="flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-[10px] font-bold text-slate-600 shadow-sm transition-all hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
-                                                    >
-                                                        <MoreHorizontal
-                                                            size={14}
-                                                        />
-                                                        Manage
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-
-                        {attendanceRows.length === 0 && (
-                            <div className="enterprise-empty-state flex min-h-[280px] flex-col items-center justify-center px-6 text-center">
-                                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
-                                    <Search size={23} />
-                                </div>
-
-                                <h3 className="mt-4 text-sm font-semibold text-slate-900">
-                                    No attendance records found
-                                </h3>
-
-                                <p className="mt-1 text-xs text-slate-500">
-                                    Change your search or attendance filters.
-                                </p>
-                            </div>
-                        )}
-                    </>
+                                            </div>
+                                        );
+                                    },
+                                },
+                                {
+                                    key: "workStatus",
+                                    label: "Current Status",
+                                    sortable: true,
+                                    render: (val) => (
+                                        <span
+                                            className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ring-inset ${getWorkStatusClasses(
+                                                val
+                                            )}`}
+                                        >
+                                            {val}
+                                        </span>
+                                    ),
+                                },
+                            ]}
+                            data={attendanceRows}
+                            loading={loading}
+                            error={null}
+                            onRetry={loadTodayAttendance}
+                            idKey="id"
+                            onRowClick={(record) => openAttendanceEditor(record)}
+                            searchPlaceholder="Search employee name or code..."
+                            statusFilters={[
+                                "All",
+                                "Present",
+                                "Late",
+                                "Half Day",
+                                "Absent",
+                                "On Leave",
+                                "Holiday",
+                                "Weekly Off",
+                                "Missed Punch",
+                                "Not Checked In",
+                            ].map((s) => ({ label: s, value: s }))}
+                            activeStatusFilter={statusFilter}
+                            onStatusFilterChange={setStatusFilter}
+                            rowActions={[
+                                {
+                                    label: "Manage Record",
+                                    icon: MoreHorizontal,
+                                    className: "text-slate-600 hover:text-violet-700 hover:bg-violet-50",
+                                    onClick: (record) => openAttendanceEditor(record),
+                                },
+                            ]}
+                            initialPageSize={25}
+                            emptyTitle="No attendance records found"
+                            emptyDescription="Change your search or attendance filters to view records."
+                        />
+                    </div>
                 )}
 
                 {activeTab === "calendar" && (
@@ -4851,6 +4658,5 @@ return (
     </>
 )}
         </div>
-         </div>
     );
 }

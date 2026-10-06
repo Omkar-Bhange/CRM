@@ -5,6 +5,7 @@ import {
 } from "react";
 import AmcReminderModal from "./AmcReminderModal";
 import AmcInvoice from "./AmcInvoice";
+import DataTable from "../../components/data/DataTable";
 import {
     AlertCircle,
     ArrowLeft,
@@ -21,6 +22,7 @@ import {
     FileText,
     FolderOpen,
     Paperclip,
+    Pencil,
     Trash2,
     Upload,
     Filter,
@@ -781,6 +783,14 @@ function AmcTimelineIcon({ type }) {
             icon: UserRound,
             className: "bg-indigo-100 text-indigo-700",
         },
+        updated: {
+            icon: Pencil,
+            className: "bg-blue-100 text-blue-700",
+        },
+        update: {
+            icon: Pencil,
+            className: "bg-blue-100 text-blue-700",
+        },
     };
 
     const selectedConfig = config[type] || {
@@ -1042,6 +1052,389 @@ const normalizeAmcInvoiceDetail = (
             ),
     };
 };
+
+function EditAmcDrawer({
+    isOpen,
+    onClose,
+    record,
+    form,
+    onFormChange,
+    onFormUpdate,
+    gstPreview,
+    employees = [],
+    saving = false,
+    error = "",
+    onSubmit,
+}) {
+    if (!isOpen || !record) return null;
+
+    return (
+        <div className="fixed inset-0 z-[120] flex items-center justify-end p-3 sm:p-5 lg:p-7">
+            <button
+                type="button"
+                aria-label="Close edit AMC drawer"
+                onClick={onClose}
+                className="enterprise-backdrop absolute inset-0 bg-slate-950/55 backdrop-blur-[3px]"
+            />
+            <div className="enterprise-drawer relative z-10 flex h-[calc(100vh-24px)] w-full max-w-[980px] flex-col overflow-hidden rounded-[26px] border border-white/70 bg-[#f8fafc] shadow-[0_32px_100px_rgba(15,23,42,0.30)] sm:h-[calc(100vh-40px)] lg:h-[calc(100vh-56px)]">
+                <div className="relative flex min-h-[92px] shrink-0 items-center justify-between overflow-hidden border-b border-blue-100 bg-gradient-to-r from-blue-700 via-indigo-600 to-violet-700 px-7 text-white">
+                    <div className="relative z-10">
+                        <div className="flex items-center gap-2">
+                            <span className="rounded-md bg-white/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+                                {record.contractNo || record.contractCode || "AMC"}
+                            </span>
+                            <span className="text-xs text-blue-100">· {record.client || record.clientName}</span>
+                        </div>
+                        <h2 className="mt-1 text-xl font-bold tracking-[-0.02em] text-white">Edit AMC Contract</h2>
+                        <p className="mt-1 text-xs font-medium text-blue-100">Update AMC terms, dates, pricing, tax details and assignment.</p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="relative z-10 flex h-10 w-10 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-white transition hover:bg-white/20"
+                    >
+                        <X size={18} />
+                    </button>
+                </div>
+
+                <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
+                    <div className="flex-1 overflow-y-auto bg-slate-50/70 px-5 py-5 sm:px-7 sm:py-6">
+                        <div className="space-y-5">
+                            {/* Client & Product Info */}
+                            <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.045)] sm:p-6">
+                                <div className="mb-4 flex items-start justify-between border-b border-slate-100 pb-3">
+                                    <div>
+                                        <h3 className="text-sm font-bold tracking-[-0.01em] text-slate-950">Contract Information</h3>
+                                        <p className="mt-0.5 text-[11px] text-slate-500">Client and product association for this AMC agreement.</p>
+                                    </div>
+                                    <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-700">
+                                        {record.contractNo || record.contractCode}
+                                    </span>
+                                </div>
+                                <div className="grid gap-x-5 gap-y-4 md:grid-cols-2">
+                                    <div>
+                                        <label className="mb-1.5 block text-[11px] font-bold text-slate-700">Client Name</label>
+                                        <input
+                                            type="text"
+                                            value={form.clientName}
+                                            readOnly
+                                            className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 text-sm font-semibold text-slate-700 outline-none"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-1.5 block text-[11px] font-bold text-slate-700">Client Product</label>
+                                        <input
+                                            type="text"
+                                            value={`${form.productCode ? form.productCode + " - " : ""}${form.productName}`}
+                                            readOnly
+                                            className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 text-sm font-semibold text-slate-700 outline-none"
+                                        />
+                                    </div>
+                                </div>
+                            </section>
+
+                            {/* Plan & Users & Status */}
+                            <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.045)] sm:p-6">
+                                <div className="mb-4 flex items-start gap-3 border-b border-slate-100 pb-3">
+                                    <div>
+                                        <h3 className="text-sm font-bold tracking-[-0.01em] text-slate-950">Plan & Status</h3>
+                                        <p className="mt-0.5 text-[11px] text-slate-500">Configure AMC tier, user capacity and current lifecycle status.</p>
+                                    </div>
+                                </div>
+                                <div className="grid gap-x-5 gap-y-4 md:grid-cols-3">
+                                    <div>
+                                        <label className="mb-1.5 block text-[11px] font-bold text-slate-700">AMC Plan</label>
+                                        <select
+                                            name="plan"
+                                            value={form.plan}
+                                            onChange={onFormChange}
+                                            className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                                        >
+                                            <option value="Basic">Basic</option>
+                                            <option value="Standard">Standard</option>
+                                            <option value="Premium">Premium</option>
+                                            <option value="Custom">Custom</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="mb-1.5 block text-[11px] font-bold text-slate-700">Licensed Users <span className="text-rose-500">*</span></label>
+                                        <input
+                                            type="number"
+                                            name="licensedUsers"
+                                            min="1"
+                                            value={form.licensedUsers}
+                                            onChange={onFormChange}
+                                            className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-1.5 block text-[11px] font-bold text-slate-700">Contract Status</label>
+                                        <select
+                                            name="status"
+                                            value={form.status}
+                                            onChange={onFormChange}
+                                            className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold text-slate-700 shadow-sm outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                                        >
+                                            <option value="Active">Active</option>
+                                            <option value="Pending">Pending</option>
+                                            <option value="Upcoming">Upcoming</option>
+                                            <option value="Overdue">Overdue</option>
+                                            <option value="Paid">Paid</option>
+                                            <option value="Cancelled">Cancelled</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </section>
+
+                            {/* Dates & Billing */}
+                            <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.045)] sm:p-6">
+                                <div className="mb-4 flex items-start gap-3 border-b border-slate-100 pb-3">
+                                    <div>
+                                        <h3 className="text-sm font-bold tracking-[-0.01em] text-slate-950">Period & Billing Dates</h3>
+                                        <p className="mt-0.5 text-[11px] text-slate-500">Service coverage timeline and payment deadline.</p>
+                                    </div>
+                                </div>
+                                <div className="grid gap-x-5 gap-y-4 md:grid-cols-3">
+                                    <div>
+                                        <label className="mb-1.5 block text-[11px] font-bold text-slate-700">Start Date <span className="text-rose-500">*</span></label>
+                                        <input
+                                            type="date"
+                                            name="startDate"
+                                            value={form.startDate}
+                                            onChange={onFormChange}
+                                            className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-1.5 block text-[11px] font-bold text-slate-700">Expiry Date <span className="text-rose-500">*</span></label>
+                                        <input
+                                            type="date"
+                                            name="expiryDate"
+                                            value={form.expiryDate}
+                                            onChange={onFormChange}
+                                            className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-1.5 block text-[11px] font-bold text-slate-700">Due Date <span className="text-rose-500">*</span></label>
+                                        <input
+                                            type="date"
+                                            name="dueDate"
+                                            value={form.dueDate}
+                                            onChange={onFormChange}
+                                            className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Pricing & Tax */}
+                                <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                        <div>
+                                            <h4 className="text-sm font-bold text-slate-900">Tax & Amount Calculation</h4>
+                                            <p className="mt-0.5 text-[11px] text-slate-500">Taxable amount and applicable GST configuration.</p>
+                                        </div>
+                                        <div className="rounded-lg bg-blue-50 px-3.5 py-2 text-right">
+                                            <p className="text-[9px] font-bold uppercase tracking-wider text-blue-600">Calculated Grand Total</p>
+                                            <p className="mt-0.5 text-base font-extrabold text-blue-700">{formatCurrency(gstPreview.grandTotal)}</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-4 grid gap-x-5 gap-y-4 md:grid-cols-2">
+                                        <div>
+                                            <label className="mb-1.5 block text-[11px] font-bold text-slate-700">Taxable AMC Amount <span className="text-rose-500">*</span></label>
+                                            <div className="relative">
+                                                <IndianRupee size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                                <input
+                                                    type="number"
+                                                    name="taxableAmount"
+                                                    min="0"
+                                                    step="0.01"
+                                                    value={form.taxableAmount}
+                                                    onChange={onFormChange}
+                                                    placeholder="Enter taxable amount"
+                                                    className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3.5 pl-9 text-sm font-semibold text-slate-800 shadow-sm outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="mb-1.5 block text-[11px] font-bold text-slate-700">GST Applicable?</label>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onFormUpdate((cur) => ({ ...cur, gstApplicable: "YES" }))}
+                                                    className={`h-12 rounded-xl border text-xs font-bold transition ${form.gstApplicable === "YES" ? "border-emerald-400 bg-emerald-50 text-emerald-700 ring-2 ring-emerald-100" : "border-slate-200 bg-white text-slate-600"}`}
+                                                >
+                                                    Yes, Apply GST
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onFormUpdate((cur) => ({ ...cur, gstApplicable: "NO", cgstRate: "0", sgstRate: "0", igstRate: "0" }))}
+                                                    className={`h-12 rounded-xl border text-xs font-bold transition ${form.gstApplicable === "NO" ? "border-slate-400 bg-slate-100 text-slate-800 ring-2 ring-slate-100" : "border-slate-200 bg-white text-slate-600"}`}
+                                                >
+                                                    No / N.A.
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {form.gstApplicable === "YES" && (
+                                        <div className="mt-4 grid gap-4 md:grid-cols-3">
+                                            <div>
+                                                <label className="mb-1.5 block text-[11px] font-bold text-slate-700">GST Rate</label>
+                                                <select
+                                                    name="gstRate"
+                                                    value={form.gstRate}
+                                                    onChange={onFormChange}
+                                                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                                                >
+                                                    <option value="5">5%</option>
+                                                    <option value="12">12%</option>
+                                                    <option value="18">18%</option>
+                                                    <option value="28">28%</option>
+                                                    <option value="CUSTOM">Custom</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="mb-1.5 block text-[11px] font-bold text-slate-700">Tax Type</label>
+                                                <select
+                                                    name="taxType"
+                                                    value={form.taxType}
+                                                    onChange={onFormChange}
+                                                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                                                >
+                                                    <option value="CGST_SGST">CGST + SGST</option>
+                                                    <option value="IGST">IGST</option>
+                                                </select>
+                                            </div>
+                                            {form.gstRate === "CUSTOM" ? (
+                                                <div>
+                                                    <label className="mb-1.5 block text-[11px] font-bold text-slate-700">Custom GST %</label>
+                                                    <input
+                                                        type="number"
+                                                        name="customGstRate"
+                                                        min="0"
+                                                        max="100"
+                                                        step="0.01"
+                                                        value={form.customGstRate}
+                                                        onChange={onFormChange}
+                                                        placeholder="e.g. 18"
+                                                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                                                    />
+                                                </div>
+                                            ) : (
+                                                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                                                    <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Applied Split</p>
+                                                    <p className="mt-1 text-xs font-bold text-slate-700">
+                                                        {form.taxType === "IGST"
+                                                            ? `IGST ${gstPreview.igstRate}%`
+                                                            : `CGST ${gstPreview.cgstRate}% + SGST ${gstPreview.sgstRate}%`}
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Breakdown summary */}
+                                    <div className="mt-4 grid gap-2 rounded-xl bg-slate-950 p-4 text-white sm:grid-cols-4">
+                                        <div><p className="text-[9px] uppercase tracking-wider text-slate-400">Taxable</p><p className="mt-1 text-xs font-bold">{formatCurrency(gstPreview.taxableAmount)}</p></div>
+                                        <div><p className="text-[9px] uppercase tracking-wider text-slate-400">CGST</p><p className="mt-1 text-xs font-bold">{formatCurrency(gstPreview.cgstAmount)}</p></div>
+                                        <div><p className="text-[9px] uppercase tracking-wider text-slate-400">SGST / IGST</p><p className="mt-1 text-xs font-bold">{formatCurrency(gstPreview.sgstAmount + gstPreview.igstAmount)}</p></div>
+                                        <div><p className="text-[9px] uppercase tracking-wider text-blue-300">Grand Total</p><p className="mt-1 text-sm font-extrabold text-blue-200">{formatCurrency(gstPreview.grandTotal)}</p></div>
+                                    </div>
+                                </div>
+                            </section>
+
+                            {/* Assigned Employee & Notes */}
+                            <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.045)] sm:p-6">
+                                <div className="mb-4 flex items-start gap-3 border-b border-slate-100 pb-3">
+                                    <div>
+                                        <h3 className="text-sm font-bold tracking-[-0.01em] text-slate-950">Assignment & Notes</h3>
+                                        <p className="mt-0.5 text-[11px] text-slate-500">Account manager and contract terms.</p>
+                                    </div>
+                                </div>
+                                <div className="grid gap-x-5 gap-y-4 md:grid-cols-2">
+                                    <div>
+                                        <label className="mb-1.5 block text-[11px] font-bold text-slate-700">Assigned Employee</label>
+                                        <select
+                                            name="assignedEmployeeId"
+                                            value={form.assignedEmployeeId}
+                                            onChange={(event) => {
+                                                const employeeId = event.target.value;
+                                                const selectedEmp = employees.find((emp) => String(emp.id) === String(employeeId));
+                                                onFormUpdate((cur) => ({
+                                                    ...cur,
+                                                    assignedEmployeeId: employeeId,
+                                                    assignedEmployeeCode: selectedEmp?.employeeCode || "",
+                                                    assignedEmployeeName: selectedEmp?.name || "",
+                                                }));
+                                            }}
+                                            className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                                        >
+                                            <option value="">Keep unassigned</option>
+                                            {employees.map((employee) => (
+                                                <option
+                                                    key={employee.id}
+                                                    value={employee.id}
+                                                    disabled={employee.status === "Leave" || employee.status === "Inactive"}
+                                                >
+                                                    {employee.name}
+                                                    {employee.employeeCode ? ` (${employee.employeeCode})` : ""}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="mb-1.5 block text-[11px] font-bold text-slate-700">Contract Notes</label>
+                                        <textarea
+                                            name="notes"
+                                            value={form.notes}
+                                            onChange={onFormChange}
+                                            rows={3}
+                                            placeholder="Add notes, special terms, or SLA details..."
+                                            className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm leading-6 text-slate-700 shadow-sm outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                                        />
+                                    </div>
+                                </div>
+                            </section>
+
+                            {/* Error notification */}
+                            {error && (
+                                <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3.5 shadow-sm">
+                                    <AlertCircle size={17} className="mt-0.5 shrink-0 text-rose-600" />
+                                    <div>
+                                        <p className="text-xs font-semibold text-rose-800">Unable to update AMC contract</p>
+                                        <p className="mt-1 text-xs text-rose-700">{error}</p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-white/95 px-5 py-4 backdrop-blur sm:px-7">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="h-11 rounded-xl border border-slate-200 bg-white px-5 text-xs font-bold text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={saving}
+                            className="flex h-11 items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 px-6 text-xs font-bold text-white shadow-[0_10px_24px_rgba(37,99,235,0.28)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_30px_rgba(37,99,235,0.34)] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            <Pencil size={15} />
+                            {saving ? "Saving Changes..." : "Save AMC Contract"}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+
 export default function AmcBilling() {
     const [invoiceRecord, setInvoiceRecord] = useState(null);
     const [reminderRecord, setReminderRecord] = useState(null);
@@ -1051,6 +1444,12 @@ export default function AmcBilling() {
     const [newAmcForm, setNewAmcForm] = useState(emptyNewAmcForm);
     const [ownInvoiceFile, setOwnInvoiceFile] = useState(null);
     const [newAmcError, setNewAmcError] = useState("");
+    const [editAmcOpen, setEditAmcOpen] = useState(false);
+    const [editAmcRecord, setEditAmcRecord] = useState(null);
+    const [editAmcForm, setEditAmcForm] = useState(emptyNewAmcForm);
+    const [editAmcError, setEditAmcError] = useState("");
+    const [savingEditAmc, setSavingEditAmc] = useState(false);
+    const [deletingAmcId, setDeletingAmcId] = useState(null);
     const [records, setRecords] = useState([]);
     const [clients, setClients] = useState([]);
     const [employees, setEmployees] = useState([]);
@@ -2671,6 +3070,25 @@ export default function AmcBilling() {
         };
     }, [newAmcForm]);
 
+    const editGstPreview = useMemo(() => {
+        const taxableAmount = Math.max(Number(editAmcForm.taxableAmount || 0), 0);
+        const rates = deriveGstRates(editAmcForm);
+        const cgstAmount = taxableAmount * (rates.cgstRate / 100);
+        const sgstAmount = taxableAmount * (rates.sgstRate / 100);
+        const igstAmount = taxableAmount * (rates.igstRate / 100);
+        const totalTaxAmount = cgstAmount + sgstAmount + igstAmount;
+
+        return {
+            ...rates,
+            taxableAmount,
+            cgstAmount,
+            sgstAmount,
+            igstAmount,
+            totalTaxAmount,
+            grandTotal: taxableAmount + totalTaxAmount,
+        };
+    }, [editAmcForm]);
+
     const handleNewAmcChange = (event) => {
         const { name, value } = event.target;
         setNewAmcForm((current) => {
@@ -2892,6 +3310,256 @@ export default function AmcBilling() {
                 setSavingAmc(false);
             }
         };
+
+    const handleOpenEditAmc = (record) => {
+        if (!record) return;
+        setEditAmcRecord(record);
+        setEditAmcError("");
+
+        const isIgst = Number(record.igstRate || 0) > 0;
+        const effectiveRate = isIgst
+            ? Number(record.igstRate || 0)
+            : (Number(record.cgstRate || 0) + Number(record.sgstRate || 0));
+        const isStandardRate = [18, 12, 5, 28, 0].includes(effectiveRate);
+
+        const toInputDate = (d) => {
+            if (!d) return "";
+            if (typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+            const parsed = new Date(d);
+            return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
+        };
+
+        setEditAmcForm({
+            ...emptyNewAmcForm,
+            id: record.mongoId || record.id || "",
+            contractCode: record.contractCode || record.contractNo || "",
+            clientId: record.clientId || "",
+            clientCode: record.clientCode || "",
+            clientName: record.client || record.clientName || "",
+            contactPerson: record.contactPerson || "",
+            contactMobile: record.contactMobile || record.mobile || "",
+            contactEmail: record.contactEmail || "",
+            clientProductId: record.clientProductId || "",
+            productId: record.productId || "",
+            productCode: record.productCode || "",
+            productName: record.product || record.productName || "",
+            productVersion: record.productVersion || record.version || "",
+            plan: record.plan || "Standard",
+            licensedUsers: String(record.licensedUsers || record.users || "1"),
+            startDate: record.startDateValue || toInputDate(record.startDate),
+            expiryDate: record.expiryDateValue || toInputDate(record.expiryDate),
+            dueDate: record.dueDateValue || toInputDate(record.dueDate),
+            taxableAmount: String(record.taxableAmount !== undefined ? record.taxableAmount : ""),
+            status: record.status || "Pending",
+            gstApplicable: (Number(record.totalTaxAmount || 0) > 0 || effectiveRate > 0) ? "YES" : "NO",
+            gstRate: isStandardRate ? String(effectiveRate) : "CUSTOM",
+            customGstRate: isStandardRate ? "" : String(effectiveRate),
+            taxType: isIgst ? "IGST" : "CGST_SGST",
+            cgstRate: String(record.cgstRate ?? 9),
+            sgstRate: String(record.sgstRate ?? 9),
+            igstRate: String(record.igstRate ?? 0),
+            assignedEmployeeId: record.assignedEmployeeId || "",
+            assignedEmployeeCode: record.assignedEmployeeCode || "",
+            assignedEmployeeName: record.assignedEmployeeName || record.assignedTo || "",
+            notes: record.notes || "",
+        });
+        setEditAmcOpen(true);
+    };
+
+    const closeEditAmcDrawer = () => {
+        setEditAmcOpen(false);
+        setEditAmcRecord(null);
+        setEditAmcError("");
+    };
+
+    const handleEditAmcChange = (event) => {
+        const { name, value } = event.target;
+        setEditAmcForm((current) => {
+            const next = { ...current, [name]: value };
+            if (name === "gstApplicable" && value === "NO") {
+                next.cgstRate = "0";
+                next.sgstRate = "0";
+                next.igstRate = "0";
+            }
+            return next;
+        });
+        if (editAmcError) {
+            setEditAmcError("");
+        }
+    };
+
+    const handleSaveEditAmc = async (event) => {
+        event.preventDefault();
+        if (!editAmcRecord) return;
+
+        const contractId = editAmcRecord.mongoId || editAmcRecord.id;
+        if (!contractId) {
+            setEditAmcError("AMC contract ID is missing.");
+            return;
+        }
+
+        if (!editAmcForm.startDate) {
+            setEditAmcError("Please select the AMC start date.");
+            return;
+        }
+        if (!editAmcForm.expiryDate) {
+            setEditAmcError("Please select the AMC expiry date.");
+            return;
+        }
+        if (!editAmcForm.dueDate) {
+            setEditAmcError("Please select the payment due date.");
+            return;
+        }
+        const taxableAmount = Number(editAmcForm.taxableAmount);
+        if (!taxableAmount || taxableAmount <= 0) {
+            setEditAmcError("Please enter a valid AMC taxable amount.");
+            return;
+        }
+        const licensedUsers = Number(editAmcForm.licensedUsers);
+        if (!licensedUsers || licensedUsers <= 0) {
+            setEditAmcError("Please enter a valid licensed user count.");
+            return;
+        }
+        if (editAmcForm.gstApplicable === "YES" && editAmcForm.gstRate === "CUSTOM") {
+            const customRate = Number(editAmcForm.customGstRate);
+            if (!Number.isFinite(customRate) || customRate < 0 || customRate > 100) {
+                setEditAmcError("Enter a valid custom GST rate between 0 and 100%.");
+                return;
+            }
+        }
+
+        try {
+            setSavingEditAmc(true);
+            setEditAmcError("");
+
+            const response = await fetch(`${API_URL}/api/admin/amc/contract/${contractId}`, {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${getAuthToken()}`,
+                },
+                body: JSON.stringify({
+                    plan: editAmcForm.plan,
+                    licensedUsers,
+                    startDate: editAmcForm.startDate,
+                    expiryDate: editAmcForm.expiryDate,
+                    dueDate: editAmcForm.dueDate,
+                    taxableAmount,
+                    cgstRate: editGstPreview.cgstRate,
+                    sgstRate: editGstPreview.sgstRate,
+                    igstRate: editGstPreview.igstRate,
+                    assignedEmployeeId: editAmcForm.assignedEmployeeId || "",
+                    status: editAmcForm.status,
+                    notes: editAmcForm.notes.trim(),
+                }),
+            });
+
+            const result = await response.json();
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || "Unable to update AMC contract.");
+            }
+
+            const updatedContract = result.data;
+            const normalized = normalizeAmcContractFromApi(updatedContract);
+
+            setSelectedRecord((current) =>
+                current?.id === normalized.id ? { ...current, ...normalized } : current
+            );
+            setRecords((current) =>
+                current.map((rec) => (rec.id === normalized.id ? { ...rec, ...normalized } : rec))
+            );
+            setSelectedClientGroup((current) => {
+                if (!current) return null;
+                return {
+                    ...current,
+                    records: (current.records || []).map((rec) =>
+                        rec.id === normalized.id ? { ...rec, ...normalized } : rec
+                    ),
+                };
+            });
+
+            closeEditAmcDrawer();
+            await loadAmcContracts();
+            alert("AMC contract updated successfully.");
+        } catch (error) {
+            console.error("Save AMC contract error:", error);
+            setEditAmcError(error.message || "Unable to update AMC contract.");
+        } finally {
+            setSavingEditAmc(false);
+        }
+    };
+
+    const handleDeleteAmc = async (record) => {
+        if (!record) return;
+        const contractId = record.mongoId || record.id;
+        if (!contractId) {
+            alert("AMC contract ID not found.");
+            return;
+        }
+
+        const contractCode = record.contractNo || record.contractCode || "this AMC contract";
+        const clientName = record.client || record.clientName || "this client";
+        const confirmMsg = `Are you sure you want to delete ${contractCode} for "${clientName}"?\n\nThis will soft-delete the contract and its draft invoices.`;
+        if (!window.confirm(confirmMsg)) {
+            return;
+        }
+
+        try {
+            setDeletingAmcId(contractId);
+            const response = await fetch(`${API_URL}/api/admin/amc/contract/${contractId}`, {
+                method: "DELETE",
+                headers: {
+                    Authorization: `Bearer ${getAuthToken()}`,
+                },
+            });
+
+            const result = await response.json();
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || "Unable to delete AMC contract.");
+            }
+
+            setSelectedRecord((current) => (current?.id === contractId ? null : current));
+            setRecords((current) => current.filter((rec) => rec.id !== contractId && rec.mongoId !== contractId));
+
+            setSelectedClientGroup((current) => {
+                if (!current) return null;
+                const updatedRecs = (current.records || []).filter(
+                    (rec) => rec.id !== contractId && rec.mongoId !== contractId
+                );
+                if (updatedRecs.length === 0) {
+                    return null;
+                }
+                return {
+                    ...current,
+                    records: updatedRecs,
+                };
+            });
+
+            await loadAmcContracts();
+            alert("AMC contract deleted successfully.");
+        } catch (error) {
+            console.error("Delete AMC contract error:", error);
+            alert(error.message || "Unable to delete AMC contract.");
+        } finally {
+            setDeletingAmcId(null);
+        }
+    };
+
+    const handleEditClientGroupAmc = (clientGroup) => {
+        if (!clientGroup || !clientGroup.records || clientGroup.records.length === 0) {
+            alert("No AMC contract found for this client.");
+            return;
+        }
+        handleOpenEditAmc(clientGroup.records[0]);
+    };
+
+    const handleDeleteClientGroupAmc = (clientGroup) => {
+        if (!clientGroup || !clientGroup.records || clientGroup.records.length === 0) {
+            alert("No AMC contract found for this client.");
+            return;
+        }
+        handleDeleteAmc(clientGroup.records[0]);
+    };
 
     const handleOpenInvoicePreview = (record) => {
         const invoiceTimelineEvent = createAmcTimelineEvent({
@@ -4648,10 +5316,20 @@ AMC INVOICE / CYCLE DETAIL
                             )}
                             <button
                                 type="button"
-                                className="flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                                onClick={() => handleOpenEditAmc(selectedRecord)}
+                                className="flex h-11 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
                             >
-                                <MoreHorizontal size={16} />
+                                <Pencil size={16} />
                                 Edit Contract
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleDeleteAmc(selectedRecord)}
+                                disabled={deletingAmcId === (selectedRecord.mongoId || selectedRecord.id)}
+                                className="flex h-11 items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
+                            >
+                                <Trash2 size={16} />
+                                Delete Contract
                             </button>
                         </div>
                     </section>
@@ -5259,6 +5937,23 @@ AMC INVOICE / CYCLE DETAIL
 
                     {/* Sticky Footer Actions */}
                     <div className="sticky bottom-0 z-10 border-t border-slate-200 bg-white/80 backdrop-blur-md px-6 py-4 flex flex-wrap justify-end gap-3">
+                        <button
+                            type="button"
+                            onClick={() => handleOpenEditAmc(selectedRecord)}
+                            className="flex h-11 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
+                        >
+                            <Pencil size={15} />
+                            Edit AMC
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handleDeleteAmc(selectedRecord)}
+                            disabled={deletingAmcId === (selectedRecord.mongoId || selectedRecord.id)}
+                            className="flex h-11 items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
+                        >
+                            <Trash2 size={15} />
+                            Delete AMC
+                        </button>
                         <button
                             type="button"
                             onClick={() => handleOpenInvoicePreview(selectedRecord)}
@@ -5994,6 +6689,21 @@ AMC INVOICE / CYCLE DETAIL
                         onSubmit={handleSaveReminder}
                     />
                 )}
+                {editAmcOpen && (
+                    <EditAmcDrawer
+                        isOpen={editAmcOpen}
+                        onClose={closeEditAmcDrawer}
+                        record={editAmcRecord}
+                        form={editAmcForm}
+                        onFormChange={handleEditAmcChange}
+                        onFormUpdate={setEditAmcForm}
+                        gstPreview={editGstPreview}
+                        employees={employees}
+                        saving={savingEditAmc}
+                        error={editAmcError}
+                        onSubmit={handleSaveEditAmc}
+                    />
+                )}
             </>
         );
     }
@@ -6407,6 +7117,47 @@ AMC INVOICE / CYCLE DETAIL
                                                                             />
                                                                             Open
                                                                         </button>
+
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() =>
+                                                                                handleOpenEditAmc(
+                                                                                    record
+                                                                                )
+                                                                            }
+                                                                            className="flex h-9 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 text-[10px] font-semibold text-blue-700 hover:bg-blue-100"
+                                                                            title="Edit AMC Contract"
+                                                                        >
+                                                                            <Pencil
+                                                                                size={
+                                                                                    13
+                                                                                }
+                                                                            />
+                                                                            Edit
+                                                                        </button>
+
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() =>
+                                                                                handleDeleteAmc(
+                                                                                    record
+                                                                                )
+                                                                            }
+                                                                            disabled={
+                                                                                deletingAmcId ===
+                                                                                (record.mongoId ||
+                                                                                    record.id)
+                                                                            }
+                                                                            className="flex h-9 items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 text-[10px] font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                                                                            title="Delete AMC Contract"
+                                                                        >
+                                                                            <Trash2
+                                                                                size={
+                                                                                    13
+                                                                                }
+                                                                            />
+                                                                            Delete
+                                                                        </button>
                                                                     </div>
                                                                 </td>
                                                             </tr>
@@ -6441,6 +7192,22 @@ AMC INVOICE / CYCLE DETAIL
                         }
                     />
                 )}
+
+                {editAmcOpen && (
+                    <EditAmcDrawer
+                        isOpen={editAmcOpen}
+                        onClose={closeEditAmcDrawer}
+                        record={editAmcRecord}
+                        form={editAmcForm}
+                        onFormChange={handleEditAmcChange}
+                        onFormUpdate={setEditAmcForm}
+                        gstPreview={editGstPreview}
+                        employees={employees}
+                        saving={savingEditAmc}
+                        error={editAmcError}
+                        onSubmit={handleSaveEditAmc}
+                    />
+                )}
             </>
         );
     }
@@ -6451,569 +7218,351 @@ AMC INVOICE / CYCLE DETAIL
                 {/* Heading */}
                 <section className="flex flex-col gap-5 border-b border-slate-200 pb-6 lg:flex-row lg:items-end lg:justify-between">
                     <div>
-                        <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-violet-600">
-                            <BadgeIndianRupee size={16} />
+                        <div className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-blue-600">
+                            <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />
                             Revenue Operations
                         </div>
-                        <h1 className="text-2xl font-semibold tracking-[-0.03em] text-slate-950">
-                            AMC & Billing
+                        <h1 className="mt-0.5 text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+                            AMC Contracts & Billing
                         </h1>
-                        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                            Manage annual maintenance contracts, renewals, invoices,
-                            reminders and client payments.
+                        <p className="mt-0.5 max-w-2xl text-xs text-slate-500">
+                            Manage annual maintenance contracts, renewals, invoices, reminders and client payments.
                         </p>
                     </div>
-                    <div className="flex flex-wrap gap-3">
-                        <button
-                            type="button"
-                            className="flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
-                        >
-                            <Download size={16} />
-                            Export
-                        </button>
+                    <div className="flex items-center gap-2">
                         <button
                             type="button"
                             onClick={() => {
                                 setNewAmcError("");
                                 setNewAmcOpen(true);
                             }}
-                            className="flex h-11 items-center gap-2 rounded-xl bg-violet-600 px-5 text-xs font-semibold text-white shadow-lg shadow-violet-600/20 transition hover:-translate-y-0.5 hover:bg-violet-700"
+                            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#1B59F8] px-3.5 text-xs font-semibold text-white shadow-xs hover:bg-[#1548D1] active:bg-[#0F3DB8] transition"
                         >
-                            <Plus size={17} />
-                            New AMC Contract
+                            <Plus size={15} strokeWidth={2.5} />
+                            <span>New AMC Contract</span>
                         </button>
                     </div>
                 </section>
 
-                {/* Statistics */}
-                <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                {/* Statistics - High Density Linear Standard */}
+                <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     <button
                         type="button"
                         onClick={() => setActiveSummary("Collected")}
-                        className={`enterprise-surface--interactive rounded-2xl border bg-white p-5 text-left shadow-[0_8px_30px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 ${activeSummary === "Collected"
-                            ? "border-emerald-300 ring-4 ring-emerald-50"
-                            : "border-slate-200"
-                            }`}
+                        className={`rounded-xl border p-3.5 text-left transition shadow-2xs ${
+                            activeSummary === "Collected"
+                                ? "border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-500/20"
+                                : "border-slate-200/90 bg-white hover:border-slate-300"
+                        }`}
                     >
-                        <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-start justify-between gap-3">
                             <div>
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
                                     AMC Collected
                                 </p>
-                                <p className="mt-3 text-2xl font-semibold tracking-[-0.03em] text-slate-950">
+                                <p className="mt-1 text-xl font-bold tracking-tight text-slate-900">
                                     {formatCurrency(stats.totalCollected)}
                                 </p>
-                                <p className="mt-2 flex items-center gap-1 text-xs font-medium text-emerald-600">
-                                    <TrendingUp size={14} />
+                                <p className="mt-1 flex items-center gap-1 text-[11px] font-medium text-emerald-600">
+                                    <TrendingUp size={13} />
                                     Payments received
                                 </p>
                             </div>
-                            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
-                                <IndianRupee size={20} />
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+                                <IndianRupee size={16} />
                             </div>
                         </div>
                     </button>
+
                     <button
                         type="button"
                         onClick={() => setActiveSummary("Pending")}
-                        className={`enterprise-surface--interactive rounded-2xl border bg-white p-5 text-left shadow-[0_8px_30px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 ${activeSummary === "Pending"
-                            ? "border-amber-300 ring-4 ring-amber-50"
-                            : "border-slate-200"
-                            }`}
+                        className={`rounded-xl border p-3.5 text-left transition shadow-2xs ${
+                            activeSummary === "Pending"
+                                ? "border-amber-500 bg-amber-50/40 ring-2 ring-amber-500/20"
+                                : "border-slate-200/90 bg-white hover:border-slate-300"
+                        }`}
                     >
-                        <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-start justify-between gap-3">
                             <div>
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
                                     Pending Amount
                                 </p>
-                                <p className="mt-3 text-2xl font-semibold tracking-[-0.03em] text-slate-950">
+                                <p className="mt-1 text-xl font-bold tracking-tight text-slate-900">
                                     {formatCurrency(stats.totalPending)}
                                 </p>
-                                <p className="mt-2 text-xs font-medium text-amber-600">
+                                <p className="mt-1 text-[11px] font-medium text-amber-600">
                                     Awaiting collection
                                 </p>
                             </div>
-                            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
-                                <WalletCards size={20} />
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
+                                <WalletCards size={16} />
                             </div>
                         </div>
                     </button>
+
                     <button
                         type="button"
                         onClick={() => setActiveSummary("Overdue")}
-                        className={`enterprise-surface--interactive rounded-2xl border bg-white p-5 text-left shadow-[0_8px_30px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 ${activeSummary === "Overdue"
-                            ? "border-rose-300 ring-4 ring-rose-50"
-                            : "border-slate-200"
-                            }`}
+                        className={`rounded-xl border p-3.5 text-left transition shadow-2xs ${
+                            activeSummary === "Overdue"
+                                ? "border-rose-500 bg-rose-50/40 ring-2 ring-rose-500/20"
+                                : "border-slate-200/90 bg-white hover:border-slate-300"
+                        }`}
                     >
-                        <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-start justify-between gap-3">
                             <div>
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
                                     Overdue Renewals
                                 </p>
-                                <p className="mt-3 text-2xl font-semibold text-slate-950">
+                                <p className="mt-1 text-xl font-bold tracking-tight text-slate-900">
                                     {stats.overdueCount}
                                 </p>
-                                <p className="mt-2 text-xs font-medium text-rose-600">
+                                <p className="mt-1 text-[11px] font-medium text-rose-600">
                                     Need immediate follow-up
                                 </p>
                             </div>
-                            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-rose-100 text-rose-700">
-                                <AlertCircle size={20} />
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-600">
+                                <AlertCircle size={16} />
                             </div>
                         </div>
                     </button>
+
                     <button
                         type="button"
                         onClick={() => setActiveSummary("Upcoming")}
-                        className={`enterprise-surface--interactive rounded-2xl border bg-white p-5 text-left shadow-[0_8px_30px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 ${activeSummary === "Upcoming"
-                            ? "border-violet-300 ring-4 ring-violet-50"
-                            : "border-slate-200"
-                            }`}
+                        className={`rounded-xl border p-3.5 text-left transition shadow-2xs ${
+                            activeSummary === "Upcoming"
+                                ? "border-blue-500 bg-blue-50/40 ring-2 ring-blue-500/20"
+                                : "border-slate-200/90 bg-white hover:border-slate-300"
+                        }`}
                     >
-                        <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-start justify-between gap-3">
                             <div>
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
                                     Upcoming Renewals
                                 </p>
-                                <p className="mt-3 text-2xl font-semibold text-slate-950">
+                                <p className="mt-1 text-xl font-bold tracking-tight text-slate-900">
                                     {stats.upcomingCount}
                                 </p>
-                                <p className="mt-2 text-xs font-medium text-violet-600">
-                                    Pending and upcoming
+                                <p className="mt-1 text-[11px] font-medium text-blue-600">
+                                    Pending & upcoming
                                 </p>
                             </div>
-                            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
-                                <CalendarDays size={20} />
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                                <CalendarDays size={16} />
                             </div>
                         </div>
                     </button>
                 </section>
 
-                {/* Main table */}
-                <section className="enterprise-surface overflow-hidden shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-                    <div className="border-b border-slate-200 px-5 py-5 lg:px-6">
-                        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                            <div>
-                                <h2 className="text-sm font-semibold text-slate-950">
-                                    AMC Contracts & Renewals
-                                </h2>
-                                <p className="mt-1 text-xs text-slate-500">
-                                    {groupedClients.length} clients found
-                                </p>
-                            </div>
-                            <div className="flex flex-col gap-3 sm:flex-row">
-                                <div className="relative sm:w-[340px]">
-                                    <Search
-                                        size={17}
-                                        className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-                                    />
-                                    <input
-                                        type="search"
-                                        value={searchValue}
-                                        onChange={(event) => setSearchValue(event.target.value)}
-                                        placeholder="Search client, product, invoice..."
-                                        className="enterprise-input h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-4 text-xs text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-400 focus:bg-white focus:ring-4 focus:ring-violet-100"
-                                    />
+                {/* Modern Zoho-Grade AMC Contracts & Renewals DataTable */}
+                <DataTable
+                    moduleName="AMC Contracts"
+                    viewTitle="All AMC Contracts"
+                    views={[
+                        { id: "all", label: "All AMC Contracts" },
+                        { id: "Collected", label: "Active & Paid" },
+                        { id: "Upcoming", label: "Upcoming Renewals" },
+                        { id: "Overdue", label: "Overdue Renewals" },
+                    ]}
+                    activeView={activeSummary === "All" ? "all" : activeSummary}
+                    onViewChange={(id) => setActiveSummary(id === "all" ? "All" : id)}
+                    onCreateClick={() => {
+                        setNewAmcError("");
+                        setNewAmcOpen(true);
+                    }}
+                    createButtonLabel="New AMC Contract"
+                    selectable={true}
+                    columns={[
+                        {
+                            key: "clientName",
+                            label: "Client",
+                            sortable: true,
+                            render: (_, clientGroup) => (
+                                <div className="flex min-w-[200px] items-center gap-3">
+                                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-xs font-bold text-violet-700">
+                                        {clientGroup.clientName
+                                            ?.split(" ")
+                                            .slice(0, 2)
+                                            .map((w) => w[0])
+                                            .join("")
+                                            .toUpperCase() || "C"}
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="max-w-[200px] truncate text-xs font-semibold text-slate-900">
+                                            {clientGroup.clientName}
+                                        </p>
+                                        <p className="mt-0.5 text-[10px] text-slate-400">
+                                            {clientGroup.clientCode || "No client code"}
+                                        </p>
+                                    </div>
                                 </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setFiltersOpen((current) => !current)}
-                                    className={`flex h-10 items-center justify-center gap-2 rounded-xl border px-4 text-xs font-semibold transition ${filtersOpen
-                                        ? "border-violet-300 bg-violet-50 text-violet-700"
-                                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                            ),
+                        },
+                        {
+                            key: "productCount",
+                            label: "Products",
+                            sortable: true,
+                            render: (val) => (
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-800">{val}</p>
+                                    <p className="text-[10px] text-slate-400">
+                                        Product{val === 1 ? "" : "s"}
+                                    </p>
+                                </div>
+                            ),
+                        },
+                        {
+                            key: "recordCount",
+                            label: "AMC Invoices",
+                            sortable: true,
+                            render: (_, clientGroup) => (
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-800">
+                                        {clientGroup.records?.length || 0}
+                                    </p>
+                                    <p className="text-[10px] text-slate-400">
+                                        AMC invoice{clientGroup.records?.length === 1 ? "" : "s"}
+                                    </p>
+                                </div>
+                            ),
+                        },
+                        {
+                            key: "totalAmount",
+                            label: "Total Billed",
+                            sortable: true,
+                            render: (val) => (
+                                <span className="text-xs font-semibold text-slate-900">
+                                    {formatCurrency(val)}
+                                </span>
+                            ),
+                        },
+                        {
+                            key: "paidAmount",
+                            label: "Received",
+                            sortable: true,
+                            render: (val) => (
+                                <span className="text-xs font-semibold text-emerald-700">
+                                    {formatCurrency(val)}
+                                </span>
+                            ),
+                        },
+                        {
+                            key: "pendingAmount",
+                            label: "Pending",
+                            sortable: true,
+                            render: (_, clientGroup) => (
+                                <div>
+                                    <p
+                                        className={`text-xs font-semibold ${
+                                            clientGroup.pendingAmount > 0
+                                                ? "text-rose-600"
+                                                : "text-emerald-700"
                                         }`}
-                                >
-                                    <SlidersHorizontal size={16} />
-                                    Filters
-                                </button>
-                            </div>
-                        </div>
-                        {filtersOpen && (
-                            <div className="mt-4 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2 xl:grid-cols-4">
-                                <div>
-                                    <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                        Status
-                                    </label>
-                                    <select
-                                        value={statusFilter}
-                                        onChange={(event) => setStatusFilter(event.target.value)}
-                                        className="enterprise-input h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                                     >
-                                        {statusOptions.map((status) => (
-                                            <option key={status}>{status}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                        Product
-                                    </label>
-                                    <select
-                                        value={productFilter}
-                                        onChange={(event) => setProductFilter(event.target.value)}
-                                        className="enterprise-input h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                    >
-                                        {productFilterOptions.map(
-                                            (product) => (
-                                                <option key={product}>{product}</option>
-                                            ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                        Plan
-                                    </label>
-                                    <select
-                                        value={planFilter}
-                                        onChange={(event) => setPlanFilter(event.target.value)}
-                                        className="enterprise-input h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                    >
-                                        {planOptions.map((plan) => (
-                                            <option key={plan}>{plan}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div className="flex items-end">
-                                    <button
-                                        type="button"
-                                        onClick={clearFilters}
-                                        className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600 transition hover:bg-slate-100"
-                                    >
-                                        <Filter size={15} />
-                                        Clear Filters
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="hidden overflow-x-auto xl:block">
-                        <table className="enterprise-table min-w-full">
-                            <thead>
-                                <tr className="border-b border-slate-200 bg-slate-50/80">
-                                    <th className="px-6 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                        Client
-                                    </th>
-
-                                    <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                        Products
-                                    </th>
-
-                                    <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                        AMC Records
-                                    </th>
-
-                                    <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                        Total Billed
-                                    </th>
-
-                                    <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                        Received
-                                    </th>
-
-                                    <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                        Pending
-                                    </th>
-
-                                    <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                        Next Renewal
-                                    </th>
-
-                                    <th className="px-6 py-3 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                        Actions
-                                    </th>
-                                </tr>
-                            </thead>
-
-                            <tbody>
-                                {groupedClients.map(
-                                    (clientGroup) => (
-                                        <tr
-                                            key={
-                                                clientGroup.key
-                                            }
-                                            className="border-b border-slate-100 transition last:border-b-0 hover:bg-slate-50/70"
-                                        >
-                                            {/* CLIENT */}
-                                            <td className="px-6 py-4">
-                                                <div className="flex min-w-[220px] items-center gap-3">
-                                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-xs font-bold text-violet-700">
-                                                        {clientGroup.clientName
-                                                            ?.split(" ")
-                                                            .slice(0, 2)
-                                                            .map(
-                                                                (word) =>
-                                                                    word[0]
-                                                            )
-                                                            .join("")
-                                                            .toUpperCase() ||
-                                                            "C"}
-                                                    </div>
-
-                                                    <div className="min-w-0">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                setSelectedClientGroup(
-                                                                    clientGroup
-                                                                )
-                                                            }
-                                                            className="max-w-[220px] truncate text-left text-sm font-semibold text-slate-900 transition hover:text-violet-700"
-                                                        >
-                                                            {
-                                                                clientGroup.clientName
-                                                            }
-                                                        </button>
-
-                                                        <p className="mt-1 text-[10px] text-slate-400">
-                                                            {
-                                                                clientGroup.clientCode ||
-                                                                "No client code"
-                                                            }
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            </td>
-
-                                            {/* PRODUCTS */}
-                                            <td className="px-4 py-4">
-                                                <p className="text-xs font-semibold text-slate-800">
-                                                    {
-                                                        clientGroup.productCount
-                                                    }
-                                                </p>
-
-                                                <p className="mt-1 text-[10px] text-slate-400">
-                                                    Product
-                                                    {clientGroup.productCount ===
-                                                        1
-                                                        ? ""
-                                                        : "s"}
-                                                </p>
-                                            </td>
-
-                                            {/* AMC RECORDS */}
-                                            <td className="px-4 py-4">
-                                                <p className="text-xs font-semibold text-slate-800">
-                                                    {
-                                                        clientGroup.records
-                                                            .length
-                                                    }
-                                                </p>
-
-                                                <p className="mt-1 text-[10px] text-slate-400">
-                                                    AMC invoice
-                                                    {clientGroup.records
-                                                        .length ===
-                                                        1
-                                                        ? ""
-                                                        : "s"}
-                                                </p>
-                                            </td>
-
-                                            {/* TOTAL BILLED */}
-                                            <td className="px-4 py-4">
-                                                <p className="text-xs font-semibold text-slate-900">
-                                                    {formatCurrency(
-                                                        clientGroup.totalAmount
-                                                    )}
-                                                </p>
-                                            </td>
-
-                                            {/* RECEIVED */}
-                                            <td className="px-4 py-4">
-                                                <p className="text-xs font-semibold text-emerald-700">
-                                                    {formatCurrency(
-                                                        clientGroup.paidAmount
-                                                    )}
-                                                </p>
-                                            </td>
-
-                                            {/* PENDING */}
-                                            <td className="px-4 py-4">
-                                                <p
-                                                    className={`text-xs font-semibold ${clientGroup.pendingAmount >
-                                                            0
-                                                            ? "text-rose-600"
-                                                            : "text-emerald-700"
-                                                        }`}
-                                                >
-                                                    {formatCurrency(
-                                                        clientGroup.pendingAmount
-                                                    )}
-                                                </p>
-
-                                                {clientGroup.overdueCount >
-                                                    0 && (
-                                                        <p className="mt-1 text-[10px] font-medium text-rose-500">
-                                                            {
-                                                                clientGroup.overdueCount
-                                                            }{" "}
-                                                            overdue
-                                                        </p>
-                                                    )}
-                                            </td>
-
-                                            {/* NEXT RENEWAL */}
-                                            <td className="px-4 py-4">
-                                                <p className="whitespace-nowrap text-xs font-semibold text-slate-700">
-                                                    {
-                                                        clientGroup.nextRenewal
-                                                    }
-                                                </p>
-
-                                                {clientGroup.upcomingCount >
-                                                    0 && (
-                                                        <p className="mt-1 text-[10px] text-violet-500">
-                                                            {
-                                                                clientGroup.upcomingCount
-                                                            }{" "}
-                                                            active / upcoming
-                                                        </p>
-                                                    )}
-                                            </td>
-
-                                            {/* ACTION */}
-                                            <td className="px-6 py-4">
-                                                <div className="flex justify-end">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                            setSelectedClientGroup(
-                                                                clientGroup
-                                                            )
-                                                        }
-                                                        className="flex h-9 items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 text-xs font-semibold text-violet-700 transition hover:bg-violet-100"
-                                                    >
-                                                        <Eye
-                                                            size={14}
-                                                        />
-
-                                                        View AMC
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    )
-                                )}
-
-                                {!recordsLoading &&
-                                    groupedClients.length ===
-                                    0 && (
-                                        <tr>
-                                            <td
-                                                colSpan={8}
-                                                className="px-6 py-12 text-center"
-                                            >
-                                                <p className="text-sm font-semibold text-slate-700">
-                                                    No AMC clients
-                                                    found
-                                                </p>
-
-                                                <p className="mt-1 text-xs text-slate-400">
-                                                    Try changing the
-                                                    filters or create a
-                                                    new AMC contract.
-                                                </p>
-                                            </td>
-                                        </tr>
+                                        {formatCurrency(clientGroup.pendingAmount)}
+                                    </p>
+                                    {clientGroup.overdueCount > 0 && (
+                                        <p className="mt-0.5 text-[10px] font-medium text-rose-500">
+                                            {clientGroup.overdueCount} overdue
+                                        </p>
                                     )}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <div className="divide-y divide-slate-100 xl:hidden">
-                        {filteredRecords.map((record) => (
-                            <article key={record.id} className="p-5">
-                                <div className="flex items-start justify-between gap-4">
-                                    <div>
-                                        <p className="text-sm font-semibold text-slate-900">
-                                            {record.client}
-                                        </p>
-                                        <p className="mt-1 text-xs text-slate-500">
-                                            {record.product} · {record.plan}
-                                        </p>
-                                    </div>
-                                    <StatusBadge status={record.status} />
                                 </div>
-                                <div className="mt-4 grid grid-cols-2 gap-4">
-                                    <div>
-                                        <p className="text-[9px] font-semibold uppercase text-slate-400">
-                                            Amount
+                            ),
+                        },
+                        {
+                            key: "nextRenewal",
+                            label: "Next Renewal",
+                            sortable: true,
+                            render: (_, clientGroup) => (
+                                <div>
+                                    <p className="whitespace-nowrap text-xs font-semibold text-slate-700">
+                                        {clientGroup.nextRenewal}
+                                    </p>
+                                    {clientGroup.upcomingCount > 0 && (
+                                        <p className="mt-0.5 text-[10px] text-violet-500">
+                                            {clientGroup.upcomingCount} active / upcoming
                                         </p>
-                                        <p className="mt-1 text-xs font-semibold text-slate-900">
-                                            {formatCurrency(record.amount)}
-                                        </p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[9px] font-semibold uppercase text-slate-400">
-                                            Pending
-                                        </p>
-                                        <p className="mt-1 text-xs font-semibold text-rose-600">
-                                            {formatCurrency(record.pendingAmount)}
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="mt-4 flex gap-2">
-                                    {record.pendingAmount > 0 && (
-                                        <button
-                                            type="button"
-                                            onClick={() => openPaymentModal(record)}
-                                            className="flex h-9 flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-50 text-xs font-semibold text-emerald-700"
-                                        >
-                                            <IndianRupee size={14} />
-                                            Payment
-                                        </button>
                                     )}
-                                    <button
-                                        type="button"
-                                        onClick={() =>
-                                            handleOpenAmcInvoiceDetail(
-                                                record
-                                            )
-                                        }
-                                        className="flex h-9 flex-1 items-center justify-center gap-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600"
-                                    >
-                                        Open
-                                        <ArrowUpRight size={14} />
-                                    </button>
                                 </div>
-                            </article>
-                        ))}
-                    </div>
+                            ),
+                        },
+                    ]}
+                    data={groupedClients}
+                    loading={recordsLoading}
+                    error={null}
+                    onRetry={loadAmcContracts}
+                    idKey="key"
+                    onRowClick={(clientGroup) => setSelectedClientGroup(clientGroup)}
+                    searchPlaceholder="Search client, product, invoice..."
+                    statusFilters={statusOptions.map((s) => ({ label: s, value: s }))}
+                    activeStatusFilter={statusFilter}
+                    onStatusFilterChange={setStatusFilter}
+                    toolbarActions={
+                        <div className="flex flex-wrap items-center gap-2">
+                            <select
+                                value={productFilter}
+                                onChange={(e) => setProductFilter(e.target.value)}
+                                className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-hidden"
+                            >
+                                {productFilterOptions.map((product) => (
+                                    <option key={product} value={product}>
+                                        {product}
+                                    </option>
+                                ))}
+                            </select>
 
-                    {filteredRecords.length === 0 && (
-                        <div className="enterprise-empty-state m-5 flex min-h-[320px] flex-col items-center justify-center px-6 text-center">
-                            <Search size={26} className="text-slate-300" />
-                            <p className="mt-4 text-sm font-semibold text-slate-800">
-                                No AMC records found
-                            </p>
-                            <p className="mt-1 text-xs text-slate-500">
-                                Change the search or clear the selected filters.
-                            </p>
+                            <select
+                                value={planFilter}
+                                onChange={(e) => setPlanFilter(e.target.value)}
+                                className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-hidden"
+                            >
+                                {planOptions.map((plan) => (
+                                    <option key={plan} value={plan}>
+                                        {plan}
+                                    </option>
+                                ))}
+                            </select>
+
+                            <button
+                                type="button"
+                                onClick={loadAmcContracts}
+                                disabled={recordsLoading}
+                                className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition disabled:opacity-50"
+                            >
+                                <RefreshCw
+                                    size={12}
+                                    className={recordsLoading ? "animate-spin text-violet-600" : ""}
+                                />
+                                Refresh
+                            </button>
                         </div>
-                    )}
-
-                    <div className="flex flex-col gap-2 border-t border-slate-200 bg-slate-50/60 px-5 py-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between lg:px-6">
-                        <p>
-                            Showing {groupedClients.length} client
-                            {groupedClients.length === 1 ? "" : "s"} with AMC
-                        </p>
-                        <button
-                            type="button"
-                            onClick={loadAmcContracts}
-                            disabled={recordsLoading}
-                            className="flex items-center gap-1 font-semibold text-violet-600 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                            <RefreshCw
-                                size={13}
-                                className={recordsLoading ? "animate-spin" : ""}
-                            />
-                            {recordsLoading ? "Refreshing..." : "Refresh data"}
-                        </button>
-                    </div>
-                </section>
+                    }
+                    rowActions={[
+                        {
+                            label: "View AMC",
+                            icon: Eye,
+                            className: "text-violet-600 hover:text-violet-800 hover:bg-violet-50",
+                            onClick: (clientGroup) => setSelectedClientGroup(clientGroup),
+                        },
+                        {
+                            label: "Edit AMC",
+                            icon: Pencil,
+                            className: "text-blue-600 hover:text-blue-800 hover:bg-blue-50",
+                            onClick: (clientGroup) => handleEditClientGroupAmc(clientGroup),
+                        },
+                        {
+                            label: "Delete AMC",
+                            icon: Trash2,
+                            className: "text-rose-600 hover:text-rose-800 hover:bg-rose-50",
+                            onClick: (clientGroup) => handleDeleteClientGroupAmc(clientGroup),
+                        },
+                    ]}
+                    initialPageSize={25}
+                    emptyTitle="No AMC clients found"
+                    emptyDescription="Try changing your search or filters or create a new AMC contract."
+                />
             </div>
 
             {/* Modals (only visible when not in detail view) */}
@@ -8076,6 +8625,22 @@ AMC INVOICE / CYCLE DETAIL
                         }
                     }}
                     onSubmit={handleSaveReminder}
+                />
+            )}
+
+            {editAmcOpen && (
+                <EditAmcDrawer
+                    isOpen={editAmcOpen}
+                    onClose={closeEditAmcDrawer}
+                    record={editAmcRecord}
+                    form={editAmcForm}
+                    onFormChange={handleEditAmcChange}
+                    onFormUpdate={setEditAmcForm}
+                    gstPreview={editGstPreview}
+                    employees={employees}
+                    saving={savingEditAmc}
+                    error={editAmcError}
+                    onSubmit={handleSaveEditAmc}
                 />
             )}
         </>

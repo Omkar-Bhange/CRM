@@ -984,7 +984,7 @@ function AdminTicketQueueRow({ ticket, onOpen }) {
             event.stopPropagation();
             onOpen(ticket);
           }}
-          className="flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-semibold text-slate-600 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+          className="flex h-7 items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] font-semibold text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#1B59F8]"
         >
           Open
         </button>
@@ -998,15 +998,15 @@ function AdminTicketSection({ section, expanded, onToggle, onOpenTicket }) {
   const toneClasses = {
     danger: {
       wrapper: "border-rose-200",
-      header: "bg-gradient-to-r from-rose-50 via-white to-white hover:from-rose-100/70",
+      header: "bg-gradient-to-r from-rose-50/60 via-white to-white hover:from-rose-100/50",
       icon: "bg-rose-100 text-rose-700",
       count: "bg-rose-100 text-rose-700",
     },
     active: {
-      wrapper: "border-violet-200 shadow-[0_8px_30px_rgba(124,58,237,0.05)]",
-      header: "bg-gradient-to-r from-violet-50 via-white to-white hover:from-violet-100/70",
-      icon: "bg-violet-100 text-violet-700",
-      count: "bg-violet-100 text-violet-700",
+      wrapper: "border-blue-200 shadow-2xs",
+      header: "bg-gradient-to-r from-blue-50/50 via-white to-white hover:from-blue-100/40",
+      icon: "bg-blue-50 text-[#1B59F8]",
+      count: "bg-blue-100 text-[#1B59F8]",
     },
     success: {
       wrapper: "border-emerald-200",
@@ -1123,18 +1123,9 @@ function AdminTicketSection({ section, expanded, onToggle, onOpenTicket }) {
               />
             ))
           ) : (
-            <div className="flex min-h-[105px] items-center justify-center px-5 py-6">
-              <div className="text-center">
-                <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
-                  <CheckCircle2 size={18} />
-                </div>
-                <p className="mt-2.5 text-xs font-semibold text-slate-800">
-                  {section.emptyTitle}
-                </p>
-                <p className="mt-1 text-[10px] text-slate-500">
-                  {section.emptyText}
-                </p>
-              </div>
+            <div className="flex items-center justify-center gap-2 py-3.5 text-xs text-slate-400">
+              <CheckCircle2 size={14} className="text-emerald-500" />
+              <span>{section.emptyTitle}</span>
             </div>
           )}
         </div>
@@ -1182,7 +1173,7 @@ export default function SupportTickets() {
   const [attachmentSaving, setAttachmentSaving] = useState(false);
   const [attachmentError, setAttachmentError] = useState("");
   const [openTicketSections, setOpenTicketSections] = useState({
-    attention: true,
+    attention: false,
     active: true,
     resolvedToday: false,
     resolvedPrevious: false,
@@ -3147,76 +3138,47 @@ export default function SupportTickets() {
 
   // Main list view
  return (
-  <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-violet-50/30">
-    <div className="enterprise-page mx-auto w-full max-w-[1600px] space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-      {/* Page heading */}
-  {/* Premium Page Header */}
-<section className="relative overflow-hidden rounded-3xl border border-slate-200/80 bg-white px-6 py-6 shadow-[0_12px_40px_rgba(15,23,42,0.06)] sm:px-7 lg:px-8">
-  <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-violet-100/60 blur-3xl" />
-  <div className="pointer-events-none absolute -bottom-32 left-1/3 h-64 w-64 rounded-full bg-blue-100/40 blur-3xl" />
-
-  <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-    <div className="flex items-start gap-4">
-      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-600/20">
-        <Headphones size={21} />
-      </div>
-
-      <div>
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-600">
-            Service Management
-          </span>
-
-          <span className="h-1 w-1 rounded-full bg-slate-300" />
-
-          <span className="text-[10px] font-semibold text-slate-400">
-            Support Operations
-          </span>
+  <div className="space-y-4">
+    {/* Linear / Zoho Page Header */}
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200/80 pb-4">
+      <div className="flex items-center gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#1B59F8] text-white shadow-xs">
+          <Headphones size={18} />
         </div>
-
-        <h1 className="mt-2 text-2xl font-bold tracking-[-0.035em] text-slate-950 sm:text-[28px]">
-          Support Tickets
-        </h1>
-
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-          Manage client issues, employee assignments, SLA progress,
-          conversations and complete resolution history from one workspace.
-        </p>
-      </div>
-    </div>
-
-    <div className="flex items-center gap-3">
-      <div className="hidden rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-right xl:block">
-        <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
-          Total Tickets
-        </p>
-
-        <p className="mt-0.5 text-lg font-bold text-slate-900">
-          {tickets.length}
-        </p>
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg font-bold tracking-tight text-slate-900">Support Tickets</h1>
+            <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+              {tickets.length} Total
+            </span>
+          </div>
+          <p className="text-xs text-slate-500">
+            Manage client issues, assignments, SLA progress, and resolution history.
+          </p>
+        </div>
       </div>
 
-      <button
-        type="button"
-        onClick={() => {
-          setEditTicketMode(false);
-          setEditingTicketId(null);
-          setTicketForm(emptyTicketForm);
-          setTicketFormError("");
-          setCreateTicketAttachment(null);
-          setNewTicketOpen(true);
-        }}
-        className="flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-violet-600/20 transition-all hover:-translate-y-0.5 hover:shadow-xl"
-      >
-        <Plus size={17} />
-        Create Ticket
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            setEditTicketMode(false);
+            setEditingTicketId(null);
+            setTicketForm(emptyTicketForm);
+            setTicketFormError("");
+            setCreateTicketAttachment(null);
+            setNewTicketOpen(true);
+          }}
+          className="flex h-8 items-center gap-1.5 rounded-lg bg-[#1B59F8] px-3 text-xs font-semibold text-white shadow-2xs hover:bg-blue-600 transition-colors"
+        >
+          <Plus size={15} />
+          Create Ticket
+        </button>
+      </div>
     </div>
-  </div>
-</section>
 
       {/* Support KPI cards */}
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
         {[
           {
             id: "Open",
@@ -3224,17 +3186,17 @@ export default function SupportTickets() {
             value: stats.openTickets,
             text: "Require team attention",
             Icon: TicketCheck,
-            iconClass: "bg-violet-100 text-violet-700",
-            activeClass: "border-violet-300 ring-4 ring-violet-50",
+            iconClass: "bg-blue-50 text-[#1B59F8]",
+            activeClass: "border-[#1B59F8] ring-2 ring-blue-50 bg-blue-50/20",
           },
           {
             id: "InProgress",
             label: "In Progress",
             value: inProgressCount,
-            text: "Currently under investigation",
+            text: "Currently active",
             Icon: CircleDot,
-            iconClass: "bg-blue-100 text-blue-700",
-            activeClass: "border-blue-300 ring-4 ring-blue-50",
+            iconClass: "bg-indigo-50 text-indigo-600",
+            activeClass: "border-indigo-500 ring-2 ring-indigo-50 bg-indigo-50/20",
           },
           {
             id: "Critical",
@@ -3242,17 +3204,17 @@ export default function SupportTickets() {
             value: stats.criticalTickets,
             text: "Immediate action needed",
             Icon: AlertCircle,
-            iconClass: "bg-rose-100 text-rose-700",
-            activeClass: "border-rose-300 ring-4 ring-rose-50",
+            iconClass: "bg-rose-50 text-rose-600",
+            activeClass: "border-rose-500 ring-2 ring-rose-50 bg-rose-50/20",
           },
           {
             id: "Waiting",
             label: "Waiting",
             value: stats.waitingTickets,
-            text: "Waiting for client reply",
+            text: "Awaiting client reply",
             Icon: Clock3,
-            iconClass: "bg-amber-100 text-amber-700",
-            activeClass: "border-amber-300 ring-4 ring-amber-50",
+            iconClass: "bg-amber-50 text-amber-600",
+            activeClass: "border-amber-500 ring-2 ring-amber-50 bg-amber-50/20",
           },
           {
             id: "Resolved",
@@ -3260,8 +3222,8 @@ export default function SupportTickets() {
             value: stats.resolvedTickets,
             text: "Successfully completed",
             Icon: CheckCircle2,
-            iconClass: "bg-emerald-100 text-emerald-700",
-            activeClass: "border-emerald-300 ring-4 ring-emerald-50",
+            iconClass: "bg-emerald-50 text-emerald-600",
+            activeClass: "border-emerald-500 ring-2 ring-emerald-50 bg-emerald-50/20",
           },
         ].map((item) => {
           const active =
@@ -3283,66 +3245,66 @@ export default function SupportTickets() {
                   setActiveView((current) => (current === item.id ? "All" : item.id));
                 }
               }}
-              className={`rounded-xl border bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
-                active ? item.activeClass : "border-slate-200"
+              className={`rounded-xl border bg-white p-3.5 text-left shadow-2xs transition-colors hover:border-slate-300 ${
+                active ? item.activeClass : "border-slate-200/90"
               }`}
             >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                    {item.label}
-                  </p>
-                  <p className="mt-1.5 text-xl font-semibold text-slate-950">
-                    {item.value}
-                  </p>
-                </div>
-                <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${item.iconClass}`}>
-                  <item.Icon size={18} />
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-medium text-slate-500">
+                  {item.label}
+                </span>
+                <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${item.iconClass}`}>
+                  <item.Icon size={15} />
                 </div>
               </div>
-              <p className="mt-3 text-[10px] text-slate-500">{item.text}</p>
+              <div className="mt-2">
+                <span className="text-xl font-bold tracking-tight text-slate-900">
+                  {item.value}
+                </span>
+              </div>
+              <p className="mt-1 truncate text-[11px] text-slate-400">{item.text}</p>
             </button>
           );
         })}
       </section>
 
       {/* Support queue */}
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3.5 xl:flex-row xl:items-center xl:justify-between">
+      <section className="overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-2xs">
+        <div className="flex flex-col gap-2.5 border-b border-slate-200/80 px-4 py-3 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <h2 className="text-sm font-semibold text-slate-950">
               Support Operations Queue
             </h2>
-            <p className="mt-1 text-[10px] text-slate-500">
+            <p className="mt-0.5 text-[11px] text-slate-500">
               {stats.openTickets} open · {overdueCount} overdue · {unassignedCount} unassigned · {stats.resolvedTickets} resolved
             </p>
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row">
-            <div className="relative min-w-0 sm:w-[300px]">
+            <div className="relative min-w-0 sm:w-[280px]">
               <Search
-                size={15}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                size={14}
+                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
               />
               <input
                 type="search"
                 value={searchValue}
                 onChange={(event) => setSearchValue(event.target.value)}
                 placeholder="Search ticket, client, product..."
-                className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs text-slate-700 outline-none placeholder:text-slate-400 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                className="h-8 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-xs text-slate-700 outline-none placeholder:text-slate-400 focus:border-[#1B59F8] focus:ring-2 focus:ring-blue-100"
               />
             </div>
 
             <button
               type="button"
               onClick={() => setFiltersOpen((current) => !current)}
-              className={`flex h-9 items-center justify-center gap-2 rounded-lg border px-3.5 text-[11px] font-semibold transition ${
+              className={`flex h-8 items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition-colors ${
                 filtersOpen || statusFilter !== "All" || priorityFilter !== "All" || employeeFilter !== "All"
-                  ? "border-violet-200 bg-violet-50 text-violet-700"
+                  ? "border-blue-200 bg-blue-50 text-[#1B59F8]"
                   : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
               }`}
             >
-              <SlidersHorizontal size={14} />
+              <SlidersHorizontal size={13} />
               Filters
             </button>
           </div>
@@ -3357,7 +3319,7 @@ export default function SupportTickets() {
               <select
                 value={statusFilter}
                 onChange={(event) => setStatusFilter(event.target.value)}
-                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none focus:border-[#1B59F8] focus:ring-2 focus:ring-blue-100"
               >
                 <option value="All">All statuses</option>
                 {statusOptions.map((status) => (
@@ -3373,7 +3335,7 @@ export default function SupportTickets() {
               <select
                 value={priorityFilter}
                 onChange={(event) => setPriorityFilter(event.target.value)}
-                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none focus:border-[#1B59F8] focus:ring-2 focus:ring-blue-100"
               >
                 <option value="All">All priorities</option>
                 {priorityOptions.map((priority) => (
@@ -3389,7 +3351,7 @@ export default function SupportTickets() {
               <select
                 value={employeeFilter}
                 onChange={(event) => setEmployeeFilter(event.target.value)}
-                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none focus:border-[#1B59F8] focus:ring-2 focus:ring-blue-100"
               >
                 <option value="All">All employees</option>
                 {employees.map((employee) => (
@@ -3402,9 +3364,9 @@ export default function SupportTickets() {
               <button
                 type="button"
                 onClick={clearFilters}
-                className="flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100"
+                className="flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
               >
-                <Filter size={14} />
+                <Filter size={13} />
                 Clear Filters
               </button>
             </div>
@@ -4168,7 +4130,6 @@ export default function SupportTickets() {
           </div>
         </div>
       )}
-       </div>
-  </div>
-);
+    </div>
+  );
 }

@@ -365,13 +365,10 @@ function AdminTaskSection({
         },
 
         active: {
-            wrapper:
-                "border-violet-200 shadow-[0_8px_30px_rgba(124,58,237,0.05)]",
-            header:
-                "bg-gradient-to-r from-violet-50 via-white to-white hover:from-violet-100/70",
-            icon: "bg-violet-100 text-violet-700",
-            count:
-                "bg-violet-100 text-violet-700",
+            wrapper: "border-blue-200 shadow-2xs",
+            header: "bg-gradient-to-r from-blue-50/50 via-white to-white hover:from-blue-100/40",
+            icon: "bg-blue-50 text-[#1B59F8]",
+            count: "bg-blue-100 text-[#1B59F8]",
         },
 
         success: {
@@ -568,27 +565,17 @@ function AdminTaskSection({
                             />
                         ))
                     ) : (
-                        <div className="flex min-h-[105px] items-center justify-center px-5 py-6">
-                            <div className="text-center">
-                                <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
-                                    <CheckCircle2
-                                        size={18}
-                                    />
-                                </div>
-
-                                <p className="mt-2.5 text-xs font-semibold text-slate-800">
-                                    {section.id ===
-                                        "attention"
-                                        ? "No tasks require attention"
-                                        : section.id ===
-                                            "active"
-                                            ? "No active tasks"
-                                            : section.id ===
-                                                "completedToday"
-                                                ? "No tasks completed today"
-                                                : "No previous completed tasks"}
-                                </p>
-                            </div>
+                        <div className="flex items-center justify-center gap-2 py-3.5 text-xs text-slate-400">
+                            <CheckCircle2 size={14} className="text-emerald-500" />
+                            <span>
+                                {section.id === "attention"
+                                    ? "No tasks require attention"
+                                    : section.id === "active"
+                                        ? "No active tasks"
+                                        : section.id === "completedToday"
+                                            ? "No tasks completed today"
+                                            : "No previous completed tasks"}
+                            </span>
                         </div>
                     )}
                 </div>
@@ -619,7 +606,7 @@ export default function Tasks({
     const [employeeFilter, setEmployeeFilter] = useState("All");
     const [filtersOpen, setFiltersOpen] = useState(false);
 const [openAdminTaskSections, setOpenAdminTaskSections] = useState({
-    attention: true,
+    attention: false,
     active: true,
     completedToday: false,
     completedPrevious: false,
@@ -2001,280 +1988,205 @@ const [selectedTask, setSelectedTask] = useState(null);
 
     // Render task list (existing code)
     const renderTaskList = () => (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-violet-50/30">
-            <div className="enterprise-page mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
-                <section className="relative overflow-hidden rounded-3xl border border-slate-200/80 bg-white px-6 py-6 shadow-[0_12px_40px_rgba(15,23,42,0.06)] sm:px-7 lg:px-8">
-
-                    <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-violet-100/70 blur-3xl" />
-
-                    <div className="pointer-events-none absolute -bottom-32 left-1/3 h-64 w-64 rounded-full bg-blue-100/50 blur-3xl" />
-
-                    <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-
-                        <div className="flex items-start gap-4">
-
-                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-600/20">
-                                <ListTodo size={21} />
-                            </div>
-
-                            <div>
-                                <div className="flex items-center gap-2">
-
-                                    <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-600">
-                                        Work Management
-                                    </span>
-
-                                    <span className="h-1 w-1 rounded-full bg-slate-300" />
-
-                                    <span className="text-[10px] font-semibold text-slate-400">
-                                        Operations
-                                    </span>
-                                </div>
-
-                                <h1 className="mt-2 text-2xl font-bold tracking-[-0.035em] text-slate-950 sm:text-[28px]">
-                                    Tasks & Assignments
-                                </h1>
-
-                                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                                    Plan client work, assign employees, track deadlines,
-                                    monitor progress and manage project execution from one workspace.
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-
-                            <div className="hidden rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-right xl:block">
-
-                                <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
-                                    Total Work
-                                </p>
-
-                                <p className="mt-0.5 text-lg font-bold text-slate-900">
-                                    {totalTasks}
-                                </p>
-                            </div>
-
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setSelectedTask(null);
-                                    setEditTaskOpen(false);
-                                    setCreateTaskOpen(false);
-                                    resetCreateTaskForm();
-
-                                    setTimeout(() => {
-                                        setCreateTaskOpen(true);
-                                    }, 0);
-                                }}
-                                className="flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-violet-600/20 transition hover:-translate-y-0.5 hover:shadow-xl"
-                            >
-                                <Plus size={17} />
-                                Create Task
-                            </button>
-                        </div>
+        <div className="space-y-4">
+            {/* Linear / Zoho Page Header */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200/80 pb-4">
+                <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#1B59F8] text-white shadow-xs">
+                        <ListTodo size={18} />
                     </div>
-                </section>
-
-                {tasksLoading && (
-                    <div className="enterprise-surface mt-6 flex items-center gap-3 px-5 py-4">
-                        <RefreshCw size={19} className="animate-spin text-violet-600" />
-                        <p className="text-sm font-semibold text-slate-600">
-                            Loading tasks from MongoDB...
-                        </p>
-                    </div>
-                )}
-
-                {tasksError && !tasksLoading && (
-                    <div className="enterprise-empty-state mt-6 flex items-center justify-between gap-4 border-rose-200 bg-rose-50 px-5 py-4">
-                        <div className="flex items-center gap-3">
-                            <AlertCircle size={20} className="text-rose-600" />
-                            <p className="text-sm font-semibold text-rose-700">{tasksError}</p>
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <h1 className="text-lg font-bold tracking-tight text-slate-900">Tasks & Assignments</h1>
+                            <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                                {totalTasks} Tasks
+                            </span>
                         </div>
-                        <button
-                            type="button"
-                            onClick={loadTasks}
-                            className="rounded-lg bg-rose-600 px-4 py-2 text-xs font-semibold text-white"
-                        >
-                            Retry
-                        </button>
-                    </div>
-                )}
-
-                <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-                    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                        <div className="flex items-start justify-between">
-                            <div>
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                                    Total Tasks
-                                </p>
-
-                                <p className="mt-1.5 text-xl font-semibold text-slate-950">
-                                    {totalTasks}
-                                </p>
-                            </div>
-
-                            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
-                                <ListTodo size={18} />
-                            </div>
-                        </div>
-
-                        <p className="mt-3 text-[10px] text-violet-600">
-                            All workforce tasks
-                        </p>
-                    </div>
-
-                    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                        <div className="flex items-start justify-between">
-                            <div>
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                                    Active
-                                </p>
-
-                                <p className="mt-1.5 text-xl font-semibold text-slate-950">
-                                    {activeTasksCount}
-                                </p>
-                            </div>
-
-                            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-100 text-blue-700">
-                                <Activity size={18} />
-                            </div>
-                        </div>
-
-                        <p className="mt-3 text-[10px] text-blue-600">
-                            Work currently open
-                        </p>
-                    </div>
-
-                    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                        <div className="flex items-start justify-between">
-                            <div>
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                                    Due Today
-                                </p>
-
-                                <p className="mt-1.5 text-xl font-semibold text-slate-950">
-                                    {dueTodayCount}
-                                </p>
-                            </div>
-
-                            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
-                                <CalendarDays size={18} />
-                            </div>
-                        </div>
-
-                        <p className="mt-3 text-[10px] text-amber-600">
-                            Needs attention today
-                        </p>
-                    </div>
-
-                    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                        <div className="flex items-start justify-between">
-                            <div>
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                                    Overdue
-                                </p>
-
-                                <p className="mt-1.5 text-xl font-semibold text-slate-950">
-                                    {overdueCount}
-                                </p>
-                            </div>
-
-                            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-rose-100 text-rose-700">
-                                <AlertCircle size={18} />
-                            </div>
-                        </div>
-
-                        <p className="mt-3 text-[10px] text-rose-600">
-                            Past assigned due date
-                        </p>
-                    </div>
-
-                    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                        <div className="flex items-start justify-between">
-                            <div>
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                                    Completed
-                                </p>
-
-                                <p className="mt-1.5 text-xl font-semibold text-slate-950">
-                                    {completedCount}
-                                </p>
-                            </div>
-
-                            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
-                                <CheckCircle2 size={18} />
-                            </div>
-                        </div>
-
-                        <p className="mt-3 text-[10px] text-emerald-600">
-                            Successfully completed
+                        <p className="text-xs text-slate-500">
+                            Plan client work, assign employees, track deadlines, and monitor execution.
                         </p>
                     </div>
                 </div>
 
-                <div className="enterprise-surface relative mt-6 overflow-visible">
-                    <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
-                        <div>
-                            <h3 className="text-sm font-semibold text-slate-950">
-                                Workforce Task Queue
-                            </h3>
-                            <p className="mt-1 text-[10px] text-slate-500">
-                                {activeTasksCount} active · {completedCount} completed · {unassignedCount} unassigned
-                            </p>
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setSelectedTask(null);
+                            setEditTaskOpen(false);
+                            setCreateTaskOpen(false);
+                            resetCreateTaskForm();
+                            setTimeout(() => {
+                                setCreateTaskOpen(true);
+                            }, 0);
+                        }}
+                        className="flex h-8 items-center gap-1.5 rounded-lg bg-[#1B59F8] px-3 text-xs font-semibold text-white shadow-2xs hover:bg-blue-600 transition-colors"
+                    >
+                        <Plus size={15} />
+                        Create Task
+                    </button>
+                </div>
+            </div>
+
+            {tasksLoading && (
+                <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
+                    <RefreshCw size={17} className="animate-spin text-[#1B59F8]" />
+                    <p className="text-xs font-semibold text-slate-600">
+                        Loading tasks...
+                    </p>
+                </div>
+            )}
+
+            {tasksError && !tasksLoading && (
+                <div className="flex items-center justify-between gap-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+                    <div className="flex items-center gap-2.5">
+                        <AlertCircle size={18} className="text-rose-600" />
+                        <p className="text-xs font-semibold text-rose-700">{tasksError}</p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={loadTasks}
+                        className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700"
+                    >
+                        Retry
+                    </button>
+                </div>
+            )}
+
+            {/* 5 Linear KPI Cards */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+                <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs transition-colors hover:border-slate-300">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-medium text-slate-500">Total Tasks</span>
+                        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-[#1B59F8]">
+                            <ListTodo size={15} />
                         </div>
-                        <div className="flex flex-col gap-2 sm:flex-row">
-                            <div className="flex rounded-xl border border-slate-200 bg-white p-1">
-                                {[
-                                    { id: "list", label: "List View" },
-                                    { id: "board", label: "Board View" },
-                                    { id: "timeline", label: "Timeline" },
-                                ].map((view) => (
-                                    <button
-                                        key={view.id}
-                                        type="button"
-                                        onClick={() => setTaskView(view.id)}
-                                        className={`h-8 rounded-lg px-3 text-xs font-semibold transition ${taskView === view.id
-                                            ? "bg-slate-900 text-white"
-                                            : "text-slate-500 hover:bg-slate-100"
-                                            }`}
-                                    >
-                                        {view.label}
-                                    </button>
-                                ))}
-                            </div>
-                            <div className="relative w-full sm:w-72">
-                                <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                                <input
-                                    type="text"
-                                    value={searchValue}
-                                    onChange={(e) => setSearchValue(e.target.value)}
-                                    placeholder="Search task no, title, client, project, employee..."
-                                    className="enterprise-input h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-4 text-xs outline-none transition focus:border-violet-400 focus:bg-white focus:ring-4 focus:ring-violet-100"
-                                />
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setFiltersOpen(!filtersOpen)}
-                                className="flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
-                            >
-                                <Filter size={15} />
-                                Filters
-                            </button>
+                    </div>
+                    <div className="mt-2">
+                        <span className="text-xl font-bold tracking-tight text-slate-900">{totalTasks}</span>
+                    </div>
+                    <p className="mt-1 truncate text-[11px] text-slate-400">All workforce tasks</p>
+                </div>
+
+                <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs transition-colors hover:border-slate-300">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-medium text-slate-500">Active</span>
+                        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+                            <Activity size={15} />
                         </div>
+                    </div>
+                    <div className="mt-2">
+                        <span className="text-xl font-bold tracking-tight text-slate-900">{activeTasksCount}</span>
+                    </div>
+                    <p className="mt-1 truncate text-[11px] text-slate-400">Work currently open</p>
+                </div>
+
+                <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs transition-colors hover:border-slate-300">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-medium text-slate-500">Due Today</span>
+                        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
+                            <CalendarDays size={15} />
+                        </div>
+                    </div>
+                    <div className="mt-2">
+                        <span className="text-xl font-bold tracking-tight text-slate-900">{dueTodayCount}</span>
+                    </div>
+                    <p className="mt-1 truncate text-[11px] text-slate-400">Needs attention today</p>
+                </div>
+
+                <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs transition-colors hover:border-slate-300">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-medium text-slate-500">Overdue</span>
+                        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-50 text-rose-600">
+                            <AlertCircle size={15} />
+                        </div>
+                    </div>
+                    <div className="mt-2">
+                        <span className="text-xl font-bold tracking-tight text-slate-900">{overdueCount}</span>
+                    </div>
+                    <p className="mt-1 truncate text-[11px] text-slate-400">Past assigned due date</p>
+                </div>
+
+                <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs transition-colors hover:border-slate-300">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-medium text-slate-500">Completed</span>
+                        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+                            <CheckCircle2 size={15} />
+                        </div>
+                    </div>
+                    <div className="mt-2">
+                        <span className="text-xl font-bold tracking-tight text-slate-900">{completedCount}</span>
+                    </div>
+                    <p className="mt-1 truncate text-[11px] text-slate-400">Successfully completed</p>
+                </div>
+            </div>
+
+            <div className="overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-2xs">
+                <div className="flex flex-col gap-2.5 border-b border-slate-200/80 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <h3 className="text-sm font-semibold text-slate-950">
+                            Workforce Task Queue
+                        </h3>
+                        <p className="mt-0.5 text-[11px] text-slate-500">
+                            {activeTasksCount} active · {completedCount} completed · {unassignedCount} unassigned
+                        </p>
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                        <div className="flex rounded-lg border border-slate-200 bg-slate-50/80 p-0.5">
+                            {[
+                                { id: "list", label: "List View" },
+                                { id: "board", label: "Board View" },
+                                { id: "timeline", label: "Timeline" },
+                            ].map((view) => (
+                                <button
+                                    key={view.id}
+                                    type="button"
+                                    onClick={() => setTaskView(view.id)}
+                                    className={`h-7 rounded-md px-2.5 text-xs font-medium transition ${taskView === view.id
+                                        ? "bg-white text-slate-900 shadow-2xs font-semibold"
+                                        : "text-slate-600 hover:text-slate-900"
+                                        }`}
+                                >
+                                    {view.label}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="relative w-full sm:w-64">
+                            <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <input
+                                type="text"
+                                value={searchValue}
+                                onChange={(e) => setSearchValue(e.target.value)}
+                                placeholder="Search tasks..."
+                                className="h-8 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-xs outline-none transition focus:border-[#1B59F8] focus:ring-2 focus:ring-blue-100"
+                            />
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setFiltersOpen(!filtersOpen)}
+                            className={`flex h-8 items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition ${filtersOpen || statusFilter !== "All" || priorityFilter !== "All" || employeeFilter !== "All"
+                                ? "border-blue-200 bg-blue-50 text-[#1B59F8]"
+                                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                                }`}
+                        >
+                            <Filter size={13} />
+                            Filters
+                        </button>
+                    </div>
+                </div>
                         {filtersOpen && (
                             <div className="border-t border-slate-200 bg-slate-50 px-5 py-4">
                                 <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-4">
                                     <div>
-                                        <label className="mb-2 block text-[11px] font-semibold text-slate-600">
+                                        <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                                             Status
                                         </label>
                                         <select
                                             value={statusFilter}
                                             onChange={(e) => setStatusFilter(e.target.value)}
-                                            className="enterprise-input h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs"
+                                            className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none focus:border-[#1B59F8] focus:ring-2 focus:ring-blue-100"
                                         >
-                                            <option value="All">All</option>
+                                            <option value="All">All Statuses</option>
                                             {taskStatuses.map((status) => (
                                                 <option key={status.id} value={status.name}>
                                                     {status.name}
@@ -2283,7 +2195,7 @@ const [selectedTask, setSelectedTask] = useState(null);
                                         </select>
                                     </div>
                                     <div>
-                                        <label className="mb-2 block text-[11px] font-semibold text-slate-600">
+                                        <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                                             Priority
                                         </label>
                                         <select
@@ -2291,9 +2203,9 @@ const [selectedTask, setSelectedTask] = useState(null);
                                             value={priorityFilter}
                                             onChange={(e) => setPriorityFilter(e.target.value)}
                                             disabled={taskSettingsLoading}
-                                            className="enterprise-input h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs"
+                                            className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none focus:border-[#1B59F8] focus:ring-2 focus:ring-blue-100"
                                         >
-                                            <option value="All">All</option>
+                                            <option value="All">All Priorities</option>
                                             {taskPriorities.map((priority) => (
                                                 <option key={priority.id} value={priority.name}>
                                                     {priority.name}
@@ -2302,13 +2214,13 @@ const [selectedTask, setSelectedTask] = useState(null);
                                         </select>
                                     </div>
                                     <div>
-                                        <label className="mb-2 block text-[11px] font-semibold text-slate-600">
+                                        <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                                             Employee
                                         </label>
                                         <select
                                             value={employeeFilter}
                                             onChange={(event) => setEmployeeFilter(event.target.value)}
-                                            className="enterprise-input h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs"
+                                            className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none focus:border-[#1B59F8] focus:ring-2 focus:ring-blue-100"
                                         >
                                             <option value="All">All Employees</option>
                                             {employees.map((employee) => (
@@ -2328,7 +2240,7 @@ const [selectedTask, setSelectedTask] = useState(null);
                                                 setPriorityFilter("All");
                                                 setEmployeeFilter("All");
                                             }}
-                                            className="h-10 w-full rounded-xl bg-slate-900 text-xs font-semibold text-white"
+                                            className="flex h-8 w-full items-center justify-center rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
                                         >
                                             Reset Filters
                                         </button>
@@ -2336,7 +2248,6 @@ const [selectedTask, setSelectedTask] = useState(null);
                                 </div>
                             </div>
                         )}
-                    </div>
                     {taskView === "list" && (
                         <div className="space-y-2.5 bg-slate-50/40 p-4">
                             {adminTaskSections.map((section) => (
@@ -2934,8 +2845,7 @@ const [selectedTask, setSelectedTask] = useState(null);
                     )}
                 </div>
             </div>
-        </div>
-    );
+        );
 
     // Render full-page task details view
     const renderTaskDetails = () => {
@@ -3762,7 +3672,7 @@ const [selectedTask, setSelectedTask] = useState(null);
     };
 
     return (
-        <div className="min-h-screen bg-slate-50/50">
+        <div className="w-full">
             {selectedTask ? renderTaskDetails() : renderTaskList()}
 
             {/* Task action menu portal */}

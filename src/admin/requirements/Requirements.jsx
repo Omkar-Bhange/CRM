@@ -5,22 +5,17 @@ import {
 } from "react";
 
 import {
-    Archive,
     CheckCircle2,
-    ChevronDown,
     CircleDollarSign,
     ClipboardList,
-    Filter,
     Plus,
     RefreshCw,
-    Search,
     Trash2,
-    UserRound,
     X,
 } from "lucide-react";
 
 import API_URL from "../../config/api";
-
+import DataTable from "../../components/data/DataTable";
 const STATUS_OPTIONS = [
     "All",
     "New",
@@ -1034,525 +1029,283 @@ const convertRequirementToProject =
         };
 
     return (
-        <div className="space-y-6">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="space-y-4">
+            {/* Module Title Header */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-violet-600">
+                    <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-blue-600">
+                        <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />
                         Business Pipeline
-                    </p>
-
-                    <h1 className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-slate-950">
-                        Requirements
+                    </div>
+                    <h1 className="mt-0.5 text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+                        Requirements & Prospects
                     </h1>
-
-                    <p className="mt-1 text-sm text-slate-500">
-                        Manage client requests, prospects, quotations and project conversion.
+                    <p className="mt-0.5 text-xs text-slate-500">
+                        Manage client requests, prospects, quotations and project conversion workflows.
                     </p>
                 </div>
 
-                <button
-                    type="button"
-                    onClick={
-                        openNewRequirement
-                    }
-                    className="flex h-11 items-center justify-center gap-2 rounded-xl bg-violet-600 px-5 text-sm font-semibold text-white transition hover:bg-violet-700"
-                >
-                    <Plus size={17} />
-                    New Requirement
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={openNewRequirement}
+                        className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#1B59F8] px-3.5 text-xs font-semibold text-white shadow-xs hover:bg-[#1548D1] active:bg-[#0F3DB8] transition"
+                    >
+                        <Plus size={15} strokeWidth={2.5} />
+                        <span>New Requirement</span>
+                    </button>
+                </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {/* KPI Metric Summary Cards - High-Density Linear Standard */}
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 {[
                     {
-                        label:
-                            "Total Requirements",
-                        value:
-                            summary.total,
-                        icon:
-                            ClipboardList,
+                        label: "Total Requirements",
+                        value: summary.total,
+                        icon: ClipboardList,
+                        style: "bg-blue-50 text-blue-600",
                     },
                     {
-                        label:
-                            "New",
-                        value:
-                            summary.newCount,
-                        icon:
-                            Plus,
+                        label: "New Leads",
+                        value: summary.newCount,
+                        icon: Plus,
+                        style: "bg-amber-50 text-amber-600",
                     },
                     {
-                        label:
-                            "Approved",
-                        value:
-                            summary.approved,
-                        icon:
-                            CheckCircle2,
+                        label: "Approved",
+                        value: summary.approved,
+                        icon: CheckCircle2,
+                        style: "bg-emerald-50 text-emerald-600",
                     },
                     {
-                        label:
-                            "Converted",
-                        value:
-                            summary.converted,
-                        icon:
-                            CircleDollarSign,
+                        label: "Converted to Project",
+                        value: summary.converted,
+                        icon: CircleDollarSign,
+                        style: "bg-violet-50 text-violet-600",
                     },
-                ].map(
-                    ({
-                        label,
-                        value,
-                        icon: Icon,
-                    }) => (
-                        <div
-                            key={label}
-                            className="rounded-2xl border border-slate-200 bg-white p-5"
-                        >
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-xs font-medium text-slate-500">
-                                        {label}
-                                    </p>
+                ].map(({ label, value, icon: Icon, style }) => (
+                    <div
+                        key={label}
+                        className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs hover:border-slate-300 transition"
+                    >
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                                    {label}
+                                </p>
+                                <p className="mt-1 text-xl font-bold tracking-tight text-slate-900">
+                                    {value}
+                                </p>
+                            </div>
 
-                                    <p className="mt-2 text-2xl font-semibold text-slate-950">
-                                        {value}
-                                    </p>
-                                </div>
-
-                                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-700">
-                                    <Icon
-                                        size={
-                                            18
-                                        }
-                                    />
-                                </div>
+                            <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${style}`}>
+                                <Icon size={16} />
                             </div>
                         </div>
-                    )
-                )}
+                    </div>
+                ))}
             </div>
 
-            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                <div className="border-b border-slate-200 p-4">
-                    <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
-                        <div className="relative flex-1">
-                            <Search
-                                size={
-                                    16
-                                }
-                                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                            />
-
-                            <input
-                                value={
-                                    search
-                                }
-                                onChange={(
-                                    event
-                                ) =>
-                                    setSearch(
-                                        event
-                                            .target
-                                            .value
-                                    )
-                                }
-                                onKeyDown={(
-                                    event
-                                ) => {
-                                    if (
-                                        event.key ===
-                                        "Enter"
-                                    ) {
-                                        loadRequirements();
-                                    }
-                                }}
-                                placeholder="Search requirement, client or prospect..."
-                                className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-sm outline-none focus:border-violet-500"
-                            />
-                        </div>
-
-                        <div className="flex flex-wrap gap-2">
+            {/* Modern Zoho-Grade Requirements Pipeline DataTable */}
+            <DataTable
+                moduleName="Requirements"
+                viewTitle="All Requirements"
+                views={[
+                    { id: "all", label: "All Requirements" },
+                    { id: "New", label: "New Leads" },
+                    { id: "Under Review", label: "Under Review" },
+                    { id: "Approved", label: "Approved Pipeline" },
+                    { id: "Converted to Project", label: "Converted" },
+                ]}
+                activeView={statusFilter === "All" ? "all" : statusFilter}
+                onViewChange={(id) => setStatusFilter(id === "all" ? "All" : id)}
+                onCreateClick={openNewRequirement}
+                createButtonLabel="New Requirement"
+                selectable={true}
+                columns={[
+                    {
+                        key: "requirementCode",
+                        label: "Requirement",
+                        sortable: true,
+                        render: (_, item) => (
+                            <div>
+                                <span className="font-semibold text-violet-600 text-xs">
+                                    {item.requirementCode}
+                                </span>
+                                <p className="font-medium text-slate-900 truncate max-w-[260px] text-xs">
+                                    {item.title}
+                                </p>
+                                <span className="text-[10px] text-slate-400">
+                                    {item.sourceType}
+                                </span>
+                            </div>
+                        ),
+                    },
+                    {
+                        key: "customerName",
+                        label: "Client / Prospect",
+                        sortable: true,
+                        render: (_, item) => {
+                            const customerName =
+                                item.sourceType === "Existing Client"
+                                    ? item.clientName || "—"
+                                    : item.prospectCompany || item.prospectName || "—";
+                            return (
+                                <div>
+                                    <p className="font-semibold text-slate-800 text-xs">
+                                        {customerName}
+                                    </p>
+                                    {item.sourceType === "New Prospect" && item.prospectMobile && (
+                                        <p className="text-[10px] text-slate-400">
+                                            {item.prospectMobile}
+                                        </p>
+                                    )}
+                                </div>
+                            );
+                        },
+                    },
+                    {
+                        key: "requirementType",
+                        label: "Type",
+                        sortable: true,
+                        render: (val) => (
+                            <span className="text-slate-600 font-medium text-xs">
+                                {val || "—"}
+                            </span>
+                        ),
+                    },
+                    {
+                        key: "priority",
+                        label: "Priority",
+                        sortable: true,
+                        render: (val) => {
+                            const color =
+                                val === "Critical"
+                                    ? "bg-rose-50 text-rose-700 ring-rose-600/20"
+                                    : val === "High"
+                                    ? "bg-amber-50 text-amber-700 ring-amber-600/20"
+                                    : val === "Medium"
+                                    ? "bg-blue-50 text-blue-700 ring-blue-600/20"
+                                    : "bg-slate-100 text-slate-600 ring-slate-500/20";
+                            return (
+                                <span
+                                    className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ring-inset ${color}`}
+                                >
+                                    {val || "Medium"}
+                                </span>
+                            );
+                        },
+                    },
+                    {
+                        key: "quotedAmount",
+                        label: "Quoted",
+                        sortable: true,
+                        render: (val) => (
+                            <span className="font-semibold text-slate-900 text-xs">
+                                {money(val)}
+                            </span>
+                        ),
+                    },
+                    {
+                        key: "expectedDeliveryDate",
+                        label: "Delivery",
+                        sortable: true,
+                        render: (val) => (
+                            <span className="text-slate-600 text-xs">
+                                {formatDate(val)}
+                            </span>
+                        ),
+                    },
+                    {
+                        key: "status",
+                        label: "Status",
+                        sortable: true,
+                        render: (_, item) => (
                             <select
-                                value={
-                                    statusFilter
-                                }
-                                onChange={(
-                                    event
-                                ) =>
-                                    setStatusFilter(
-                                        event
-                                            .target
-                                            .value
-                                    )
-                                }
-                                className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none"
+                                value={item.status}
+                                disabled={item.status === "Converted to Project"}
+                                onChange={(e) => updateStatus(item, e.target.value)}
+                                className={`rounded-lg border px-2 py-1 text-[11px] font-semibold outline-hidden cursor-pointer ${getStatusStyle(
+                                    item.status
+                                )}`}
+                                onClick={(e) => e.stopPropagation()}
                             >
-                                {STATUS_OPTIONS.map(
-                                    (
-                                        item
-                                    ) => (
-                                        <option
-                                            key={
-                                                item
-                                            }
-                                            value={
-                                                item
-                                            }
-                                        >
-                                            {
-                                                item
-                                            }
-                                        </option>
-                                    )
-                                )}
+                                {STATUS_OPTIONS.filter((s) => s !== "All").map((status) => (
+                                    <option key={status} value={status}>
+                                        {status}
+                                    </option>
+                                ))}
                             </select>
-
-                            <select
-                                value={
-                                    sourceTypeFilter
-                                }
-                                onChange={(
-                                    event
-                                ) =>
-                                    setSourceTypeFilter(
-                                        event
-                                            .target
-                                            .value
-                                    )
-                                }
-                                className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none"
-                            >
-                                {SOURCE_TYPE_OPTIONS.map(
-                                    (
-                                        item
-                                    ) => (
-                                        <option
-                                            key={
-                                                item
-                                            }
-                                            value={
-                                                item
-                                            }
-                                        >
-                                            {
-                                                item
-                                            }
-                                        </option>
-                                    )
-                                )}
-                            </select>
-
-                            <select
-                                value={
-                                    priorityFilter
-                                }
-                                onChange={(
-                                    event
-                                ) =>
-                                    setPriorityFilter(
-                                        event
-                                            .target
-                                            .value
-                                    )
-                                }
-                                className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none"
-                            >
-                                <option value="All">
-                                    All Priority
+                        ),
+                    },
+                ]}
+                data={filteredRequirements}
+                loading={loading}
+                error={error}
+                onRetry={loadRequirements}
+                idKey="_id"
+                searchPlaceholder="Search requirement, client or prospect..."
+                statusFilters={STATUS_OPTIONS.map((s) => ({ label: s, value: s }))}
+                activeStatusFilter={statusFilter}
+                onStatusFilterChange={setStatusFilter}
+                toolbarActions={
+                    <div className="flex items-center gap-1.5 shrink-0">
+                        <select
+                            value={sourceTypeFilter}
+                            onChange={(e) => setSourceTypeFilter(e.target.value)}
+                            className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-hidden hover:border-slate-300 transition"
+                        >
+                            {SOURCE_TYPE_OPTIONS.map((item) => (
+                                <option key={item} value={item}>
+                                    {item}
                                 </option>
+                            ))}
+                        </select>
 
-                                {PRIORITY_OPTIONS.map(
-                                    (
-                                        item
-                                    ) => (
-                                        <option
-                                            key={
-                                                item
-                                            }
-                                            value={
-                                                item
-                                            }
-                                        >
-                                            {
-                                                item
-                                            }
-                                        </option>
-                                    )
-                                )}
-                            </select>
+                        <select
+                            value={priorityFilter}
+                            onChange={(e) => setPriorityFilter(e.target.value)}
+                            className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-hidden"
+                        >
+                            <option value="All">All Priority</option>
+                            {PRIORITY_OPTIONS.map((item) => (
+                                <option key={item} value={item}>
+                                    {item}
+                                </option>
+                            ))}
+                        </select>
 
-                            <button
-                                type="button"
-                                onClick={
-                                    loadRequirements
-                                }
-                                className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50"
-                                title="Refresh"
-                            >
-                                <RefreshCw
-                                    size={
-                                        16
-                                    }
-                                />
-                            </button>
-                        </div>
+                        <button
+                            type="button"
+                            onClick={loadRequirements}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
+                            title="Refresh"
+                        >
+                            <RefreshCw size={13} />
+                        </button>
                     </div>
-                </div>
-
-                {error && (
-                    <div className="border-b border-rose-200 bg-rose-50 px-5 py-3 text-sm text-rose-700">
-                        {error}
-                    </div>
-                )}
-
-                <div className="overflow-x-auto">
-                    <table className="min-w-full">
-                        <thead className="bg-slate-50">
-                            <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                                <th className="px-5 py-3">
-                                    Requirement
-                                </th>
-
-                                <th className="px-5 py-3">
-                                    Client / Prospect
-                                </th>
-
-                                <th className="px-5 py-3">
-                                    Type
-                                </th>
-
-                                <th className="px-5 py-3">
-                                    Priority
-                                </th>
-
-                                <th className="px-5 py-3">
-                                    Quoted
-                                </th>
-
-                                <th className="px-5 py-3">
-                                    Delivery
-                                </th>
-
-                                <th className="px-5 py-3">
-                                    Status
-                                </th>
-
-                                <th className="px-5 py-3 text-right">
-                                    Actions
-                                </th>
-                            </tr>
-                        </thead>
-
-                        <tbody className="divide-y divide-slate-100">
-                            {loading ? (
-                                <tr>
-                                    <td
-                                        colSpan={
-                                            8
-                                        }
-                                        className="px-5 py-12 text-center text-sm text-slate-500"
-                                    >
-                                        Loading requirements...
-                                    </td>
-                                </tr>
-                            ) : filteredRequirements.length >
-                              0 ? (
-                                filteredRequirements.map(
-                                    (
-                                        item
-                                    ) => {
-                                        const id =
-                                            item._id ||
-                                            item.id;
-
-                                        const customerName =
-                                            item.sourceType ===
-                                            "Existing Client"
-                                                ? item.clientName ||
-                                                  "—"
-                                                : item.prospectCompany ||
-                                                  item.prospectName ||
-                                                  "—";
-
-                                        return (
-                                            <tr
-                                                key={
-                                                    id
-                                                }
-                                                className="transition hover:bg-slate-50/70"
-                                            >
-                                                <td className="px-5 py-4">
-                                                    <p className="text-xs font-semibold text-violet-600">
-                                                        {
-                                                            item.requirementCode
-                                                        }
-                                                    </p>
-
-                                                    <p className="mt-1 max-w-[260px] truncate text-sm font-medium text-slate-900">
-                                                        {
-                                                            item.title
-                                                        }
-                                                    </p>
-
-                                                    <p className="mt-1 text-xs text-slate-400">
-                                                        {
-                                                            item.sourceType
-                                                        }
-                                                    </p>
-                                                </td>
-
-                                                <td className="px-5 py-4 text-sm text-slate-700">
-                                                    {
-                                                        customerName
-                                                    }
-                                                </td>
-
-                                                <td className="px-5 py-4 text-sm text-slate-600">
-                                                    {
-                                                        item.requirementType ||
-                                                        "—"
-                                                    }
-                                                </td>
-
-                                                <td className="px-5 py-4">
-                                                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
-                                                        {
-                                                            item.priority
-                                                        }
-                                                    </span>
-                                                </td>
-
-                                                <td className="px-5 py-4 text-sm font-medium text-slate-900">
-                                                    {money(
-                                                        item.quotedAmount
-                                                    )}
-                                                </td>
-
-                                                <td className="px-5 py-4 text-sm text-slate-600">
-                                                    {formatDate(
-                                                        item.expectedDeliveryDate
-                                                    )}
-                                                </td>
-
-                                                <td className="px-5 py-4">
-                                                    <select
-                                                        value={
-                                                            item.status
-                                                        }
-                                                        disabled={
-                                                            item.status ===
-                                                            "Converted to Project"
-                                                        }
-                                                        onChange={(
-                                                            event
-                                                        ) =>
-                                                            updateStatus(
-                                                                item,
-                                                                event
-                                                                    .target
-                                                                    .value
-                                                            )
-                                                        }
-                                                        className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold outline-none ${getStatusStyle(
-                                                            item.status
-                                                        )}`}
-                                                    >
-                                                        {STATUS_OPTIONS.filter(
-                                                            (
-                                                                status
-                                                            ) =>
-                                                                status !==
-                                                                "All"
-                                                        ).map(
-                                                            (
-                                                                status
-                                                            ) => (
-                                                                <option
-                                                                    key={
-                                                                        status
-                                                                    }
-                                                                    value={
-                                                                        status
-                                                                    }
-                                                                >
-                                                                    {
-                                                                        status
-                                                                    }
-                                                                </option>
-                                                            )
-                                                        )}
-                                                    </select>
-                                                </td>
-
-                                                <td className="px-5 py-4">
-                                                    <div className="flex justify-end gap-2">
-                                                      {item.status ===
-    "Approved" && (
-    <button
-        type="button"
-        onClick={() =>
-            openConvertProject(
-                item
-            )
-        }
-        className="rounded-lg bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 transition hover:bg-violet-100"
-    >
-        Convert
-    </button>
-)}
-
-                                                        {item.status !==
-                                                            "Converted to Project" && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() =>
-                                                                    deleteRequirement(
-                                                                        item
-                                                                    )
-                                                                }
-                                                                className="flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 text-rose-600 transition hover:bg-rose-50"
-                                                                title="Delete"
-                                                            >
-                                                                <Trash2
-                                                                    size={
-                                                                        15
-                                                                    }
-                                                                />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        );
-                                    }
-                                )
-                            ) : (
-                                <tr>
-                                    <td
-                                        colSpan={
-                                            8
-                                        }
-                                        className="px-5 py-16 text-center"
-                                    >
-                                        <Archive
-                                            size={
-                                                30
-                                            }
-                                            className="mx-auto text-slate-300"
-                                        />
-
-                                        <p className="mt-3 text-sm font-medium text-slate-700">
-                                            No requirements found
-                                        </p>
-
-                                        <p className="mt-1 text-xs text-slate-400">
-                                            Create your first requirement to start the project pipeline.
-                                        </p>
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </section>
+                }
+                rowActions={[
+                    {
+                        label: "Convert to Project",
+                        icon: CircleDollarSign,
+                        condition: (item) => item.status === "Approved",
+                        className: "text-violet-600 hover:text-violet-800 hover:bg-violet-50",
+                        onClick: (item) => openConvertProject(item),
+                    },
+                    {
+                        label: "Delete Requirement",
+                        icon: Trash2,
+                        condition: (item) => item.status !== "Converted to Project",
+                        className: "text-rose-500 hover:text-rose-700 hover:bg-rose-50",
+                        onClick: (item) => deleteRequirement(item),
+                    },
+                ]}
+                initialPageSize={25}
+                emptyTitle="No requirements found"
+                emptyDescription="Create your first requirement to start the project pipeline."
+            />
 
             {drawerOpen && (
                 <>

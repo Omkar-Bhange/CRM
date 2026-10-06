@@ -1,6 +1,7 @@
 // Team.jsx - Updated with full-page employee details view
 
 import { useEffect, useState } from "react";
+import DataTable from "../../components/data/DataTable";
 import {
     Activity,
     AlertCircle,
@@ -9,7 +10,6 @@ import {
     Coffee,
     MoreHorizontal,
     RefreshCw,
-    Search,
     UserCheck,
     UserPlus,
     Users,
@@ -18,23 +18,16 @@ import {
     Edit,
     User,
     Phone,
-    Calendar,
     Building2,
     Briefcase,
-    FileText,
     Clock,
     CheckCircle,
     UserCog,
     Shield,
     Target,
-    BookOpen,
-    LayoutGrid,
     ListTodo,
-    Monitor,
     CalendarDays,
     UserMinus,
-    Send,
-    ExternalLink,
     Plus,
     X,
 } from "lucide-react";
@@ -2534,272 +2527,174 @@ export default function Team() {
             </div>
 
             {teamView === "table" && (
-                <div className="enterprise-surface mt-6 overflow-hidden">
-                    <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
-                        <div>
-                            <h3 className="text-sm font-semibold text-slate-950">Team Workload</h3>
-                            <p className="mt-1 text-xs text-slate-500">
-                                {employeeList.length} employees found
-                            </p>
-                        </div>
-                        <div className="relative w-full lg:w-80">
-                            <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                            <input
-                                type="text"
-                                placeholder="Search employee, role, task..."
-                                className="enterprise-input h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-4 text-xs outline-none transition focus:border-violet-400 focus:bg-white focus:ring-4 focus:ring-violet-100"
-                            />
-                        </div>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="enterprise-table min-w-[1420px] w-full">
-                            <thead className="bg-slate-50">
-                                <tr className="border-b border-slate-200">
-                                    <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        Employee
-                                    </th>
-                                    <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        Status
-                                    </th>
-                                    <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        Current Work
-                                    </th>
-                                    <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        Current App
-                                    </th>
-                                    <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        Login
-                                    </th>
-                                    <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        Active Time
-                                    </th>
-                                    <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        Tasks
-                                    </th>
-                                    <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        Last Activity
-                                    </th>
-                                    <th className="px-5 py-3 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        Actions
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {employeesLoading ? (
-                                    <tr>
-                                        <td colSpan="9" className="px-6 py-16 text-center">
-                                            <RefreshCw size={28} className="mx-auto animate-spin text-violet-600" />
-                                            <p className="mt-3 text-sm font-semibold text-slate-700">Loading employees...</p>
-                                        </td>
-                                    </tr>
-                                ) : employeesError ? (
-                                    <tr>
-                                        <td colSpan="9" className="px-6 py-16 text-center">
-                                            <AlertCircle size={30} className="mx-auto text-rose-500" />
-                                            <p className="mt-3 text-sm font-semibold text-rose-700">{employeesError}</p>
-                                            <button
-                                                type="button"
-                                                onClick={loadEmployees}
-                                                className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white"
-                                            >
-                                                Retry
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ) : employeeList.length > 0 ? (
-                                    employeeList.map((employee) => (
-                                        <tr
-                                            key={employee.id}
-                                            onClick={() => {
-                                                setSelectedEmployee(employee);
-                                                setEmployeeTab("overview");
-                                            }}
-                                            className="cursor-pointer border-b border-slate-100 transition last:border-b-0 hover:bg-slate-50/70"
-                                        >
-                                            <td className="px-5 py-4">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-xs font-semibold text-white">
-                                                        {employee.initials}
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-sm font-semibold text-slate-950">
-                                                            {employee.name}
-                                                        </p>
-                                                        <p className="mt-1 text-[11px] text-slate-500">
-                                                            {employee.employeeCode} · {employee.role}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-4">
-                                                <span
-                                                    className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ring-inset ${getStatusClasses(
-                                                        employee.status
-                                                    )}`}
-                                                >
-                                                    {employee.status}
+                <div className="mt-6">
+                    <DataTable
+                        moduleName="Employees"
+                        viewTitle="All Employees"
+                        views={[
+                            { id: "all", label: "All Employees" },
+                            { id: "active", label: "Active & Available" },
+                            { id: "onleave", label: "On Leave / Off" },
+                        ]}
+                        onCreateClick={openAddEmployeeDrawer}
+                        createButtonLabel="Add Employee"
+                        selectable={true}
+                        columns={[
+                            {
+                                key: "name",
+                                label: "Employee",
+                                sortable: true,
+                                render: (_, employee) => (
+                                    <div className="flex items-center gap-3">
+                                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-xs font-semibold text-white">
+                                            {employee.initials}
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-semibold text-slate-950">
+                                                {employee.name}
+                                            </p>
+                                            <p className="mt-0.5 text-[10px] text-slate-500">
+                                                {employee.employeeCode} · {employee.role}
+                                            </p>
+                                        </div>
+                                    </div>
+                                ),
+                            },
+                            {
+                                key: "status",
+                                label: "Status",
+                                sortable: true,
+                                render: (val) => (
+                                    <span
+                                        className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ring-inset ${getStatusClasses(
+                                            val
+                                        )}`}
+                                    >
+                                        {val}
+                                    </span>
+                                ),
+                            },
+                            {
+                                key: "currentTask",
+                                label: "Current Work",
+                                sortable: true,
+                                render: (_, employee) => (
+                                    <div>
+                                        <p className="max-w-[220px] truncate text-xs font-semibold text-slate-800">
+                                            {employee.currentTask}
+                                        </p>
+                                        <p className="mt-0.5 text-[10px] text-slate-500">
+                                            {employee.client} · {employee.project}
+                                        </p>
+                                    </div>
+                                ),
+                            },
+                            {
+                                key: "currentApplication",
+                                label: "Current App",
+                                sortable: false,
+                                render: (_, employee) =>
+                                    employee.agentConnected && employee.currentApplication ? (
+                                        <div className="max-w-[200px]">
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="relative flex h-2 w-2 shrink-0">
+                                                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-40" />
+                                                    <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
                                                 </span>
-                                            </td>
-                                            <td className="px-4 py-4">
-                                                <p className="max-w-[240px] truncate text-xs font-semibold text-slate-800">
-                                                    {employee.currentTask}
+                                                <p className="truncate text-xs font-semibold text-slate-800">
+                                                    {employee.currentApplication}
                                                 </p>
-                                                <p className="mt-1 text-[10px] text-slate-500">
-                                                    {employee.client} · {employee.project}
-                                                </p>
-                                            </td>
-                                            <td className="px-4 py-4">
-                                                {employee.agentConnected &&
-                                                    employee.currentApplication ? (
-                                                    <div className="max-w-[210px]">
-
-                                                        <div className="flex items-center gap-2">
-
-                                                            <span className="relative flex h-2.5 w-2.5 shrink-0">
-                                                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-40" />
-
-                                                                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                                                            </span>
-
-                                                            <p className="truncate text-xs font-semibold text-slate-800">
-                                                                {employee.currentApplication}
-                                                            </p>
-                                                        </div>
-
-                                                        <p
-                                                            title={
-                                                                employee.currentWindowTitle
-                                                            }
-                                                            className="mt-1 truncate text-[10px] text-slate-500"
-                                                        >
-                                                            {employee.currentWindowTitle ||
-                                                                "Application active"}
-                                                        </p>
-
-                                                        <div className="mt-1.5 flex items-center gap-2 text-[9px] text-slate-400">
-
-                                                            {employee.pcName && (
-                                                                <span>
-                                                                    {employee.pcName}
-                                                                </span>
-                                                            )}
-
-                                                            {employee.agentLastSeen && (
-                                                                <>
-                                                                    <span>•</span>
-
-                                                                    <span>
-                                                                        Synced{" "}
-                                                                        {new Date(
-                                                                            employee.agentLastSeen
-                                                                        ).toLocaleTimeString(
-                                                                            "en-IN",
-                                                                            {
-                                                                                hour: "2-digit",
-                                                                                minute: "2-digit",
-                                                                            }
-                                                                        )}
-                                                                    </span>
-                                                                </>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                ) : (
-                                                    <div>
-                                                        <div className="flex items-center gap-2">
-
-                                                            <span className="h-2 w-2 rounded-full bg-slate-300" />
-
-                                                            <p className="text-xs font-semibold text-slate-500">
-                                                                Not connected
-                                                            </p>
-                                                        </div>
-
-                                                        <p className="mt-1 text-[10px] text-slate-400">
-                                                            {employee.agentLastSeen
-                                                                ? `Last sync ${new Date(
-                                                                    employee.agentLastSeen
-                                                                ).toLocaleString(
-                                                                    "en-IN"
-                                                                )}`
-                                                                : "No PC activity today"}
-                                                        </p>
-                                                    </div>
-                                                )}
-                                            </td>
-
-                                            <td className="px-4 py-4">
-                                                <div className="flex items-center gap-2 text-xs text-slate-600">
-                                                    <Clock3 size={14} className="text-slate-400" />
-                                                    {employee.loginTime}
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-4">
-                                                <p className="text-xs font-semibold text-slate-800">
-                                                    {employee.activeTime}
-                                                </p>
-                                            </td>
-                                            <td className="px-4 py-4">
-                                                <div className="flex items-center gap-2">
-
-                                                    <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2.5 py-1 text-[9px] font-bold text-violet-700 ring-1 ring-inset ring-violet-100">
-                                                        <span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
-
-                                                        {employee.openTasks} open
-                                                    </span>
-
-                                                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[9px] font-bold text-emerald-700 ring-1 ring-inset ring-emerald-100">
-                                                        <CheckCircle size={10} />
-
-                                                        {employee.completedTasks} done
-                                                    </span>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-4 text-xs text-slate-500">
-                                                {employee.lastActivity}
-                                            </td>
-                                            <td className="px-5 py-4">
-                                                <div className="flex items-center justify-end gap-2">
-                                                    {employee.status === "Free" && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={(event) => {
-                                                                event.stopPropagation();
-                                                                openAssignTaskDrawer(employee);
-                                                            }}
-                                                            className="flex h-9 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
-                                                        >
-                                                            <BriefcaseBusiness size={14} />
-                                                            Assign
-                                                        </button>
-                                                    )}
-                                                    <button
-                                                        type="button"
-                                                        onClick={(event) => {
-                                                            event.stopPropagation();
-                                                            openEditEmployeeDrawer(employee);
-                                                        }}
-                                                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
-                                                        title="Edit employee"
-                                                    >
-                                                        <MoreHorizontal size={17} />
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))
-                                ) : (
-                                    <tr>
-                                        <td colSpan="9" className="px-6 py-16 text-center">
-                                            <Users size={30} className="mx-auto text-slate-300" />
-                                            <p className="mt-3 text-sm font-semibold text-slate-700">No employees found</p>
-                                            <p className="mt-1 text-xs text-slate-400">Create your first employee account.</p>
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
+                                            </div>
+                                            <p
+                                                title={employee.currentWindowTitle}
+                                                className="mt-0.5 truncate text-[10px] text-slate-500"
+                                            >
+                                                {employee.currentWindowTitle || "Application active"}
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="h-2 w-2 rounded-full bg-slate-300" />
+                                            <p className="text-xs text-slate-400">Not connected</p>
+                                        </div>
+                                    ),
+                            },
+                            {
+                                key: "loginTime",
+                                label: "Login",
+                                sortable: true,
+                                render: (val) => (
+                                    <div className="flex items-center gap-1 text-xs text-slate-600">
+                                        <Clock3 size={13} className="text-slate-400" />
+                                        {val}
+                                    </div>
+                                ),
+                            },
+                            {
+                                key: "activeTime",
+                                label: "Active Time",
+                                sortable: true,
+                                render: (val) => (
+                                    <span className="text-xs font-semibold text-slate-800">
+                                        {val}
+                                    </span>
+                                ),
+                            },
+                            {
+                                key: "openTasks",
+                                label: "Tasks",
+                                sortable: true,
+                                render: (_, employee) => (
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[9px] font-bold text-violet-700 ring-1 ring-inset ring-violet-100">
+                                            <span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
+                                            {employee.openTasks} open
+                                        </span>
+                                        <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-bold text-emerald-700 ring-1 ring-inset ring-emerald-100">
+                                            <CheckCircle size={9} />
+                                            {employee.completedTasks}
+                                        </span>
+                                    </div>
+                                ),
+                            },
+                            {
+                                key: "lastActivity",
+                                label: "Last Activity",
+                                sortable: true,
+                                render: (val) => (
+                                    <span className="text-xs text-slate-500">{val}</span>
+                                ),
+                            },
+                        ]}
+                        data={employeeList}
+                        loading={employeesLoading}
+                        error={employeesError}
+                        onRetry={loadEmployees}
+                        idKey="id"
+                        onRowClick={(employee) => {
+                            setSelectedEmployee(employee);
+                            setEmployeeTab("overview");
+                        }}
+                        searchPlaceholder="Search employee, role, task..."
+                        rowActions={[
+                            {
+                                label: "Assign Task",
+                                icon: BriefcaseBusiness,
+                                condition: (employee) => employee.status === "Free",
+                                className: "text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50",
+                                onClick: (employee) => openAssignTaskDrawer(employee),
+                            },
+                            {
+                                label: "Edit Employee",
+                                icon: MoreHorizontal,
+                                className: "text-slate-600 hover:text-slate-900 hover:bg-slate-100",
+                                onClick: (employee) => openEditEmployeeDrawer(employee),
+                            },
+                        ]}
+                        initialPageSize={25}
+                        emptyTitle="No employees found"
+                        emptyDescription="Create your first employee account to start managing team members."
+                    />
                 </div>
             )}
 

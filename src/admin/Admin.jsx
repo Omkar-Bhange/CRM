@@ -13,6 +13,9 @@ import PaymentsCollections from "./billing/PaymentsCollections";
 
 import SupportTickets from "./tickets/SupportTickets";
 import ReportsDashboard from "./reports/ReportsDashboard";
+import AppShell from "../components/layout/AppShell";
+import OverviewDashboard from "./overview/OverviewDashboard";
+import DataTable from "../components/data/DataTable";
 import {
     ArrowUpRight,
     Bell,
@@ -525,9 +528,17 @@ const clientAmcRecords = [
         paidAmount: 10000,
         status: "Partially Paid",
         reminderStatus: "Sent",
-    },
-];
-export default function Admin({ onLogout }) {
+    },];
+
+export default function Admin({ user: propUser = null, onLogout }) {
+    const user = propUser || (() => {
+        try {
+            const stored = localStorage.getItem("client-connect-current-user");
+            return stored ? JSON.parse(stored) : null;
+        } catch {
+            return null;
+        }
+    })();
     const [clientTicketFilter, setClientTicketFilter] = useState("All");
     const [activeMenu, setActiveMenu] = useState("overview");
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -4299,1234 +4310,72 @@ export default function Admin({ onLogout }) {
         return clientActivityData;
     };
     return (
-        <div className="enterprise-shell min-h-screen bg-[#f4f6fa] text-slate-900">
-            {/* Mobile Sidebar Overlay */}
-            {sidebarOpen && (
-                <button
-                    type="button"
-                    aria-label="Close sidebar"
-                    onClick={() => setSidebarOpen(false)}
-                    className="enterprise-backdrop fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-sm lg:hidden"
-                />
-            )}
-
-            {/* Sidebar */}
-            <aside
-                className={`enterprise-sidebar fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-slate-800 text-white transition-transform duration-300 ease-out lg:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"
-                    }`}
+        <>
+            <AppShell
+                activeMenu={activeMenu}
+                onSelectMenu={(menuId) => {
+                    setActiveMenu(menuId);
+                }}
+                pageTitle={
+                    selectedClient && activeMenu === "clients"
+                        ? selectedClient.companyName
+                        : activeMenu === "settings"
+                        ? "System Settings"
+                        : selectedMenu?.label || "Workspace"
+                }
+                breadcrumbs={
+                    selectedClient && activeMenu === "clients"
+                        ? [
+                              {
+                                  label: "Clients Directory",
+                                  onClick: () => setSelectedClient(null),
+                              },
+                          ]
+                        : []
+                }
+                user={user}
+                onLogout={onLogout}
+                badgeCounts={{
+                    tickets: 3,
+                    attendance: attendanceApprovalRequests.length,
+                }}
+                notifications={attendanceApprovalRequests.map((req) => ({
+                    title: `${req.employeeName} (${req.employeeCode})`,
+                    message: `Attendance approval requested for ${req.date}`,
+                    time: req.requestedAt
+                        ? new Date(req.requestedAt).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                          })
+                        : "Pending",
+                }))}
+                onQuickAdd={(targetModule) => {
+                    if (targetModule === "clients") {
+                        openClientDrawer();
+                    } else {
+                        setActiveMenu(targetModule);
+                    }
+                }}
+                onOpenSettings={() => setActiveMenu("settings")}
+                clients={clients}
             >
-                {/* Sidebar Brand */}
-                <div className="relative flex h-[92px] shrink-0 items-center border-b border-white/10 px-5">
-                    <div className="flex w-full items-center justify-center overflow-hidden">
-                        <img
-                            src={NexoraLogo}
-                            alt="Total Solution Nexora"
-                            className="h-[72px] w-[225px] scale-[3.45] object-contain"
-                        />
-                    </div>
-
-                    <button
-                        type="button"
-                        onClick={() => setSidebarOpen(false)}
-                        className="absolute right-3 top-4 flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white/10 hover:text-white lg:hidden"
-                    >
-                        <X size={19} />
-                    </button>
-                </div>
-
-                {/* Workspace */}
-                <div className="px-4 pt-4">
-                    <button
-                        type="button"
-                        className="group flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/[0.055] px-3 py-3 transition-all duration-200 hover:border-white/15 hover:bg-white/[0.08]"
-                    >
-                        <div className="flex min-w-0 items-center gap-3">
-                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#092744] ring-1 ring-inset ring-cyan-400/10">
-                                <span className="text-[11px] font-bold tracking-wide text-cyan-300">
-                                    NX
-                                </span>
-                            </div>
-
-                            <div className="min-w-0 text-left">
-                                <p className="truncate text-[12px] font-semibold text-white">
-                                    Main Workspace
-                                </p>
-
-                                <p className="mt-0.5 truncate text-[10px] text-slate-400">
-                                    Business Operations
-                                </p>
-                            </div>
-                        </div>
-
-                        <ChevronDown
-                            size={15}
-                            strokeWidth={1.8}
-                            className="shrink-0 text-slate-500 transition-colors group-hover:text-slate-300"
-                        />
-                    </button>
-                </div>       {/* Navigation */}
-                <nav className="mt-5 flex-1 overflow-y-auto px-3">
-                    <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                        Workspace
-                    </p>
-
-                    <div className="space-y-1">
-                        {menuItems.map((item) => {
-                            const Icon = item.icon;
-                            const isActive = activeMenu === item.id;
-
-                            return (
-                                <button
-                                    key={item.id}
-                                    type="button"
-                                    onClick={() => {
-                                        setActiveMenu(item.id);
-                                        setSidebarOpen(false);
-                                    }}
-                                    aria-current={isActive ? "page" : undefined}
-                                    className={`enterprise-sidebar-nav-item group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium ${isActive
-                                        ? "bg-white text-slate-950 shadow-sm"
-                                        : "text-slate-400 hover:bg-white/[0.06] hover:text-white"
-                                        }`}
-                                >
-                                    <Icon
-                                        size={18}
-                                        strokeWidth={isActive ? 2.2 : 1.8}
-                                        className={
-                                            isActive
-                                                ? "text-violet-600"
-                                                : "text-slate-500 group-hover:text-cyan-300"
-                                        }
-                                    />
-
-                                    <span>{item.label}</span>
-
-                                    {item.id === "tickets" && (
-                                        <span
-                                            className={`ml-auto flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold ${isActive
-                                                ? "bg-rose-100 text-rose-600"
-                                                : "bg-rose-500/15 text-rose-300"
-                                                }`}
-                                        >
-                                            3
-                                        </span>
-                                    )}
-                                </button>
-                            );
-                        })}
-                    </div>
-
-                    <p className="mb-2 mt-7 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                        Management
-                    </p>
-
-                    <div className="space-y-1">
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setActiveMenu("settings");
-                                setSidebarOpen(false);
-                            }}
-                            aria-current={activeMenu === "settings" ? "page" : undefined}
-                            className={`enterprise-sidebar-nav-item group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium ${activeMenu === "settings"
-                                ? "bg-white text-slate-950 shadow-sm"
-                                : "text-slate-400 hover:bg-white/[0.06] hover:text-white"
-                                }`}
-                        >
-                            <Settings
-                                size={18}
-                                strokeWidth={activeMenu === "settings" ? 2.2 : 1.8}
-                                className={
-                                    activeMenu === "settings"
-                                        ? "text-violet-600"
-                                        : "text-slate-500 group-hover:text-cyan-300"
-                                }
-                            />
-
-                            <span>Settings</span>
-                        </button>
-
-                        <button
-                            type="button"
-                            className="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-400 transition hover:bg-white/[0.06] hover:text-white"
-                        >
-                            <CircleHelp
-                                size={18}
-                                className="text-slate-500 group-hover:text-cyan-300"
-                            />
-                            Help Center
-                        </button>
-                    </div>
-                </nav>
-
-                {/* Sidebar User */}
-                <div className="shrink-0 border-t border-white/10 p-3">
-                    <div className="flex items-center gap-3 rounded-xl p-2.5 transition hover:bg-white/[0.05]">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-violet-700 text-xs font-semibold">
-                            MK
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-                            <p className="truncate text-xs font-semibold text-white">
-                                Mangesh Kondhare
-                            </p>
-                            <p className="truncate text-[10px] text-slate-500">
-                                Owner / Administrator
-                            </p>
-                        </div>
-
-                        <button
-                            type="button"
-                            onClick={onLogout}
-                            title="Logout"
-                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-rose-500/10 hover:text-rose-300"
-                        >
-                            <LogOut size={17} />
-                        </button>
-                    </div>
-                </div>
-            </aside>
-
-            {/* Main Area */}
-            <div className="min-h-screen lg:pl-64">
-                {/* Header */}
-                <header className="sticky top-0 z-30 flex h-[72px] items-center border-b border-slate-200 bg-white/95 px-4 backdrop-blur-md sm:px-6 lg:px-8">
-                    <button
-                        type="button"
-                        aria-label="Open navigation"
-                        onClick={() => setSidebarOpen(true)}
-                        className="mr-3 flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 lg:hidden"
-                    >
-                        <Menu size={18} />
-                    </button>
-
-                    <div className="min-w-0">
-                        <h2 className="truncate text-base font-semibold tracking-[-0.02em] text-slate-900 sm:text-lg">
-                            {activeMenu === "settings" ? "Settings" : selectedMenu.label}
-                        </h2>
-                        <p className="hidden text-xs text-slate-500 sm:block">
-                            Manage your clients, support and company work
-                        </p>
-                    </div>
-
-                    <div className="ml-auto flex items-center gap-2 sm:gap-3">
-                        {/* Search */}
-                        <div className="relative hidden md:block">
-                            <Search
-                                size={17}
-                                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-                            />
-
-                            <input
-                                type="search"
-                                placeholder="Search clients, tickets, tasks..."
-                                className="h-10 w-[240px] rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-4 text-xs text-slate-800 outline-none transition placeholder:text-slate-400 focus:w-[300px] focus:border-violet-400 focus:bg-white focus:ring-4 focus:ring-violet-100 xl:w-[300px]"
-                            />
-                        </div>
-
-                        <button
-                            type="button"
-                            aria-label="Attendance approval requests"
-                            onClick={() =>
-                                setAttendanceApprovalOpen(
-                                    (current) => !current
-                                )
-                            }
-                            className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
-                        >
-                            {attendanceApprovalRequests.length > 0 ? (
-                                <BellRing
-                                    size={18}
-                                    className="text-rose-600"
-                                />
-                            ) : (
-                                <Bell size={18} />
-                            )}
-
-                            {attendanceApprovalRequests.length > 0 && (
-                                <span className="absolute -right-1 -top-1 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-bold text-white">
-                                    {attendanceApprovalRequests.length}
-                                </span>
-                            )}
-                        </button>
-
-                        <button
-                            type="button"
-                            className="hidden h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 sm:flex"
-                        >
-                            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-violet-100 text-[10px] font-bold text-violet-700">
-                                MK
-                            </span>
-
-                            Admin
-                            <ChevronDown size={14} className="text-slate-400" />
-                        </button>
-                    </div>
-                </header>
-
-                {attendanceApprovalOpen && (
-                    <>
-                        <button
-                            type="button"
-                            aria-label="Close attendance approval"
-                            onClick={() => setAttendanceApprovalOpen(false)}
-                            className="enterprise-backdrop fixed inset-0 z-[70] bg-slate-950/20 backdrop-blur-[1px]"
-                        />
-                        <div className="fixed right-4 sm:right-6 top-[76px] z-[80] w-[420px] max-w-[calc(100vw-32px)] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
-                            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-                                    <div>
-                                        <p className="text-sm font-semibold text-slate-950">
-                                            Attendance Approval
-                                        </p>
-
-                                        <p className="mt-0.5 text-xs text-slate-500">
-                                            Remote or unverified login requests
-                                        </p>
-                                    </div>
-
-                                    <button
-                                        type="button"
-                                        onClick={() =>
-                                            setAttendanceApprovalOpen(false)
-                                        }
-                                        className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                                    >
-                                        <X size={16} />
-                                    </button>
-                                </div>
-
-                                <div className="max-h-[70vh] overflow-y-auto">
-                                    {attendanceApprovalLoading ? (
-                                        <div className="px-5 py-8 text-center text-sm text-slate-500">
-                                            Loading requests...
-                                        </div>
-                                    ) : attendanceApprovalError ? (
-                                        <div className="px-5 py-6 text-sm text-rose-600">
-                                            {attendanceApprovalError}
-                                        </div>
-                                    ) : attendanceApprovalRequests.length === 0 ? (
-                                        <div className="px-5 py-10 text-center">
-                                            <CheckCircle2
-                                                size={28}
-                                                className="mx-auto text-emerald-500"
-                                            />
-
-                                            <p className="mt-3 text-sm font-medium text-slate-700">
-                                                No pending attendance requests
-                                            </p>
-                                        </div>
-                                    ) : (
-                                        attendanceApprovalRequests.map(
-                                            (request) => {
-                                                const requestId =
-                                                    request._id ||
-                                                    request.id;
-
-                                                const busy =
-                                                    attendanceApprovalActionId ===
-                                                    requestId;
-
-                                                return (
-                                                    <div
-                                                        key={requestId}
-                                                        className="border-b border-slate-100 px-5 py-5 last:border-b-0"
-                                                    >
-                                                        <div className="flex items-start justify-between gap-3">
-                                                            <div>
-                                                                <p className="text-sm font-semibold text-slate-900">
-                                                                    {request.employeeName}
-                                                                </p>
-
-                                                                <p className="mt-1 text-xs text-slate-500">
-                                                                    {request.employeeCode} ·{" "}
-                                                                    {request.department || "—"}
-                                                                </p>
-                                                            </div>
-
-                                                            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
-                                                                Pending
-                                                            </span>
-                                                        </div>
-
-                                                        <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
-                                                            <div className="rounded-xl bg-slate-50 p-3">
-                                                                <p className="text-slate-400">
-                                                                    PC
-                                                                </p>
-
-                                                                <p className="mt-1 font-medium text-slate-700">
-                                                                    {request.pcName || "Unknown"}
-                                                                </p>
-                                                            </div>
-
-                                                            <div className="rounded-xl bg-slate-50 p-3">
-                                                                <p className="text-slate-400">
-                                                                    Network
-                                                                </p>
-
-                                                                <p className="mt-1 font-medium text-slate-700">
-                                                                    {request.networkType || "Unknown"}
-                                                                </p>
-                                                            </div>
-
-                                                            <div className="rounded-xl bg-slate-50 p-3">
-                                                                <p className="text-slate-400">
-                                                                    Date
-                                                                </p>
-
-                                                                <p className="mt-1 font-medium text-slate-700">
-                                                                    {request.date}
-                                                                </p>
-                                                            </div>
-
-                                                            <div className="rounded-xl bg-slate-50 p-3">
-                                                                <p className="text-slate-400">
-                                                                    Requested
-                                                                </p>
-
-                                                                <p className="mt-1 font-medium text-slate-700">
-                                                                    {request.requestedAt
-                                                                        ? new Date(
-                                                                            request.requestedAt
-                                                                        ).toLocaleTimeString([], {
-                                                                            hour: "2-digit",
-                                                                            minute: "2-digit",
-                                                                        })
-                                                                        : "—"}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="mt-4">
-                                                            <label className="mb-1.5 block text-xs font-medium text-slate-600">
-                                                                Approve as
-                                                            </label>
-
-                                                            <select
-                                                                value={attendanceApprovalType}
-                                                                onChange={(event) =>
-                                                                    setAttendanceApprovalType(
-                                                                        event.target.value
-                                                                    )
-                                                                }
-                                                                className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-violet-500"
-                                                            >
-                                                                <option>
-                                                                    Work From Home
-                                                                </option>
-
-                                                                <option>
-                                                                    Client Site
-                                                                </option>
-
-                                                                <option>
-                                                                    Office Exception
-                                                                </option>
-
-                                                                <option>
-                                                                    Late Arrival
-                                                                </option>
-                                                            </select>
-                                                        </div>
-
-                                                        <div className="mt-3">
-                                                            <label className="mb-1.5 block text-xs font-medium text-slate-600">
-                                                                Admin note
-                                                            </label>
-
-                                                            <textarea
-                                                                rows={2}
-                                                                value={attendanceApprovalNote}
-                                                                onChange={(event) =>
-                                                                    setAttendanceApprovalNote(
-                                                                        event.target.value
-                                                                    )
-                                                                }
-                                                                placeholder="Optional note..."
-                                                                className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-violet-500"
-                                                            />
-                                                        </div>
-
-                                                        <div className="mt-4 flex gap-2">
-                                                            <button
-                                                                type="button"
-                                                                disabled={busy}
-                                                                onClick={() =>
-                                                                    rejectAttendanceRequest(
-                                                                        requestId
-                                                                    )
-                                                                }
-                                                                className="flex h-10 flex-1 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
-                                                            >
-                                                                Reject
-                                                            </button>
-
-                                                            <button
-                                                                type="button"
-                                                                disabled={busy}
-                                                                onClick={() =>
-                                                                    approveAttendanceRequest(
-                                                                        requestId
-                                                                    )
-                                                                }
-                                                                className="flex h-10 flex-1 items-center justify-center rounded-xl bg-violet-600 text-sm font-semibold text-white transition hover:bg-violet-700 disabled:opacity-50"
-                                                            >
-                                                                {busy
-                                                                    ? "Processing..."
-                                                                    : "Approve"}
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            }
-                                        )
-                                    )}
-                                </div>
-                            </div>
-                        </>
-                    )}
-                {/* Page Content */}
-                <main className="enterprise-workspace min-h-[calc(100vh-72px)] bg-[#f8fafc] p-4 sm:p-6 lg:p-8">
-                    <div className="mx-auto max-w-[1600px]">
-                        {activeMenu === "overview" ? (
+                <div className="mx-auto max-w-[1600px]">
+                    {activeMenu === "overview" ? (
                             <div className="enterprise-page">
-                                {/* Dashboard Heading */}
-                                <section className="flex flex-col gap-4 pb-4 sm:flex-row sm:items-center sm:justify-between">
-                                    <div>
-                                        <div className="mb-1.5 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-violet-600">
-                                            <span className="h-2 w-2 rounded-full bg-violet-600" />
-                                            Admin Workspace
-                                        </div>
-
-                                        <h1 className="text-[22px] font-semibold tracking-[-0.025em] text-slate-950 sm:text-[26px]">
-                                            Good morning, Mangesh
-                                        </h1>
-
-                                        <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">
-                                            Here is a clear overview of your clients, AMC collections,
-                                            support tickets and company workload.
-                                        </p>
-                                    </div>
-
-                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                                        <div className="flex h-11 items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-600 shadow-sm">
-                                            <CalendarDays size={17} className="text-slate-400" />
-
-                                            <div>
-                                                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                    Today
-                                                </p>
-
-                                                <p className="text-xs font-semibold text-slate-700">
-                                                    13 July 2026
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        <button
-                                            type="button"
-                                            onClick={openClientDrawer}
-                                            className="flex h-11 items-center justify-center gap-2 rounded-xl bg-violet-600 px-5 text-sm font-semibold text-white shadow-lg shadow-violet-600/20 transition hover:-translate-y-0.5 hover:bg-violet-700 active:translate-y-0"
-                                        >
-                                            <Plus size={18} />
-                                            Add Client
-                                        </button>
-                                    </div>
-                                </section>
-
-                                {/* Summary Statistics */}
-                                <section
-                                    aria-busy={dashboardLoading}
-                                    aria-live="polite"
-                                    className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
-                                >
-                                    {dashboardLoading ? (
-                                        Array.from({ length: 4 }).map((_, index) => (
-                                            <div
-                                                key={index}
-                                                aria-hidden="true"
-                                                className="animate-pulse rounded-2xl border border-slate-200 bg-white p-6"
-                                            >
-                                                <div className="flex items-start justify-between gap-4">
-                                                    <div className="space-y-3">
-                                                        <div className="h-3 w-24 rounded bg-slate-100" />
-                                                        <div className="h-8 w-28 rounded bg-slate-200" />
-                                                    </div>
-                                                    <div className="h-11 w-11 rounded-xl bg-slate-100" />
-                                                </div>
-                                                <div className="mt-6 h-3 w-36 rounded bg-slate-100" />
-                                            </div>
-                                        ))
-                                    ) : dashboardError ? (
-                                        <div className="enterprise-empty-state col-span-full flex flex-col items-start gap-3 p-6 sm:flex-row sm:items-center sm:justify-between">
-                                            <div className="flex items-start gap-3">
-                                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
-                                                    <AlertCircle size={19} />
-                                                </div>
-                                                <div>
-                                                    <p className="text-sm font-semibold text-slate-900">
-                                                        Dashboard data could not be loaded
-                                                    </p>
-                                                    <p className="mt-1 text-xs text-slate-500">
-                                                        {dashboardError}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={loadDashboard}
-                                                className="flex h-10 shrink-0 items-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-semibold text-white transition hover:bg-violet-700"
-                                            >
-                                                <RefreshCw size={15} />
-                                                Retry
-                                            </button>
-                                        </div>
-                                    ) : dashboardStats.map((stat, index) => {
-                                        const Icon = stat.icon;
-                                        const isPositive = stat.trend === "up";
-
-                                        return (
-                                            <article
-                                                key={stat.id}
-                                                className="enterprise-metric enterprise-surface--interactive group relative flex h-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-[0_4px_18px_rgba(15,23,42,0.035)] transition duration-200 hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_16px_40px_rgba(15,23,42,0.08)]"
-                                                style={{ "--ts-enter-delay": `${index * 55}ms` }}
-                                            >
-                                                <div className="flex items-start justify-between gap-4">
-                                                    <div>
-                                                        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                            {stat.label}
-                                                        </p>
-
-                                                        <p className="mt-2 text-xl font-semibold tracking-[-0.03em] text-slate-950">
-                                                            {stat.value}
-                                                        </p>
-                                                    </div>
-
-                                                    <div
-                                                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${stat.iconStyle}`}
-                                                    >
-                                                        <Icon size={20} strokeWidth={1.9} />
-                                                    </div>
-                                                </div>
-
-                                                <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
-                                                    <div
-                                                        className={`flex items-center gap-1.5 text-xs font-medium ${isPositive ? "text-emerald-600" : "text-amber-600"
-                                                            }`}
-                                                    >
-                                                        {isPositive ? (
-                                                            <TrendingUp size={15} />
-                                                        ) : (
-                                                            <TrendingDown size={15} />
-                                                        )}
-
-                                                        <span>{stat.change}</span>
-                                                    </div>
-
-                                                    <button
-                                                        type="button"
-                                                        className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 transition group-hover:bg-slate-100 group-hover:text-slate-700"
-                                                        aria-label={`View ${stat.label}`}
-                                                    >
-                                                        <ArrowUpRight size={16} />
-                                                    </button>
-                                                </div>
-                                            </article>
-                                        );
-                                    })}
-                                </section>
-
-                                <div className="mt-8 grid gap-6 xl:grid-cols-[1.55fr_0.85fr] xl:items-stretch">
-
-
-                                    {/* Temporary Next Section Placeholder */}
-                                    {/* AMC Renewals */}
-                                    <section className="self-start overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)]">
-                                        <div className="flex flex-col gap-4 border-b border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between lg:px-6">
-                                            <div>
-                                                <p className="text-sm font-semibold text-slate-950">
-                                                    AMC Renewals — Due & Overdue
-                                                </p>
-
-                                                <p className="mt-1 text-xs text-slate-500">
-                                                    Monitor upcoming renewals and pending annual charges.
-                                                </p>
-                                            </div>
-
-                                            <div className="flex flex-wrap items-center gap-2">
-                                                <button
-                                                    type="button"
-                                                    className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
-                                                >
-                                                    <Download size={15} />
-                                                    Export
-                                                </button>
-
-                                                <button
-                                                    type="button"
-                                                    className="flex h-9 items-center gap-2 rounded-lg bg-slate-900 px-3 text-xs font-semibold text-white transition hover:bg-violet-600"
-                                                >
-                                                    <Plus size={15} />
-                                                    Add Renewal
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        <div className="overflow-x-auto">
-                                            <table className="min-w-full">
-                                                <thead>
-                                                    <tr className="border-b border-slate-200 bg-slate-50/80">
-                                                        <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400 lg:px-6">
-                                                            Client
-                                                        </th>
-
-                                                        <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                            Product
-                                                        </th>
-
-                                                        <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                            Amount
-                                                        </th>
-
-                                                        <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                            Due Date
-                                                        </th>
-
-                                                        <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                            Status
-                                                        </th>
-
-                                                        <th className="px-5 py-3 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400 lg:px-6">
-                                                            Bill
-                                                        </th>
-                                                    </tr>
-                                                </thead>
-
-                                                <tbody>
-                                                    {amcRenewals.map((renewal) => (
-                                                        <tr
-                                                            key={renewal.id}
-                                                            className="border-b border-slate-100 transition last:border-b-0 hover:bg-slate-50/70"
-                                                        >
-                                                            <td className="px-5 py-4 lg:px-6">
-                                                                <div className="flex items-center gap-3">
-                                                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-xs font-bold text-violet-700">
-                                                                        {renewal.client
-                                                                            .split(" ")
-                                                                            .slice(0, 2)
-                                                                            .map((word) => word[0])
-                                                                            .join("")}
-                                                                    </div>
-
-                                                                    <div className="min-w-[180px]">
-                                                                        <p className="text-sm font-semibold text-slate-900">
-                                                                            {renewal.client}
-                                                                        </p>
-
-                                                                        <p className="mt-0.5 text-[11px] text-slate-500">
-                                                                            {renewal.contact}
-                                                                        </p>
-                                                                    </div>
-                                                                </div>
-                                                            </td>
-
-                                                            <td className="px-5 py-4 text-sm font-medium text-slate-600">
-                                                                {renewal.product}
-                                                            </td>
-
-                                                            <td className="px-5 py-4 text-sm font-semibold text-slate-900">
-                                                                {renewal.amount}
-                                                            </td>
-
-                                                            <td className="px-5 py-4 text-sm text-slate-600">
-                                                                {renewal.dueDate}
-                                                            </td>
-
-                                                            <td className="px-5 py-4">
-                                                                <span
-                                                                    className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ring-inset ${getStatusClasses(
-                                                                        renewal.status
-                                                                    )}`}
-                                                                >
-                                                                    {renewal.status}
-                                                                </span>
-                                                            </td>
-
-                                                            <td className="px-5 py-4 lg:px-6">
-                                                                <div className="flex justify-end gap-2">
-                                                                    <button
-                                                                        type="button"
-                                                                        className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
-                                                                    >
-                                                                        <FileText size={14} />
-                                                                        PDF
-                                                                    </button>
-
-                                                                    <button
-                                                                        type="button"
-                                                                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700"
-                                                                        aria-label={`More actions for ${renewal.client}`}
-                                                                    >
-                                                                        <MoreHorizontal size={16} />
-                                                                    </button>
-                                                                </div>
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-
-                                        <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50/60 px-5 py-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between lg:px-6">
-                                            <p>Showing 5 upcoming and overdue AMC renewals</p>
-
-                                            <button
-                                                type="button"
-                                                className="flex items-center gap-1 font-semibold text-violet-600 transition hover:text-violet-700"
-                                            >
-                                                View all renewals
-                                                <ArrowUpRight size={14} />
-                                            </button>
-                                        </div>
-                                    </section>
-                                    {/* Team Status */}
-                                    <section className="flex h-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)]">
-                                        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-                                            <div>
-                                                <p className="text-sm font-semibold text-slate-950">
-                                                    Team Status
-                                                </p>
-
-                                                <p className="mt-1 text-xs text-slate-500">
-                                                    Live workload and employee availability.
-                                                </p>
-                                            </div>
-
-                                            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700 ring-1 ring-inset ring-emerald-600/10">
-                                                <Circle size={7} fill="currentColor" />
-                                                2 free now
-                                            </span>
-                                        </div>
-
-                                        <div className="flex-1 divide-y divide-slate-100">
-                                            {teamMembers.slice(0, 4).map((member) => {
-                                                const isFree = member.status === "Free";
-                                                const isLeave = member.status === "Leave";
-
-                                                return (
-                                                    <div
-                                                        key={member.id}
-                                                        className="px-5 py-4 transition hover:bg-slate-50/80"
-                                                    >
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="relative shrink-0">
-                                                                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-xs font-bold text-white">
-                                                                    {member.initials}
-                                                                </div>
-
-                                                                <span
-                                                                    className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white ${isFree
-                                                                        ? "bg-emerald-500"
-                                                                        : isLeave
-                                                                            ? "bg-slate-300"
-                                                                            : "bg-amber-400"
-                                                                        }`}
-                                                                />
-                                                            </div>
-
-                                                            <div className="min-w-0 flex-1">
-                                                                <div className="flex items-center justify-between gap-3">
-                                                                    <p className="truncate text-sm font-semibold text-slate-900">
-                                                                        {member.name}
-                                                                    </p>
-
-                                                                    <span className="shrink-0 text-[11px] font-semibold text-slate-500">
-                                                                        {member.workingTime}
-                                                                    </span>
-                                                                </div>
-
-                                                                <div className="mt-1 flex items-center justify-between gap-3">
-                                                                    <p
-                                                                        className={`truncate text-xs ${isFree
-                                                                            ? "font-medium text-emerald-600"
-                                                                            : isLeave
-                                                                                ? "text-slate-400"
-                                                                                : "text-slate-600"
-                                                                            }`}
-                                                                    >
-                                                                        {member.currentTask}
-                                                                    </p>
-
-                                                                    <span
-                                                                        className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-bold ${isFree
-                                                                            ? "bg-emerald-50 text-emerald-700"
-                                                                            : isLeave
-                                                                                ? "bg-slate-100 text-slate-500"
-                                                                                : "bg-amber-50 text-amber-700"
-                                                                            }`}
-                                                                    >
-                                                                        {member.status}
-                                                                    </span>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-
-                                                        {isFree && (
-                                                            <button
-                                                                type="button"
-                                                                className="mt-3 flex h-8 w-full items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 text-[11px] font-semibold text-emerald-700 transition hover:bg-emerald-100"
-                                                            >
-                                                                <UserPlus size={14} />
-                                                                Assign Task
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-
-                                        <div className="border-t border-slate-200 bg-slate-50/60 px-5 py-4">
-                                            <button
-                                                type="button"
-                                                className="flex w-full items-center justify-center gap-1 text-xs font-semibold text-violet-600 transition hover:text-violet-700"
-                                            >
-                                                View full team
-                                                <ArrowUpRight size={14} />
-                                            </button>
-                                        </div>
-                                    </section>
-
-
-
-
-
-
-                                </div>
-
-                                {/* SECOND DASHBOARD ROW */}
-                                <div className="mt-4 grid gap-4 xl:grid-cols-2">
-
-
-
-                                    {/* Recent Support Tickets */}
-                                    <section className="flex h-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)]">
-                                        <div className="flex flex-col gap-4 border-b border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between lg:px-6">
-                                            <div>
-                                                <p className="text-sm font-semibold text-slate-950">
-                                                    Recent Support Tickets
-                                                </p>
-
-                                                <p className="mt-1 text-xs text-slate-500">
-                                                    Latest client issues that require attention from your support team.
-                                                </p>
-                                            </div>
-
-                                            <button
-                                                type="button"
-                                                className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
-                                            >
-                                                View All Tickets
-                                                <ArrowUpRight size={14} />
-                                            </button>
-                                        </div>
-
-                                        <div className="flex-1 divide-y divide-slate-100">
-                                            {recentTickets.slice(0, 4).map((ticket) => (
-                                                <article
-                                                    key={ticket.id}
-                                                    className="group px-4 py-3 transition hover:bg-slate-50/70 lg:px-5"
-                                                >
-                                                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
-                                                        <div className="flex min-w-0 flex-1 items-start gap-3">
-                                                            <div
-                                                                className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${ticket.priority === "Critical"
-                                                                    ? "bg-rose-100 text-rose-700"
-                                                                    : ticket.priority === "High"
-                                                                        ? "bg-orange-100 text-orange-700"
-                                                                        : "bg-slate-100 text-slate-600"
-                                                                    }`}
-                                                            >
-                                                                {ticket.status === "Resolved" ? (
-                                                                    <CheckCircle2 size={18} />
-                                                                ) : ticket.priority === "Critical" ? (
-                                                                    <AlertCircle size={18} />
-                                                                ) : (
-                                                                    <MessageSquare size={18} />
-                                                                )}
-                                                            </div>
-
-                                                            <div className="min-w-0">
-                                                                <div className="flex flex-wrap items-center gap-2">
-                                                                    <p className="text-sm font-semibold text-slate-900">
-                                                                        {ticket.title}
-                                                                    </p>
-
-                                                                    <span className="text-[11px] font-semibold text-violet-600">
-                                                                        {ticket.id}
-                                                                    </span>
-                                                                </div>
-
-                                                                <p className="mt-1 text-xs text-slate-500">
-                                                                    {ticket.client} · {ticket.product}
-                                                                </p>
-
-                                                                <p className="mt-2 text-[11px] text-slate-400">
-                                                                    Assigned to{" "}
-                                                                    <span className="font-semibold text-slate-600">
-                                                                        {ticket.assignedTo}
-                                                                    </span>{" "}
-                                                                    · {ticket.createdAt}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-                                                            <span
-                                                                className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ring-inset ${getPriorityClasses(
-                                                                    ticket.priority
-                                                                )}`}
-                                                            >
-                                                                {ticket.priority}
-                                                            </span>
-
-                                                            <span
-                                                                className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ring-inset ${getTicketStatusClasses(
-                                                                    ticket.status
-                                                                )}`}
-                                                            >
-                                                                {ticket.status}
-                                                            </span>
-
-                                                            <button
-                                                                type="button"
-                                                                className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
-                                                            >
-                                                                Open
-                                                                <ArrowUpRight size={14} />
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </article>
-                                            ))}
-                                        </div>
-                                    </section>
-
-                                    {/* Active Tasks */}
-                                    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)]">
-                                        <div className="flex flex-col gap-4 border-b border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                                            <div>
-                                                <p className="text-sm font-semibold text-slate-950">
-                                                    Active Tasks
-                                                </p>
-
-                                                <p className="mt-1 text-xs text-slate-500">
-                                                    Current assigned work and employee progress.
-                                                </p>
-                                            </div>
-
-                                            <button
-                                                type="button"
-                                                className="flex h-9 items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 text-xs font-semibold text-white transition hover:bg-violet-600"
-                                            >
-                                                <Plus size={15} />
-                                                Assign
-                                            </button>
-                                        </div>
-
-                                        <div className="divide-y divide-slate-100">
-                                            {activeTasks.slice(0, 2).map((task) => (
-                                                <article
-                                                    key={task.id}
-                                                    className="px-5 py-4 transition hover:bg-slate-50/70"
-                                                >
-                                                    <div className="flex items-start gap-3">
-                                                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
-                                                            {task.status === "Testing" ? (
-                                                                <CircleDot size={18} />
-                                                            ) : (
-                                                                <PlayCircle size={18} />
-                                                            )}
-                                                        </div>
-
-                                                        <div className="min-w-0 flex-1">
-                                                            <div className="flex items-start justify-between gap-2">
-                                                                <div className="min-w-0">
-                                                                    <p className="truncate text-sm font-semibold text-slate-900">
-                                                                        {task.title}
-                                                                    </p>
-
-                                                                    <p className="mt-0.5 text-[10px] font-semibold text-violet-600">
-                                                                        {task.id}
-                                                                    </p>
-                                                                </div>
-
-                                                                <span
-                                                                    className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-bold ring-1 ring-inset ${getPriorityClasses(
-                                                                        task.priority
-                                                                    )}`}
-                                                                >
-                                                                    {task.priority}
-                                                                </span>
-                                                            </div>
-
-                                                            <p className="mt-1 truncate text-[11px] text-slate-500">
-                                                                {task.client} · {task.product}
-                                                            </p>
-
-                                                            <p className="mt-2 text-[10px] text-slate-400">
-                                                                Assigned to{" "}
-                                                                <span className="font-semibold text-slate-600">
-                                                                    {task.assignedTo}
-                                                                </span>
-                                                            </p>
-
-                                                            <div className="mt-2 flex flex-wrap items-center gap-3 text-[10px] text-slate-400">
-                                                                <span className="inline-flex items-center gap-1">
-                                                                    <Flag size={11} />
-                                                                    {task.dueDate}
-                                                                </span>
-
-                                                                <span className="inline-flex items-center gap-1">
-                                                                    <Timer size={11} />
-                                                                    {task.spentTime} / {task.estimatedTime}
-                                                                </span>
-                                                            </div>
-
-                                                            <div className="mt-3">
-                                                                <div className="mb-1.5 flex items-center justify-between">
-                                                                    <span className="text-[9px] font-medium text-slate-400">
-                                                                        Progress
-                                                                    </span>
-
-                                                                    <span className="text-[9px] font-semibold text-slate-600">
-                                                                        {task.progress}%
-                                                                    </span>
-                                                                </div>
-
-                                                                <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
-                                                                    <div
-                                                                        className="h-full rounded-full bg-violet-600"
-                                                                        style={{ width: `${task.progress}%` }}
-                                                                    />
-                                                                </div>
-                                                            </div>
-
-                                                            <div className="mt-3 flex items-center justify-between gap-2">
-                                                                <span
-                                                                    className={`inline-flex rounded-full px-2 py-1 text-[9px] font-bold ring-1 ring-inset ${getTaskStatusClasses(
-                                                                        task.status
-                                                                    )}`}
-                                                                >
-                                                                    {task.status}
-                                                                </span>
-
-                                                                <button
-                                                                    type="button"
-                                                                    className="flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-[10px] font-semibold text-slate-600 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
-                                                                >
-                                                                    Open
-                                                                    <ArrowUpRight size={12} />
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </article>
-                                            ))}
-                                        </div>
-
-                                        <div className="border-t border-slate-200 bg-slate-50/60 px-5 py-4">
-                                            <button
-                                                type="button"
-                                                className="flex w-full items-center justify-center gap-1 text-xs font-semibold text-violet-600 transition hover:text-violet-700"
-                                            >
-                                                View all tasks
-                                                <ArrowUpRight size={14} />
-                                            </button>
-                                        </div>
-                                    </section>
-
-
-                                </div>
-
-                                {/* THIRD DASHBOARD ROW */}
-                                {/* Recent Client Activity */}
-                                <section className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_4px_18px_rgba(15,23,42,0.035)]">
-                                    <div className="flex flex-col gap-4 border-b border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between lg:px-6">
-                                        <div>
-                                            <p className="text-sm font-semibold text-slate-950">
-                                                Recent Client Activity
-                                            </p>
-
-                                            <p className="mt-1 text-xs text-slate-500">
-                                                Latest client, billing and support updates across the workspace.
-                                            </p>
-                                        </div>
-
-                                        <button
-                                            type="button"
-                                            className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
-                                        >
-                                            <Activity size={15} />
-                                            View Activity
-                                        </button>
-                                    </div>
-
-                                    <div className="relative px-5 py-2 lg:px-6">
-                                        <div className="absolute bottom-6 left-[43px] top-6 w-px bg-slate-200 lg:left-[47px]" />
-
-                                        {clientActivities.map((activity) => {
-                                            const Icon = activity.icon;
-
-                                            return (
-                                                <article
-                                                    key={activity.id}
-                                                    className="relative flex gap-4 border-b border-slate-100 py-5 last:border-b-0"
-                                                >
-                                                    <div
-                                                        className={`relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-4 ring-white ${activity.iconStyle}`}
-                                                    >
-                                                        <Icon size={17} />
-                                                    </div>
-
-                                                    <div className="min-w-0 flex-1">
-                                                        <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-                                                            <div className="min-w-0">
-                                                                <p className="text-sm font-semibold text-slate-900">
-                                                                    {activity.title}
-                                                                </p>
-
-                                                                <p className="mt-1 text-xs leading-5 text-slate-500">
-                                                                    {activity.description}
-                                                                </p>
-                                                            </div>
-
-                                                            <span className="shrink-0 text-[10px] font-medium text-slate-400">
-                                                                {activity.time}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                </article>
-                                            );
-                                        })}
-                                    </div>
-
-                                    <div className="border-t border-slate-200 bg-slate-50/60 px-5 py-4 lg:px-6">
-                                        <button
-                                            type="button"
-                                            className="flex w-full items-center justify-center gap-1 text-xs font-semibold text-violet-600 transition hover:text-violet-700"
-                                        >
-                                            View complete activity log
-                                            <ArrowUpRight size={14} />
-                                        </button>
-                                    </div>
-                                </section>
-
-
-
-
-
-
-
+                                <OverviewDashboard
+                                    user={user}
+                                    dashboardStats={dashboardStats}
+                                    dashboardLoading={dashboardLoading}
+                                    dashboardError={dashboardError}
+                                    onRetryDashboard={loadDashboard}
+                                    amcRenewals={amcRenewals}
+                                    teamMembers={teamMembers}
+                                    recentTickets={recentTickets}
+                                    activeTasks={activeTasks}
+                                    clientActivities={clientActivities}
+                                    onOpenAddClient={openClientDrawer}
+                                    onNavigate={(module) => setActiveMenu(module)}
+                                />
                             </div>
 
                         ) : activeMenu === "clients" ? (
@@ -7991,443 +6840,259 @@ export default function Admin({ onLogout }) {
                             ) : (
 
                                 <div className="enterprise-page">
-                                    {/* Clients Page Header */}
-                                    <section className="flex flex-col gap-4 pb-4 sm:flex-row sm:items-center sm:justify-between">
-                                        <div>
-                                            <div className="mb-1.5 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-violet-600">
-                                                <span className="h-2 w-2 rounded-full bg-violet-600" />
-                                                Client Management
-                                            </div>
+                                     {/* Clients Page Header - Linear Production Standard */}
+                                     <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                         <div>
+                                             <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-blue-600">
+                                                 <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />
+                                                 Client Management
+                                             </div>
 
-                                            <h1 className="text-[22px] font-semibold tracking-[-0.025em] text-slate-950 sm:text-[26px]">
-                                                Clients
-                                            </h1>
+                                             <h1 className="mt-0.5 text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+                                                 Clients
+                                             </h1>
 
-                                            <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">
-                                                Manage software clients, assigned products, AMC renewals,
-                                                support workload and account status.
-                                            </p>
-                                        </div>
+                                             <p className="mt-0.5 max-w-2xl text-xs text-slate-500">
+                                                 Manage software clients, assigned products, AMC renewals, support workload and account status.
+                                             </p>
+                                         </div>
 
-                                        <button
-                                            type="button"
-                                            onClick={openClientDrawer}
-                                            className="flex h-11 items-center justify-center gap-2 rounded-xl bg-violet-600 px-5 text-sm font-semibold text-white shadow-lg shadow-violet-600/20 transition hover:-translate-y-0.5 hover:bg-violet-700 active:translate-y-0"
-                                        >
-                                            <Plus size={18} />
-                                            Add Client
-                                        </button>
-                                    </section>
+                                         <button
+                                             type="button"
+                                             onClick={openClientDrawer}
+                                             className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#1B59F8] px-3.5 text-xs font-semibold text-white shadow-xs hover:bg-[#1548D1] active:bg-[#0F3DB8] transition"
+                                         >
+                                             <Plus size={15} strokeWidth={2.5} />
+                                             <span>Add Client</span>
+                                         </button>
+                                     </section>
 
-                                    {/* Client Summary */}
-                                    <section className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                                        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-[0_3px_12px_rgba(15,23,42,0.025)]">
-                                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                Total Clients
-                                            </p>
+                                     {/* Client Summary - High Density Linear Standard */}
+                                     <section className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                                         <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs hover:border-slate-300 transition">
+                                             <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                                                 Total Clients
+                                             </p>
+                                             <p className="mt-1 text-xl font-bold tracking-tight text-slate-900">
+                                                 {clients.length}
+                                             </p>
+                                         </div>
 
-                                            <p className="mt-3 text-2xl font-semibold text-slate-950">
-                                                {clients.length}
-                                            </p>
-                                        </div>
+                                         <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs hover:border-slate-300 transition">
+                                             <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                                                 Active Clients
+                                             </p>
+                                             <p className="mt-1 text-xl font-bold tracking-tight text-emerald-600">
+                                                 {clients.filter((client) => client.status === "Active").length}
+                                             </p>
+                                         </div>
 
-                                        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-[0_3px_12px_rgba(15,23,42,0.025)]">
-                                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                Active Clients
-                                            </p>
+                                         <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs hover:border-slate-300 transition">
+                                             <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                                                 AMC Pending
+                                             </p>
+                                             <p className="mt-1 text-xl font-bold tracking-tight text-amber-600">
+                                                 {clients.filter((client) => client.amcStatus === "Pending").length}
+                                             </p>
+                                         </div>
 
-                                            <p className="mt-3 text-2xl font-semibold text-emerald-700">
-                                                {clients.filter((client) => client.status === "Active").length}
-                                            </p>
-                                        </div>
+                                         <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs hover:border-slate-300 transition">
+                                             <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                                                 AMC Overdue
+                                             </p>
+                                             <p className="mt-1 text-xl font-bold tracking-tight text-rose-600">
+                                                 {clients.filter((client) => client.amcStatus === "Overdue").length}
+                                             </p>
+                                         </div>
+                                     </section>
 
-                                        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-[0_3px_12px_rgba(15,23,42,0.025)]">
-                                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                AMC Pending
-                                            </p>
-
-                                            <p className="mt-3 text-2xl font-semibold text-amber-700">
+                                    {/* Modern Zoho-Grade Clients DataTable */}
+                                    <div className="mt-4">
+                                        <DataTable
+                                            moduleName="Clients"
+                                            viewTitle="All Clients"
+                                            views={[
+                                                { id: "all", label: "All Clients" },
+                                                { id: "active", label: "Active Clients" },
+                                                { id: "overdue", label: "Overdue AMC Renewals" },
+                                            ]}
+                                            onCreateClick={openClientDrawer}
+                                            createButtonLabel="Create Client"
+                                            selectable={true}
+                                            columns={[
                                                 {
-                                                    clients.filter(
-                                                        (client) => client.amcStatus === "Pending"
-                                                    ).length
-                                                }
-                                            </p>
-                                        </div>
-
-                                        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-[0_3px_12px_rgba(15,23,42,0.025)]">
-                                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                AMC Overdue
-                                            </p>
-
-                                            <p className="mt-3 text-2xl font-semibold text-rose-700">
+                                                    key: "companyName",
+                                                    label: "Client",
+                                                    sortable: true,
+                                                    render: (_, client) => (
+                                                        <div className="flex items-center gap-2.5">
+                                                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-xs font-bold text-violet-700">
+                                                                {client.companyName
+                                                                    ? client.companyName.split(" ").slice(0, 2).map((w) => w[0]).join("")
+                                                                    : "C"}
+                                                            </div>
+                                                            <div className="min-w-0">
+                                                                <p className="font-semibold text-slate-900 truncate hover:text-violet-600 transition">
+                                                                    {client.companyName}
+                                                                </p>
+                                                                <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                                                                    <span>{client.code}</span>
+                                                                    {client.city && (
+                                                                        <span className="inline-flex items-center gap-0.5">
+                                                                            <MapPin size={10} /> {client.city}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ),
+                                                },
                                                 {
-                                                    clients.filter(
-                                                        (client) => client.amcStatus === "Overdue"
-                                                    ).length
-                                                }
-                                            </p>
-                                        </div>
-                                    </section>
-
-                                    {/* Filters and Table */}
-                                    <section className="enterprise-surface mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-                                        <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3 lg:flex-row lg:items-center lg:justify-between lg:px-5">
-                                            <div className="relative w-full lg:max-w-[420px]">
-                                                <Search
-                                                    size={17}
-                                                    className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-                                                />
-
-                                                <input
-                                                    type="search"
-                                                    value={clientSearch}
-                                                    onChange={(event) =>
-                                                        setClientSearch(event.target.value)
-                                                    }
-                                                    placeholder="Search client, contact, product, city..."
-                                                    className="enterprise-input h-9 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-400 focus:bg-white focus:ring-4 focus:ring-violet-100"
-                                                />
-                                            </div>
-
-                                            <div className="flex flex-col gap-3 sm:flex-row">
-                                                <div className="relative">
-                                                    <UserCheck
-                                                        size={15}
-                                                        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                                                    />
-
+                                                    key: "contactPerson",
+                                                    label: "Contact",
+                                                    sortable: true,
+                                                    render: (_, client) => (
+                                                        <div>
+                                                            <p className="font-semibold text-slate-700">{client.contactPerson || "—"}</p>
+                                                            <div className="mt-0.5 space-y-0.5 text-[10px] text-slate-400">
+                                                                {client.mobile && (
+                                                                    <p className="flex items-center gap-1">
+                                                                        <Phone size={10} /> {client.mobile}
+                                                                    </p>
+                                                                )}
+                                                                {client.email && (
+                                                                    <p className="flex items-center gap-1">
+                                                                        <Mail size={10} /> {client.email}
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    ),
+                                                },
+                                                {
+                                                    key: "products",
+                                                    label: "Products",
+                                                    sortable: false,
+                                                    render: (_, client) => (
+                                                        <div className="flex max-w-[180px] flex-wrap gap-1">
+                                                            {(Array.isArray(client.products) ? client.products : []).map((product, pIdx) => {
+                                                                const name = typeof product === "string" ? product : product?.productName || "Product";
+                                                                return (
+                                                                    <span
+                                                                        key={pIdx}
+                                                                        className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600"
+                                                                    >
+                                                                        {name}
+                                                                    </span>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    ),
+                                                },
+                                                {
+                                                    key: "amcStatus",
+                                                    label: "AMC Status",
+                                                    sortable: true,
+                                                    render: (val) => (
+                                                        <span
+                                                            className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ring-inset ${getClientAmcClasses(val)}`}
+                                                        >
+                                                            {val || "Not Started"}
+                                                        </span>
+                                                    ),
+                                                },
+                                                {
+                                                    key: "nextRenewal",
+                                                    label: "Renewal",
+                                                    sortable: true,
+                                                    render: (val) => (
+                                                        <span className="text-slate-600 font-medium">{val || "—"}</span>
+                                                    ),
+                                                },
+                                                {
+                                                    key: "openTickets",
+                                                    label: "Tickets",
+                                                    sortable: true,
+                                                    align: "center",
+                                                    render: (val) => (
+                                                        <span
+                                                            className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-[10px] font-bold ${
+                                                                val > 0 ? "bg-rose-50 text-rose-700" : "bg-slate-100 text-slate-500"
+                                                            }`}
+                                                        >
+                                                            {val || 0}
+                                                        </span>
+                                                    ),
+                                                },
+                                                {
+                                                    key: "assignedEmployeeName",
+                                                    label: "Assigned To",
+                                                    sortable: true,
+                                                    render: (val) => (
+                                                        <span className="text-slate-700 font-medium">{val || "Unassigned"}</span>
+                                                    ),
+                                                },
+                                                {
+                                                    key: "status",
+                                                    label: "Status",
+                                                    sortable: true,
+                                                    render: (val) => (
+                                                        <span
+                                                            className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                                                val === "Active"
+                                                                    ? "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/20"
+                                                                    : "bg-slate-100 text-slate-500 ring-1 ring-inset ring-slate-400/20"
+                                                            }`}
+                                                        >
+                                                            {val || "Inactive"}
+                                                        </span>
+                                                    ),
+                                                },
+                                            ]}
+                                            data={filteredClients}
+                                            loading={clientsLoading}
+                                            error={clientsError}
+                                            onRetry={loadClients}
+                                            idKey="id"
+                                            onRowClick={(client) => openClientDetails(client)}
+                                            searchPlaceholder="Filter clients by name, contact, product, city..."
+                                            toolbarActions={
+                                                <div className="flex items-center gap-2">
                                                     <select
                                                         value={clientStatusFilter}
-                                                        onChange={(event) =>
-                                                            setClientStatusFilter(event.target.value)
-                                                        }
-                                                        className="enterprise-input h-10 min-w-[145px] appearance-none rounded-xl border border-slate-200 bg-white pl-9 pr-9 text-xs font-semibold text-slate-600 outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                        onChange={(e) => setClientStatusFilter(e.target.value)}
+                                                        className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-600 focus:border-violet-500 focus:outline-hidden"
                                                     >
-                                                        <option value="All">All Status</option>
-                                                        <option value="Active">Active</option>
-                                                        <option value="Inactive">Inactive</option>
+                                                        <option value="All">All Statuses</option>
+                                                        <option value="Active">Active Only</option>
+                                                        <option value="Inactive">Inactive Only</option>
                                                     </select>
-
-                                                    <ChevronDown
-                                                        size={14}
-                                                        className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
-                                                    />
-                                                </div>
-
-                                                <div className="relative">
-                                                    <Filter
-                                                        size={15}
-                                                        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                                                    />
 
                                                     <select
                                                         value={clientAmcFilter}
-                                                        onChange={(event) =>
-                                                            setClientAmcFilter(event.target.value)
-                                                        }
-                                                        className="enterprise-input h-10 min-w-[155px] appearance-none rounded-xl border border-slate-200 bg-white pl-9 pr-9 text-xs font-semibold text-slate-600 outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                        onChange={(e) => setClientAmcFilter(e.target.value)}
+                                                        className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-600 focus:border-violet-500 focus:outline-hidden"
                                                     >
-                                                        <option value="All">All AMC Status</option>
-                                                        <option value="Paid">Paid</option>
-                                                        <option value="Pending">Pending</option>
-                                                        <option value="Overdue">Overdue</option>
+                                                        <option value="All">All AMC</option>
+                                                        <option value="Paid">AMC Paid</option>
+                                                        <option value="Pending">AMC Pending</option>
+                                                        <option value="Overdue">AMC Overdue</option>
                                                         <option value="Not Started">Not Started</option>
                                                     </select>
-
-                                                    <ChevronDown
-                                                        size={14}
-                                                        className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
-                                                    />
                                                 </div>
-
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setClientSearch("");
-                                                        setClientStatusFilter("All");
-                                                        setClientAmcFilter("All");
-                                                    }}
-                                                    className="flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
-                                                >
-                                                    <SlidersHorizontal size={15} />
-                                                    Reset
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        <div className="overflow-x-auto">
-                                            <table className="enterprise-table min-w-[1200px] w-full">
-                                                <thead>
-                                                    <tr className="border-b border-slate-200 bg-slate-50/80">
-                                                        <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400 lg:px-5">
-                                                            Client
-                                                        </th>
-
-                                                        <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                            Contact
-                                                        </th>
-
-                                                        <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                            Products
-                                                        </th>
-
-                                                        <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                            AMC
-                                                        </th>
-
-                                                        <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                            Renewal
-                                                        </th>
-
-                                                        <th className="px-5 py-3 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                            Tickets
-                                                        </th>
-
-                                                        <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                            Assigned To
-                                                        </th>
-
-                                                        <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                            Status
-                                                        </th>
-
-                                                        <th className="px-5 py-3 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400 lg:px-5">
-                                                            Actions
-                                                        </th>
-                                                    </tr>
-                                                </thead>
-
-                                                <tbody>
-                                                    {clientsLoading ? (
-                                                        <tr>
-                                                            <td colSpan="9" className="px-6 py-16 text-center">
-                                                                <div
-                                                                    aria-busy="true"
-                                                                    aria-label="Loading clients"
-                                                                    className="mx-auto grid max-w-4xl grid-cols-[1.25fr_1fr_0.9fr_0.7fr_0.8fr_0.45fr_0.9fr_0.7fr] gap-5 animate-pulse"
-                                                                >
-                                                                    {Array.from({ length: 8 }).map((_, index) => (
-                                                                        <div
-                                                                            key={index}
-                                                                            className={`h-5 rounded bg-slate-100 ${index === 0 ? "w-full" : "w-4/5"}`}
-                                                                        />
-                                                                    ))}
-                                                                </div>
-                                                                <span className="sr-only">Loading clients...</span>
-                                                            </td>
-                                                        </tr>
-                                                    ) : clientsError ? (
-                                                        <tr>
-                                                            <td colSpan="9" className="px-6 py-16 text-center">
-                                                                <AlertCircle
-                                                                    size={30}
-                                                                    className="mx-auto text-rose-500"
-                                                                />
-                                                                <p className="mt-3 text-sm font-semibold text-rose-700">
-                                                                    {clientsError}
-                                                                </p>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={loadClients}
-                                                                    className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white"
-                                                                >
-                                                                    Retry
-                                                                </button>
-                                                            </td>
-                                                        </tr>
-                                                    ) : filteredClients.length > 0 ? (
-                                                        filteredClients.map((client) => (
-                                                            <tr
-                                                                key={client.id}
-                                                                className="border-b border-slate-100 transition last:border-b-0 hover:bg-slate-50/70"
-                                                            >
-                                                                <td className="px-4 py-2.5 lg:px-5">
-                                                                    <div className="flex items-center gap-3">
-                                                                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-xs font-bold text-violet-700">
-                                                                            {client.companyName
-                                                                                .split(" ")
-                                                                                .slice(0, 2)
-                                                                                .map((word) => word[0])
-                                                                                .join("")}
-                                                                        </div>
-
-                                                                        <div className="min-w-[190px]">
-                                                                            <p className="text-sm font-semibold text-slate-900">
-                                                                                {client.companyName}
-                                                                            </p>
-
-                                                                            <div className="mt-1 flex items-center gap-3 text-[10px] text-slate-400">
-                                                                                <span>{client.code}</span>
-
-                                                                                <span className="inline-flex items-center gap-1">
-                                                                                    <MapPin size={11} />
-                                                                                    {client.city}
-                                                                                </span>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                </td>
-
-                                                                <td className="px-4 py-2.5">
-                                                                    <p className="text-xs font-semibold text-slate-700">
-                                                                        {client.contactPerson}
-                                                                    </p>
-
-                                                                    <div className="mt-1 space-y-1 text-[10px] text-slate-400">
-                                                                        <p className="flex items-center gap-1.5">
-                                                                            <Phone size={11} />
-                                                                            {client.mobile}
-                                                                        </p>
-
-                                                                        <p className="flex items-center gap-1.5">
-                                                                            <Mail size={11} />
-                                                                            {client.email}
-                                                                        </p>
-                                                                    </div>
-                                                                </td>
-
-                                                                <td className="px-4 py-2.5">
-                                                                    <div className="flex max-w-[200px] flex-wrap gap-1.5">
-                                                                        {(Array.isArray(client.products) ? client.products : []).map(
-                                                                            (product, index) => {
-                                                                                const productName =
-                                                                                    typeof product === "string"
-                                                                                        ? product
-                                                                                        : product?.productName || "Unnamed Product";
-
-                                                                                const productKey =
-                                                                                    typeof product === "string"
-                                                                                        ? `${product}-${index}`
-                                                                                        : product?._id || `${productName}-${index}`;
-
-                                                                                return (
-                                                                                    <span
-                                                                                        key={productKey}
-                                                                                        className="rounded-lg bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600"
-                                                                                    >
-                                                                                        {productName}
-                                                                                    </span>
-                                                                                );
-                                                                            }
-                                                                        )}
-                                                                    </div>
-                                                                </td>
-
-                                                                <td className="px-4 py-2.5">
-                                                                    <span
-                                                                        className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ring-inset ${getClientAmcClasses(
-                                                                            client.amcStatus
-                                                                        )}`}
-                                                                    >
-                                                                        {client.amcStatus}
-                                                                    </span>
-                                                                </td>
-
-                                                                <td className="px-4 py-2.5 text-xs font-medium text-slate-600">
-                                                                    {client.nextRenewal}
-                                                                </td>
-
-                                                                <td className="px-4 py-2.5 text-center">
-                                                                    <span
-                                                                        className={`inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-[10px] font-bold ${client.openTickets > 0
-                                                                            ? "bg-rose-50 text-rose-700"
-                                                                            : "bg-slate-100 text-slate-500"
-                                                                            }`}
-                                                                    >
-                                                                        {client.openTickets}
-                                                                    </span>
-                                                                </td>
-
-                                                                <td className="px-4 py-2.5">
-                                                                    <p className="text-xs font-semibold text-slate-700">
-                                                                        {client.assignedEmployeeName || "Unassigned"}
-                                                                    </p>
-                                                                </td>
-
-                                                                <td className="px-4 py-2.5">
-                                                                    <span
-                                                                        className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ${client.status === "Active"
-                                                                            ? "bg-emerald-50 text-emerald-700"
-                                                                            : "bg-slate-100 text-slate-500"
-                                                                            }`}
-                                                                    >
-                                                                        {client.status}
-                                                                    </span>
-                                                                </td>
-
-                                                                <td className="px-4 py-2.5 lg:px-5">
-                                                                    <div className="flex justify-end gap-2">
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => openClientDetails(client)}
-                                                                            className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
-                                                                        >
-                                                                            View
-                                                                            <ArrowUpRight size={14} />
-                                                                        </button>
-
-                                                                        <button
-                                                                            type="button"
-                                                                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700"
-                                                                            aria-label={`More actions for ${client.companyName}`}
-                                                                        >
-                                                                            <MoreHorizontal size={16} />
-                                                                        </button>
-                                                                    </div>
-                                                                </td>
-                                                            </tr>
-                                                        ))
-                                                    ) : (
-                                                        <tr>
-                                                            <td colSpan="9" className="px-6 py-16 text-center">
-                                                                <Building2
-                                                                    size={30}
-                                                                    className="mx-auto text-slate-300"
-                                                                />
-
-                                                                <p className="mt-3 text-sm font-semibold text-slate-700">
-                                                                    No clients found
-                                                                </p>
-
-                                                                <p className="mt-1 text-xs text-slate-500">
-                                                                    Change your search or filters and try again.
-                                                                </p>
-                                                            </td>
-                                                        </tr>
-                                                    )}
-                                                </tbody>
-                                            </table>
-                                        </div>
-
-                                        <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50/60 px-4 py-2.5 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between lg:px-5">
-                                            <p>
-                                                Showing {filteredClients.length} of {clients.length} clients
-                                            </p>
-
-                                            <div className="flex items-center gap-2">
-                                                <button
-                                                    type="button"
-                                                    disabled
-                                                    className="h-8 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-400 disabled:cursor-not-allowed"
-                                                >
-                                                    Previous
-                                                </button>
-
-                                                <span className="flex h-8 min-w-8 items-center justify-center rounded-lg bg-violet-600 px-2 text-[11px] font-bold text-white">
-                                                    1
-                                                </span>
-
-                                                <button
-                                                    type="button"
-                                                    disabled
-                                                    className="h-8 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-400 disabled:cursor-not-allowed"
-                                                >
-                                                    Next
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </section>
+                                            }
+                                            rowActions={[
+                                                {
+                                                    label: "View 360° Profile",
+                                                    icon: ArrowUpRight,
+                                                    onClick: (client) => openClientDetails(client),
+                                                },
+                                            ]}
+                                            initialPageSize={25}
+                                            emptyTitle="No clients found"
+                                            emptyDescription="Try adjusting your search criteria or add a new client to get started."
+                                        />
+                                    </div>
                                 </div>
                             )
 
@@ -8506,8 +7171,7 @@ export default function Admin({ onLogout }) {
                             </div>
                         )}
                     </div>
-                </main>
-            </div >
+            </AppShell>
             {/* Add Client Drawer */}
             {clientDrawerOpen && (
                 <>
@@ -10572,6 +9236,6 @@ export default function Admin({ onLogout }) {
                     </div>
                 </div>
             )}
-        </div >
+        </>
     );
 }

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import API_URL from "../../config/api";
+import DataTable from "../../components/data/DataTable";
 
 const getAuthToken = () =>
     localStorage.getItem(
@@ -2867,393 +2868,244 @@ export default function ProductSales() {
             {/* PAGE HEADER */}
             <section className="flex flex-col gap-4 border-b border-slate-200 pb-5 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-600">
+                    <div className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-blue-600">
+                        <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />
                         Revenue Operations
-                    </p>
+                    </div>
 
-                    <h1 className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-slate-950">
+                    <h1 className="mt-0.5 text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
                         Product Sales
                     </h1>
 
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="mt-0.5 max-w-2xl text-xs text-slate-500">
                         Track software sales, collections and outstanding balances client-wise.
                     </p>
                 </div>
 
-                <button
-                    type="button"
-                    onClick={loadProductSales}
-                    disabled={loading}
-                    className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                    <RefreshCw
-                        size={15}
-                        className={
-                            loading
-                                ? "animate-spin"
-                                : ""
-                        }
-                    />
-
-                    {loading
-                        ? "Refreshing..."
-                        : "Refresh"}
-                </button>
-            </section>
-
-            {/* SUMMARY CARDS */}
-            <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.04)]">
-                    <div className="flex items-start justify-between gap-4">
-                        <div>
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                Total Product Sales
-                            </p>
-
-                            <p className="mt-3 text-2xl font-semibold tracking-[-0.03em] text-slate-950">
-                                {formatCurrency(
-                                    summary.totalAmount
-                                )}
-                            </p>
-
-                            <p className="mt-2 text-xs text-slate-500">
-                                {summary.totalSales} sale
-                                {summary.totalSales === 1
-                                    ? ""
-                                    : "s"}
-                            </p>
-                        </div>
-
-                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
-                            <ReceiptIndianRupee size={20} />
-                        </div>
-                    </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.04)]">
-                    <div className="flex items-start justify-between gap-4">
-                        <div>
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                Received
-                            </p>
-
-                            <p className="mt-3 text-2xl font-semibold tracking-[-0.03em] text-emerald-700">
-                                {formatCurrency(
-                                    summary.paidAmount
-                                )}
-                            </p>
-
-                            <p className="mt-2 text-xs text-emerald-600">
-                                Product sale collections
-                            </p>
-                        </div>
-
-                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
-                            <IndianRupee size={20} />
-                        </div>
-                    </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.04)]">
-                    <div className="flex items-start justify-between gap-4">
-                        <div>
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                Outstanding
-                            </p>
-
-                            <p className="mt-3 text-2xl font-semibold tracking-[-0.03em] text-rose-600">
-                                {formatCurrency(
-                                    summary.pendingAmount
-                                )}
-                            </p>
-
-                            <p className="mt-2 text-xs text-rose-500">
-                                Pending collection
-                            </p>
-                        </div>
-
-                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-rose-100 text-rose-700">
-                            <WalletCards size={20} />
-                        </div>
-                    </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.04)]">
-                    <div className="flex items-start justify-between gap-4">
-                        <div>
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                Clients
-                            </p>
-
-                            <p className="mt-3 text-2xl font-semibold tracking-[-0.03em] text-slate-950">
-                                {groupedClients.length}
-                            </p>
-
-                            <p className="mt-2 text-xs text-slate-500">
-                                Clients with product sales
-                            </p>
-                        </div>
-
-                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
-                            <Eye size={20} />
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            {/* CLIENT-WISE SALES */}
-            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.04)]">
-                <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div>
-                        <h2 className="text-sm font-semibold text-slate-950">
-                            Product Sales by Client
-                        </h2>
-
-                        <p className="mt-1 text-xs text-slate-500">
-                            {groupedClients.length} client
-                            {groupedClients.length === 1
-                                ? ""
-                                : "s"}{" "}
-                            found
-                        </p>
-                    </div>
-
-                    <div className="relative w-full lg:max-w-[320px]">
-                        <Search
-                            size={16}
-                            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                        />
-
-                        <input
-                            type="text"
-                            value={searchValue}
-                            onChange={(event) =>
-                                setSearchValue(
-                                    event.target.value
-                                )
-                            }
-                            placeholder="Search client, invoice, product..."
-                            className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-xs text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                        />
-                    </div>
-                </div>
-
-                {error && (
-                    <div className="border-b border-rose-200 bg-rose-50 px-5 py-3 text-xs font-medium text-rose-700">
-                        {error}
-                    </div>
-                )}
-
-                <div className="overflow-x-auto">
-                    <table className="min-w-full">
-                        <thead>
-                            <tr className="border-b border-slate-200 bg-slate-50/80">
-                                <th className="px-6 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                    Client
-                                </th>
-
-                                <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                    Sales
-                                </th>
-
-                                <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                    Products
-                                </th>
-
-                                <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                    Total Billed
-                                </th>
-
-                                <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                    Received
-                                </th>
-
-                                <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                    Pending
-                                </th>
-
-                                <th className="px-6 py-3 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                    Actions
-                                </th>
-                            </tr>
-                        </thead>
-
-                        <tbody>
-                            {groupedClients.map(
-                                (clientGroup) => (
-                                    <tr
-                                        key={
-                                            clientGroup.key
-                                        }
-                                        className="border-b border-slate-100 transition last:border-b-0 hover:bg-slate-50/70"
-                                    >
-                                        <td className="px-6 py-4">
-                                            <div className="flex min-w-[220px] items-center gap-3">
-                                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-xs font-bold text-violet-700">
-                                                    {clientGroup.clientName
-                                                        ?.split(" ")
-                                                        .slice(0, 2)
-                                                        .map(
-                                                            (word) =>
-                                                                word[0]
-                                                        )
-                                                        .join("")
-                                                        .toUpperCase() ||
-                                                        "C"}
-                                                </div>
-
-                                                <div>
-                                                    <p className="text-sm font-semibold text-slate-900">
-                                                        {
-                                                            clientGroup.clientName
-                                                        }
-                                                    </p>
-
-                                                    <p className="mt-1 text-[10px] text-slate-400">
-                                                        {
-                                                            clientGroup.clientCode ||
-                                                            "No client code"
-                                                        }
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </td>
-
-                                        <td className="px-4 py-4">
-                                            <p className="text-xs font-semibold text-slate-800">
-                                                {
-                                                    clientGroup.salesCount
-                                                }
-                                            </p>
-
-                                            <p className="mt-1 text-[10px] text-slate-400">
-                                                Invoice
-                                                {clientGroup.salesCount ===
-                                                    1
-                                                    ? ""
-                                                    : "s"}
-                                            </p>
-                                        </td>
-
-                                        <td className="px-4 py-4">
-                                            <p className="text-xs font-semibold text-slate-800">
-                                                {
-                                                    clientGroup.productCount
-                                                }
-                                            </p>
-
-                                            <p className="mt-1 text-[10px] text-slate-400">
-                                                Product
-                                                {clientGroup.productCount ===
-                                                    1
-                                                    ? ""
-                                                    : "s"}
-                                            </p>
-                                        </td>
-
-                                        <td className="px-4 py-4 text-xs font-semibold text-slate-900">
-                                            {formatCurrency(
-                                                clientGroup.totalAmount
-                                            )}
-                                        </td>
-
-                                        <td className="px-4 py-4 text-xs font-semibold text-emerald-700">
-                                            {formatCurrency(
-                                                clientGroup.paidAmount
-                                            )}
-                                        </td>
-
-                                        <td className="px-4 py-4">
-                                            <p
-                                                className={`text-xs font-semibold ${clientGroup.pendingAmount >
-                                                    0
-                                                    ? "text-rose-600"
-                                                    : "text-emerald-700"
-                                                    }`}
-                                            >
-                                                {formatCurrency(
-                                                    clientGroup.pendingAmount
-                                                )}
-                                            </p>
-                                        </td>
-
-                                        <td className="px-6 py-4">
-                                            <div className="flex justify-end">
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        setSelectedClientGroup(
-                                                            clientGroup
-                                                        )
-                                                    }
-                                                    className="flex h-9 items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 text-xs font-semibold text-violet-700 transition hover:bg-violet-100"
-                                                >
-                                                    <Eye
-                                                        size={
-                                                            14
-                                                        }
-                                                    />
-
-                                                    View Sales
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                )
-                            )}
-
-                            {!loading &&
-                                groupedClients.length ===
-                                0 && (
-                                    <tr>
-                                        <td
-                                            colSpan={7}
-                                            className="px-6 py-12 text-center"
-                                        >
-                                            <p className="text-sm font-semibold text-slate-700">
-                                                No product sales found
-                                            </p>
-
-                                            <p className="mt-1 text-xs text-slate-400">
-                                                Create a product sale from the Client → Products section.
-                                            </p>
-                                        </td>
-                                    </tr>
-                                )}
-                        </tbody>
-                    </table>
-                </div>
-
-                <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50/60 px-5 py-4 text-xs text-slate-500">
-                    <p>
-                        Showing {groupedClients.length} client
-                        {groupedClients.length === 1
-                            ? ""
-                            : "s"}{" "}
-                        with product sales
-                    </p>
-
+                <div className="flex items-center gap-2">
                     <button
                         type="button"
                         onClick={loadProductSales}
                         disabled={loading}
-                        className="flex items-center gap-1 font-semibold text-violet-600 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 shadow-2xs"
                     >
                         <RefreshCw
-                            size={13}
-                            className={
-                                loading
-                                    ? "animate-spin"
-                                    : ""
-                            }
+                            size={14}
+                            className={loading ? "animate-spin" : ""}
                         />
-
-                        {loading
-                            ? "Refreshing..."
-                            : "Refresh data"}
+                        <span>{loading ? "Refreshing..." : "Refresh"}</span>
                     </button>
                 </div>
             </section>
+
+            {/* SUMMARY CARDS - High Density Linear Standard */}
+            <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs hover:border-slate-300 transition">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                                Total Product Sales
+                            </p>
+                            <p className="mt-1 text-xl font-bold tracking-tight text-slate-900">
+                                {formatCurrency(summary.totalAmount)}
+                            </p>
+                            <p className="mt-1 text-[11px] text-slate-500">
+                                {summary.totalSales} sale{summary.totalSales === 1 ? "" : "s"}
+                            </p>
+                        </div>
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                            <ReceiptIndianRupee size={16} />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs hover:border-slate-300 transition">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                                Received
+                            </p>
+                            <p className="mt-1 text-xl font-bold tracking-tight text-emerald-600">
+                                {formatCurrency(summary.paidAmount)}
+                            </p>
+                            <p className="mt-1 text-[11px] text-emerald-600 font-medium">
+                                Product sale collections
+                            </p>
+                        </div>
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+                            <IndianRupee size={16} />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs hover:border-slate-300 transition">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                                Outstanding
+                            </p>
+                            <p className="mt-1 text-xl font-bold tracking-tight text-rose-600">
+                                {formatCurrency(summary.pendingAmount)}
+                            </p>
+                            <p className="mt-1 text-[11px] text-rose-500 font-medium">
+                                Pending collection
+                            </p>
+                        </div>
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-600">
+                            <WalletCards size={16} />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs hover:border-slate-300 transition">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                                Clients
+                            </p>
+                            <p className="mt-1 text-xl font-bold tracking-tight text-slate-900">
+                                {groupedClients.length}
+                            </p>
+                            <p className="mt-1 text-[11px] text-slate-500">
+                                Clients with product sales
+                            </p>
+                        </div>
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-50 text-violet-600">
+                            <Eye size={16} />
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* Modern Zoho-Grade Product Sales by Client DataTable */}
+            <DataTable
+                moduleName="Product Sales"
+                viewTitle="All Product Sales"
+                views={[
+                    { id: "all", label: "All Product Sales" },
+                    { id: "active", label: "Active Clients" },
+                ]}
+                selectable={true}
+                columns={[
+                    {
+                        key: "clientName",
+                        label: "Client",
+                        sortable: true,
+                        render: (_, clientGroup) => (
+                            <div className="flex min-w-[220px] items-center gap-3">
+                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-xs font-bold text-violet-700">
+                                    {clientGroup.clientName
+                                        ?.split(" ")
+                                        .slice(0, 2)
+                                        .map((w) => w[0])
+                                        .join("")
+                                        .toUpperCase() || "C"}
+                                </div>
+                                <div>
+                                    <p className="text-xs font-semibold text-slate-900">
+                                        {clientGroup.clientName}
+                                    </p>
+                                    <p className="mt-0.5 text-[10px] text-slate-400">
+                                        {clientGroup.clientCode || "No client code"}
+                                    </p>
+                                </div>
+                            </div>
+                        ),
+                    },
+                    {
+                        key: "salesCount",
+                        label: "Invoices",
+                        sortable: true,
+                        render: (val) => (
+                            <div>
+                                <p className="text-xs font-semibold text-slate-800">{val}</p>
+                                <p className="text-[10px] text-slate-400">
+                                    Invoice{val === 1 ? "" : "s"}
+                                </p>
+                            </div>
+                        ),
+                    },
+                    {
+                        key: "productCount",
+                        label: "Products",
+                        sortable: true,
+                        render: (val) => (
+                            <div>
+                                <p className="text-xs font-semibold text-slate-800">{val}</p>
+                                <p className="text-[10px] text-slate-400">
+                                    Product{val === 1 ? "" : "s"}
+                                </p>
+                            </div>
+                        ),
+                    },
+                    {
+                        key: "totalAmount",
+                        label: "Total Billed",
+                        sortable: true,
+                        render: (val) => (
+                            <span className="text-xs font-semibold text-slate-900">
+                                {formatCurrency(val)}
+                            </span>
+                        ),
+                    },
+                    {
+                        key: "paidAmount",
+                        label: "Received",
+                        sortable: true,
+                        render: (val) => (
+                            <span className="text-xs font-semibold text-emerald-700">
+                                {formatCurrency(val)}
+                            </span>
+                        ),
+                    },
+                    {
+                        key: "pendingAmount",
+                        label: "Pending",
+                        sortable: true,
+                        render: (val) => (
+                            <span
+                                className={`text-xs font-semibold ${
+                                    val > 0 ? "text-rose-600" : "text-emerald-700"
+                                }`}
+                            >
+                                {formatCurrency(val)}
+                            </span>
+                        ),
+                    },
+                ]}
+                data={groupedClients}
+                loading={loading}
+                error={error}
+                onRetry={loadProductSales}
+                idKey="key"
+                onRowClick={(clientGroup) => setSelectedClientGroup(clientGroup)}
+                searchPlaceholder="Search client, invoice, product..."
+                toolbarActions={
+                    <button
+                        type="button"
+                        onClick={loadProductSales}
+                        disabled={loading}
+                        className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition disabled:opacity-50"
+                    >
+                        <RefreshCw
+                            size={12}
+                            className={loading ? "animate-spin text-violet-600" : ""}
+                        />
+                        Refresh
+                    </button>
+                }
+                rowActions={[
+                    {
+                        label: "View Client Sales",
+                        icon: Eye,
+                        className: "text-violet-600 hover:text-violet-800 hover:bg-violet-50",
+                        onClick: (clientGroup) => setSelectedClientGroup(clientGroup),
+                    },
+                ]}
+                initialPageSize={25}
+                emptyTitle="No product sales found"
+                emptyDescription="Create a product sale from the Client → Products section."
+            />
 
         </div>
     );

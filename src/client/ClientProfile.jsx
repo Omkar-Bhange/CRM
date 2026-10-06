@@ -58,25 +58,24 @@ function InformationItem({
 }) {
     return (
         <div
-            className={`rounded-xl border border-slate-200 bg-slate-50/70 p-4 ${
+            className={`rounded-lg border border-slate-200/80 bg-slate-50/60 p-2.5 ${
                 fullWidth ? "sm:col-span-2" : ""
             }`}
         >
-            <div className="flex items-center gap-2 text-slate-400">
-                <Icon size={14} />
+            <div className="flex items-center gap-1.5 text-slate-400">
+                <Icon size={13} />
 
-                <p className="text-[9px] font-semibold uppercase tracking-[0.13em]">
+                <p className="text-[10px] font-bold uppercase tracking-wider">
                     {label}
                 </p>
             </div>
 
-            <p className="mt-2 break-words text-xs font-semibold text-slate-800">
+            <p className="mt-1 break-words text-xs font-bold text-slate-800">
                 {value || "Not available"}
             </p>
         </div>
     );
 }
-
 
 function SummaryCard({
     label,
@@ -86,26 +85,26 @@ function SummaryCard({
     iconClass,
 }) {
     return (
-        <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.04)]">
-            <div className="flex items-start justify-between gap-4">
-                <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+        <article className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs">
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                         {label}
                     </p>
 
-                    <p className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-950">
+                    <p className="mt-1 text-xl font-bold tracking-tight text-slate-900">
                         {value}
                     </p>
                 </div>
 
                 <div
-                    className={`flex h-10 w-10 items-center justify-center rounded-xl ${iconClass}`}
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${iconClass}`}
                 >
-                    <Icon size={18} />
+                    <Icon size={16} />
                 </div>
             </div>
 
-            <p className="mt-4 text-[10px] text-slate-500">
+            <p className="mt-1.5 text-[11px] text-slate-500 truncate">
                 {description}
             </p>
         </article>
@@ -287,20 +286,22 @@ const purchasedProducts = (client?.products || []).map((product) => ({
     };
 
     return (
-        <div>
-            <section className="flex flex-col gap-5 border-b border-slate-200 pb-7 lg:flex-row lg:items-end lg:justify-between">
+        <div className="space-y-4">
+            <section className="flex flex-col gap-3 rounded-xl border border-slate-200/90 bg-white p-4 shadow-2xs sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-600">
-                        Client Account
-                    </p>
+                    <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#1B59F8]">
+                            Client Account
+                        </span>
+                        <span className="text-xs text-slate-400">Total Solution Portal</span>
+                    </div>
 
-                    <h1 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-950 sm:text-3xl">
+                    <h1 className="mt-1 text-lg font-bold text-slate-900 sm:text-xl">
                         Company Profile
                     </h1>
 
-                    <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                        Review your company details, contacts,
-                        billing information and account security.
+                    <p className="mt-0.5 text-xs text-slate-500">
+                        Review your company details, contacts, billing information and account security.
                     </p>
                 </div>
 
@@ -309,36 +310,36 @@ const purchasedProducts = (client?.products || []).map((product) => ({
                     onClick={() =>
                         setChangeRequestOpen(true)
                     }
-                    className="flex h-10 items-center justify-center gap-2 rounded-xl bg-[#0f172a] px-4 text-xs font-semibold text-white shadow-lg shadow-slate-900/10 transition hover:-translate-y-0.5 hover:bg-cyan-600"
+                    className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-[#1B59F8] px-3.5 text-xs font-semibold text-white shadow-2xs transition hover:bg-blue-700"
                 >
-                    <Send size={16} />
+                    <Send size={14} />
                     Request Profile Change
                 </button>
             </section>
 
-            <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
                 <SummaryCard
                     label="Client Code"
                     value={companyInformation.clientCode}
                     description="Unique client account reference"
                     icon={Building2}
-                    iconClass="bg-cyan-100 text-cyan-700"
+                    iconClass="bg-blue-50 text-[#1B59F8]"
                 />
 
                 <SummaryCard
                     label="Client Since"
-                    value="Mar 2022"
-                    description={companyInformation.clientSince}
+                    value={companyInformation.clientSince || "Mar 2022"}
+                    description="Registered client on platform"
                     icon={CalendarDays}
-                    iconClass="bg-violet-100 text-violet-700"
+                    iconClass="bg-indigo-50 text-indigo-600"
                 />
 
                 <SummaryCard
                     label="Purchased Products"
                     value={purchasedProducts.length}
-                    description="NexERP licence currently active"
+                    description="Active software licences"
                     icon={PackageCheck}
-                    iconClass="bg-emerald-100 text-emerald-700"
+                    iconClass="bg-emerald-50 text-emerald-600"
                 />
 
                 <SummaryCard
@@ -346,24 +347,22 @@ const purchasedProducts = (client?.products || []).map((product) => ({
                     value={companyInformation.accountStatus}
                     description="Client portal access enabled"
                     icon={ShieldCheck}
-                    iconClass="bg-amber-100 text-amber-700"
+                    iconClass="bg-amber-50 text-amber-600"
                 />
             </section>
 
-            <section className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-                <div className="border-b border-slate-200 px-5 py-4">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                        <div className="flex min-w-0 items-center gap-4">
-                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-cyan-100 text-cyan-700">
-                                <Building2 size={22} />
+            <section className="overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-2xs">
+                <div className="border-b border-slate-200/90 p-3.5 sm:px-4 sm:py-3">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="flex min-w-0 items-center gap-3">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#1B59F8]">
+                                <Building2 size={18} />
                             </div>
 
                             <div className="min-w-0">
                                 <div className="flex flex-wrap items-center gap-2">
-                                    <h2 className="truncate text-lg font-semibold text-slate-950">
-                                        {
-                                            companyInformation.companyName
-                                        }
+                                    <h2 className="truncate text-sm font-bold text-slate-900">
+                                        {companyInformation.companyName}
                                     </h2>
 
                                     <StatusBadge
@@ -373,19 +372,13 @@ const purchasedProducts = (client?.products || []).map((product) => ({
                                     />
                                 </div>
 
-                                <p className="mt-1 text-[10px] text-slate-500">
-                                    {
-                                        companyInformation.clientCode
-                                    }{" "}
-                                    · Client since{" "}
-                                    {
-                                        companyInformation.clientSince
-                                    }
+                                <p className="text-[11px] text-slate-400">
+                                    {companyInformation.clientCode} · Client since {companyInformation.clientSince || "Mar 2022"}
                                 </p>
                             </div>
                         </div>
 
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-wrap gap-1.5">
                             {[
                                 {
                                     id: "company",
@@ -412,10 +405,10 @@ const purchasedProducts = (client?.products || []).map((product) => ({
                                             section.id
                                         )
                                     }
-                                    className={`h-9 rounded-lg px-3 text-[10px] font-semibold transition ${
+                                    className={`h-7.5 rounded-lg px-3 text-xs font-semibold transition ${
                                         activeSection ===
                                         section.id
-                                            ? "bg-[#0f172a] text-white"
+                                            ? "bg-[#1B59F8] text-white shadow-2xs"
                                             : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                                     }`}
                                 >
@@ -426,21 +419,20 @@ const purchasedProducts = (client?.products || []).map((product) => ({
                     </div>
                 </div>
 
-                <div className="p-5 sm:p-6">
+                <div className="p-3.5 sm:p-4">
                     {activeSection === "company" && (
-                        <div>
+                        <div className="space-y-4">
                             <div>
-                                <h3 className="text-sm font-semibold text-slate-950">
+                                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
                                     Company Information
                                 </h3>
 
-                                <p className="mt-1 text-[10px] text-slate-500">
-                                    Registered business and tax
-                                    information
+                                <p className="text-[11px] text-slate-400">
+                                    Registered business and tax information
                                 </p>
                             </div>
 
-                            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                            <div className="grid gap-2.5 sm:grid-cols-2">
                                 <InformationItem
                                     label="Company Name"
                                     value={
@@ -475,73 +467,60 @@ const purchasedProducts = (client?.products || []).map((product) => ({
 
                                 <InformationItem
                                     label="Registered Address"
-                                    value={`${companyInformation.addressLine1}, ${companyInformation.addressLine2}, ${companyInformation.city}, ${companyInformation.state} - ${companyInformation.pinCode}, ${companyInformation.country}`}
+                                    value={`${companyInformation.addressLine1 || ""}, ${companyInformation.addressLine2 || ""}, ${companyInformation.city || ""}, ${companyInformation.state || ""} - ${companyInformation.pinCode || ""}, ${companyInformation.country || "India"}`}
                                     icon={MapPin}
                                     fullWidth
                                 />
                             </div>
 
-                            <section className="mt-5 rounded-2xl border border-slate-200 p-5">
-                                <div className="flex items-start justify-between gap-4">
+                            <section className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs">
+                                <div className="flex items-start justify-between gap-3">
                                     <div>
-                                        <h3 className="text-sm font-semibold text-slate-950">
+                                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
                                             Purchased Software
                                         </h3>
 
-                                        <p className="mt-1 text-[10px] text-slate-500">
-                                            Products linked to your
-                                            company account
+                                        <p className="text-[11px] text-slate-400">
+                                            Products linked to your company account
                                         </p>
                                     </div>
 
                                     <PackageCheck
-                                        size={18}
-                                        className="text-cyan-600"
+                                        size={16}
+                                        className="text-[#1B59F8]"
                                     />
                                 </div>
 
-                                <div className="mt-4 space-y-3">
+                                <div className="mt-3 space-y-2">
                                     {purchasedProducts.map(
                                         (product) => (
                                             <div
                                                 key={product.id}
-                                                className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4 sm:flex-row sm:items-center sm:justify-between"
+                                                className="flex flex-col gap-2.5 rounded-lg border border-slate-200/80 bg-slate-50/50 p-2.5 sm:flex-row sm:items-center sm:justify-between"
                                             >
-                                                <div className="flex items-center gap-3">
-                                                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-100 text-cyan-700">
+                                                <div className="flex items-center gap-2.5">
+                                                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-[#1B59F8]">
                                                         <PackageCheck
                                                             size={
-                                                                18
+                                                                15
                                                             }
                                                         />
                                                     </div>
 
                                                     <div>
-                                                        <p className="text-xs font-semibold text-slate-900">
-                                                            {
-                                                                product.name
-                                                            }
+                                                        <p className="text-xs font-bold text-slate-900">
+                                                            {product.name}
                                                         </p>
 
-                                                        <p className="mt-1 text-[9px] text-slate-500">
-                                                            {
-                                                                product.version
-                                                            }{" "}
-                                                            ·{" "}
-                                                            {
-                                                                product.licenceUsers
-                                                            }{" "}
-                                                            licensed
-                                                            users
+                                                        <p className="text-[10px] text-slate-500">
+                                                            {product.version} · {product.licenceUsers} licensed users
                                                         </p>
                                                     </div>
                                                 </div>
 
-                                                <div className="flex flex-wrap items-center gap-3">
+                                                <div className="flex flex-wrap items-center gap-2">
                                                     <span className="text-[10px] font-medium text-slate-500">
-                                                        {
-                                                            product.supportPlan
-                                                        }
+                                                        {product.supportPlan}
                                                     </span>
 
                                                     <StatusBadge
@@ -559,18 +538,18 @@ const purchasedProducts = (client?.products || []).map((product) => ({
                     )}
 
                     {activeSection === "contact" && (
-                        <div>
+                        <div className="space-y-4">
                             <div>
-                                <h3 className="text-sm font-semibold text-slate-950">
+                                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
                                     Contact Information
                                 </h3>
 
-                                <p className="mt-1 text-[10px] text-slate-500">
+                                <p className="text-[11px] text-slate-400">
                                     Primary communication details
                                 </p>
                             </div>
 
-                            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                            <div className="grid gap-2.5 sm:grid-cols-2">
                                 <InformationItem
                                     label="Contact Person"
                                     value={
@@ -639,19 +618,18 @@ const purchasedProducts = (client?.products || []).map((product) => ({
                     )}
 
                     {activeSection === "billing" && (
-                        <div>
+                        <div className="space-y-4">
                             <div>
-                                <h3 className="text-sm font-semibold text-slate-950">
+                                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
                                     Billing Information
                                 </h3>
 
-                                <p className="mt-1 text-[10px] text-slate-500">
-                                    Contact details used for invoices
-                                    and AMC reminders
+                                <p className="text-[11px] text-slate-400">
+                                    Contact details used for invoices and AMC reminders
                                 </p>
                             </div>
 
-                            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                            <div className="grid gap-2.5 sm:grid-cols-2">
                                 <InformationItem
                                     label="Billing Contact"
                                     value={
@@ -686,22 +664,21 @@ const purchasedProducts = (client?.products || []).map((product) => ({
 
                                 <InformationItem
                                     label="Billing Address"
-                                    value={`${companyInformation.addressLine1}, ${companyInformation.addressLine2}, ${companyInformation.city}, ${companyInformation.state} - ${companyInformation.pinCode}`}
+                                    value={`${companyInformation.addressLine1 || ""}, ${companyInformation.addressLine2 || ""}, ${companyInformation.city || ""}, ${companyInformation.state || ""} - ${companyInformation.pinCode || ""}`}
                                     icon={MapPin}
                                     fullWidth
                                 />
                             </div>
 
-                            <section className="mt-5 overflow-hidden rounded-2xl border border-slate-200">
-                                <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/70 px-5 py-4">
+                            <section className="overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-2xs">
+                                <div className="flex items-center justify-between border-b border-slate-200/90 bg-slate-50/50 p-3 sm:px-4">
                                     <div>
-                                        <h3 className="text-sm font-semibold text-slate-950">
+                                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
                                             Profile Change Requests
                                         </h3>
 
-                                        <p className="mt-1 text-[10px] text-slate-500">
-                                            Requests submitted to the
-                                            admin team
+                                        <p className="text-[11px] text-slate-400">
+                                            Requests submitted to the admin team
                                         </p>
                                     </div>
 
@@ -712,9 +689,9 @@ const purchasedProducts = (client?.products || []).map((product) => ({
                                                 true
                                             )
                                         }
-                                        className="flex h-9 items-center gap-2 rounded-lg bg-[#0f172a] px-3 text-[10px] font-semibold text-white transition hover:bg-cyan-600"
+                                        className="flex h-7.5 items-center gap-1.5 rounded-lg bg-[#1B59F8] px-3 text-xs font-semibold text-white shadow-2xs transition hover:bg-blue-700"
                                     >
-                                        <Send size={14} />
+                                        <Send size={13} />
                                         New Request
                                     </button>
                                 </div>
@@ -724,27 +701,15 @@ const purchasedProducts = (client?.products || []).map((product) => ({
                                         (request) => (
                                             <div
                                                 key={request.id}
-                                                className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
+                                                className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between sm:px-4"
                                             >
                                                 <div>
-                                                    <p className="text-xs font-semibold text-slate-900">
-                                                        {
-                                                            request.subject
-                                                        }
+                                                    <p className="text-xs font-bold text-slate-900">
+                                                        {request.subject}
                                                     </p>
 
-                                                    <p className="mt-1 text-[9px] text-slate-500">
-                                                        {
-                                                            request.requestNo
-                                                        }{" "}
-                                                        ·{" "}
-                                                        {
-                                                            request.requestType
-                                                        }{" "}
-                                                        ·{" "}
-                                                        {
-                                                            request.createdAt
-                                                        }
+                                                    <p className="text-[10px] text-slate-400">
+                                                        {request.requestNo} · {request.requestType} · {request.createdAt}
                                                     </p>
                                                 </div>
 
@@ -762,33 +727,33 @@ const purchasedProducts = (client?.products || []).map((product) => ({
                     )}
 
                     {activeSection === "security" && (
-                        <div>
+                        <div className="space-y-4">
                             <div>
-                                <h3 className="text-sm font-semibold text-slate-950">
+                                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
                                     Account Security
                                 </h3>
 
-                                <p className="mt-1 text-[10px] text-slate-500">
+                                <p className="text-[11px] text-slate-400">
                                     Password and client portal access
                                 </p>
                             </div>
 
-                            <div className="mt-5 grid gap-4 lg:grid-cols-2">
-                                <section className="rounded-2xl border border-slate-200 p-5">
-                                    <div className="flex items-start justify-between gap-4">
+                            <div className="grid gap-3 lg:grid-cols-2">
+                                <section className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs">
+                                    <div className="flex items-start justify-between gap-3">
                                         <div>
-                                            <h4 className="text-sm font-semibold text-slate-950">
+                                            <h4 className="text-xs font-bold text-slate-900">
                                                 Password
                                             </h4>
 
-                                            <p className="mt-1 text-[10px] text-slate-500">
+                                            <p className="mt-0.5 text-[11px] text-slate-400">
                                                 Last changed 62 days ago
                                             </p>
                                         </div>
 
-                                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
+                                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
                                             <LockKeyhole
-                                                size={18}
+                                                size={16}
                                             />
                                         </div>
                                     </div>
@@ -798,64 +763,59 @@ const purchasedProducts = (client?.products || []).map((product) => ({
                                         onClick={() =>
                                             setPasswordOpen(true)
                                         }
-                                        className="mt-5 flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 transition hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-700"
+                                        className="mt-3.5 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-[#1B59F8]"
                                     >
-                                        <KeyRound size={15} />
+                                        <KeyRound size={13} />
                                         Change Password
                                     </button>
                                 </section>
 
-                                <section className="rounded-2xl border border-slate-200 p-5">
-                                    <div className="flex items-start justify-between gap-4">
+                                <section className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs">
+                                    <div className="flex items-start justify-between gap-3">
                                         <div>
-                                            <h4 className="text-sm font-semibold text-slate-950">
+                                            <h4 className="text-xs font-bold text-slate-900">
                                                 Portal Access
                                             </h4>
 
-                                            <p className="mt-1 text-[10px] text-slate-500">
-                                                Your client account is
-                                                active
+                                            <p className="mt-0.5 text-[11px] text-slate-400">
+                                                Your client account is active
                                             </p>
                                         </div>
 
-                                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
+                                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
                                             <ShieldCheck
-                                                size={18}
+                                                size={16}
                                             />
                                         </div>
                                     </div>
 
-                                    <div className="mt-5 flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-3">
+                                    <div className="mt-3.5 flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 border border-emerald-100">
                                         <CheckCircle2
-                                            size={16}
-                                            className="text-emerald-600"
+                                            size={14}
+                                            className="text-emerald-600 shrink-0"
                                         />
 
-                                        <p className="text-xs font-semibold text-emerald-700">
-                                            Client portal access
-                                            enabled
+                                        <p className="text-xs font-semibold text-emerald-800">
+                                            Client portal access enabled
                                         </p>
                                     </div>
                                 </section>
                             </div>
 
-                            <section className="mt-5 rounded-2xl border border-amber-200 bg-amber-50/60 p-5">
-                                <div className="flex items-start gap-3">
+                            <section className="rounded-xl border border-amber-200 bg-amber-50/60 p-3.5">
+                                <div className="flex items-start gap-2.5">
                                     <ShieldCheck
-                                        size={18}
+                                        size={16}
                                         className="mt-0.5 shrink-0 text-amber-700"
                                     />
 
                                     <div>
-                                        <h4 className="text-sm font-semibold text-amber-900">
+                                        <h4 className="text-xs font-bold text-amber-900">
                                             Security recommendation
                                         </h4>
 
-                                        <p className="mt-1 text-xs leading-5 text-amber-800/80">
-                                            Use a unique password and
-                                            do not share your client
-                                            portal credentials with
-                                            unauthorised users.
+                                        <p className="mt-0.5 text-[11px] leading-relaxed text-amber-800/90">
+                                            Use a unique password and do not share your client portal credentials with unauthorised users.
                                         </p>
                                     </div>
                                 </div>
@@ -877,13 +837,13 @@ const purchasedProducts = (client?.products || []).map((product) => ({
                     />
 
                     <aside className="fixed inset-y-0 right-0 z-[80] flex w-full max-w-[620px] flex-col bg-white shadow-[-20px_0_60px_rgba(15,23,42,0.18)]">
-                        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 sm:px-6">
+                        <div className="flex items-center justify-between border-b border-slate-200/90 px-5 py-3.5 sm:px-6">
                             <div>
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-cyan-600">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-[#1B59F8]">
                                     Client Request
                                 </p>
 
-                                <h2 className="mt-1 text-lg font-semibold text-slate-950">
+                                <h2 className="mt-0.5 text-base font-bold text-slate-900">
                                     Request Profile Change
                                 </h2>
                             </div>
@@ -893,9 +853,9 @@ const purchasedProducts = (client?.products || []).map((product) => ({
                                 onClick={() =>
                                     setChangeRequestOpen(false)
                                 }
-                                className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-50"
+                                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50"
                             >
-                                <X size={19} />
+                                <X size={16} />
                             </button>
                         </div>
 
@@ -903,21 +863,19 @@ const purchasedProducts = (client?.products || []).map((product) => ({
                             onSubmit={submitChangeRequest}
                             className="flex min-h-0 flex-1 flex-col"
                         >
-                            <div className="flex-1 overflow-y-auto p-5 sm:p-6">
-                                <div className="rounded-2xl border border-cyan-200 bg-cyan-50/50 p-4">
-                                    <p className="text-xs font-semibold text-cyan-900">
+                            <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3.5">
+                                <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3">
+                                    <p className="text-xs font-bold text-blue-950">
                                         Admin approval required
                                     </p>
 
-                                    <p className="mt-1 text-[10px] leading-5 text-cyan-700">
-                                        Company master details are not
-                                        changed directly. Your request
-                                        will be reviewed by the admin.
+                                    <p className="mt-0.5 text-[11px] leading-relaxed text-blue-700">
+                                        Company master details are not changed directly. Your request will be reviewed and verified by the admin team.
                                     </p>
                                 </div>
 
-                                <div className="mt-5">
-                                    <label className="mb-2 block text-xs font-semibold text-slate-700">
+                                <div>
+                                    <label className="mb-1.5 block text-xs font-semibold text-slate-700">
                                         Request Type
                                     </label>
 
@@ -930,7 +888,7 @@ const purchasedProducts = (client?.products || []).map((product) => ({
                                             onChange={
                                                 handleChangeRequestInput
                                             }
-                                            className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 pr-10 text-xs outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
+                                            className="h-8.5 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 pr-8 text-xs text-slate-700 outline-none focus:border-[#1B59F8] focus:ring-2 focus:ring-blue-100"
                                         >
                                             <option value="Contact Information">
                                                 Contact Information
@@ -958,14 +916,14 @@ const purchasedProducts = (client?.products || []).map((product) => ({
                                         </select>
 
                                         <ChevronDown
-                                            size={16}
-                                            className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+                                            size={14}
+                                            className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
                                         />
                                     </div>
                                 </div>
 
-                                <div className="mt-4">
-                                    <label className="mb-2 block text-xs font-semibold text-slate-700">
+                                <div>
+                                    <label className="mb-1.5 block text-xs font-semibold text-slate-700">
                                         Subject
                                     </label>
 
@@ -978,12 +936,12 @@ const purchasedProducts = (client?.products || []).map((product) => ({
                                             handleChangeRequestInput
                                         }
                                         placeholder="Example: Update primary contact number"
-                                        className="h-11 w-full rounded-xl border border-slate-200 px-4 text-xs outline-none placeholder:text-slate-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
+                                        className="h-8.5 w-full rounded-lg border border-slate-200 px-3 text-xs text-slate-700 outline-none placeholder:text-slate-400 focus:border-[#1B59F8] focus:ring-2 focus:ring-blue-100"
                                     />
                                 </div>
 
-                                <div className="mt-4">
-                                    <label className="mb-2 block text-xs font-semibold text-slate-700">
+                                <div>
+                                    <label className="mb-1.5 block text-xs font-semibold text-slate-700">
                                         Requested Changes
                                     </label>
 
@@ -995,29 +953,29 @@ const purchasedProducts = (client?.products || []).map((product) => ({
                                         onChange={
                                             handleChangeRequestInput
                                         }
-                                        rows={8}
+                                        rows={6}
                                         placeholder="Explain the current information and the changes that should be made..."
-                                        className="w-full resize-none rounded-xl border border-slate-200 px-4 py-3 text-xs leading-5 outline-none placeholder:text-slate-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
+                                        className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-xs leading-relaxed text-slate-700 outline-none placeholder:text-slate-400 focus:border-[#1B59F8] focus:ring-2 focus:ring-blue-100"
                                     />
                                 </div>
                             </div>
 
-                            <div className="grid gap-3 border-t border-slate-200 p-5 sm:grid-cols-2 sm:px-6">
+                            <div className="flex items-center justify-end gap-2.5 border-t border-slate-200/90 p-4 sm:px-6">
                                 <button
                                     type="button"
                                     onClick={() =>
                                         setChangeRequestOpen(false)
                                     }
-                                    className="h-11 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                                    className="h-8.5 px-4 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-700 transition hover:bg-slate-50"
                                 >
                                     Cancel
                                 </button>
 
                                 <button
                                     type="submit"
-                                    className="flex h-11 items-center justify-center gap-2 rounded-xl bg-[#0f172a] text-xs font-semibold text-white transition hover:bg-cyan-600"
+                                    className="flex h-8.5 items-center justify-center gap-1.5 rounded-lg bg-[#1B59F8] px-4 text-xs font-semibold text-white shadow-2xs transition hover:bg-blue-700"
                                 >
-                                    <Send size={15} />
+                                    <Send size={13} />
                                     Submit Request
                                 </button>
                             </div>
@@ -1037,14 +995,14 @@ const purchasedProducts = (client?.products || []).map((product) => ({
                         className="fixed inset-0 z-[70] bg-slate-950/40 backdrop-blur-sm"
                     />
 
-                    <div className="fixed left-1/2 top-1/2 z-[80] w-[calc(100%-32px)] max-w-[480px] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
-                        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+                    <div className="fixed left-1/2 top-1/2 z-[80] w-[calc(100%-32px)] max-w-[440px] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-slate-200 bg-white shadow-2xl">
+                        <div className="flex items-center justify-between border-b border-slate-200/90 px-5 py-3.5">
                             <div>
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-cyan-600">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-[#1B59F8]">
                                     Account Security
                                 </p>
 
-                                <h2 className="mt-1 text-lg font-semibold text-slate-950">
+                                <h2 className="mt-0.5 text-base font-bold text-slate-900">
                                     Change Password
                                 </h2>
                             </div>
@@ -1054,18 +1012,18 @@ const purchasedProducts = (client?.products || []).map((product) => ({
                                 onClick={() =>
                                     setPasswordOpen(false)
                                 }
-                                className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50"
+                                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50"
                             >
-                                <X size={17} />
+                                <X size={16} />
                             </button>
                         </div>
 
                         <form
                             onSubmit={submitPasswordChange}
-                            className="p-5"
+                            className="p-4 sm:p-5 space-y-3"
                         >
                             <div>
-                                <label className="mb-2 block text-xs font-semibold text-slate-700">
+                                <label className="mb-1.5 block text-xs font-semibold text-slate-700">
                                     Current Password
                                 </label>
 
@@ -1078,12 +1036,12 @@ const purchasedProducts = (client?.products || []).map((product) => ({
                                     onChange={
                                         handlePasswordInput
                                     }
-                                    className="h-11 w-full rounded-xl border border-slate-200 px-4 text-xs outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
+                                    className="h-8.5 w-full rounded-lg border border-slate-200 px-3 text-xs text-slate-700 outline-none focus:border-[#1B59F8] focus:ring-2 focus:ring-blue-100"
                                 />
                             </div>
 
-                            <div className="mt-4">
-                                <label className="mb-2 block text-xs font-semibold text-slate-700">
+                            <div>
+                                <label className="mb-1.5 block text-xs font-semibold text-slate-700">
                                     New Password
                                 </label>
 
@@ -1096,16 +1054,16 @@ const purchasedProducts = (client?.products || []).map((product) => ({
                                     onChange={
                                         handlePasswordInput
                                     }
-                                    className="h-11 w-full rounded-xl border border-slate-200 px-4 text-xs outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
+                                    className="h-8.5 w-full rounded-lg border border-slate-200 px-3 text-xs text-slate-700 outline-none focus:border-[#1B59F8] focus:ring-2 focus:ring-blue-100"
                                 />
 
-                                <p className="mt-2 text-[9px] text-slate-500">
+                                <p className="mt-1 text-[10px] text-slate-400">
                                     Use at least 8 characters.
                                 </p>
                             </div>
 
-                            <div className="mt-4">
-                                <label className="mb-2 block text-xs font-semibold text-slate-700">
+                            <div>
+                                <label className="mb-1.5 block text-xs font-semibold text-slate-700">
                                     Confirm New Password
                                 </label>
 
@@ -1118,26 +1076,26 @@ const purchasedProducts = (client?.products || []).map((product) => ({
                                     onChange={
                                         handlePasswordInput
                                     }
-                                    className="h-11 w-full rounded-xl border border-slate-200 px-4 text-xs outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
+                                    className="h-8.5 w-full rounded-lg border border-slate-200 px-3 text-xs text-slate-700 outline-none focus:border-[#1B59F8] focus:ring-2 focus:ring-blue-100"
                                 />
                             </div>
 
-                            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
                                 <button
                                     type="button"
                                     onClick={() =>
                                         setPasswordOpen(false)
                                     }
-                                    className="h-11 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                                    className="h-8.5 px-4 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-700 transition hover:bg-slate-50"
                                 >
                                     Cancel
                                 </button>
 
                                 <button
                                     type="submit"
-                                    className="flex h-11 items-center justify-center gap-2 rounded-xl bg-[#0f172a] text-xs font-semibold text-white transition hover:bg-cyan-600"
+                                    className="flex h-8.5 items-center justify-center gap-1.5 rounded-lg bg-[#1B59F8] px-4 text-xs font-semibold text-white shadow-2xs transition hover:bg-blue-700"
                                 >
-                                    <Save size={15} />
+                                    <Save size={13} />
                                     Update Password
                                 </button>
                             </div>

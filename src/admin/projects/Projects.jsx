@@ -28,6 +28,7 @@ PackagePlus,
 } from "lucide-react";
 
 import API_URL from "../../config/api";
+import DataTable from "../../components/data/DataTable";
 
 const STATUS_OPTIONS = [
     "All",
@@ -1383,583 +1384,324 @@ const handleConversionChange =
         };
 
     return (
-        <div className="space-y-6">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="space-y-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-violet-600">
+                    <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-blue-600">
+                        <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />
                         Project Management
-                    </p>
-
-                    <h1 className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-slate-950">
-                        Projects
+                    </div>
+                    <h1 className="mt-0.5 text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+                        Projects Workspace
                     </h1>
-
-                    <p className="mt-1 text-sm text-slate-500">
-                        Manage approved development projects, delivery, progress and AMC planning.
+                    <p className="mt-0.5 text-xs text-slate-500">
+                        Track active development milestones, tasks, team progress and delivery timelines.
                     </p>
                 </div>
 
-                <button
-                    type="button"
-                    onClick={
-                        openNewProject
-                    }
-                    className="flex h-11 items-center justify-center gap-2 rounded-xl bg-violet-600 px-5 text-sm font-semibold text-white transition hover:bg-violet-700"
-                >
-                    <Plus size={17} />
-                    New Project
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={openNewProject}
+                        className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#1B59F8] px-3.5 text-xs font-semibold text-white shadow-xs hover:bg-[#1548D1] active:bg-[#0F3DB8] transition"
+                    >
+                        <Plus size={15} strokeWidth={2.5} />
+                        <span>New Project</span>
+                    </button>
+                </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                 {[
                     {
-                        label:
-                            "Total Projects",
-                        value:
-                            stats.totalProjects,
-                        icon:
-                            BriefcaseBusiness,
+                        label: "Total Projects",
+                        value: stats.totalProjects,
+                        icon: BriefcaseBusiness,
+                        style: "bg-blue-50 text-blue-600",
                     },
                     {
-                        label:
-                            "Planned",
-                        value:
-                            stats.plannedProjects,
-                        icon:
-                            Clock3,
+                        label: "Planned",
+                        value: stats.plannedProjects,
+                        icon: Clock3,
+                        style: "bg-slate-100 text-slate-600",
                     },
                     {
-                        label:
-                            "Active",
-                        value:
-                            stats.activeProjects,
-                        icon:
-                            CheckCircle2,
+                        label: "Active",
+                        value: stats.activeProjects,
+                        icon: CheckCircle2,
+                        style: "bg-emerald-50 text-emerald-600",
                     },
                     {
-                        label:
-                            "On Hold",
-                        value:
-                            stats.onHoldProjects,
-                        icon:
-                            PauseCircle,
+                        label: "On Hold",
+                        value: stats.onHoldProjects,
+                        icon: PauseCircle,
+                        style: "bg-amber-50 text-amber-600",
                     },
                     {
-                        label:
-                            "Completed",
-                        value:
-                            stats.completedProjects,
-                        icon:
-                            CircleDollarSign,
+                        label: "Completed",
+                        value: stats.completedProjects,
+                        icon: CircleDollarSign,
+                        style: "bg-violet-50 text-violet-600",
                     },
-                ].map(
-                    ({
-                        label,
-                        value,
-                        icon: Icon,
-                    }) => (
-                        <div
-                            key={label}
-                            className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xs"
-                        >
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-xs font-medium text-slate-500">
-                                        {label}
-                                    </p>
+                ].map(({ label, value, icon: Icon, style }) => (
+                    <div
+                        key={label}
+                        className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs hover:border-slate-300 transition"
+                    >
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                                    {label}
+                                </p>
+                                <p className="mt-1 text-xl font-bold tracking-tight text-slate-900">
+                                    {value}
+                                </p>
+                            </div>
 
-                                    <p className="mt-2 font-mono text-2xl font-bold text-slate-900">
-                                        {value}
-                                    </p>
-                                </div>
-
-                                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-50 text-violet-700">
-                                    <Icon
-                                        size={
-                                            18
-                                        }
-                                    />
-                                </div>
+                            <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${style}`}>
+                                <Icon size={16} />
                             </div>
                         </div>
-                    )
-                )}
+                    </div>
+                ))}
             </div>
 
-            <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
-                <div className="border-b border-slate-200 p-3.5 sm:p-4">
-                    <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
-                        <div className="relative flex-1">
-                            <Search
-                                size={15}
-                                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                            />
-
-                            <input
-                                value={
-                                    search
-                                }
-                                onChange={(
-                                    event
-                                ) =>
-                                    setSearch(
-                                        event
-                                            .target
-                                            .value
+            {/* Modern Zoho-Grade Projects Master DataTable */}
+            <DataTable
+                moduleName="Projects"
+                viewTitle="All Projects"
+                views={[
+                    { id: "all", label: "All Projects" },
+                    { id: "Active", label: "Active Projects" },
+                    { id: "Planned", label: "Planned Projects" },
+                    { id: "Completed", label: "Completed Projects" },
+                ]}
+                activeView={statusFilter === "All" ? "all" : statusFilter}
+                onViewChange={(id) => setStatusFilter(id === "all" ? "All" : id)}
+                onCreateClick={openNewProject}
+                createButtonLabel="New Project"
+                selectable={true}
+                columns={[
+                    {
+                        key: "projectCode",
+                        label: "Project",
+                        sortable: true,
+                        render: (_, project) => (
+                            <div>
+                                <span className="font-semibold text-violet-600 text-xs">
+                                    {project.projectCode}
+                                </span>
+                                <p className="font-medium text-slate-900 truncate max-w-[220px] text-xs">
+                                    {project.projectName}
+                                </p>
+                                <span className="text-[10px] text-slate-400">
+                                    {project.priority}
+                                </span>
+                            </div>
+                        ),
+                    },
+                    {
+                        key: "clientName",
+                        label: "Client",
+                        sortable: true,
+                        render: (val) => (
+                            <span className="font-medium text-slate-700 text-xs">
+                                {val || "Internal"}
+                            </span>
+                        ),
+                    },
+                    {
+                        key: "requirementCode",
+                        label: "Requirement",
+                        sortable: true,
+                        render: (val) => (
+                            <span className="text-violet-600 font-medium text-xs">
+                                {val || "—"}
+                            </span>
+                        ),
+                    },
+                    {
+                        key: "projectType",
+                        label: "Type",
+                        sortable: true,
+                        render: (val) => (
+                            <span className="text-slate-600 text-xs">
+                                {val || "—"}
+                            </span>
+                        ),
+                    },
+                    {
+                        key: "finalAmount",
+                        label: "Value",
+                        sortable: true,
+                        render: (val) => (
+                            <span className="font-semibold text-slate-900 text-xs">
+                                {money(val)}
+                            </span>
+                        ),
+                    },
+                    {
+                        key: "dueDate",
+                        label: "Due Date",
+                        sortable: true,
+                        render: (val) => (
+                            <span className="text-slate-600 text-xs">
+                                {formatDate(val)}
+                            </span>
+                        ),
+                    },
+                    {
+                        key: "progress",
+                        label: "Progress",
+                        sortable: true,
+                        render: (val) => {
+                            const prog = Math.min(
+                                Math.max(Number(val || 0), 0),
+                                100
+                            );
+                            return (
+                                <div className="w-[120px]">
+                                    <div className="mb-1 flex items-center justify-between text-[11px]">
+                                        <span className="text-slate-500">
+                                            Progress
+                                        </span>
+                                        <span className="font-semibold text-slate-700">
+                                            {prog}%
+                                        </span>
+                                    </div>
+                                    <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                                        <div
+                                            className="h-full rounded-full bg-violet-600"
+                                            style={{ width: `${prog}%` }}
+                                        />
+                                    </div>
+                                </div>
+                            );
+                        },
+                    },
+                    {
+                        key: "status",
+                        label: "Status",
+                        sortable: true,
+                        render: (_, project) => (
+                            <select
+                                disabled={Boolean(
+                                    project.convertedToProduct ||
+                                        project.isReadOnly
+                                )}
+                                value={project.status}
+                                onChange={(e) =>
+                                    updateProjectStatus(
+                                        project,
+                                        e.target.value
                                     )
                                 }
-                                onKeyDown={(
-                                    event
-                                ) => {
-                                    if (
-                                        event.key ===
-                                        "Enter"
-                                    ) {
-                                        loadProjects();
-                                    }
-                                }}
-                                placeholder="Search project, client, product or requirement..."
-                                className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-4 text-xs outline-none transition focus:border-violet-600 focus:ring-2 focus:ring-violet-500/15"
-                            />
-                        </div>
-
-                        <select
-                            value={
-                                statusFilter
-                            }
-                            onChange={(
-                                event
-                            ) =>
-                                setStatusFilter(
-                                    event
-                                        .target
-                                        .value
-                                )
-                            }
-                            className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none transition focus:border-violet-600"
-                        >
-                            {STATUS_OPTIONS.map(
-                                (status) => (
-                                    <option
-                                        key={
-                                            status
-                                        }
-                                        value={
-                                            status
-                                        }
-                                    >
-                                        {
-                                            status
-                                        }
+                                className={`rounded-lg border px-2 py-1 text-[11px] font-semibold outline-hidden cursor-pointer ${getStatusStyle(
+                                    project.status
+                                )}`}
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                {STATUS_OPTIONS.filter(
+                                    (status) =>
+                                        status !== "All" &&
+                                        (status !== "Completed" ||
+                                            project.status === "Completed")
+                                ).map((status) => (
+                                    <option key={status} value={status}>
+                                        {status}
                                     </option>
-                                )
-                            )}
+                                ))}
+                            </select>
+                        ),
+                    },
+                ]}
+                data={filteredProjects}
+                loading={loading}
+                error={error}
+                onRetry={loadProjects}
+                idKey="_id"
+                onRowClick={(project) => openProjectDetails(project)}
+                searchPlaceholder="Search project, client, product or requirement..."
+                statusFilters={STATUS_OPTIONS.map((s) => ({
+                    label: s,
+                    value: s,
+                }))}
+                activeStatusFilter={statusFilter}
+                onStatusFilterChange={setStatusFilter}
+                toolbarActions={
+                    <div className="flex items-center gap-1.5 shrink-0">
+                        <select
+                            value={typeFilter}
+                            onChange={(e) => setTypeFilter(e.target.value)}
+                            className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-hidden hover:border-slate-300 transition"
+                        >
+                            {PROJECT_TYPES.map((type) => (
+                                <option key={type} value={type}>
+                                    {type}
+                                </option>
+                            ))}
                         </select>
 
                         <select
-                            value={
-                                typeFilter
-                            }
-                            onChange={(
-                                event
-                            ) =>
-                                setTypeFilter(
-                                    event
-                                        .target
-                                        .value
-                                )
-                            }
-                            className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none transition focus:border-violet-600"
+                            value={priorityFilter}
+                            onChange={(e) => setPriorityFilter(e.target.value)}
+                            className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-hidden"
                         >
-                            <option value="All">
-                                All Types
-                            </option>
-
-                            {PROJECT_TYPES.map(
-                                (type) => (
-                                    <option
-                                        key={
-                                            type
-                                        }
-                                        value={
-                                            type
-                                        }
-                                    >
-                                        {type}
-                                    </option>
-                                )
-                            )}
-                        </select>
-
-                        <select
-                            value={
-                                priorityFilter
-                            }
-                            onChange={(
-                                event
-                            ) =>
-                                setPriorityFilter(
-                                    event
-                                        .target
-                                        .value
-                                )
-                            }
-                            className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none transition focus:border-violet-600"
-                        >
-                            <option value="All">
-                                All Priority
-                            </option>
-
-                            {PRIORITY_OPTIONS.map(
-                                (priority) => (
-                                    <option
-                                        key={
-                                            priority
-                                        }
-                                        value={
-                                            priority
-                                        }
-                                    >
-                                        {
-                                            priority
-                                        }
-                                    </option>
-                                )
-                            )}
+                            <option value="All">All Priority</option>
+                            {PRIORITY_OPTIONS.map((priority) => (
+                                <option key={priority} value={priority}>
+                                    {priority}
+                                </option>
+                            ))}
                         </select>
 
                         <button
                             type="button"
-                            onClick={
-                                loadProjects
-                            }
-                            className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:bg-slate-50 hover:border-slate-300 shrink-0"
+                            onClick={loadProjects}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
                             title="Refresh projects"
                         >
-                            <RefreshCw
-                                size={15}
-                            />
+                            <RefreshCw size={13} />
                         </button>
                     </div>
-                </div>
-
-                {error && (
-                    <div className="border-b border-rose-200 bg-rose-50 px-5 py-3 text-sm text-rose-700">
-                        {error}
-                    </div>
-                )}
-
-                <div className="overflow-x-auto">
-                    <table className="min-w-full">
-                        <thead className="bg-slate-50">
-                            <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                                <th className="px-5 py-3">
-                                    Project
-                                </th>
-
-                                <th className="px-5 py-3">
-                                    Client
-                                </th>
-
-                                <th className="px-5 py-3">
-                                    Requirement
-                                </th>
-
-                                <th className="px-5 py-3">
-                                    Type
-                                </th>
-
-                                <th className="px-5 py-3">
-                                    Value
-                                </th>
-
-                                <th className="px-5 py-3">
-                                    Due Date
-                                </th>
-
-                                <th className="px-5 py-3">
-                                    Progress
-                                </th>
-
-                                <th className="px-5 py-3">
-                                    Status
-                                </th>
-
-                                <th className="px-5 py-3 text-right">
-                                    Actions
-                                </th>
-                            </tr>
-                        </thead>
-
-                        <tbody className="divide-y divide-slate-100">
-                            {loading ? (
-                                <tr>
-                                    <td
-                                        colSpan={9}
-                                        className="px-5 py-12 text-center text-sm text-slate-500"
-                                    >
-                                        Loading projects...
-                                    </td>
-                                </tr>
-                            ) : filteredProjects.length >
-                                0 ? (
-                                filteredProjects.map(
-                                    (
-                                        project
-                                    ) => {
-                                        const id =
-                                            project._id ||
-                                            project.id;
-
-                                        return (
-                                            <tr
-                                                key={
-                                                    id
-                                                }
-                                                className="transition hover:bg-slate-50/70"
-                                            >
-                                                <td className="px-5 py-4">
-                                                    <p className="text-xs font-semibold text-violet-600">
-                                                        {
-                                                            project.projectCode
-                                                        }
-                                                    </p>
-
-                                                    <p className="mt-1 max-w-[220px] truncate text-sm font-medium text-slate-900">
-                                                        {
-                                                            project.projectName
-                                                        }
-                                                    </p>
-
-                                                    <p className="mt-1 text-xs text-slate-400">
-                                                        {
-                                                            project.priority
-                                                        }
-                                                    </p>
-                                                </td>
-
-                                                <td className="px-5 py-4 text-sm text-slate-700">
-                                                    {project.clientName ||
-                                                        "Internal"}
-                                                </td>
-
-                                                <td className="px-5 py-4 text-sm text-violet-600">
-                                                    {project.requirementCode ||
-                                                        "—"}
-                                                </td>
-
-                                                <td className="px-5 py-4 text-sm text-slate-600">
-                                                    {
-                                                        project.projectType
-                                                    }
-                                                </td>
-
-                                                <td className="px-5 py-4 text-sm font-medium text-slate-900">
-                                                    {money(
-                                                        project.finalAmount
-                                                    )}
-                                                </td>
-
-                                                <td className="px-5 py-4 text-sm text-slate-600">
-                                                    {formatDate(
-                                                        project.dueDate
-                                                    )}
-                                                </td>
-
-                                                <td className="px-5 py-4">
-                                                    <div className="w-[140px]">
-                                                        <div className="mb-1 flex items-center justify-between text-xs">
-                                                            <span className="text-slate-500">
-                                                                Progress
-                                                            </span>
-
-                                                            <span className="font-semibold text-slate-700">
-                                                                {Number(
-                                                                    project.progress ||
-                                                                    0
-                                                                )}
-                                                                %
-                                                            </span>
-                                                        </div>
-
-                                                        <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                                                            <div
-                                                                className="h-full rounded-full bg-violet-600"
-                                                                style={{
-                                                                    width: `${Math.min(
-                                                                        Math.max(
-                                                                            Number(
-                                                                                project.progress ||
-                                                                                0
-                                                                            ),
-                                                                            0
-                                                                        ),
-                                                                        100
-                                                                    )}%`,
-                                                                }}
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                </td>
-
-                                                <td className="px-5 py-4">
-                                                    <select
-                                                    disabled={
-    Boolean(
-        project.convertedToProduct ||
-        project.isReadOnly
-    )
-}
-                                                        value={
-                                                            project.status
-                                                        }
-                                                        onChange={(
-                                                            event
-                                                        ) =>
-                                                            updateProjectStatus(
-                                                                project,
-                                                                event
-                                                                    .target
-                                                                    .value
-                                                            )
-                                                        }
-                                                        className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold outline-none ${getStatusStyle(
-                                                            project.status
-                                                        )}`}
-                                                    >
-              {STATUS_OPTIONS.filter(
-    (status) =>
-        status !== "All" &&
-        (
-            status !== "Completed" ||
-            project.status === "Completed"
-        )
-).map(
-                                                            (
-                                                                status
-                                                            ) => (
-                                                                <option
-                                                                    key={
-                                                                        status
-                                                                    }
-                                                                    value={
-                                                                        status
-                                                                    }
-                                                                >
-                                                                    {
-                                                                        status
-                                                                    }
-                                                                </option>
-                                                            )
-                                                        )}
-                                                    </select>
-                                                </td>
-
-                                                <td className="px-5 py-4">
-
-                                                <div className="flex justify-end gap-2">
-
-    {/* VIEW — ALWAYS AVAILABLE */}
-
-    <button
-        type="button"
-        onClick={() =>
-            openProjectDetails(
-                project
-            )
-        }
-        className="flex h-9 w-9 items-center justify-center rounded-lg border border-violet-200 text-violet-600 transition hover:bg-violet-50"
-        title="View Project"
-    >
-        <Eye size={15} />
-    </button>
-
-
-    {/* LOCKED PROJECTS CANNOT BE EDITED */}
-
-    {!(
-        project.convertedToProduct ||
-        project.isReadOnly
-    ) && (
-        <>
-            <button
-                type="button"
-                onClick={() =>
-                    openEditProject(
-                        project
-                    )
                 }
-                className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:bg-slate-50"
-                title="Edit"
-            >
-                <Pencil
-                    size={15}
-                />
-            </button>
-
-            <button
-                type="button"
-                onClick={() =>
-                    deleteProject(
-                        project
-                    )
-                }
-                className="flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 text-rose-600 transition hover:bg-rose-50"
-                title="Delete"
-            >
-                <Trash2
-                    size={15}
-                />
-            </button>
-        </>
-    )}
-
-
-    {/* READ ONLY INDICATOR */}
-
-    {(project.convertedToProduct ||
-        project.isReadOnly) && (
-        <div
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-600"
-            title="Converted to Product — Read Only"
-        >
-            <LockKeyhole
-                size={15}
+                rowActions={[
+                    {
+                        label: "View Project",
+                        icon: Eye,
+                        className:
+                            "text-violet-600 hover:text-violet-800 hover:bg-violet-50",
+                        onClick: (project) => openProjectDetails(project),
+                    },
+                    {
+                        label: "Edit Project",
+                        icon: Pencil,
+                        condition: (project) =>
+                            !(
+                                project.convertedToProduct ||
+                                project.isReadOnly
+                            ),
+                        className:
+                            "text-slate-600 hover:text-slate-900 hover:bg-slate-100",
+                        onClick: (project) => openEditProject(project),
+                    },
+                    {
+                        label: "Delete Project",
+                        icon: Trash2,
+                        condition: (project) =>
+                            !(
+                                project.convertedToProduct ||
+                                project.isReadOnly
+                            ),
+                        className:
+                            "text-rose-500 hover:text-rose-700 hover:bg-rose-50",
+                        onClick: (project) => deleteProject(project),
+                    },
+                ]}
+                initialPageSize={25}
+                emptyTitle="No projects found"
+                emptyDescription="Convert an approved requirement or create a new project."
             />
-        </div>
-    )}
-</div>
-                                                </td>
-                                            </tr>
-                                        );
-                                    }
-                                )
-                            ) : (
-                                <tr>
-                                    <td
-                                        colSpan={9}
-                                        className="px-5 py-16 text-center"
-                                    >
-                                        <Archive
-                                            size={30}
-                                            className="mx-auto text-slate-300"
-                                        />
-
-                                        <p className="mt-3 text-sm font-medium text-slate-700">
-                                            No projects found
-                                        </p>
-
-                                        <p className="mt-1 text-xs text-slate-400">
-                                            Convert an approved requirement or create a new project.
-                                        </p>
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </section>
 
             {drawerOpen && (
                 <>

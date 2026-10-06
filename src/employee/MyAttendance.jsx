@@ -2,6 +2,7 @@ import API_URL from "../config/api";
 import { useEffect, useMemo, useState } from "react";
 import {
     AlertCircle,
+    CalendarCheck,
     CalendarDays,
     Check,
     CheckCircle2,
@@ -10,6 +11,7 @@ import {
     Clock3,
     Coffee,
     FileText,
+    Filter,
     LogIn,
     LogOut,
     Plus,
@@ -48,6 +50,12 @@ function formatDate(value) {
         month: "short",
         year: "numeric",
     });
+}
+
+function formatDayOfWeek(value) {
+    const date = parseDate(value);
+    if (!date) return "";
+    return date.toLocaleDateString("en-IN", { weekday: "short" });
 }
 
 function formatTime(value) {
@@ -139,7 +147,7 @@ function getAttendanceStatusClasses(status) {
             "bg-rose-50 text-rose-700 ring-rose-600/10",
 
         "On Leave":
-            "bg-violet-50 text-violet-700 ring-violet-600/10",
+            "bg-blue-50 text-[#1B59F8] ring-[#1B59F8]/20",
 
         Holiday:
             "bg-cyan-50 text-cyan-700 ring-cyan-600/10",
@@ -184,26 +192,26 @@ function SummaryCard({
     descriptionClass = "text-slate-500",
 }) {
     return (
-        <div className="rounded-2xl border border-slate-200 bg-white p-5">
-            <div className="flex items-start justify-between gap-4">
-                <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                        {label}
-                    </p>
-
-                    <p className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-950">
-                        {value}
-                    </p>
-                </div>
+        <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs hover:border-slate-300 transition">
+            <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    {label}
+                </span>
 
                 <div
-                    className={`flex h-10 w-10 items-center justify-center rounded-xl ${iconClass}`}
+                    className={`flex h-7 w-7 items-center justify-center rounded-lg ${iconClass}`}
                 >
-                    <Icon size={18} />
+                    <Icon size={14} />
                 </div>
             </div>
 
-            <p className={`mt-4 text-xs ${descriptionClass}`}>
+            <div className="mt-1.5 flex items-baseline gap-2">
+                <span className="text-xl font-bold tracking-tight text-slate-900">
+                    {value}
+                </span>
+            </div>
+
+            <p className={`mt-1 text-[11px] font-medium truncate ${descriptionClass}`}>
                 {description}
             </p>
         </div>
@@ -404,6 +412,10 @@ const loadSystemSettings = async () => {
     const [activeTab, setActiveTab] = useState("today");
     const [attendanceHistory, setAttendanceHistory] = useState([]);
     const [leaveRequests, setLeaveRequests] = useState([]);
+    const [historyPage, setHistoryPage] = useState(1);
+    const [historyPageSize, setHistoryPageSize] = useState(10);
+    const [historyStatusFilter, setHistoryStatusFilter] = useState("all");
+    const [historyDatePreset, setHistoryDatePreset] = useState("30");
 
     const [attendanceStatus, setAttendanceStatus] =
         useState("Absent");
@@ -497,6 +509,49 @@ const loadSystemSettings = async () => {
             Math.round(total / completedRecords.length)
         );
     }, [attendanceHistory]);
+
+    const filteredAttendanceHistory = useMemo(() => {
+        let list = [...attendanceHistory];
+
+        if (historyDatePreset !== "all") {
+            const days = parseInt(historyDatePreset, 10);
+            if (!Number.isNaN(days)) {
+                const cutoff = new Date();
+                cutoff.setHours(0, 0, 0, 0);
+                cutoff.setDate(cutoff.getDate() - days);
+                list = list.filter((item) => {
+                    if (!item.date) return false;
+                    const d = parseDate(item.date);
+                    return d && d >= cutoff;
+                });
+            }
+        }
+
+        if (historyStatusFilter !== "all") {
+            list = list.filter(
+                (item) =>
+                    (item.status || "").toLowerCase() ===
+                    historyStatusFilter.toLowerCase()
+            );
+        }
+
+        return list;
+    }, [attendanceHistory, historyDatePreset, historyStatusFilter]);
+
+    const totalHistoryPages = Math.max(
+        1,
+        Math.ceil(filteredAttendanceHistory.length / historyPageSize)
+    );
+
+    const safeHistoryPage = Math.min(
+        Math.max(1, historyPage),
+        totalHistoryPages
+    );
+
+    const paginatedHistory = useMemo(() => {
+        const start = (safeHistoryPage - 1) * historyPageSize;
+        return filteredAttendanceHistory.slice(start, start + historyPageSize);
+    }, [filteredAttendanceHistory, safeHistoryPage, historyPageSize]);
 
     const calendarDays = getCalendarDays(
         calendarDate.getFullYear(),
@@ -1596,33 +1651,39 @@ const loadSystemSettings = async () => {
 
     return (
         <div>
-            <div className="flex flex-col gap-4 border-b border-slate-200 pb-6 lg:flex-row lg:items-end lg:justify-between">
-                <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-violet-600">
-                        Employee Workspace
-                    </p>
-
-                    <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-950">
-                        My Attendance & Leave
-                    </h2>
-
-                    <p className="mt-1 text-xs text-slate-500">
-                        Track attendance, working hours, breaks and
-                        personal leave requests.
-                    </p>
+            <div className="flex flex-col gap-4 border-b border-slate-200/90 pb-5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#1B59F8]/10 text-[#1B59F8] ring-1 ring-[#1B59F8]/20">
+                        <CalendarCheck size={20} />
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <h1 className="text-lg font-bold tracking-tight text-slate-900">
+                                My Attendance & Leave
+                            </h1>
+                            <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-[#1B59F8] ring-1 ring-inset ring-[#1B59F8]/20">
+                                Employee Workspace
+                            </span>
+                        </div>
+                        <p className="text-xs text-slate-500">
+                            Track attendance, daily work logs, break times, and leave requests.
+                        </p>
+                    </div>
                 </div>
 
-                <button
-                    type="button"
-                    onClick={() => setLeaveDrawerOpen(true)}
-                    className="flex h-10 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700"
-                >
-                    <Plus size={15} />
-                    Apply for Leave
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setLeaveDrawerOpen(true)}
+                        className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-[#1B59F8] px-3.5 text-xs font-semibold text-white shadow-2xs transition hover:bg-blue-700 active:scale-[0.99]"
+                    >
+                        <Plus size={14} />
+                        Apply for Leave
+                    </button>
+                </div>
             </div>
 
-            <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="mt-5 grid grid-cols-2 gap-3 xl:grid-cols-4">
                 <SummaryCard
                     label="Today Worked"
                     value={formatDuration(workedMinutes)}
@@ -1630,8 +1691,8 @@ const loadSystemSettings = async () => {
                         officeSettings.fullDayMinutes
                     )}`}
                     icon={Clock3}
-                    iconClass="bg-cyan-100 text-cyan-700"
-                    descriptionClass="text-cyan-700"
+                    iconClass="bg-blue-50 text-[#1B59F8]"
+                    descriptionClass="text-[#1B59F8]"
                 />
 
                 <SummaryCard
@@ -1641,7 +1702,7 @@ const loadSystemSettings = async () => {
                         officeSettings.startTime
                     )}`}
                     icon={LogIn}
-                    iconClass="bg-emerald-100 text-emerald-700"
+                    iconClass="bg-emerald-50 text-emerald-700"
                     descriptionClass="text-emerald-600"
                 />
 
@@ -1654,10 +1715,10 @@ const loadSystemSettings = async () => {
                             : "Recorded today"
                     }
                     icon={Coffee}
-                    iconClass="bg-amber-100 text-amber-700"
+                    iconClass="bg-amber-50 text-amber-700"
                     descriptionClass={
                         breakActive
-                            ? "text-amber-700"
+                            ? "text-amber-700 font-medium"
                             : "text-slate-500"
                     }
                 />
@@ -1667,14 +1728,14 @@ const loadSystemSettings = async () => {
                     value={averageHours}
                     description="Based on completed attendance records"
                     icon={Timer}
-                    iconClass="bg-violet-100 text-violet-700"
-                    descriptionClass="text-violet-600"
+                    iconClass="bg-indigo-50 text-indigo-700"
+                    descriptionClass="text-indigo-600"
                 />
             </div>
 
-            <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="flex gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1">
+            <div className="mt-5 overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-2xs">
+                <div className="flex flex-col gap-3 border-b border-slate-200/80 px-4 py-3 sm:flex-row sm:items-center sm:justify-between bg-slate-50/40">
+                    <div className="flex gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1 border border-slate-200/60">
                         {[
                             {
                                 id: "today",
@@ -1705,8 +1766,8 @@ const loadSystemSettings = async () => {
                                 key={tab.id}
                                 type="button"
                                 onClick={() => setActiveTab(tab.id)}
-                                className={`whitespace-nowrap rounded-lg px-4 py-2 text-[11px] font-semibold transition ${activeTab === tab.id
-                                    ? "bg-white text-slate-950 shadow-sm"
+                                className={`whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-semibold transition ${activeTab === tab.id
+                                    ? "bg-white text-slate-900 shadow-2xs"
                                     : "text-slate-500 hover:text-slate-800"
                                     }`}
                             >
@@ -1715,14 +1776,23 @@ const loadSystemSettings = async () => {
                         ))}
                     </div>
 
-                    <span
-                        className={`inline-flex w-fit rounded-full px-3 py-1.5 text-[10px] font-bold ring-1 ring-inset ${attendanceStatus === "Working"
-                            ? "bg-emerald-50 text-emerald-700 ring-emerald-600/10"
-                            : "bg-slate-100 text-slate-600 ring-slate-500/10"
-                            }`}
-                    >
-                        {attendanceStatus}
-                    </span>
+                    <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-medium text-slate-500">Status:</span>
+                        <span
+                            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${attendanceStatus === "Working"
+                                ? "bg-emerald-50 text-emerald-700 ring-emerald-600/20"
+                                : attendanceStatus === "Break"
+                                    ? "bg-amber-50 text-amber-700 ring-amber-600/20"
+                                    : "bg-slate-100 text-slate-600 ring-slate-500/20"
+                                }`}
+                        >
+                            <span className={`h-1.5 w-1.5 rounded-full ${
+                                attendanceStatus === "Working" ? "bg-emerald-500 animate-pulse" :
+                                attendanceStatus === "Break" ? "bg-amber-500 animate-pulse" : "bg-slate-400"
+                            }`} />
+                            {attendanceStatus}
+                        </span>
+                    </div>
                 </div>
 
                 {activeTab === "today" && (
@@ -1767,7 +1837,7 @@ const loadSystemSettings = async () => {
                                                 ? "bg-slate-100 text-slate-600 ring-slate-500/10"
 
                                                 : attendanceStatus === "On Leave"
-                                                    ? "bg-violet-50 text-violet-700 ring-violet-600/10"
+                                                    ? "bg-blue-50 text-[#1B59F8] ring-[#1B59F8]/20"
 
                                                     : !loginTime
                                                         ? "bg-slate-100 text-slate-600 ring-slate-500/10"
@@ -1827,7 +1897,7 @@ const loadSystemSettings = async () => {
                                     </div>
 
                                     <div className="rounded-xl border border-slate-200 bg-white p-4">
-                                        <div className="flex items-center gap-2 text-violet-600">
+                                        <div className="flex items-center gap-2 text-[#1B59F8]">
                                             <Timer size={15} />
 
                                             <p className="text-[10px] font-semibold uppercase tracking-[0.12em]">
@@ -1860,9 +1930,9 @@ const loadSystemSettings = async () => {
                                         </span>
                                     </div>
 
-                                    <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-200">
+                                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
                                         <div
-                                            className="h-full rounded-full bg-gradient-to-r from-violet-500 to-cyan-400"
+                                            className="h-full rounded-full bg-[#1B59F8]"
                                             style={{
                                                 width: `${Math.min(
                                                     (workedMinutes /
@@ -1906,7 +1976,7 @@ const loadSystemSettings = async () => {
                                         }
                                         className={`flex h-11 items-center justify-center gap-2 rounded-xl text-xs font-semibold transition ${attendanceStatus === "Working" || attendanceStatus === "Break"
                                             ? "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-                                            : "bg-violet-600 text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                            : "bg-[#1B59F8] text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                                             }`}
                                     >
                                         {attendanceStatus === "Working" || attendanceStatus === "Break" ? (
@@ -2040,7 +2110,7 @@ const loadSystemSettings = async () => {
                                                             : attendanceStatus === "Logged Out"
                                                                 ? "bg-rose-100 text-rose-700"
 
-                                                                : "bg-violet-100 text-violet-700",
+                                                                : "bg-blue-100 text-[#1B59F8]",
                                                 },
                                             ].filter(Boolean).map((item) => {
                                                 const Icon = item.icon;
@@ -2080,185 +2150,306 @@ const loadSystemSettings = async () => {
                 )}
 
                 {activeTab === "history" && (
-                    <div className="overflow-x-auto">
-                        <table className="w-full min-w-[900px]">
-                            <thead>
-                                <tr className="border-b border-slate-200 bg-slate-50/80">
-                                    <th className="px-5 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        Date
-                                    </th>
+                    <div>
+                        {/* Linear / Zoho Filter & Preset Toolbar */}
+                        <div className="flex flex-col gap-3 border-b border-slate-200/80 bg-slate-50/50 p-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                                    Range:
+                                </span>
+                                <div className="inline-flex rounded-lg border border-slate-200/80 bg-white p-0.5 shadow-2xs">
+                                    {[
+                                        { id: "7", label: "Last 7 Days" },
+                                        { id: "15", label: "Last 15 Days" },
+                                        { id: "30", label: "Last 30 Days" },
+                                        { id: "all", label: "All History" },
+                                    ].map((preset) => (
+                                        <button
+                                            key={preset.id}
+                                            type="button"
+                                            onClick={() => {
+                                                setHistoryDatePreset(preset.id);
+                                                setHistoryPage(1);
+                                            }}
+                                            className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${historyDatePreset === preset.id
+                                                ? "bg-[#1B59F8] text-white shadow-2xs font-semibold"
+                                                : "text-slate-600 hover:text-slate-900"
+                                                }`}
+                                        >
+                                            {preset.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
 
-                                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        Login
-                                    </th>
-
-                                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        Logout
-                                    </th>
-
-                                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        Break
-                                    </th>
-
-                                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        Worked
-                                    </th>
-
-                                    <th className="px-5 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        Status
-                                    </th>
-                                </tr>
-                            </thead>
-
-                            <tbody className="divide-y divide-slate-100">
-                                {attendanceHistory.map((record) => (
-                                    <tr
-                                        key={record.id}
-                                        className="transition hover:bg-slate-50/70"
+                            <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                                        Status:
+                                    </span>
+                                    <select
+                                        value={historyStatusFilter}
+                                        onChange={(e) => {
+                                            setHistoryStatusFilter(e.target.value);
+                                            setHistoryPage(1);
+                                        }}
+                                        className="h-8 rounded-lg border border-slate-200/90 bg-white px-2.5 text-xs font-medium text-slate-700 shadow-2xs focus:border-[#1B59F8] focus:outline-none focus:ring-1 focus:ring-[#1B59F8]"
                                     >
-                                        <td className="px-5 py-4">
-                                            <p className="text-xs font-semibold text-slate-900">
-                                                {formatDate(
-                                                    record.date
-                                                )}
-                                            </p>
-                                        </td>
+                                        <option value="all">All Statuses</option>
+                                        <option value="Present">Present</option>
+                                        <option value="Late">Late</option>
+                                        <option value="Half Day">Half Day</option>
+                                        <option value="Absent">Absent</option>
+                                        <option value="On Leave">On Leave</option>
+                                        <option value="Weekly Off">Weekly Off</option>
+                                        <option value="Holiday">Holiday</option>
+                                    </select>
+                                </div>
 
-                                        <td className="px-4 py-4">
-                                            {record.loginTime ? (
-                                                <div className="flex items-center gap-2 text-xs text-slate-700">
-                                                    <LogIn
-                                                        size={14}
-                                                        className="text-emerald-600"
-                                                    />
+                                <span className="rounded-md bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600 border border-slate-200/60">
+                                    <strong className="font-semibold text-slate-900">
+                                        {filteredAttendanceHistory.length}
+                                    </strong>{" "}
+                                    records
+                                </span>
+                            </div>
+                        </div>
 
-                                                    {formatTime(
-                                                        record.loginTime
-                                                    )}
-                                                </div>
-                                            ) : (
-                                                <span className="text-xs text-slate-400">
-                                                    —
-                                                </span>
-                                            )}
-                                        </td>
+                        {/* Table / Empty State */}
+                        {paginatedHistory.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-12 text-center">
+                                <CalendarDays className="mb-2 h-10 w-10 text-slate-300" />
+                                <p className="text-xs font-semibold text-slate-800">
+                                    No attendance records found
+                                </p>
+                                <p className="mt-0.5 text-[11px] text-slate-400">
+                                    Try selecting a different date range or status filter.
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full min-w-[760px] border-collapse text-left">
+                                    <thead>
+                                        <tr className="border-b border-slate-200/80 bg-slate-50/70 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                                            <th className="px-4 py-2.5">Date</th>
+                                            <th className="px-3 py-2.5">Login</th>
+                                            <th className="px-3 py-2.5">Logout</th>
+                                            <th className="px-3 py-2.5">Break</th>
+                                            <th className="px-3 py-2.5">Worked</th>
+                                            <th className="px-4 py-2.5">Status & Remarks</th>
+                                        </tr>
+                                    </thead>
 
-                                        <td className="px-4 py-4">
-                                            {record.logoutTime ? (
-                                                <div className="flex items-center gap-2 text-xs text-slate-700">
-                                                    <LogOut
-                                                        size={14}
-                                                        className="text-rose-500"
-                                                    />
-
-                                                    {formatTime(
-                                                        record.logoutTime
-                                                    )}
-                                                </div>
-                                            ) : (
-                                                <span className="text-xs text-slate-400">
-                                                    —
-                                                </span>
-                                            )}
-                                        </td>
-
-                                        <td className="px-4 py-4 text-xs text-slate-600">
-                                            {[
-                                                "Holiday",
-                                                "Weekly Off",
-                                                "On Leave",
-                                                "Absent",
-                                            ].includes(record.status)
-                                                ? "—"
-                                                : formatDuration(
-                                                    record.breakMinutes
-                                                )}
-                                        </td>
-
-                                        <td className="px-4 py-4">
-                                            <p className="text-xs font-semibold text-slate-900">
-                                                {[
-                                                    "Holiday",
-                                                    "Weekly Off",
-                                                    "On Leave",
-                                                    "Absent",
-                                                ].includes(record.status)
-                                                    ? "—"
-                                                    : formatDuration(
-                                                        record.workedMinutes
-                                                    )}
-                                            </p>
-
-                                            {record.workedMinutes > 0 && (
-                                                <div className="mt-2 h-1.5 w-24 overflow-hidden rounded-full bg-slate-100">
-                                                    <div
-                                                        className="h-full rounded-full bg-violet-500"
-                                                        style={{
-                                                            width: `${Math.min(
-                                                                (
-                                                                    record.workedMinutes /
-                                                                    officeSettings.fullDayMinutes
-                                                                ) * 100,
-                                                                100
-                                                            )}%`,
-                                                        }}
-                                                    />
-                                                </div>
-                                            )}
-                                        </td>
-
-                                        <td className="px-5 py-4">
-                                            <span
-                                                className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ring-inset ${getAttendanceStatusClasses(
-                                                    record.status
-                                                )}`}
+                                    <tbody className="divide-y divide-slate-100">
+                                        {paginatedHistory.map((record) => (
+                                            <tr
+                                                key={record.id}
+                                                className="transition-colors hover:bg-slate-50/70"
                                             >
-                                                {record.status || "—"}
-                                            </span>
+                                                <td className="px-4 py-2.5">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs font-semibold text-slate-900">
+                                                            {formatDate(record.date)}
+                                                        </span>
+                                                        <span className="text-[10px] font-medium text-slate-400">
+                                                            {formatDayOfWeek(record.date)}
+                                                        </span>
+                                                    </div>
+                                                </td>
 
-                                            {record.holidayName && (
-                                                <p className="mt-1.5 text-[9px] font-medium text-cyan-700">
-                                                    {record.holidayName}
-                                                </p>
-                                            )}
+                                                <td className="px-3 py-2.5">
+                                                    {record.loginTime ? (
+                                                        <div className="flex items-center gap-1.5 text-xs text-slate-700">
+                                                            <LogIn
+                                                                size={13}
+                                                                className="shrink-0 text-emerald-600"
+                                                            />
+                                                            <span className="font-medium">
+                                                                {formatTime(record.loginTime)}
+                                                            </span>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-xs text-slate-400">—</span>
+                                                    )}
+                                                </td>
 
-                                            {record.leaveType && (
-                                                <p className="mt-1.5 text-[9px] font-medium text-violet-700">
-                                                    {record.leaveType}
-                                                </p>
-                                            )}
+                                                <td className="px-3 py-2.5">
+                                                    {record.logoutTime ? (
+                                                        <div className="flex items-center gap-1.5 text-xs text-slate-700">
+                                                            <LogOut
+                                                                size={13}
+                                                                className="shrink-0 text-rose-500"
+                                                            />
+                                                            <span className="font-medium">
+                                                                {formatTime(record.logoutTime)}
+                                                            </span>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-xs text-slate-400">—</span>
+                                                    )}
+                                                </td>
 
-                                            {record.missedPunch && (
-                                                <p className="mt-1.5 text-[9px] font-semibold text-orange-600">
-                                                    Punch incomplete
-                                                </p>
-                                            )}
+                                                <td className="px-3 py-2.5 text-xs text-slate-600">
+                                                    {[
+                                                        "Holiday",
+                                                        "Weekly Off",
+                                                        "On Leave",
+                                                        "Absent",
+                                                    ].includes(record.status)
+                                                        ? "—"
+                                                        : formatDuration(record.breakMinutes)}
+                                                </td>
 
-                                            {record.status === "Absent" && (
-                                                <p className="mt-1.5 text-[9px] text-rose-500">
-                                                    No attendance recorded
-                                                </p>
+                                                <td className="px-3 py-2.5">
+                                                    {[
+                                                        "Holiday",
+                                                        "Weekly Off",
+                                                        "On Leave",
+                                                        "Absent",
+                                                    ].includes(record.status) ? (
+                                                        <span className="text-xs text-slate-400">—</span>
+                                                    ) : (
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="w-16 text-xs font-semibold text-slate-900">
+                                                                {formatDuration(record.workedMinutes)}
+                                                            </span>
+                                                            {record.workedMinutes > 0 && (
+                                                                <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100">
+                                                                    <div
+                                                                        className="h-full rounded-full bg-[#1B59F8]"
+                                                                        style={{
+                                                                            width: `${Math.min(
+                                                                                (record.workedMinutes /
+                                                                                    officeSettings.fullDayMinutes) *
+                                                                                100,
+                                                                                100
+                                                                            )}%`,
+                                                                        }}
+                                                                    />
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </td>
+
+                                                <td className="px-4 py-2.5">
+                                                    <div className="flex flex-wrap items-center gap-1.5">
+                                                        <span
+                                                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${getAttendanceStatusClasses(
+                                                                record.status
+                                                            )}`}
+                                                        >
+                                                            {record.status || "—"}
+                                                        </span>
+
+                                                        {record.holidayName && (
+                                                            <span className="inline-flex items-center rounded-md bg-cyan-50 px-1.5 py-0.5 text-[9px] font-medium text-cyan-700 ring-1 ring-inset ring-cyan-600/20">
+                                                                {record.holidayName}
+                                                            </span>
+                                                        )}
+
+                                                        {record.leaveType && (
+                                                            <span className="inline-flex items-center rounded-md bg-blue-50 px-1.5 py-0.5 text-[9px] font-medium text-[#1B59F8] ring-1 ring-inset ring-[#1B59F8]/20">
+                                                                {record.leaveType}
+                                                            </span>
+                                                        )}
+
+                                                        {record.missedPunch && (
+                                                            <span className="inline-flex items-center rounded-md bg-amber-50 px-1.5 py-0.5 text-[9px] font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20">
+                                                                Punch incomplete
+                                                            </span>
+                                                        )}
+
+                                                        {record.status === "Absent" && (
+                                                            <span className="text-[10px] text-rose-500">
+                                                                No attendance recorded
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+
+                        {/* Pagination Bar */}
+                        {filteredAttendanceHistory.length > 0 && (
+                            <div className="flex flex-col gap-2.5 border-t border-slate-200/80 bg-slate-50/40 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-500">
+                                <div className="flex items-center gap-2">
+                                    <span>
+                                        Showing{" "}
+                                        <span className="font-semibold text-slate-800">
+                                            {(safeHistoryPage - 1) * historyPageSize + 1}
+                                        </span>{" "}
+                                        to{" "}
+                                        <span className="font-semibold text-slate-800">
+                                            {Math.min(
+                                                safeHistoryPage * historyPageSize,
+                                                filteredAttendanceHistory.length
                                             )}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-                {monthlyLoading && (
-                    <div className="mb-4 rounded-xl border border-violet-100 bg-violet-50 px-4 py-3">
-                        <p className="text-xs font-medium text-violet-700">
-                            Loading monthly attendance...
-                        </p>
+                                        </span>{" "}
+                                        of{" "}
+                                        <span className="font-semibold text-slate-800">
+                                            {filteredAttendanceHistory.length}
+                                        </span>{" "}
+                                        records
+                                    </span>
+                                </div>
+
+                                <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="text-[11px] text-slate-500">Per page:</span>
+                                        <select
+                                            value={historyPageSize}
+                                            onChange={(e) => {
+                                                setHistoryPageSize(Number(e.target.value));
+                                                setHistoryPage(1);
+                                            }}
+                                            className="h-7 rounded border border-slate-200/90 bg-white px-1.5 text-xs text-slate-700 shadow-2xs focus:border-[#1B59F8] focus:outline-none"
+                                        >
+                                            <option value={10}>10</option>
+                                            <option value={15}>15</option>
+                                            <option value={25}>25</option>
+                                            <option value={50}>50</option>
+                                        </select>
+                                    </div>
+
+                                    <div className="flex items-center gap-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
+                                            disabled={safeHistoryPage <= 1}
+                                            className="inline-flex h-7 w-7 items-center justify-center rounded border border-slate-200/90 bg-white text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                            title="Previous page"
+                                        >
+                                            <ChevronLeft size={14} />
+                                        </button>
+                                        <span className="px-2 text-xs font-medium text-slate-700">
+                                            {safeHistoryPage} / {totalHistoryPages}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setHistoryPage((p) => Math.min(totalHistoryPages, p + 1))}
+                                            disabled={safeHistoryPage >= totalHistoryPages}
+                                            className="inline-flex h-7 w-7 items-center justify-center rounded border border-slate-200/90 bg-white text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                            title="Next page"
+                                        >
+                                            <ChevronRight size={14} />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
 
                 {activeTab === "calendar" && (
                     <div className="p-5">
                         {monthlyLoading && (
-                            <div className="mb-4 rounded-xl border border-violet-100 bg-violet-50 px-4 py-3">
-                                <p className="text-xs font-medium text-violet-700">
+                            <div className="mb-4 rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3">
+                                <p className="text-xs font-medium text-[#1B59F8]">
                                     Loading monthly attendance...
                                 </p>
                             </div>
@@ -2348,7 +2539,7 @@ const loadSystemSettings = async () => {
                                         value:
                                             monthlySummary.leave,
                                         className:
-                                            "bg-violet-50 text-violet-700",
+                                            "bg-blue-50 text-[#1B59F8]",
                                     },
 
                                     {
@@ -2473,7 +2664,7 @@ const loadSystemSettings = async () => {
                                                         title={
                                                             record.leaveType
                                                         }
-                                                        className="mt-2 truncate text-[9px] font-medium text-violet-700"
+                                                        className="mt-2 truncate text-[9px] font-medium text-[#1B59F8]"
                                                     >
                                                         {record.leaveType}
                                                     </p>
@@ -2570,7 +2761,7 @@ const loadSystemSettings = async () => {
                                                     }
                                                 </p>
 
-                                                <span className="mt-2 inline-flex rounded-lg bg-violet-50 px-2 py-1 text-[9px] font-bold text-violet-700">
+                                                <span className="mt-2 inline-flex rounded-lg bg-blue-50 px-2 py-1 text-[9px] font-bold text-[#1B59F8]">
                                                     {code}
                                                 </span>
                                             </div>
@@ -2620,7 +2811,7 @@ const loadSystemSettings = async () => {
 
                                         <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
                                             <div
-                                                className="h-full rounded-full bg-violet-500"
+                                                className="h-full rounded-full bg-[#1B59F8]"
                                                 style={{
                                                     width:
                                                         `${Math.min(
@@ -2653,7 +2844,7 @@ const loadSystemSettings = async () => {
                                     onClick={() =>
                                         setLeaveDrawerOpen(true)
                                     }
-                                    className="flex h-9 items-center gap-2 rounded-lg bg-violet-600 px-3 text-[10px] font-semibold text-white"
+                                    className="flex h-8 items-center gap-1.5 rounded-lg bg-[#1B59F8] px-3 text-xs font-semibold text-white shadow-2xs transition hover:bg-blue-700"
                                 >
                                     <Plus size={14} />
                                     New Request
@@ -2820,7 +3011,7 @@ const loadSystemSettings = async () => {
                                         )
                                     )
                                 }
-                                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 shadow-2xs outline-none focus:border-[#1B59F8] focus:ring-1 focus:ring-[#1B59F8]"
                             >
                                 <option
                                     value={
@@ -2849,8 +3040,8 @@ const loadSystemSettings = async () => {
                         </div>
 
                         {holidayLoading && (
-                            <div className="mt-5 rounded-xl border border-violet-100 bg-violet-50 px-4 py-3">
-                                <p className="text-xs font-medium text-violet-700">
+                            <div className="mt-5 rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3">
+                                <p className="text-xs font-medium text-[#1B59F8]">
                                     Loading holiday calendar...
                                 </p>
                             </div>
@@ -2878,12 +3069,12 @@ const loadSystemSettings = async () => {
                                 </p>
                             </div>
 
-                            <div className="rounded-2xl border border-violet-100 bg-violet-50 p-5">
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-600">
+                            <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-5">
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#1B59F8]">
                                     Company
                                 </p>
 
-                                <p className="mt-2 text-2xl font-semibold text-violet-800">
+                                <p className="mt-2 text-2xl font-semibold text-blue-950">
                                     {companyHolidayCount}
                                 </p>
                             </div>
@@ -2990,7 +3181,7 @@ const loadSystemSettings = async () => {
                                                                     : holiday.type ===
                                                                         "Optional"
                                                                         ? "bg-amber-50 text-amber-700"
-                                                                        : "bg-violet-50 text-violet-700"
+                                                                        : "bg-blue-50 text-[#1B59F8]"
                                                                     }`}
                                                             >
                                                                 {
@@ -3097,16 +3288,16 @@ const loadSystemSettings = async () => {
                             <button
                                 type="button"
                                 onClick={openRegularizationDrawer}
-                                className="flex h-10 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700"
+                                className="flex h-8 items-center justify-center gap-1.5 rounded-lg bg-[#1B59F8] px-3.5 text-xs font-semibold text-white shadow-2xs transition hover:bg-blue-700 active:scale-[0.99]"
                             >
-                                <Plus size={15} />
+                                <Plus size={14} />
                                 New Correction
                             </button>
                         </div>
 
                         {regularizationLoading && (
-                            <div className="mt-5 rounded-xl border border-violet-100 bg-violet-50 px-4 py-3">
-                                <p className="text-xs font-medium text-violet-700">
+                            <div className="mt-5 rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3">
+                                <p className="text-xs font-medium text-[#1B59F8]">
                                     Loading correction requests...
                                 </p>
                             </div>
@@ -3210,7 +3401,7 @@ const loadSystemSettings = async () => {
                                                     </td>
 
                                                     <td className="px-4 py-4">
-                                                        <span className="inline-flex rounded-full bg-violet-50 px-2.5 py-1 text-[10px] font-semibold text-violet-700">
+                                                        <span className="inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-semibold text-[#1B59F8]">
                                                             {
                                                                 request.requestType
                                                             }
@@ -3328,7 +3519,7 @@ const loadSystemSettings = async () => {
 
                         <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
                             <div>
-                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-violet-600">
+                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#1B59F8]">
                                     Attendance Correction
                                 </p>
 
@@ -3375,7 +3566,7 @@ const loadSystemSettings = async () => {
                                         onChange={
                                             handleRegularizationFormChange
                                         }
-                                        className="h-11 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                        className="h-11 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-[#1B59F8] focus:ring-2 focus:ring-[#1B59F8]/20"
                                     />
                                 </div>
 
@@ -3392,7 +3583,7 @@ const loadSystemSettings = async () => {
                                         onChange={
                                             handleRegularizationFormChange
                                         }
-                                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-[#1B59F8] focus:ring-2 focus:ring-[#1B59F8]/20"
                                     >
                                         <option>
                                             Missing Login
@@ -3436,7 +3627,7 @@ const loadSystemSettings = async () => {
                                             onChange={
                                                 handleRegularizationFormChange
                                             }
-                                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-[#1B59F8] focus:ring-2 focus:ring-[#1B59F8]/20"
                                         />
                                     </div>
 
@@ -3454,7 +3645,7 @@ const loadSystemSettings = async () => {
                                             onChange={
                                                 handleRegularizationFormChange
                                             }
-                                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-[#1B59F8] focus:ring-2 focus:ring-[#1B59F8]/20"
                                         />
                                     </div>
 
@@ -3475,7 +3666,7 @@ const loadSystemSettings = async () => {
                                         }
                                         rows={5}
                                         placeholder="Explain why the attendance correction is required..."
-                                        className="w-full resize-none rounded-xl border border-slate-200 px-3 py-3 text-xs leading-5 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                        className="w-full resize-none rounded-xl border border-slate-200 px-3 py-3 text-xs leading-5 outline-none focus:border-[#1B59F8] focus:ring-2 focus:ring-[#1B59F8]/20"
                                     />
                                 </div>
 
@@ -3506,7 +3697,7 @@ const loadSystemSettings = async () => {
 
                                 <button
                                     type="submit"
-                                    className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700"
+                                    className="flex h-9 items-center justify-center gap-2 rounded-lg bg-[#1B59F8] px-4 text-xs font-semibold text-white shadow-2xs transition hover:bg-blue-700 active:scale-[0.99]"
                                 >
                                     <Check size={15} />
                                     Submit Correction
@@ -3530,7 +3721,7 @@ const loadSystemSettings = async () => {
                     <aside className="fixed inset-y-0 right-0 z-[80] flex w-full max-w-[560px] flex-col bg-white shadow-[-24px_0_70px_rgba(15,23,42,0.22)]">
                         <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
                             <div>
-                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-violet-600">
+                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#1B59F8]">
                                     Leave Management
                                 </p>
 
@@ -3574,7 +3765,7 @@ const loadSystemSettings = async () => {
                                         disabled={
                                             configuredLeaveTypes.length === 0
                                         }
-                                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-[#1B59F8] focus:ring-2 focus:ring-[#1B59F8]/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
                                     >
                                         {configuredLeaveTypes.length === 0 ? (
                                             <option value="">
@@ -3620,7 +3811,7 @@ const loadSystemSettings = async () => {
                                             onChange={
                                                 handleLeaveFormChange
                                             }
-                                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-[#1B59F8] focus:ring-2 focus:ring-[#1B59F8]/20"
                                         />
                                     </div>
 
@@ -3641,7 +3832,7 @@ const loadSystemSettings = async () => {
                                             onChange={
                                                 handleLeaveFormChange
                                             }
-                                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-[#1B59F8] focus:ring-2 focus:ring-[#1B59F8]/20"
                                         />
                                     </div>
                                 </div>
@@ -3654,7 +3845,7 @@ const loadSystemSettings = async () => {
                                         name="duration"
                                         value={leaveForm.duration}
                                         onChange={handleLeaveFormChange}
-                                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-[#1B59F8] focus:ring-2 focus:ring-[#1B59F8]/20"
                                     >
                                         <option value="Full Day">
                                             Full Day
@@ -3683,7 +3874,7 @@ const loadSystemSettings = async () => {
                                     <div
                                         className={`rounded-xl border p-4 ${leaveCalculation
                                             .sufficientBalance
-                                            ? "border-violet-200 bg-violet-50"
+                                            ? "border-blue-200 bg-blue-50/70"
                                             : "border-rose-200 bg-rose-50"
                                             }`}
                                     >
@@ -3693,7 +3884,7 @@ const loadSystemSettings = async () => {
                                                 className={
                                                     leaveCalculation
                                                         .sufficientBalance
-                                                        ? "mt-0.5 text-violet-700"
+                                                        ? "mt-0.5 text-[#1B59F8]"
                                                         : "mt-0.5 text-rose-700"
                                                 }
                                             />
@@ -3702,7 +3893,7 @@ const loadSystemSettings = async () => {
                                                 <p
                                                     className={`text-xs font-semibold ${leaveCalculation
                                                         .sufficientBalance
-                                                        ? "text-violet-800"
+                                                        ? "text-blue-950"
                                                         : "text-rose-800"
                                                         }`}
                                                 >
@@ -3751,7 +3942,7 @@ const loadSystemSettings = async () => {
                                         }
                                         rows={5}
                                         placeholder="Explain the reason for your leave request..."
-                                        className="w-full resize-none rounded-xl border border-slate-200 px-3 py-3 text-xs leading-5 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                        className="w-full resize-none rounded-xl border border-slate-200 px-3 py-3 text-xs leading-5 outline-none focus:border-[#1B59F8] focus:ring-2 focus:ring-[#1B59F8]/20"
                                     />
                                 </div>
 
@@ -3769,7 +3960,7 @@ const loadSystemSettings = async () => {
                                             handleLeaveFormChange
                                         }
                                         placeholder="Optional mobile number"
-                                        className="h-11 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                        className="h-11 w-full rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-[#1B59F8] focus:ring-2 focus:ring-[#1B59F8]/20"
                                     />
                                 </div>
 
@@ -3800,7 +3991,7 @@ const loadSystemSettings = async () => {
 
                                 <button
                                     type="submit"
-                                    className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700"
+                                    className="flex h-9 items-center justify-center gap-2 rounded-lg bg-[#1B59F8] px-4 text-xs font-semibold text-white shadow-2xs transition hover:bg-blue-700 active:scale-[0.99]"
                                 >
                                     <Check size={15} />
                                     Submit Request

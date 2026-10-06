@@ -4902,17 +4902,18 @@ const amcTimelineSchema =
       type: {
         type: String,
     enum: [
-  "created",
-  "updated",
-  "invoice",
-  "payment",
-  "reminder",
-  "renewal",
-  "assignment",
-  "status",
-  "document",
-  "deleted",
-],
+      "created",
+      "updated",
+      "update",
+      "invoice",
+      "payment",
+      "reminder",
+      "renewal",
+      "assignment",
+      "status",
+      "document",
+      "deleted",
+    ],
         default: "updated",
       },
 
@@ -24384,6 +24385,414 @@ router.get(
     }
   }
 );
+
+/* =====================================================
+   UPDATE AMC CONTRACT
+   PUT /api/admin/amc/contract/:id
+===================================================== */
+
+router.put(
+  "/amc/contract/:id",
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid AMC contract ID.",
+        });
+      }
+
+      const contract = await AmcContract.findOne({
+        _id: id,
+        isDeleted: false,
+      });
+
+      if (!contract) {
+        return res.status(404).json({
+          success: false,
+          message: "AMC contract was not found.",
+        });
+      }
+
+      const {
+        plan,
+        licensedUsers,
+        startDate,
+        expiryDate,
+        dueDate,
+        taxableAmount,
+        cgstRate,
+        sgstRate,
+        igstRate,
+        assignedEmployeeId,
+        notes,
+        status,
+      } = req.body;
+
+      // Validate dates
+      let parsedStartDate = contract.startDate;
+      if (startDate) {
+        const d = new Date(startDate);
+        if (Number.isNaN(d.getTime())) {
+          return res.status(400).json({ success: false, message: "Invalid AMC start date." });
+        }
+        parsedStartDate = d;
+      }
+
+      let parsedExpiryDate = contract.expiryDate;
+      if (expiryDate) {
+        const d = new Date(expiryDate);
+        if (Number.isNaN(d.getTime())) {
+          return res.status(400).json({ success: false, message: "Invalid AMC expiry date." });
+        }
+        parsedExpiryDate = d;
+      }
+
+      if (parsedExpiryDate <= parsedStartDate) {
+        return res.status(400).json({
+          success: false,
+          message: "AMC expiry date must be after the start date.",
+        });
+      }
+
+      let parsedDueDate = contract.dueDate;
+      if (dueDate) {
+        const d = new Date(dueDate);
+        if (Number.isNaN(d.getTime())) {
+          return res.status(400).json({ success: false, message: "Invalid payment due date." });
+        }
+        parsedDueDate = d;
+      }
+
+      const normalizedTaxableAmount = taxableAmount !== undefined ? Number(taxableAmount) : contract.taxableAmount;
+      if (!Number.isFinite(normalizedTaxableAmount) || normalizedTaxableAmount <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Enter a valid AMC taxable amount.",
+        });
+      }
+
+      const normalizedUsers = licensedUsers !== undefined ? Math.max(Number(licensedUsers || 1), 1) : contract.licensedUsers;
+
+      const allowedPlans = ["Basic", "Standard", "Premium", "Custom"];
+      if (plan && allowedPlans.includes(plan)) {
+        contract.plan = plan;
+      }
+
+      contract.licensedUsers = normalizedUsers;
+      contract.startDate = parsedStartDate;
+      contract.expiryDate = parsedExpiryDate;
+      contract.dueDate = parsedDueDate;
+
+      const effectiveCgstRate = cgstRate !== undefined ? Number(cgstRate) : (contract.cgstRate ?? 9);
+      const effectiveSgstRate = sgstRate !== undefined ? Number(sgstRate) : (contract.sgstRate ?? 9);
+      const effectiveIgstRate = igstRate !== undefined ? Number(igstRate) : (contract.igstRate ?? 0);
+
+      const calculatedAmounts = calculateAmcAmounts({
+        taxableAmount: normalizedTaxableAmount,
+        cgstRate: effectiveCgstRate,
+        sgstRate: effectiveSgstRate,
+        igstRate: effectiveIgstRate,
+      });
+
+      contract.taxableAmount = calculatedAmounts.taxableAmount;
+      contract.cgstRate = calculatedAmounts.cgstRate;
+      contract.cgstAmount = calculatedAmounts.cgstAmount;
+      contract.sgstRate = calculatedAmounts.sgstRate;
+      contract.sgstAmount = calculatedAmounts.sgstAmount;
+      contract.igstRate = calculatedAmounts.igstRate;
+      contract.igstAmount = calculatedAmounts.igstAmount;
+      contract.totalTaxAmount = calculatedAmounts.totalTaxAmount;
+      contract.totalAmount = calculatedAmounts.totalAmount;
+
+      const currentPaid = Number(contract.paidAmount || 0);
+      contract.pendingAmount = Math.max(0, calculatedAmounts.totalAmount - currentPaid);
+
+      if (status && ["Active", "Pending", "Upcoming", "Overdue", "Paid", "Cancelled"].includes(status)) {
+        contract.status = status;
+      } else {
+        if (currentPaid >= calculatedAmounts.totalAmount) {
+          contract.status = "Paid";
+        } else if (currentPaid > 0) {
+          contract.status = "Partially Paid";
+        } else {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          if (parsedDueDate && new Date(parsedDueDate) < today) {
+            contract.status = "Overdue";
+          } else if (parsedStartDate && new Date(parsedStartDate) > today) {
+            contract.status = "Upcoming";
+          } else {
+            contract.status = "Pending";
+          }
+        }
+      }
+
+      if (assignedEmployeeId !== undefined) {
+        if (assignedEmployeeId) {
+          const resolvedEmployee = await resolveAmcEmployee(assignedEmployeeId);
+          contract.assignedEmployeeId = resolvedEmployee.assignedEmployeeId;
+          contract.assignedEmployeeCode = resolvedEmployee.assignedEmployeeCode;
+          contract.assignedEmployeeName = resolvedEmployee.assignedEmployeeName;
+        } else {
+          contract.assignedEmployeeId = null;
+          contract.assignedEmployeeCode = "";
+          contract.assignedEmployeeName = "Unassigned";
+        }
+      }
+
+      if (notes !== undefined) {
+        contract.notes = String(notes || "").trim();
+      }
+
+      contract.updatedBy = req.user._id;
+      contract.updatedByName = req.user.name || "Admin";
+
+      contract.timeline = contract.timeline || [];
+      contract.timeline.push({
+        type: "updated",
+        title: "AMC contract updated",
+        description: `Contract ${contract.contractCode} details updated.`,
+        performedBy: req.user._id,
+        performedByName: req.user.name || "Admin",
+        performedByRole: req.user.role || "admin",
+      });
+
+      await contract.save();
+
+      if (contract.currentInvoiceId) {
+        const currentInvoice = await AmcInvoice.findOne({
+          _id: contract.currentInvoiceId,
+          isDeleted: false,
+        });
+
+        if (currentInvoice) {
+          currentInvoice.plan = contract.plan;
+          currentInvoice.licensedUsers = contract.licensedUsers;
+          currentInvoice.contractStartDate = contract.startDate;
+          currentInvoice.contractExpiryDate = contract.expiryDate;
+          currentInvoice.dueDate = contract.dueDate;
+          currentInvoice.taxableAmount = contract.taxableAmount;
+          currentInvoice.cgstRate = contract.cgstRate;
+          currentInvoice.cgstAmount = contract.cgstAmount;
+          currentInvoice.sgstRate = contract.sgstRate;
+          currentInvoice.sgstAmount = contract.sgstAmount;
+          currentInvoice.igstRate = contract.igstRate;
+          currentInvoice.igstAmount = contract.igstAmount;
+          currentInvoice.totalTaxAmount = contract.totalTaxAmount;
+          currentInvoice.totalAmount = contract.totalAmount;
+          currentInvoice.pendingAmount = Math.max(0, contract.totalAmount - (currentInvoice.paidAmount || 0));
+          if (currentInvoice.paidAmount >= currentInvoice.totalAmount) {
+            currentInvoice.paymentStatus = "Paid";
+          } else if (currentInvoice.paidAmount > 0) {
+            currentInvoice.paymentStatus = "Partially Paid";
+          } else {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            if (currentInvoice.dueDate && new Date(currentInvoice.dueDate) < today) {
+              currentInvoice.paymentStatus = "Overdue";
+            } else {
+              currentInvoice.paymentStatus = "Pending";
+            }
+          }
+          currentInvoice.notes = contract.notes;
+          currentInvoice.updatedBy = req.user._id;
+          currentInvoice.updatedByName = req.user.name || "Admin";
+          await currentInvoice.save();
+        }
+      }
+
+      if (contract.clientId) {
+        const client = await Client.findById(contract.clientId);
+        if (client) {
+          if (contract.clientProductId && client.products) {
+            const clientProduct = client.products.id(contract.clientProductId);
+            if (clientProduct) {
+              clientProduct.supportType = contract.plan === "Custom" ? clientProduct.supportType : contract.plan;
+              clientProduct.amcStatus = contract.status === "Upcoming" ? "Not Started" : contract.status;
+              if (contract.expiryDate) {
+                clientProduct.expiryDate = new Date(contract.expiryDate).toISOString().slice(0, 10);
+              }
+            }
+          }
+          client.amcStatus = contract.status === "Upcoming" ? "Not Started" : contract.status;
+          if (contract.expiryDate) {
+            client.nextRenewal = new Date(contract.expiryDate).toISOString().slice(0, 10);
+          }
+          client.updatedBy = req.user._id;
+          client.updatedByName = req.user.name || "Admin";
+          await client.save();
+        }
+      }
+
+      await createActivityLog({
+        action: "AMC Contract Updated",
+        category: "AMC",
+        description: `${contract.contractCode} was updated.`,
+        entityType: "amc",
+        entityId: contract._id,
+        entityCode: contract.contractCode,
+        clientId: contract.clientId,
+        clientName: contract.clientName,
+        performedBy: req.user._id,
+        performedByName: req.user.name || "Admin",
+        performedByRole: req.user.role || "admin",
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "AMC contract updated successfully.",
+        data: amcContractResponse(contract),
+      });
+    } catch (error) {
+      console.error("Update AMC contract error:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message || "Unable to update AMC contract.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   DELETE AMC CONTRACT (SOFT DELETE)
+   DELETE /api/admin/amc/contract/:id
+===================================================== */
+
+router.delete(
+  "/amc/contract/:id",
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid AMC contract ID.",
+        });
+      }
+
+      const contract = await AmcContract.findOne({
+        _id: id,
+        isDeleted: false,
+      });
+
+      if (!contract) {
+        return res.status(404).json({
+          success: false,
+          message: "AMC contract was not found.",
+        });
+      }
+
+      const now = new Date();
+
+      contract.isDeleted = true;
+      contract.status = "Cancelled";
+      contract.deletedAt = now;
+      contract.deletedBy = req.user._id;
+      contract.deletedByName = req.user.name || "Admin";
+      await contract.save();
+
+      await AmcInvoice.updateMany(
+        { amcContractId: contract._id, isDeleted: false },
+        {
+          $set: {
+            isDeleted: true,
+            status: "Cancelled",
+            deletedAt: now,
+            deletedBy: req.user._id,
+            deletedByName: req.user.name || "Admin",
+          },
+        }
+      );
+
+      await AmcReminder.updateMany(
+        { amcContractId: contract._id, isDeleted: false },
+        {
+          $set: {
+            isDeleted: true,
+            deletedAt: now,
+          },
+        }
+      );
+
+      if (contract.clientId) {
+        const client = await Client.findById(contract.clientId);
+        if (client) {
+          const remainingProductContract = await AmcContract.findOne({
+            clientId: contract.clientId,
+            clientProductId: contract.clientProductId,
+            isDeleted: false,
+            status: { $nin: ["Cancelled"] },
+          }).sort({ expiryDate: -1 });
+
+          if (contract.clientProductId && client.products) {
+            const clientProduct = client.products.id(contract.clientProductId);
+            if (clientProduct) {
+              if (remainingProductContract) {
+                clientProduct.amcStatus = remainingProductContract.status;
+                clientProduct.expiryDate = remainingProductContract.expiryDate
+                  ? new Date(remainingProductContract.expiryDate).toISOString().slice(0, 10)
+                  : "";
+              } else {
+                clientProduct.amcStatus = "Not Started";
+                clientProduct.expiryDate = "";
+              }
+            }
+          }
+
+          const remainingClientContract = await AmcContract.findOne({
+            clientId: contract.clientId,
+            isDeleted: false,
+            status: { $nin: ["Cancelled"] },
+          }).sort({ expiryDate: -1 });
+
+          if (remainingClientContract) {
+            client.amcStatus = remainingClientContract.status;
+            client.nextRenewal = remainingClientContract.expiryDate
+              ? new Date(remainingClientContract.expiryDate).toISOString().slice(0, 10)
+              : "";
+          } else {
+            client.amcStatus = "Not Started";
+            client.nextRenewal = "";
+          }
+
+          client.updatedBy = req.user._id;
+          client.updatedByName = req.user.name || "Admin";
+          await client.save();
+        }
+      }
+
+      await createActivityLog({
+        action: "AMC Contract Deleted",
+        category: "AMC",
+        description: `${contract.contractCode} (${contract.productName}) was deleted.`,
+        entityType: "amc",
+        entityId: contract._id,
+        entityCode: contract.contractCode,
+        clientId: contract.clientId,
+        clientName: contract.clientName,
+        performedBy: req.user._id,
+        performedByName: req.user.name || "Admin",
+        performedByRole: req.user.role || "admin",
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "AMC contract deleted successfully.",
+      });
+    } catch (error) {
+      console.error("Delete AMC contract error:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message || "Unable to delete AMC contract.",
+      });
+    }
+  }
+);
+
 /* =====================================================
    RECORD AMC INVOICE PAYMENT
    POST /api/admin/amc/payment
@@ -30904,4 +31313,164 @@ contract.invoiceDate =
     }
   }
 );
+
+/* =========================================================
+   OMNI GLOBAL SEARCH (Cross-Entity Unified Search)
+========================================================= */
+router.get("/global-search", authenticateUser, async (req, res) => {
+  try {
+    const q = String(req.query.q || "").trim();
+    if (!q || q.length < 2) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+      });
+    }
+
+    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(escaped, "i");
+
+    const ClientModel = mongoose.models.Client || Client;
+    const RequirementModel = mongoose.models.Requirement || Requirement;
+    const ProjectModel = mongoose.models.Project || Project;
+    const TaskModel = mongoose.models.Task || Task;
+    const SupportTicketModel = mongoose.models.SupportTicket || SupportTicket;
+    const AmcInvoiceModel = mongoose.models.AmcInvoice || AmcInvoice;
+
+    const [clients, requirements, projects, tasks, tickets, invoices] = await Promise.all([
+      ClientModel ? ClientModel.find({
+        $or: [
+          { companyName: regex },
+          { clientCode: regex },
+          { contactPerson: regex },
+          { email: regex },
+          { phone: regex },
+        ],
+      }).limit(5).lean().catch(() => []) : [],
+
+      RequirementModel ? RequirementModel.find({
+        $or: [
+          { title: regex },
+          { requirementNo: regex },
+          { clientName: regex },
+          { contactPerson: regex },
+        ],
+      }).limit(5).lean().catch(() => []) : [],
+
+      ProjectModel ? ProjectModel.find({
+        $or: [
+          { projectName: regex },
+          { projectCode: regex },
+          { clientName: regex },
+        ],
+      }).limit(5).lean().catch(() => []) : [],
+
+      TaskModel ? TaskModel.find({
+        $or: [
+          { title: regex },
+          { taskNo: regex },
+          { client: regex },
+          { assignedEmployeeName: regex },
+        ],
+      }).limit(5).lean().catch(() => []) : [],
+
+      SupportTicketModel ? SupportTicketModel.find({
+        $or: [
+          { ticketNo: regex },
+          { title: regex },
+          { client: regex },
+          { assignedEmployeeName: regex },
+        ],
+      }).limit(5).lean().catch(() => []) : [],
+
+      AmcInvoiceModel ? AmcInvoiceModel.find({
+        $or: [
+          { invoiceNumber: regex },
+          { clientName: regex },
+        ],
+      }).limit(5).lean().catch(() => []) : [],
+    ]);
+
+    const results = [];
+
+    (clients || []).forEach((c) => {
+      results.push({
+        id: c._id,
+        recordId: c._id,
+        title: c.companyName,
+        subtitle: [c.clientCode, c.contactPerson, c.city].filter(Boolean).join(" • "),
+        category: "Clients",
+        targetModule: "clients",
+      });
+    });
+
+    (requirements || []).forEach((r) => {
+      results.push({
+        id: r._id,
+        recordId: r._id,
+        title: r.title,
+        subtitle: [r.requirementNo, r.clientName, r.status].filter(Boolean).join(" • "),
+        category: "Leads",
+        targetModule: "requirements",
+      });
+    });
+
+    (projects || []).forEach((p) => {
+      results.push({
+        id: p._id,
+        recordId: p._id,
+        title: p.projectName,
+        subtitle: [p.projectCode, p.clientName, p.status].filter(Boolean).join(" • "),
+        category: "Projects",
+        targetModule: "projects",
+      });
+    });
+
+    (tasks || []).forEach((t) => {
+      results.push({
+        id: t._id,
+        recordId: t._id,
+        title: t.title,
+        subtitle: [t.taskNo, t.client, t.status].filter(Boolean).join(" • "),
+        category: "Tasks",
+        targetModule: "tasks",
+      });
+    });
+
+    (tickets || []).forEach((s) => {
+      results.push({
+        id: s._id,
+        recordId: s._id,
+        title: s.title,
+        subtitle: [s.ticketNo, s.client, s.status].filter(Boolean).join(" • "),
+        category: "Tickets",
+        targetModule: "tickets",
+      });
+    });
+
+    (invoices || []).forEach((inv) => {
+      results.push({
+        id: inv._id,
+        recordId: inv._id,
+        title: `Invoice #${inv.invoiceNumber}`,
+        subtitle: [inv.clientName, `₹${inv.grandTotal || inv.totalAmount || 0}`, inv.status].filter(Boolean).join(" • "),
+        category: "Invoices",
+        targetModule: "billing",
+      });
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: results,
+    });
+  } catch (error) {
+    console.error("Omni global search error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error during global search",
+      data: [],
+    });
+  }
+});
+
 module.exports = router;

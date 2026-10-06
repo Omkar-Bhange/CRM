@@ -501,6 +501,7 @@ export default function TimeLog() {
 
 
     const [selectedTaskId, setSelectedTaskId] = useState("TSK-2084");
+    const [manualTaskId, setManualTaskId] = useState("");
     const [timerRunning, setTimerRunning] = useState(true);
     const [currentSessionSeconds, setCurrentSessionSeconds] = useState(0);
     const [agentEvents, setAgentEvents] = useState([]);
@@ -610,20 +611,26 @@ export default function TimeLog() {
 }, [apiApplications]);
 
     const timeDistribution = useMemo(() => {
-        const total = apiApplications.reduce(
-            (sum, app) => sum + Number(app.totalSeconds || 0),
-            0
-        );
+        const categoryMap = new Map();
+        let total = 0;
 
-        return apiApplications.map((app, index) => ({
-            id: index,
-            category: app.category || app.applicationName,
-            seconds: app.totalSeconds || 0,
-            percentage:
-                total > 0
-                    ? Math.round(((app.totalSeconds || 0) / total) * 100)
-                    : 0,
-        }));
+        for (const app of apiApplications) {
+            const rawCategory = (app.category || "Other").trim();
+            const category = rawCategory || "Other";
+            const seconds = Number(app.totalSeconds || 0);
+            total += seconds;
+
+            categoryMap.set(category, (categoryMap.get(category) || 0) + seconds);
+        }
+
+        return Array.from(categoryMap.entries())
+            .map(([category, seconds], index) => ({
+                id: index,
+                category,
+                seconds,
+                percentage: total > 0 ? Math.round((seconds / total) * 100) : 0,
+            }))
+            .sort((a, b) => b.seconds - a.seconds);
     }, [apiApplications]);
     const [idleSessions] = useState(initialIdleSessions);
     const [dailyNotes, setDailyNotes] = useState(initialDailyNotes);
@@ -949,9 +956,12 @@ useEffect(() => {
         }
     };
 
-    const changeTask = async (event) => {
-        const nextTaskId = event.target.value;
-        if (!nextTaskId) return;
+    const startSession = async (taskId) => {
+        const idToStart = taskId || manualTaskId || (dashboardData?.tasks?.[0]?._id);
+        if (!idToStart) {
+            alert("Please select a task to start tracking.");
+            return;
+        }
 
         const token =
             localStorage.getItem("client-connect-token") ||
@@ -959,7 +969,7 @@ useEffect(() => {
 
         try {
             const response = await fetch(
-                `${API_BASE_URL}/api/employee/tasks/${nextTaskId}/start`,
+                `${API_BASE_URL}/api/employee/tasks/${idToStart}/start`,
                 {
                     method: "POST",
                     headers: {
@@ -974,11 +984,47 @@ useEffect(() => {
             if (result.success) {
                 await fetchTimeLog();
             } else {
-                alert(result.message || "Unable to switch task");
+                alert(result.message || "Unable to start session");
             }
         } catch (error) {
-            console.error("Failed to switch task:", error);
-            alert("Failed to switch task");
+            console.error("Failed to start session:", error);
+            alert("Failed to start session");
+        }
+    };
+
+    const changeTask = async (event) => {
+        const nextTaskId = event.target.value;
+        setManualTaskId(nextTaskId);
+        if (!nextTaskId) return;
+
+        if (dashboardData?.activeTimer) {
+            const token =
+                localStorage.getItem("client-connect-token") ||
+                sessionStorage.getItem("client-connect-token");
+
+            try {
+                const response = await fetch(
+                    `${API_BASE_URL}/api/employee/tasks/${nextTaskId}/start`,
+                    {
+                        method: "POST",
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                            "Content-Type": "application/json",
+                        },
+                    }
+                );
+
+                const result = await response.json();
+
+                if (result.success) {
+                    await fetchTimeLog();
+                } else {
+                    alert(result.message || "Unable to switch task");
+                }
+            } catch (error) {
+                console.error("Failed to switch task:", error);
+                alert("Failed to switch task");
+            }
         }
     };
 
@@ -1169,7 +1215,7 @@ useEffect(() => {
 
             <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white">
                 <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="flex gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1">
+                    <div className="flex gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1 scrollbar-none max-w-full">
                         {[
                             {
                                 id: "today",
@@ -1214,12 +1260,11 @@ useEffect(() => {
                 {activeTab === "today" && (
                     <div className="p-5">
                         <div className="grid gap-5 xl:grid-cols-[390px_minmax(0,1fr)]">
-                            <section className="overflow-hidden rounded-2xl border border-violet-200 bg-white shadow-[0_12px_40px_rgba(109,40,217,0.08)]">
-                                <div className="border-b border-violet-100 bg-gradient-to-r from-violet-50 to-cyan-50 px-5 py-4">
+                            <section className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-xs">
+                                <div className="border-b border-slate-100 bg-slate-50/70 px-5 py-3.5">
                                     <div className="flex items-center gap-2 text-violet-700">
-                                        <Timer size={16} />
-
-                                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em]">
+                                        <Timer size={15} />
+                                        <p className="text-[11px] font-semibold uppercase tracking-wider">
                                             Active Task Session
                                         </p>
                                     </div>
@@ -1227,28 +1272,25 @@ useEffect(() => {
 
                                 <div className="p-5">
                                     <div>
-                                        <label className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                        <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                                             Current Task
                                         </label>
 
                                         <div className="relative">
                                             <select
-                                                value={dashboardData?.activeTimer?._id || ""}
+                                                value={dashboardData?.activeTimer?._id || manualTaskId || (dashboardData?.tasks?.[0]?._id || "")}
                                                 onChange={changeTask}
-                                                className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-10 text-xs font-semibold text-slate-800 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 pr-10 text-xs font-medium text-slate-800 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/10"
                                             >
-                                                {(dashboardData?.tasks || [])
-                                                    .filter(
-                                                        (task) =>
-                                                            task.status === "In Progress" ||
-                                                            task.status === "Running" ||
-                                                            task.status === "Paused"
-                                                    )
-                                                    .map((task) => (
+                                                {(dashboardData?.tasks || []).length > 0 ? (
+                                                    (dashboardData.tasks || []).map((task) => (
                                                         <option key={task._id} value={task._id}>
-                                                            {task.taskCode} — {task.title}
+                                                            {task.taskCode || "TSK"} — {task.title} {task.status ? `(${task.status})` : ""}
                                                         </option>
-                                                    ))}
+                                                    ))
+                                                ) : (
+                                                    <option value="">No tasks assigned</option>
+                                                )}
                                             </select>
 
                                             <ChevronDown
@@ -1257,123 +1299,152 @@ useEffect(() => {
                                             />
                                         </div>
                                     </div>
-                                    <div className="mt-5 rounded-xl bg-slate-50 p-4">
-                                        <p className="text-xs font-semibold text-slate-900">
-                                            {dashboardData?.activeTimer?.title || "No active task"}
+
+                                    <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50/80 p-3.5">
+                                        <p className="text-xs font-semibold text-slate-900 line-clamp-1">
+                                            {dashboardData?.activeTimer?.title ||
+                                                (dashboardData?.tasks?.find((t) => t._id === (manualTaskId || dashboardData?.tasks?.[0]?._id))?.title) ||
+                                                "No active task"}
                                         </p>
 
-                                        <p className="mt-1 text-[10px] text-slate-500">
-                                            {dashboardData?.activeTimer?.clientName || "Internal"}
+                                        <p className="mt-1 text-[11px] text-slate-500">
+                                            {dashboardData?.activeTimer?.clientName ||
+                                                (dashboardData?.tasks?.find((t) => t._id === (manualTaskId || dashboardData?.tasks?.[0]?._id))?.clientName) ||
+                                                "Internal"}
                                             {" · "}
-                                            {dashboardData?.activeTimer?.project || "General"}
+                                            {dashboardData?.activeTimer?.project ||
+                                                (dashboardData?.tasks?.find((t) => t._id === (manualTaskId || dashboardData?.tasks?.[0]?._id))?.project) ||
+                                                "General"}
                                         </p>
 
-                                        {dashboardData?.activeTimer?.ticketCode && (
-                                            <p className="mt-2 text-[10px] font-semibold text-blue-600">
-                                                Related ticket: {dashboardData.activeTimer.ticketCode}
+                                        {(dashboardData?.activeTimer?.ticketCode ||
+                                            dashboardData?.tasks?.find((t) => t._id === (manualTaskId || dashboardData?.tasks?.[0]?._id))?.ticketCode) && (
+                                            <p className="mt-2 text-[10px] font-semibold text-violet-600">
+                                                Related ticket: {dashboardData?.activeTimer?.ticketCode ||
+                                                    dashboardData?.tasks?.find((t) => t._id === (manualTaskId || dashboardData?.tasks?.[0]?._id))?.ticketCode}
                                             </p>
                                         )}
                                     </div>
 
-                                    <p className="mt-6 font-mono text-4xl font-semibold tracking-[-0.04em] text-slate-950">
-                                        {dashboardData?.activeTimer
-                                            ? formatTimer(activeTaskSeconds)
-                                            : "00:00:00"}
-                                    </p>
+                                    <div className="mt-5">
+                                        <p className="font-mono text-3xl font-semibold tracking-tight text-slate-950">
+                                            {dashboardData?.activeTimer
+                                                ? formatTimer(activeTaskSeconds)
+                                                : "00:00:00"}
+                                        </p>
 
-                                    <p className="mt-2 text-[10px] text-slate-500">
-                                        {dashboardData?.activeTimer
-                                            ? `Status: ${dashboardData.activeTimer.status}`
-                                            : "No active session"}
-                                    </p>
-
-                                    <p className="mt-2 text-[10px] text-slate-500">
-                                        Session is {" "}
-                                        {dashboardData?.activeTimer
-                                            ? dashboardData.activeTimer.status === "Paused"
-                                                ? "paused"
-                                                : "currently running"
-                                            : "not running"}
-                                    </p>
-
-                                    <div className="mt-6 grid grid-cols-2 gap-3">
-                                        <button
-                                            type="button"
-                                            onClick={toggleTimer}
-                                            disabled={!dashboardData?.activeTimer}
-                                            className="flex h-11 items-center justify-center gap-2 rounded-xl bg-violet-600 text-xs font-semibold text-white transition hover:bg-violet-700 disabled:opacity-50"
-                                        >
-                                            {dashboardData?.activeTimer?.status === "Paused" ? (
-                                                <>
-                                                    <Play size={15} />
-                                                    Resume
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Pause size={15} />
-                                                    Pause
-                                                </>
-                                            )}
-                                        </button>
-
-                                        <button
-                                            type="button"
-                                            onClick={endCurrentSession}
-                                            disabled={!dashboardData?.activeTimer}
-                                            className="flex h-11 items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
-                                        >
-                                            <Square size={14} />
-                                            End Session
-                                        </button>
-
-
+                                        <div className="mt-1.5 flex items-center gap-2">
+                                            <span
+                                                className={`h-2 w-2 rounded-full ${
+                                                    dashboardData?.activeTimer
+                                                        ? dashboardData.activeTimer.status === "Paused"
+                                                            ? "bg-amber-500"
+                                                            : "bg-emerald-500 animate-pulse"
+                                                        : "bg-slate-300"
+                                                }`}
+                                            />
+                                            <span className="text-[11px] font-medium text-slate-500">
+                                                {dashboardData?.activeTimer
+                                                    ? `Session is ${dashboardData.activeTimer.status === "Paused" ? "paused" : "running"}`
+                                                    : "No active session"}
+                                            </span>
+                                        </div>
                                     </div>
+
+                                    {dashboardData?.activeTimer ? (
+                                        <div className="mt-5 grid grid-cols-2 gap-2.5">
+                                            <button
+                                                type="button"
+                                                onClick={toggleTimer}
+                                                className={`flex h-10 items-center justify-center gap-2 rounded-lg text-xs font-semibold transition ${
+                                                    dashboardData.activeTimer.status === "Paused"
+                                                        ? "bg-violet-600 text-white hover:bg-violet-700"
+                                                        : "bg-amber-500 text-white hover:bg-amber-600"
+                                                }`}
+                                            >
+                                                {dashboardData.activeTimer.status === "Paused" ? (
+                                                    <>
+                                                        <Play size={14} />
+                                                        Resume
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Pause size={14} />
+                                                        Pause
+                                                    </>
+                                                )}
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={endCurrentSession}
+                                                className="flex h-10 items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
+                                            >
+                                                <Square size={13} />
+                                                End Session
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="mt-5">
+                                            <button
+                                                type="button"
+                                                onClick={() => startSession()}
+                                                disabled={!dashboardData?.tasks?.length}
+                                                className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-violet-600 text-xs font-semibold text-white shadow-xs transition hover:bg-violet-700 disabled:opacity-50"
+                                            >
+                                                <Play size={14} />
+                                                Start Session
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             </section>
 
-                            <section className="overflow-hidden rounded-2xl border border-slate-200">
-                                <div className="border-b border-slate-200 bg-slate-50/70 px-5 py-4">
+                            <section className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-xs">
+                                <div className="border-b border-slate-100 bg-slate-50/70 px-5 py-3.5">
                                     <h3 className="text-sm font-semibold text-slate-950">
                                         Time Distribution
                                     </h3>
 
-                                    <p className="mt-1 text-[10px] text-slate-500">
-                                        Productive work grouped by activity
-                                        category
+                                    <p className="mt-0.5 text-[10px] text-slate-500">
+                                        Productive work grouped by activity category
                                     </p>
                                 </div>
 
-                                <div className="space-y-5 p-5">
-                                    {timeDistribution.map((item) => (
-                                        <div key={item.id}>
-                                            <div className="flex items-center justify-between">
-                                                <div>
-                                                    <p className="text-xs font-semibold text-slate-800">
+                                <div className="space-y-4 p-5">
+                                    {timeDistribution.length === 0 ? (
+                                        <p className="py-6 text-center text-xs text-slate-400">
+                                            No activity records recorded today.
+                                        </p>
+                                    ) : (
+                                        timeDistribution.map((item) => (
+                                            <div key={item.id} className="group">
+                                                <div className="flex items-center justify-between text-xs">
+                                                    <span className="font-medium text-slate-800">
                                                         {item.category}
-                                                    </p>
+                                                    </span>
 
-                                                    <p className="mt-1 text-[10px] text-slate-500">
-                                                        {formatSeconds(
-                                                            item.seconds
-                                                        )}
-                                                    </p>
+                                                    <div className="flex items-center gap-2.5">
+                                                        <span className="text-[11px] text-slate-400">
+                                                            {formatSeconds(item.seconds)}
+                                                        </span>
+                                                        <span className="w-8 text-right text-xs font-semibold text-slate-700">
+                                                            {item.percentage}%
+                                                        </span>
+                                                    </div>
                                                 </div>
 
-                                                <span className="text-xs font-semibold text-slate-600">
-                                                    {item.percentage}%
-                                                </span>
+                                                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                                                    <div
+                                                        className="h-full rounded-full bg-violet-600 transition-all duration-300"
+                                                        style={{
+                                                            width: `${item.percentage}%`,
+                                                        }}
+                                                    />
+                                                </div>
                                             </div>
-
-                                            <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
-                                                <div
-                                                    className="h-full rounded-full bg-violet-500"
-                                                    style={{
-                                                        width: `${item.percentage}%`,
-                                                    }}
-                                                />
-                                            </div>
-                                        </div>
-                                    ))}
+                                        ))
+                                    )}
                                 </div>
                             </section>
                         </div>

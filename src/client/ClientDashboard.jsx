@@ -153,28 +153,29 @@ function SummaryCard({
     description,
     icon: Icon,
     iconClass,
+    descriptionClass = "text-slate-500",
 }) {
     return (
-        <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.04)]">
-            <div className="flex items-start justify-between gap-4">
+        <article className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs transition hover:border-slate-300">
+            <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                         {label}
                     </p>
 
-                    <p className="mt-2 truncate text-2xl font-semibold tracking-[-0.03em] text-slate-950">
+                    <p className="mt-1 truncate text-xl font-bold tracking-tight text-slate-900">
                         {value}
                     </p>
                 </div>
 
                 <div
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${iconClass}`}
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${iconClass}`}
                 >
-                    <Icon size={18} />
+                    <Icon size={16} />
                 </div>
             </div>
 
-            <p className="mt-4 text-[10px] font-medium text-slate-500">
+            <p className={`mt-2.5 truncate text-[10px] font-medium ${descriptionClass}`}>
                 {description}
             </p>
         </article>
@@ -429,88 +430,90 @@ const paymentStatus =
     }
 
     return (
-        <div>
-            <section className="flex flex-col gap-5 border-b border-slate-200 pb-7 lg:flex-row lg:items-end lg:justify-between">
+        <div className="space-y-4">
+            {/* Header Banner */}
+            <section className="flex flex-col gap-4 rounded-xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-2xs lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                    <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-600">
-                        <span className="h-2 w-2 rounded-full bg-cyan-500" />
+                    <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[#1B59F8]">
+                        <span className="h-1.5 w-1.5 rounded-full bg-[#1B59F8]" />
                         Client Workspace
                     </div>
 
-                    <h1 className="text-2xl font-semibold tracking-[-0.03em] text-slate-950 sm:text-3xl">
+                    <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
                         Welcome, {client?.contactPerson || client?.companyName || "Client"}
                     </h1>
 
-                    <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                        Review your software licence, annual charges,
-                        invoices and active support requests.
+                    <p className="mt-1 max-w-2xl text-xs text-slate-500 leading-relaxed">
+                        Review your software licence, annual charges, invoices and active support requests.
                     </p>
                 </div>
 
-                <div className="flex flex-wrap gap-3">
+                <div className="flex flex-wrap items-center gap-2">
                     <button
                         type="button"
                         onClick={() => onNavigate("tickets")}
-                        className="flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 transition hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-700"
+                        className="flex h-8 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50 active:scale-98"
                     >
-                        <LifeBuoy size={16} />
+                        <LifeBuoy size={14} className="text-slate-500" />
                         View Support
                     </button>
 
                     <button
                         type="button"
                         onClick={() => onNavigate("tickets")}
-                        className="flex h-10 items-center justify-center gap-2 rounded-xl bg-[#0f172a] px-4 text-xs font-semibold text-white shadow-lg shadow-slate-900/10 transition hover:-translate-y-0.5 hover:bg-cyan-600"
+                        className="flex h-8 items-center justify-center gap-1.5 rounded-lg bg-[#1B59F8] px-3.5 text-xs font-semibold text-white shadow-xs transition hover:bg-[#1548D1] active:scale-98"
                     >
-                        <Plus size={16} />
+                        <Plus size={14} strokeWidth={2.5} />
                         Raise Ticket
                     </button>
                 </div>
             </section>
 
-            <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {/* KPI Cards */}
+            <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
                 <SummaryCard
                     label="Active Products"
                     value={String(summary.activeProductCount)}
-                    description={`${summary.activeProductCount} product${summary.activeProductCount === 1 ? "" : "s"} currently active`}
+                    description={`${summary.activeProductCount} product${summary.activeProductCount === 1 ? "" : "s"} active`}
                     icon={Box}
-                    iconClass="bg-cyan-100 text-cyan-700"
+                    iconClass="bg-blue-50 text-[#1B59F8]"
                 />
 
                 <SummaryCard
                     label="AMC Status"
                     value={summary.amcStatus || "—"}
-                    description={summary.nextRenewal ? `Next renewal on ${summary.nextRenewal}` : "No renewal date on file"}
+                    description={summary.nextRenewal ? `Renewal: ${summary.nextRenewal}` : "No renewal date on file"}
                     icon={IndianRupee}
-                    iconClass="bg-amber-100 text-amber-700"
+                    iconClass="bg-amber-50 text-amber-700"
+                    descriptionClass="text-amber-600 font-semibold"
                 />
 
                 <SummaryCard
                     label="Open Tickets"
                     value={String(summary.openTicketCount)}
-                    description={`${summary.openTicketCount} ticket${summary.openTicketCount === 1 ? "" : "s"} currently open`}
+                    description={`${summary.openTicketCount} ticket${summary.openTicketCount === 1 ? "" : "s"} open`}
                     icon={Headphones}
-                    iconClass="bg-blue-100 text-blue-700"
+                    iconClass="bg-indigo-50 text-indigo-700"
                 />
 
                 <SummaryCard
                     label="Licensed Users"
                     value={String(summary.totalLicensedUsers)}
-                    description="Users permitted across all licences"
+                    description="Permitted user seats"
                     icon={Users}
-                    iconClass="bg-violet-100 text-violet-700"
+                    iconClass="bg-violet-50 text-violet-700"
                 />
             </section>
 
-            <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
-                <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-                    <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+            <section className="grid gap-4 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+                {/* Purchased Software Card */}
+                <article className="overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-2xs">
+                    <div className="flex items-center justify-between border-b border-slate-200/80 bg-slate-50/70 px-4 py-3">
                         <div>
-                            <p className="text-sm font-semibold text-slate-950">
+                            <p className="text-xs font-bold text-slate-900">
                                 Purchased Software
                             </p>
-
-                            <p className="mt-1 text-[10px] text-slate-500">
+                            <p className="text-[10px] text-slate-500">
                                 Software licensed to your company
                             </p>
                         </div>
@@ -518,458 +521,325 @@ const paymentStatus =
                         <button
                             type="button"
                             onClick={() => onNavigate("products")}
-                            className="flex items-center gap-1 text-xs font-semibold text-cyan-600 transition hover:text-cyan-700"
+                            className="flex items-center gap-1 text-xs font-semibold text-[#1B59F8] transition hover:text-blue-700"
                         >
                             View all
-                            <ArrowRight size={14} />
+                            <ArrowRight size={13} />
                         </button>
                     </div>
 
-                    <div className="p-5">
-                        {products.map((product) => (
-                            <div
-                                key={product.id}
-                                className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5"
-                            >
-                                <div className="flex items-start justify-between gap-4">
-                                    <div className="flex min-w-0 items-start gap-4">
-                                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-cyan-100 text-cyan-700">
-                                            <Box size={20} />
+                    <div className="p-3.5 space-y-3">
+                        {products.length === 0 ? (
+                            <div className="py-8 text-center text-xs text-slate-400">
+                                No software products registered yet.
+                            </div>
+                        ) : (
+                            products.map((product) => (
+                                <div
+                                    key={product.id}
+                                    className="rounded-lg border border-slate-200/80 bg-slate-50/50 p-3.5"
+                                >
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="flex min-w-0 items-start gap-3">
+                                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#1B59F8]">
+                                                <Box size={18} />
+                                            </div>
+
+                                            <div className="min-w-0">
+                                                <h3 className="truncate text-xs font-bold text-slate-900">
+                                                    {product.name}
+                                                </h3>
+
+                                                <p className="mt-0.5 text-[10px] text-slate-500 truncate">
+                                                    {product.description || "Active software licence"} · {product.version}
+                                                </p>
+                                            </div>
                                         </div>
 
-                                        <div className="min-w-0">
-                                            <h3 className="truncate text-base font-semibold text-slate-950">
-                                                {product.name}
-                                            </h3>
+                                        <StatusBadge status={product.status} />
+                                    </div>
 
-                                            <p className="mt-1 text-[10px] text-slate-500">
-                                                {product.description} ·{" "}
-                                                {product.version}
+                                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                        <div className="rounded-md border border-slate-200/70 bg-white px-2.5 py-1.5">
+                                            <p className="text-[9px] uppercase font-semibold tracking-wider text-slate-400">
+                                                Purchased on
+                                            </p>
+                                            <p className="mt-0.5 text-xs font-semibold text-slate-800">
+                                                {product.purchaseDate || "—"}
                                             </p>
                                         </div>
-                                    </div>
 
-                                    <StatusBadge
-                                        status={product.status}
-                                    />
-                                </div>
+                                        <div className="rounded-md border border-slate-200/70 bg-white px-2.5 py-1.5">
+                                            <p className="text-[9px] uppercase font-semibold tracking-wider text-slate-400">
+                                                Licensed users
+                                            </p>
+                                            <p className="mt-0.5 text-xs font-semibold text-slate-800">
+                                                {product.licensedUsers}
+                                            </p>
+                                        </div>
 
-                                <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                                    <div className="rounded-xl bg-white px-3 py-2.5">
-                                        <p className="text-[9px] uppercase tracking-wide text-slate-400">
-                                            Purchased on
-                                        </p>
-
-                                        <p className="mt-1 text-xs font-semibold text-slate-800">
-                                            {product.purchaseDate}
-                                        </p>
-                                    </div>
-
-                                    <div className="rounded-xl bg-white px-3 py-2.5">
-                                        <p className="text-[9px] uppercase tracking-wide text-slate-400">
-                                            Licensed users
-                                        </p>
-
-                                        <p className="mt-1 text-xs font-semibold text-slate-800">
-                                            {product.licensedUsers}
-                                        </p>
-                                    </div>
-
-                                    <div className="rounded-xl bg-white px-3 py-2.5 sm:col-span-2">
-                                        <p className="text-[9px] uppercase tracking-wide text-slate-400">
-                                            Support plan
-                                        </p>
-
-                                        <div className="mt-1 flex items-center gap-2 text-xs font-semibold text-slate-800">
-                                            <ShieldCheck
-                                                size={14}
-                                                className="text-emerald-600"
-                                            />
-                                            {product.supportPlan}
+                                        <div className="rounded-md border border-slate-200/70 bg-white px-2.5 py-1.5 sm:col-span-2">
+                                            <p className="text-[9px] uppercase font-semibold tracking-wider text-slate-400">
+                                                Support plan
+                                            </p>
+                                            <div className="mt-0.5 flex items-center gap-1.5 text-xs font-semibold text-slate-800">
+                                                <ShieldCheck size={13} className="text-emerald-600" />
+                                                {product.supportPlan || "Standard Support"}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                        ))}
+                            ))
+                        )}
                     </div>
                 </article>
 
-                <article className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_35px_rgba(15,23,42,0.06)]">
+                {/* AMC Billing Card */}
+                <article className="overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-2xs">
+                    <div className="flex items-center justify-between border-b border-slate-200/80 bg-slate-50/70 px-4 py-3">
+                        <div className="flex items-center gap-2.5">
+                            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-amber-50 text-amber-600">
+                                <BellRing size={15} />
+                            </div>
+                            <div>
+                                <p className="text-xs font-bold text-slate-900">
+                                    Annual Maintenance Charges
+                                </p>
+                                <p className="text-[10px] text-slate-500">
+                                    Contract renewal & billing status
+                                </p>
+                            </div>
+                        </div>
 
-    {/* Header */}
-    <div className="flex items-center justify-between border-b border-slate-200 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-800 px-5 py-4">
+                        <StatusBadge status={paymentStatus} />
+                    </div>
 
-        <div className="flex items-center gap-3">
+                    <div className="p-4 space-y-4">
+                        {/* Main Amount */}
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                                    Amount Pending
+                                </p>
+                                <p className="mt-1 text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
+                                    {formatCurrency(pendingAmount)}
+                                </p>
+                                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                                    <span className="text-[10px] font-semibold text-slate-700">
+                                        {currentInvoice?.productName || "AMC Coverage"}
+                                    </span>
+                                    <span className="text-slate-300">•</span>
+                                    <span className="text-[10px] text-slate-500">
+                                        {invoicePeriod(currentInvoice)}
+                                    </span>
+                                </div>
+                            </div>
 
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-400/15 text-amber-300">
-                <BellRing size={17} />
-            </div>
+                            <button
+                                type="button"
+                                onClick={() => onNavigate("billing")}
+                                className="flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-[#1B59F8] px-3 text-xs font-semibold text-white shadow-xs transition hover:bg-[#1548D1] active:scale-98"
+                            >
+                                <ReceiptText size={14} />
+                                Open Billing
+                                <ArrowRight size={13} />
+                            </button>
+                        </div>
 
-            <div>
-                <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-amber-300">
-                    AMC Billing
-                </p>
+                        {/* Amount Breakdown */}
+                        <div className="grid grid-cols-3 overflow-hidden rounded-lg border border-slate-200/80 bg-slate-50/80 divide-x divide-slate-200/80">
+                            <div className="p-2.5 text-center">
+                                <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                                    Invoice
+                                </p>
+                                <p className="mt-1 text-xs sm:text-sm font-bold text-slate-900">
+                                    {formatCurrency(invoiceAmount)}
+                                </p>
+                            </div>
 
-                <h2 className="mt-0.5 text-sm font-semibold text-white">
-                    Annual Maintenance Charges
-                </h2>
-            </div>
+                            <div className="p-2.5 text-center">
+                                <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                                    Paid
+                                </p>
+                                <p className="mt-1 text-xs sm:text-sm font-bold text-emerald-600">
+                                    {formatCurrency(paidAmount)}
+                                </p>
+                            </div>
 
-        </div>
+                            <div className="p-2.5 text-center">
+                                <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                                    Balance
+                                </p>
+                                <p className="mt-1 text-xs sm:text-sm font-bold text-amber-600">
+                                    {formatCurrency(pendingAmount)}
+                                </p>
+                            </div>
+                        </div>
 
-        <StatusBadge
-            status={paymentStatus}
-        />
+                        {/* Invoice Details */}
+                        <div className="grid gap-2.5 sm:grid-cols-2">
+                            <div className="rounded-lg border border-slate-200/80 bg-white p-2.5">
+                                <div className="flex items-center gap-1.5 text-slate-400">
+                                    <FileText size={13} />
+                                    <span className="text-[9px] font-semibold uppercase tracking-wider">
+                                        Invoice Number
+                                    </span>
+                                </div>
+                                <p className="mt-1 truncate text-xs font-semibold text-slate-800">
+                                    {currentInvoice?.invoiceCode || currentInvoice?.invoiceNo || "Not available"}
+                                </p>
+                            </div>
 
-    </div>
+                            <div className="rounded-lg border border-slate-200/80 bg-white p-2.5">
+                                <div className="flex items-center gap-1.5 text-slate-400">
+                                    <CalendarDays size={13} />
+                                    <span className="text-[9px] font-semibold uppercase tracking-wider">
+                                        Due Date
+                                    </span>
+                                </div>
+                                <p className="mt-1 text-xs font-semibold text-amber-700">
+                                    {currentInvoice?.dueDate
+                                        ? formatDate(currentInvoice.dueDate)
+                                        : amcBilling.nextDueDate
+                                            ? formatDate(amcBilling.nextDueDate)
+                                            : "Not available"}
+                                </p>
+                            </div>
+                        </div>
 
-    <div className="p-5 sm:p-6">
-
-        {/* Main Amount */}
-        <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-
-            <div>
-
-                <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                    Amount Pending
-                </p>
-
-                <p className="mt-2 text-4xl font-semibold tracking-[-0.05em] text-slate-950">
-                    {formatCurrency(
-                        pendingAmount
-                    )}
-                </p>
-
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-
-                    <span className="text-[10px] font-semibold text-slate-700">
-                        {currentInvoice?.productName ||
-                            "AMC"}
-                    </span>
-
-                    <span className="text-slate-300">
-                        •
-                    </span>
-
-                    <span className="text-[10px] text-slate-500">
-                        {invoicePeriod(
-                            currentInvoice
-                        )}
-                    </span>
-
-                </div>
-
-            </div>
-
-            <button
-                type="button"
-                onClick={() =>
-                    onNavigate("billing")
-                }
-                className="flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 text-xs font-semibold text-slate-950 shadow-sm transition hover:-translate-y-0.5 hover:bg-cyan-400"
-            >
-                <ReceiptText size={15} />
-                Open Billing
-                <ArrowRight size={14} />
-            </button>
-
-        </div>
-
-        {/* Amount Breakdown */}
-        <div className="mt-6 grid grid-cols-3 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-
-            <div className="border-r border-slate-200 p-4">
-
-                <p className="text-[8px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                    Invoice
-                </p>
-
-                <p className="mt-2 text-sm font-semibold text-slate-900">
-                    {formatCurrency(
-                        invoiceAmount
-                    )}
-                </p>
-
-            </div>
-
-            <div className="border-r border-slate-200 p-4">
-
-                <p className="text-[8px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                    Paid
-                </p>
-
-                <p className="mt-2 text-sm font-semibold text-emerald-600">
-                    {formatCurrency(
-                        paidAmount
-                    )}
-                </p>
-
-            </div>
-
-            <div className="p-4">
-
-                <p className="text-[8px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                    Balance
-                </p>
-
-                <p className="mt-2 text-sm font-semibold text-amber-600">
-                    {formatCurrency(
-                        pendingAmount
-                    )}
-                </p>
-
-            </div>
-
-        </div>
-
-        {/* Invoice Details */}
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-
-            <div className="rounded-xl border border-slate-200 bg-white p-3.5">
-
-                <div className="flex items-center gap-2 text-slate-400">
-                    <FileText size={14} />
-
-                    <span className="text-[8px] font-semibold uppercase tracking-[0.14em]">
-                        Invoice Number
-                    </span>
-                </div>
-
-                <p className="mt-2 truncate text-[11px] font-semibold text-slate-800">
-                    {currentInvoice?.invoiceCode ||
-                        currentInvoice?.invoiceNo ||
-                        "Not available"}
-                </p>
-
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-white p-3.5">
-
-                <div className="flex items-center gap-2 text-slate-400">
-                    <CalendarDays size={14} />
-
-                    <span className="text-[8px] font-semibold uppercase tracking-[0.14em]">
-                        Due Date
-                    </span>
-                </div>
-
-                <p className="mt-2 text-[11px] font-semibold text-amber-700">
-                    {currentInvoice?.dueDate
-                        ? formatDate(
-                            currentInvoice.dueDate
-                        )
-                        : amcBilling.nextDueDate
-                            ? formatDate(
-                                amcBilling.nextDueDate
-                            )
-                            : "Not available"}
-                </p>
-
-            </div>
-
-        </div>
-
-        {/* AMC Period */}
-        <div className="mt-4 flex items-center justify-between rounded-xl border border-cyan-100 bg-cyan-50/60 px-4 py-3">
-
-            <div className="flex items-center gap-3">
-
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-cyan-600 shadow-sm">
-                    <ShieldCheck size={15} />
-                </div>
-
-                <div>
-
-                    <p className="text-[8px] font-semibold uppercase tracking-[0.14em] text-cyan-700">
-                        AMC Coverage Period
-                    </p>
-
-                    <p className="mt-1 text-[10px] font-semibold text-slate-700">
-                        {invoicePeriod(
-                            currentInvoice
-                        )}
-                    </p>
-
-                </div>
-
-            </div>
-
-            <CheckCircle2
-                size={17}
-                className="text-cyan-600"
-            />
-
-        </div>
-
-    </div>
-
-</article>
+                        {/* AMC Period */}
+                        <div className="flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50/50 px-3 py-2">
+                            <div className="flex items-center gap-2.5">
+                                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-white text-[#1B59F8] shadow-2xs">
+                                    <ShieldCheck size={14} />
+                                </div>
+                                <div>
+                                    <p className="text-[9px] font-semibold uppercase tracking-wider text-blue-700">
+                                        AMC Coverage Period
+                                    </p>
+                                    <p className="mt-0.5 text-xs font-semibold text-slate-700">
+                                        {invoicePeriod(currentInvoice)}
+                                    </p>
+                                </div>
+                            </div>
+                            <CheckCircle2 size={16} className="text-[#1B59F8]" />
+                        </div>
+                    </div>
+                </article>
             </section>
 
-            <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)]">
-                <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-                    <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+            <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)]">
+                {/* Billing History Card */}
+                <article className="overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-2xs">
+                    <div className="flex items-center justify-between border-b border-slate-200/80 bg-slate-50/70 px-4 py-3">
                         <div>
-                            <p className="text-sm font-semibold text-slate-950">
+                            <p className="text-xs font-bold text-slate-900">
                                 Billing History
                             </p>
-
-                            <p className="mt-1 text-[10px] text-slate-500">
-                                AMC invoices and previous payments
+                            <p className="text-[10px] text-slate-500">
+                                AMC invoices and payment records
                             </p>
                         </div>
 
                         <button
                             type="button"
                             onClick={() => onNavigate("billing")}
-                            className="text-xs font-semibold text-cyan-600 transition hover:text-cyan-700"
+                            className="text-xs font-semibold text-[#1B59F8] transition hover:text-blue-700"
                         >
                             View all
                         </button>
                     </div>
 
                     <div className="overflow-x-auto">
-                        <table className="w-full min-w-[620px]">
+                        <table className="w-full min-w-[580px]">
                             <thead>
-                                <tr className="border-b border-slate-200 bg-slate-50/70">
-                                    <th className="px-5 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                <tr className="border-b border-slate-200/80 bg-slate-50/80">
+                                    <th className="px-3.5 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                                         Invoice
                                     </th>
-
-                                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                    <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                                         Period
                                     </th>
-
-                                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                    <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                                         Amount
                                     </th>
-
-                                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                    <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                                         Status
                                     </th>
-
-                                    <th className="px-5 py-3 text-right text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                        PDF
+                                    <th className="px-3.5 py-2 text-right text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                                        Action
                                     </th>
                                 </tr>
                             </thead>
 
-                           <tbody>
+                            <tbody>
+                                {billingHistory.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={5} className="px-4 py-8 text-center">
+                                            <ReceiptText size={20} className="mx-auto text-slate-300" />
+                                            <p className="mt-2 text-xs font-semibold text-slate-600">
+                                                No AMC invoices available
+                                            </p>
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    billingHistory.slice(0, 5).map((bill) => (
+                                        <tr
+                                            key={bill.id}
+                                            className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/60 transition"
+                                        >
+                                            <td className="px-3.5 py-2.5">
+                                                <p className="text-xs font-semibold text-slate-900">
+                                                    {bill.invoiceCode || bill.invoiceNo || "—"}
+                                                </p>
+                                                <p className="text-[10px] text-slate-400">
+                                                    {bill.invoiceDate ? formatDate(bill.invoiceDate) : "—"}
+                                                </p>
+                                            </td>
 
-    {billingHistory.length === 0 && (
-        <tr>
-            <td
-                colSpan={5}
-                className="px-5 py-8 text-center"
-            >
-                <ReceiptText
-                    size={24}
-                    className="mx-auto text-slate-300"
-                />
+                                            <td className="px-3 py-2.5">
+                                                <p className="text-[11px] font-medium text-slate-700">
+                                                    {invoicePeriod(bill)}
+                                                </p>
+                                                <p className="text-[10px] text-slate-400">
+                                                    {bill.productName || ""}
+                                                </p>
+                                            </td>
 
-                <p className="mt-3 text-xs font-semibold text-slate-600">
-                    No AMC invoices available
-                </p>
-            </td>
-        </tr>
-    )}
+                                            <td className="px-3 py-2.5 text-xs font-bold text-slate-900">
+                                                {formatCurrency(bill.totalAmount ?? bill.amount ?? 0)}
+                                            </td>
 
-    {billingHistory
-        .slice(0, 5)
-        .map((bill) => (
+                                            <td className="px-3 py-2.5">
+                                                <StatusBadge status={bill.paymentStatus || bill.status || "Pending"} />
+                                            </td>
 
-            <tr
-                key={bill.id}
-                className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/60"
-            >
-
-                <td className="px-5 py-4">
-
-                    <p className="text-xs font-semibold text-slate-950">
-                        {bill.invoiceCode ||
-                            bill.invoiceNo ||
-                            "-"}
-                    </p>
-
-                    <p className="mt-1 text-[9px] text-slate-400">
-                        {bill.invoiceDate
-                            ? formatDate(
-                                bill.invoiceDate
-                            )
-                            : "-"}
-                    </p>
-
-                </td>
-
-                <td className="px-4 py-4">
-
-                    <p className="text-[10px] font-medium text-slate-600">
-                        {invoicePeriod(
-                            bill
-                        )}
-                    </p>
-
-                    <p className="mt-1 text-[9px] text-slate-400">
-                        {bill.productName ||
-                            ""}
-                    </p>
-
-                </td>
-
-                <td className="px-4 py-4 text-xs font-semibold text-slate-900">
-                    {formatCurrency(
-                        bill.totalAmount ??
-                        bill.amount ??
-                        0
-                    )}
-                </td>
-
-                <td className="px-4 py-4">
-                    <StatusBadge
-                        status={
-                            bill.paymentStatus ||
-                            bill.status ||
-                            "Pending"
-                        }
-                    />
-                </td>
-
-                <td className="px-5 py-4 text-right">
-
-                    <button
-                        type="button"
-                        onClick={() =>
-                            onNavigate(
-                                "billing"
-                            )
-                        }
-                        title="Open invoice"
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-700"
-                    >
-                        <ArrowRight
-                            size={14}
-                        />
-                    </button>
-
-                </td>
-
-            </tr>
-
-        ))}
-
-</tbody>
+                                            <td className="px-3.5 py-2.5 text-right">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onNavigate("billing")}
+                                                    title="Open invoice"
+                                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition hover:border-blue-200 hover:bg-blue-50/50 hover:text-[#1B59F8]"
+                                                >
+                                                    <ArrowRight size={13} />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
                         </table>
                     </div>
                 </article>
 
-                <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-                    <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+                {/* Support Tickets Card */}
+                <article className="overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-2xs">
+                    <div className="flex items-center justify-between border-b border-slate-200/80 bg-slate-50/70 px-4 py-3">
                         <div>
-                            <p className="text-sm font-semibold text-slate-950">
+                            <p className="text-xs font-bold text-slate-900">
                                 Support Tickets
                             </p>
-
-                            <p className="mt-1 text-[10px] text-slate-500">
+                            <p className="text-[10px] text-slate-500">
                                 Your latest support requests
                             </p>
                         </div>
@@ -977,111 +847,111 @@ const paymentStatus =
                         <button
                             type="button"
                             onClick={() => onNavigate("tickets")}
-                            className="flex h-8 items-center gap-1.5 rounded-lg bg-cyan-500 px-3 text-[10px] font-semibold text-slate-950 transition hover:bg-cyan-400"
+                            className="flex h-7 items-center gap-1 rounded-md bg-[#1B59F8] px-2.5 text-[11px] font-semibold text-white shadow-xs transition hover:bg-[#1548D1] active:scale-98"
                         >
-                            <Plus size={13} />
+                            <Plus size={12} strokeWidth={2.5} />
                             Raise Ticket
                         </button>
                     </div>
 
-                    <div className="p-5">
-                        {supportTickets.map((ticket) => (
-                            <div key={ticket.id}>
-                                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                                    <div className="min-w-0">
-                                        <h3 className="text-sm font-semibold leading-5 text-slate-950">
-                                            {ticket.title}
-                                        </h3>
-
-                                        <p className="mt-1 text-[10px] text-slate-500">
-                                            {ticket.id} ·{" "}
-                                            {ticket.createdAt}
-                                        </p>
-
-                                        <p className="mt-2 text-[10px] text-slate-500">
-                                            Handled by{" "}
-                                            <span className="font-semibold text-slate-700">
-                                                {ticket.assignedTo}
-                                            </span>
-                                        </p>
-                                    </div>
-
-                                    <div className="flex shrink-0 flex-wrap gap-2">
-                                        <PriorityBadge
-                                            priority={
-                                                ticket.priority
-                                            }
-                                        />
-
-                                        <StatusBadge
-                                            status={ticket.status}
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-center">
-                                    <p className="text-[10px] leading-5 text-slate-500">
-                                        Facing another issue with
-                                        NexERP? Raise a support ticket
-                                        and our team will respond within
-                                        four working hours.
-                                    </p>
-                                </div>
+                    <div className="p-3.5 space-y-2.5">
+                        {supportTickets.length === 0 ? (
+                            <div className="py-8 text-center text-xs text-slate-400">
+                                No support tickets currently open.
                             </div>
-                        ))}
+                        ) : (
+                            supportTickets.slice(0, 5).map((ticket) => (
+                                <div
+                                    key={ticket.id}
+                                    className="rounded-lg border border-slate-200/80 bg-slate-50/40 p-3 transition hover:bg-slate-50"
+                                >
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                        <div className="min-w-0 flex-1">
+                                            <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+                                                <span className="font-semibold text-[#1B59F8]">{ticket.id}</span>
+                                                <span>•</span>
+                                                <span>{ticket.createdAt}</span>
+                                            </div>
+
+                                            <h3 className="mt-0.5 text-xs font-bold text-slate-900 line-clamp-1">
+                                                {ticket.title}
+                                            </h3>
+
+                                            <p className="mt-1 text-[10px] text-slate-500">
+                                                Handled by <span className="font-semibold text-slate-700">{ticket.assignedTo}</span>
+                                            </p>
+                                        </div>
+
+                                        <div className="flex shrink-0 items-center gap-1.5">
+                                            <PriorityBadge priority={ticket.priority} />
+                                            <StatusBadge status={ticket.status} />
+                                        </div>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+
+                        <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/50 p-2.5 text-center">
+                            <p className="text-[10px] leading-relaxed text-slate-500">
+                                Facing an issue? Our engineering team typically responds within 4 business hours.
+                            </p>
+                        </div>
                     </div>
                 </article>
             </section>
 
-            <section className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-                <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+            {/* Recent Activity Section */}
+            <section className="overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-2xs">
+                <div className="flex items-center justify-between border-b border-slate-200/80 bg-slate-50/70 px-4 py-3">
                     <div>
-                        <p className="text-sm font-semibold text-slate-950">
+                        <p className="text-xs font-bold text-slate-900">
                             Recent Activity
                         </p>
-
-                        <p className="mt-1 text-[10px] text-slate-500">
+                        <p className="text-[10px] text-slate-500">
                             Latest updates for your account
                         </p>
                     </div>
 
-                    <CheckCircle2
-                        size={18}
-                        className="text-emerald-500"
-                    />
+                    <CheckCircle2 size={16} className="text-emerald-500" />
                 </div>
 
                 <div className="grid divide-y divide-slate-100 lg:grid-cols-3 lg:divide-x lg:divide-y-0">
-                    {recentActivity.map((activity) => {
-                        const Icon = activity.icon;
+                    {recentActivity.length === 0 ? (
+                        <div className="col-span-3 py-6 text-center text-xs text-slate-400">
+                            No recent activity recorded.
+                        </div>
+                    ) : (
+                        recentActivity.map((activity) => {
+                            const Icon = activity.icon;
 
-                        return (
-                            <div
-                                key={activity.id}
-                                className="flex gap-3 p-5 transition hover:bg-slate-50/70"
-                            >
+                            return (
                                 <div
-                                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${activity.iconClass}`}
+                                    key={activity.id}
+                                    className="flex items-start gap-2.5 p-3.5 transition hover:bg-slate-50/60"
                                 >
-                                    <Icon size={16} />
+                                    <div
+                                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${activity.iconClass}`}
+                                    >
+                                        <Icon size={14} />
+                                    </div>
+
+                                    <div className="min-w-0">
+                                        <p className="text-xs font-bold text-slate-900 truncate">
+                                            {activity.title}
+                                        </p>
+
+                                        <p className="mt-0.5 text-[10px] leading-snug text-slate-500 line-clamp-2">
+                                            {activity.description}
+                                        </p>
+
+                                        <p className="mt-1 text-[9px] font-medium text-slate-400">
+                                            {activity.time}
+                                        </p>
+                                    </div>
                                 </div>
-
-                                <div>
-                                    <p className="text-xs font-semibold text-slate-900">
-                                        {activity.title}
-                                    </p>
-
-                                    <p className="mt-1 text-[10px] leading-4 text-slate-500">
-                                        {activity.description}
-                                    </p>
-
-                                    <p className="mt-2 text-[9px] font-medium text-slate-400">
-                                        {activity.time}
-                                    </p>
-                                </div>
-                            </div>
-                        );
-                    })}
+                            );
+                        })
+                    )}
                 </div>
             </section>
         </div>

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import {
     Archive,
     CalendarDays,
+    ChevronLeft,
+    ChevronRight,
     Download,
     Eye,
     FileArchive,
@@ -208,26 +210,26 @@ function SummaryCard({
     iconClass,
 }) {
     return (
-        <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.04)]">
-            <div className="flex items-start justify-between gap-4">
-                <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+        <article className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs">
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                         {label}
                     </p>
 
-                    <p className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-950">
+                    <p className="mt-1 text-xl font-bold tracking-tight text-slate-900">
                         {value}
                     </p>
                 </div>
 
                 <div
-                    className={`flex h-10 w-10 items-center justify-center rounded-xl ${iconClass}`}
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${iconClass}`}
                 >
-                    <Icon size={18} />
+                    <Icon size={16} />
                 </div>
             </div>
 
-            <p className="mt-4 text-[10px] text-slate-500">
+            <p className="mt-1.5 text-[11px] text-slate-500 truncate">
                 {description}
             </p>
         </article>
@@ -236,16 +238,16 @@ function SummaryCard({
 
 function DetailItem({ label, value, icon: Icon }) {
     return (
-        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
-            <div className="flex items-center gap-2 text-slate-400">
-                <Icon size={14} />
+        <div className="rounded-lg border border-slate-200/80 bg-slate-50/60 p-2.5">
+            <div className="flex items-center gap-1.5 text-slate-400">
+                <Icon size={13} />
 
-                <p className="text-[9px] font-semibold uppercase tracking-[0.13em]">
+                <p className="text-[10px] font-bold uppercase tracking-wider">
                     {label}
                 </p>
             </div>
 
-            <p className="mt-2 break-words text-xs font-semibold text-slate-800">
+            <p className="mt-1 break-words text-xs font-bold text-slate-800">
                 {value}
             </p>
         </div>
@@ -340,6 +342,22 @@ export default function ClientDocuments() {
             return matchesSearch && matchesCategory && matchesType;
         });
     }, [documents, searchValue, categoryFilter, typeFilter]);
+
+    // Pagination
+    const [docPage, setDocPage] = useState(1);
+    const [docPageSize, setDocPageSize] = useState(6);
+
+    useEffect(() => {
+        setDocPage(1);
+    }, [searchValue, categoryFilter, typeFilter]);
+
+    const totalDocs = filteredDocuments.length;
+    const totalDocPages = Math.max(1, Math.ceil(totalDocs / docPageSize));
+    const safeDocPage = Math.min(Math.max(1, docPage), totalDocPages);
+    const paginatedDocuments = useMemo(() => {
+        const start = (safeDocPage - 1) * docPageSize;
+        return filteredDocuments.slice(start, start + docPageSize);
+    }, [filteredDocuments, safeDocPage, docPageSize]);
 
     const totalStorage = documents.reduce(
         (total, document) => total + Number(document.size || 0),
@@ -598,41 +616,42 @@ const handlePreviewDocument =
     };
 
     return (
-        <div>
-            <section className="flex flex-col gap-5 border-b border-slate-200 pb-7 lg:flex-row lg:items-end lg:justify-between">
+        <div className="space-y-4">
+            <section className="flex flex-col gap-3 rounded-xl border border-slate-200/90 bg-white p-4 shadow-2xs sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-600">
-                        Files & Records
-                    </p>
+                    <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#1B59F8]">
+                            Files & Records
+                        </span>
+                        <span className="text-xs text-slate-400">Total Solution Portal</span>
+                    </div>
 
-                    <h1 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-950 sm:text-3xl">
+                    <h1 className="mt-1 text-lg font-bold text-slate-900 sm:text-xl">
                         Documents
                     </h1>
 
-                    <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                        Access agreements, invoices, licences,
-                        installation records and other files linked
-                        to your account.
+                    <p className="mt-0.5 text-xs text-slate-500">
+                        Access agreements, invoices, licences, installation records and other files linked to your account.
                     </p>
                 </div>
 
                 <button
                     type="button"
                     onClick={handleUploadRequest}
-                    className="flex h-10 items-center justify-center gap-2 rounded-xl bg-[#0f172a] px-4 text-xs font-semibold text-white shadow-lg shadow-slate-900/10 transition hover:-translate-y-0.5 hover:bg-cyan-600"
+                    className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-[#1B59F8] px-3.5 text-xs font-semibold text-white shadow-2xs transition hover:bg-blue-700"
                 >
-                    <Upload size={16} />
+                    <Upload size={14} />
                     Request Upload
                 </button>
             </section>
 
-            <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
                 <SummaryCard
                     label="Total Documents"
                     value={documents.length}
                     description="Files linked to your client account"
                     icon={FolderOpen}
-                    iconClass="bg-cyan-100 text-cyan-700"
+                    iconClass="bg-blue-50 text-[#1B59F8]"
                 />
 
                 <SummaryCard
@@ -646,7 +665,7 @@ const handlePreviewDocument =
                     }
                     description="AMC and licence documents"
                     icon={ShieldCheck}
-                    iconClass="bg-violet-100 text-violet-700"
+                    iconClass="bg-indigo-50 text-indigo-600"
                 />
 
                 <SummaryCard
@@ -660,36 +679,35 @@ const handlePreviewDocument =
                     }
                     description="Billing and payment records"
                     icon={FileCheck2}
-                    iconClass="bg-emerald-100 text-emerald-700"
+                    iconClass="bg-emerald-50 text-emerald-600"
                 />
 
                 <SummaryCard
                     label="Storage Used"
-                    value={totalStorage}
+                    value={bytesToSize(totalStorage)}
                     description="Total size of available files"
                     icon={HardDrive}
-                    iconClass="bg-amber-100 text-amber-700"
+                    iconClass="bg-amber-50 text-amber-600"
                 />
             </section>
 
-            <section className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-                <div className="flex flex-col gap-4 border-b border-slate-200 p-5 xl:flex-row xl:items-center xl:justify-between">
+            <section className="overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-2xs">
+                <div className="flex flex-col gap-3 border-b border-slate-200/90 p-3.5 sm:px-4 sm:py-3 xl:flex-row xl:items-center xl:justify-between">
                     <div>
-                        <h2 className="text-sm font-semibold text-slate-950">
+                        <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900">
                             Available Documents
                         </h2>
 
-                        <p className="mt-1 text-[10px] text-slate-500">
-                            Documents shared by Total Solution and your
-                            company
+                        <p className="text-[11px] text-slate-400">
+                            Documents shared by Total Solution and your company
                         </p>
                     </div>
 
-                    <div className="flex flex-col gap-3 sm:flex-row">
-                        <div className="relative sm:w-[280px]">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <div className="relative w-full sm:w-[240px]">
                             <Search
-                                size={16}
-                                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+                                size={14}
+                                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
                             />
 
                             <input
@@ -701,7 +719,7 @@ const handlePreviewDocument =
                                     )
                                 }
                                 placeholder="Search documents..."
-                                className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-4 text-xs text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-cyan-400 focus:bg-white focus:ring-4 focus:ring-cyan-100"
+                                className="h-8 w-full rounded-lg border border-slate-200 bg-slate-50/70 pl-8 pr-3 text-xs text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#1B59F8] focus:bg-white focus:ring-2 focus:ring-blue-100"
                             />
                         </div>
 
@@ -712,7 +730,7 @@ const handlePreviewDocument =
                                     event.target.value
                                 )
                             }
-                            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
+                            className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 outline-none focus:border-[#1B59F8] focus:ring-2 focus:ring-blue-100"
                         >
                             {categories.map((category) => (
                                 <option
@@ -726,31 +744,31 @@ const handlePreviewDocument =
                             ))}
                         </select>
 
-                       <select
-    value={typeFilter}
-    onChange={(event) =>
-        setTypeFilter(
-            event.target.value
-        )
-    }
-    className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100"
->
-    {types.map((type) => (
-        <option
-            key={type}
-            value={type}
-        >
-            {type === "All"
-                ? "All Document Types"
-                : type}
-        </option>
-    ))}
-</select>
+                        <select
+                            value={typeFilter}
+                            onChange={(event) =>
+                                setTypeFilter(
+                                    event.target.value
+                                )
+                            }
+                            className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 outline-none focus:border-[#1B59F8] focus:ring-2 focus:ring-blue-100"
+                        >
+                            {types.map((type) => (
+                                <option
+                                    key={type}
+                                    value={type}
+                                >
+                                    {type === "All"
+                                        ? "All Document Types"
+                                        : type}
+                                </option>
+                            ))}
+                        </select>
                     </div>
                 </div>
 
-                <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
-                    {filteredDocuments.map((document) => {
+                <div className="grid gap-3 p-3.5 sm:p-4 md:grid-cols-2 xl:grid-cols-3">
+                    {paginatedDocuments.map((document) => {
                         const Icon = getDocumentIcon(
                             document.documentType
                         );
@@ -758,15 +776,15 @@ const handlePreviewDocument =
                         return (
                             <article
                                 key={document.id}
-                                className="group rounded-2xl border border-slate-200 bg-white p-5 transition hover:-translate-y-0.5 hover:border-cyan-200 hover:shadow-[0_14px_40px_rgba(15,23,42,0.08)]"
+                                className="group rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs transition hover:border-blue-300 hover:shadow-xs"
                             >
-                                <div className="flex items-start justify-between gap-4">
+                                <div className="flex items-start justify-between gap-3">
                                     <div
-                                        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${getDocumentIconClasses(
+                                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${getDocumentIconClasses(
                                             document.documentType
                                         )}`}
                                     >
-                                        <Icon size={19} />
+                                        <Icon size={16} />
                                     </div>
 
                                     <StatusBadge
@@ -774,37 +792,37 @@ const handlePreviewDocument =
                                     />
                                 </div>
 
-                                <div className="mt-4">
-                                    <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-slate-950">
+                                <div className="mt-2.5">
+                                    <h3 className="line-clamp-1 text-xs font-bold text-slate-900 group-hover:text-[#1B59F8] transition-colors">
                                         {document.name}
                                     </h3>
 
-                                    <p className="mt-1 text-[10px] font-medium text-cyan-700">
+                                    <p className="mt-0.5 text-[10px] font-semibold text-[#1B59F8]">
                                         {document.category} ·{" "}
                                         {document.productName}
                                     </p>
 
-                                    <p className="mt-3 line-clamp-2 text-[10px] leading-5 text-slate-500">
-                                        {document.description}
+                                    <p className="mt-1.5 line-clamp-2 text-[11px] leading-relaxed text-slate-500">
+                                        {document.description || "No description provided."}
                                     </p>
                                 </div>
 
-                                <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
+                                <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2.5">
                                     <div>
-                                        <p className="text-[9px] text-slate-400">
+                                        <p className="text-[10px] font-medium text-slate-400">
                                             {document.documentType} ·{" "}
                                             {bytesToSize(document.size || 0)}
                                         </p>
 
-                                        <p className="mt-1 text-[9px] text-slate-500">
+                                        <p className="mt-0.5 text-[10px] text-slate-500">
                                             {formatDocumentDate(
-    document.uploadedAt ||
-    document.createdAt
-)}
+                                                document.uploadedAt ||
+                                                document.createdAt
+                                            )}
                                         </p>
                                     </div>
 
-                                    <div className="flex gap-2">
+                                    <div className="flex gap-1.5">
                                         <button
                                             type="button"
                                             onClick={() =>
@@ -813,18 +831,18 @@ const handlePreviewDocument =
                                                 )
                                             }
                                             title="View details"
-                                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-700"
+                                            className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition hover:border-blue-300 hover:bg-blue-50 hover:text-[#1B59F8]"
                                         >
-                                            <Eye size={14} />
+                                            <Eye size={13} />
                                         </button>
 
                                         <button
                                             type="button"
                                             onClick={() => handleDownload(document)}
                                             title="Download"
-                                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-700"
+                                            className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition hover:border-blue-300 hover:bg-blue-50 hover:text-[#1B59F8]"
                                         >
-                                            <Download size={14} />
+                                            <Download size={13} />
                                         </button>
                                     </div>
                                 </div>
@@ -833,43 +851,104 @@ const handlePreviewDocument =
                     })}
 
                     {filteredDocuments.length === 0 && (
-                        <div className="col-span-full flex min-h-[300px] items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50">
+                        <div className="col-span-full flex min-h-[220px] items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/50">
                             <div className="text-center">
                                 <Search
-                                    size={28}
+                                    size={24}
                                     className="mx-auto text-slate-300"
                                 />
 
-                                <p className="mt-3 text-sm font-semibold text-slate-700">
+                                <p className="mt-2 text-xs font-bold text-slate-700">
                                     No document found
                                 </p>
 
-                                <p className="mt-1 text-xs text-slate-500">
-                                    Change the search or filter
-                                    selection.
+                                <p className="mt-0.5 text-[11px] text-slate-400">
+                                    Change the search or filter selection.
                                 </p>
                             </div>
                         </div>
                     )}
                 </div>
+
+                {filteredDocuments.length > 0 && (
+                    <div className="flex flex-col gap-2.5 border-t border-slate-200/80 bg-slate-50/40 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-500">
+                        <div className="flex items-center gap-2">
+                            <span>
+                                Showing{" "}
+                                <span className="font-semibold text-slate-800">
+                                    {(safeDocPage - 1) * docPageSize + 1}
+                                </span>{" "}
+                                to{" "}
+                                <span className="font-semibold text-slate-800">
+                                    {Math.min(safeDocPage * docPageSize, totalDocs)}
+                                </span>{" "}
+                                of{" "}
+                                <span className="font-semibold text-slate-800">
+                                    {totalDocs}
+                                </span>{" "}
+                                documents
+                            </span>
+                        </div>
+
+                        <div className="flex items-center gap-3 sm:gap-4">
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-[11px] text-slate-500">Per page:</span>
+                                <select
+                                    value={docPageSize}
+                                    onChange={(e) => {
+                                        setDocPageSize(Number(e.target.value));
+                                        setDocPage(1);
+                                    }}
+                                    className="h-7 rounded-md border border-slate-200/90 bg-white px-1.5 text-xs text-slate-700 shadow-2xs focus:border-[#1B59F8] focus:outline-hidden"
+                                >
+                                    <option value={6}>6</option>
+                                    <option value={12}>12</option>
+                                    <option value={24}>24</option>
+                                </select>
+                            </div>
+
+                            <div className="flex items-center gap-1">
+                                <button
+                                    type="button"
+                                    onClick={() => setDocPage((p) => Math.max(1, p - 1))}
+                                    disabled={safeDocPage <= 1}
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200/90 bg-white text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                    title="Previous page"
+                                >
+                                    <ChevronLeft size={14} />
+                                </button>
+                                <span className="px-2 text-xs font-medium text-slate-700">
+                                    {safeDocPage} / {totalDocPages}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setDocPage((p) => Math.min(totalDocPages, p + 1))}
+                                    disabled={safeDocPage >= totalDocPages}
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200/90 bg-white text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                    title="Next page"
+                                >
+                                    <ChevronRight size={14} />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </section>
 
-            <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.04)] sm:p-6">
-                <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="flex items-start gap-4">
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-cyan-100 text-cyan-700">
-                            <Archive size={19} />
+            <section className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs sm:p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-start gap-3">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#1B59F8]">
+                            <Archive size={16} />
                         </div>
 
                         <div>
-                            <h2 className="text-sm font-semibold text-slate-950">
+                            <h2 className="text-xs font-bold text-slate-900">
                                 Need another document?
                             </h2>
 
-                            <p className="mt-1 max-w-xl text-xs leading-5 text-slate-500">
-                                Request an invoice copy, licence
-                                certificate, agreement or installation
-                                document from the support team.
+                            <p className="mt-0.5 max-w-xl text-[11px] leading-relaxed text-slate-500">
+                                Request an invoice copy, licence certificate, agreement or installation document from the support team.
                             </p>
                         </div>
                     </div>
@@ -877,9 +956,9 @@ const handlePreviewDocument =
                     <button
                         type="button"
                         onClick={handleUploadRequest}
-                        className="flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 transition hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-700"
+                        className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-[#1B59F8]"
                     >
-                        <Upload size={15} />
+                        <Upload size={13} />
                         Request Document
                     </button>
                 </div>
@@ -897,13 +976,13 @@ const handlePreviewDocument =
                     />
 
                     <aside className="fixed inset-y-0 right-0 z-[80] flex w-full max-w-[620px] flex-col bg-white shadow-[-20px_0_60px_rgba(15,23,42,0.18)]">
-                        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 sm:px-6">
+                        <div className="flex items-center justify-between border-b border-slate-200/90 px-5 py-3.5 sm:px-6">
                             <div className="min-w-0">
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-cyan-600">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-[#1B59F8]">
                                     Document Details
                                 </p>
 
-                                <h2 className="mt-1 truncate text-lg font-semibold text-slate-950">
+                                <h2 className="mt-0.5 truncate text-base font-bold text-slate-900">
                                     {selectedDocument.name}
                                 </h2>
                             </div>
@@ -913,160 +992,134 @@ const handlePreviewDocument =
                                 onClick={() =>
                                     setSelectedDocumentId(null)
                                 }
-                                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
+                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
                             >
-                                <X size={19} />
+                                <X size={16} />
                             </button>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto p-5 sm:p-6">
-                            <div className="rounded-2xl border border-cyan-200 bg-gradient-to-r from-cyan-50 to-white p-5">
-                                <div className="flex items-start justify-between gap-4">
-                                    <div className="flex items-start gap-4">
+                        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3.5">
+                            <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3.5">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="flex items-center gap-3 min-w-0">
                                         {(() => {
-                                          const Icon =
-    getDocumentIcon(
-        document
-    );
+                                            const Icon = getDocumentIcon(selectedDocument);
                                             return (
                                                 <div
-                                                    className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl 
-                                                        ${
-                                                           getDocumentIconClasses(
-    document
-)}`}
+                                                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${getDocumentIconClasses(
+                                                        selectedDocument
+                                                    )}`}
                                                 >
-                                                    <Icon size={22} />
+                                                    <Icon size={18} />
                                                 </div>
                                             );
                                         })()}
 
-                                        <div>
-                                            <h3 className="text-sm font-semibold text-slate-950">
-                                                {
-                                                    selectedDocument.name
-                                                }
+                                        <div className="min-w-0">
+                                            <h3 className="text-xs font-bold text-slate-900 truncate">
+                                                {selectedDocument.name}
                                             </h3>
 
-                                            <p className="mt-1 text-[10px] text-slate-500">
-                                                {
-                                                    selectedDocument.documentType
-                                                }{" "}
-                                                ·{" "}
-                                                {bytesToSize(selectedDocument.size || 0)}
+                                            <p className="mt-0.5 text-[11px] text-slate-500">
+                                                {selectedDocument.documentType} · {bytesToSize(selectedDocument.size || 0)}
                                             </p>
                                         </div>
                                     </div>
 
                                     <StatusBadge
-                                        status={
-                                            selectedDocument.status
-                                        }
+                                        status={selectedDocument.status}
                                     />
                                 </div>
                             </div>
 
-                            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                            <div className="grid gap-2.5 sm:grid-cols-2">
                                 <DetailItem
                                     label="Category"
-                                    value={
-                                        selectedDocument.category
-                                    }
+                                    value={selectedDocument.category}
                                     icon={FolderOpen}
                                 />
 
                                 <DetailItem
                                     label="Product"
-                                    value={
-                                        selectedDocument.productName
-                                    }
+                                    value={selectedDocument.productName}
                                     icon={FileCheck2}
                                 />
 
                                 <DetailItem
                                     label="Uploaded On"
-                                  value={formatDocumentDate(
-    selectedDocument.uploadedAt ||
-    selectedDocument.createdAt
-)}
+                                    value={formatDocumentDate(
+                                        selectedDocument.uploadedAt ||
+                                        selectedDocument.createdAt
+                                    )}
                                     icon={CalendarDays}
                                 />
 
                                 <DetailItem
                                     label="Uploaded By"
-                                    value={
-                                        selectedDocument.uploadedByName
-                                    }
+                                    value={selectedDocument.uploadedByName}
                                     icon={UserRound}
                                 />
                             </div>
 
-                            <section className="mt-5 rounded-2xl border border-slate-200 p-5">
-                                <h3 className="text-sm font-semibold text-slate-950">
+                            <section className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-2xs">
+                                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
                                     Description
                                 </h3>
 
-                                <p className="mt-3 text-xs leading-6 text-slate-500">
-                                    {
-                                        selectedDocument.description
-                                    }
+                                <p className="mt-1.5 text-xs leading-relaxed text-slate-600">
+                                    {selectedDocument.description || "No detailed description available."}
                                 </p>
                             </section>
 
-                   <section className="mt-5 flex min-h-[220px] items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50">
+                            <section className="flex min-h-[160px] items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/50 p-4">
+                                <div className="text-center">
+                                    <FileText
+                                        size={26}
+                                        className="mx-auto text-slate-400"
+                                    />
 
-    <div className="px-6 text-center">
+                                    <p className="mt-2 text-xs font-bold text-slate-800">
+                                        Document Preview
+                                    </p>
 
-        <FileText
-            size={32}
-            className="mx-auto text-slate-300"
-        />
+                                    <p className="mx-auto mt-0.5 max-w-sm text-[11px] leading-relaxed text-slate-500">
+                                        Open this document securely in a new tab to view its contents.
+                                    </p>
 
-        <p className="mt-3 text-sm font-semibold text-slate-700">
-            Document Preview
-        </p>
-
-        <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-slate-500">
-            Open this document securely in a new tab to view its contents.
-        </p>
-
-        <button
-            type="button"
-            onClick={() =>
-                handlePreviewDocument(
-                    selectedDocument
-                )
-            }
-            className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-cyan-600 px-4 text-xs font-semibold text-white transition hover:bg-cyan-700"
-        >
-            <Eye size={15} />
-
-            Preview Document
-        </button>
-
-    </div>
-
-</section>
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            handlePreviewDocument(
+                                                selectedDocument
+                                            )
+                                        }
+                                        className="mt-3 inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-[#1B59F8] px-3.5 text-xs font-semibold text-white shadow-2xs transition hover:bg-blue-700"
+                                    >
+                                        <Eye size={13} />
+                                        Preview Document
+                                    </button>
+                                </div>
+                            </section>
                         </div>
 
-                        <div className="grid gap-3 border-t border-slate-200 p-5 sm:grid-cols-2 sm:px-6">
-                            <button
-                                type="button"
-                                onClick={() => handleDownload(selectedDocument)}
-                                className="flex h-11 items-center justify-center gap-2 rounded-xl bg-[#0f172a] px-4 text-xs font-semibold text-white transition hover:bg-cyan-600"
-                            >
-                                <Download size={16} />
-                                Download Document
-                            </button>
-
+                        <div className="flex items-center justify-end gap-2.5 border-t border-slate-200/90 p-4 sm:px-6">
                             <button
                                 type="button"
                                 onClick={() =>
                                     setSelectedDocumentId(null)
                                 }
-                                className="h-11 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                                className="h-8.5 px-4 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-700 transition hover:bg-slate-50"
                             >
                                 Close
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => handleDownload(selectedDocument)}
+                                className="flex h-8.5 items-center justify-center gap-1.5 rounded-lg bg-[#1B59F8] px-4 text-xs font-semibold text-white shadow-2xs transition hover:bg-blue-700"
+                            >
+                                <Download size={14} />
+                                Download Document
                             </button>
                         </div>
                     </aside>
