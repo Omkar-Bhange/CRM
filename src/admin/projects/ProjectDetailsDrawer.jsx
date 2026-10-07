@@ -97,8 +97,6 @@ export default function ProjectDetailsDrawer({
   const [removingMember, setRemovingMember] = useState(false);
   const [removeError, setRemoveError] = useState("");
 
-  if (!isOpen) return null;
-
   const project = projectDetails?.project || {};
   const summary = projectDetails?.summary || {};
   const teamMembers = Array.isArray(project.teamMembers) ? project.teamMembers : [];
@@ -115,6 +113,7 @@ export default function ProjectDetailsDrawer({
 
   // Compute workload snapshot per team member
   const memberWorkload = useMemo(() => {
+    if (!isOpen || !tasks.length) return {};
     const map = {};
     for (const t of tasks) {
       const empId = t.assignedEmployeeId ? String(t.assignedEmployeeId) : "";
@@ -136,7 +135,9 @@ export default function ProjectDetailsDrawer({
       }
     }
     return map;
-  }, [tasks]);
+  }, [isOpen, tasks]);
+
+  if (!isOpen) return null;
 
   const handleConfirmRemove = async () => {
     if (!memberToRemove || !onRemoveMember) return;
