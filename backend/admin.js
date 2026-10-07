@@ -454,12 +454,30 @@ function deleteAmcFile(
     );
   }
 }
+
+async function getEmployeeForUser(user) {
+  if (!user || !user._id) return null;
+  const employeesCol = mongoose.connection.collection("employees");
+  const userObjectId = mongoose.Types.ObjectId.isValid(user._id)
+    ? new mongoose.Types.ObjectId(user._id)
+    : user._id;
+
+  return employeesCol.findOne({
+    $or: [
+      { userId: userObjectId },
+      { userId: String(user._id) },
+      { _id: userObjectId },
+    ],
+    isDeleted: { $ne: true },
+  });
+}
+
 router.use(authenticateUser);
 
-router.use((req, res, next) => {
+router.use(async (req, res, next) => {
   if (req.user.role === "admin") return next();
 
-  const taskMatch = req.path.match(/^\/task\/([a-fA-F0-9]{24})(\/(status|comment))?$/);
+  const taskMatch = req.path.match(/^\/task\/([a-fA-F0-9]{24})(\/(status|comment|checklist(\/[a-fA-F0-9]{24})?|start|attachment))?$/);
   const ticketAttachMatch = req.path.match(/^\/ticket\/[a-fA-F0-9]{24}\/attachment$/);
 
   const employeeAllowed =
@@ -467,15 +485,59 @@ router.use((req, res, next) => {
     ((taskMatch &&
       ((req.method === "GET" && !taskMatch[2]) ||
         (req.method === "PATCH" && taskMatch[2] === "/status") ||
-        (req.method === "POST" && taskMatch[2] === "/comment"))) ||
+        (req.method === "POST" && ["/comment", "/start", "/attachment"].includes(taskMatch[2])) ||
+        (req.path.includes("/checklist") && ["POST", "PATCH", "DELETE"].includes(req.method)))) ||
      (ticketAttachMatch && req.method === "POST"));
 
-  if (employeeAllowed) return next();
+  if (!employeeAllowed) {
+    return res.status(403).json({
+      success: false,
+      message: "Admin access is required.",
+    });
+  }
 
-  return res.status(403).json({
-    success: false,
-    message: "Admin access is required.",
-  });
+  // Cross-Employee Task Authorization Check:
+  // If an employee accesses a task, they MUST be the assigned employee for that task.
+  if (taskMatch && taskMatch[1]) {
+    try {
+      const taskId = taskMatch[1];
+      const tasksCol = mongoose.connection.collection("tasks");
+
+      const currentEmployee = await getEmployeeForUser(req.user);
+
+      const taskObjectId = mongoose.Types.ObjectId.isValid(taskId)
+        ? new mongoose.Types.ObjectId(taskId)
+        : taskId;
+
+      const targetTask = await tasksCol.findOne({
+        _id: taskObjectId,
+        isDeleted: { $ne: true },
+      });
+
+      if (!targetTask) {
+        return res.status(404).json({
+          success: false,
+          message: "Task not found.",
+        });
+      }
+
+      if (
+        !currentEmployee ||
+        !targetTask.assignedEmployeeId ||
+        String(targetTask.assignedEmployeeId) !== String(currentEmployee._id)
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: "Access denied. You can only view or modify tasks assigned to you.",
+        });
+      }
+    } catch (err) {
+      console.error("Task authorization middleware error:", err);
+      return res.status(500).json({ success: false, message: "Authorization verification failed." });
+    }
+  }
+
+  return next();
 });
 /* =====================================================
    AGENT DEVICE MANAGEMENT
@@ -1460,6 +1522,110 @@ const Product =
  PROJECT MASTER SCHEMA
 ===================================================== */
 
+const projectTeamMemberSchema = new mongoose.Schema(
+  {
+    employeeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Employee",
+      required: true,
+    },
+    employeeName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    employeeCode: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    employeeEmail: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    role: {
+      type: String,
+      default: "Team Member",
+      trim: true,
+    },
+    responsibility: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    addedAt: {
+      type: Date,
+      default: Date.now,
+    },
+    status: {
+      type: String,
+      enum: ["Active", "Removed"],
+      default: "Active",
+    },
+  },
+  {
+    _id: true,
+  }
+);
+
+const projectTimelineSchema = new mongoose.Schema(
+  {
+    action: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    description: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    oldStage: {
+      type: String,
+      default: "",
+    },
+    newStage: {
+      type: String,
+      default: "",
+    },
+    oldStatus: {
+      type: String,
+      default: "",
+    },
+    newStatus: {
+      type: String,
+      default: "",
+    },
+    notes: {
+      type: String,
+      default: "",
+    },
+    performedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    performedByName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    performedByRole: {
+      type: String,
+      default: "admin",
+      trim: true,
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  {
+    _id: true,
+  }
+);
+
 const projectSchema = new mongoose.Schema(
   {
     projectCode: {
@@ -1676,6 +1842,36 @@ convertedProductByName: {
       index: true,
     },
 
+    projectManager: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Employee",
+      default: null,
+      index: true,
+    },
+
+    projectManagerName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    stage: {
+      type: String,
+      default: "Planning",
+      trim: true,
+      index: true,
+    },
+
+    teamMembers: {
+      type: [projectTeamMemberSchema],
+      default: [],
+    },
+
+    timeline: {
+      type: [projectTimelineSchema],
+      default: [],
+    },
+
     progress: {
       type: Number,
       default: 0,
@@ -1751,9 +1947,69 @@ const Project =
     projectSchema
   );
 
-  /* =====================================================
+/* =====================================================
    REQUIREMENT / ENQUIRY SCHEMA
 ===================================================== */
+
+const requirementTimelineSchema = new mongoose.Schema(
+  {
+    action: {
+      type: String,
+      default: "Status Updated",
+      trim: true,
+    },
+    oldStatus: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    newStatus: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    notes: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    nextAction: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    followUpDate: {
+      type: Date,
+      default: null,
+    },
+    performedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    performedByName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    performedByRole: {
+      type: String,
+      default: "admin",
+      trim: true,
+    },
+    metadata: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  {
+    _id: true,
+  }
+);
 
 const requirementSchema =
   new mongoose.Schema(
@@ -1999,6 +2255,79 @@ const requirementSchema =
         type: String,
         default: "",
         trim: true,
+      },
+
+      timeline: {
+        type: [requirementTimelineSchema],
+        default: [],
+      },
+
+      lostReason: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      competitor: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      holdReason: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      nextAction: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      followUpDate: {
+        type: Date,
+        default: null,
+      },
+
+      contactMethod: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      contactPerson: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      demoDate: {
+        type: Date,
+        default: null,
+      },
+
+      demoOwner: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      quotationReference: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      validUntil: {
+        type: Date,
+        default: null,
+      },
+
+      stageData: {
+        type: mongoose.Schema.Types.Mixed,
+        default: {},
       },
 
       /* ===============================================
@@ -3688,6 +4017,37 @@ const ProductSalePayment =
  TASK SCHEMA
 ===================================================== */
 
+const taskChecklistItemSchema = new mongoose.Schema(
+  {
+    text: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    completed: {
+      type: Boolean,
+      default: false,
+    },
+    completedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    completedByName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    completedAt: {
+      type: Date,
+      default: null,
+    },
+  },
+  {
+    _id: true,
+  }
+);
+
 const taskTimelineSchema = new mongoose.Schema(
   {
     action: {
@@ -4022,6 +4382,28 @@ projectName: {
       trim: true,
     },
 
+    checklist: {
+      type: [taskChecklistItemSchema],
+      default: [],
+    },
+
+    blockerReason: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    waitingFor: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    expectedResolutionDate: {
+      type: Date,
+      default: null,
+    },
+
     timeline: {
       type: [taskTimelineSchema],
       default: [],
@@ -4173,10 +4555,20 @@ const overdueTasks =
     await project.save();
   }
 
+  const inProgressTasks = projectTasks.filter(
+    (task) => task.status === "In Progress"
+  ).length;
+
+  const blockedTasks = projectTasks.filter(
+    (task) => task.status === "Blocked"
+  ).length;
+
   return {
     totalTasks,
     activeTasks,
     completedTasks,
+    inProgressTasks,
+    blockedTasks,
     overdueTasks,
     progress,
     tasks: projectTasks,
@@ -7905,6 +8297,21 @@ isReadOnly:
     status:
       project.status,
 
+    stage:
+      project.stage || "Planning",
+
+    projectManager:
+      project.projectManager || null,
+
+    projectManagerName:
+      project.projectManagerName || "",
+
+    teamMembers:
+      project.teamMembers || [],
+
+    timeline:
+      project.timeline || [],
+
     progress:
       project.progress,
 
@@ -8502,6 +8909,18 @@ function taskResponse(task) {
 
     resolutionNote:
       task.resolutionNote,
+
+    checklist:
+      task.checklist || [],
+
+    blockerReason:
+      task.blockerReason || "",
+
+    waitingFor:
+      task.waitingFor || "",
+
+    expectedResolutionDate:
+      task.expectedResolutionDate || null,
 
     timeline:
       task.timeline,
@@ -11526,15 +11945,51 @@ router.get(
           .lean();
 
       /*
-       * Unique project team.
-       *
-       * Anyone assigned to at least one
-       * project task is considered part
-       * of the project team.
+       * Project team:
+       * 1. Explicit project team members
+       * 2. Designated Project Manager
+       * 3. Distinct employees assigned to project tasks
        */
+      const teamMap = new Map();
 
-      const teamMap =
-        new Map();
+      if (Array.isArray(refreshedProject.teamMembers)) {
+        for (const member of refreshedProject.teamMembers) {
+          const empId = member.employeeId ? String(member.employeeId) : "";
+          if (!empId) continue;
+          teamMap.set(empId, {
+            employeeId: member.employeeId,
+            employeeCode: member.employeeCode || "",
+            employeeName: member.employeeName || "Unassigned",
+            role: member.role || "Team Member",
+            responsibility: member.responsibility || "",
+            status: member.status || "Active",
+            addedAt: member.addedAt,
+            isExplicitMember: true,
+          });
+        }
+      }
+
+      if (refreshedProject.projectManager) {
+        const pmId = String(refreshedProject.projectManager);
+        if (teamMap.has(pmId)) {
+          const current = teamMap.get(pmId);
+          current.isProjectManager = true;
+          if (!current.role || current.role === "Team Member") {
+            current.role = "Project Manager";
+          }
+        } else {
+          teamMap.set(pmId, {
+            employeeId: refreshedProject.projectManager,
+            employeeCode: "",
+            employeeName: refreshedProject.projectManagerName || "Project Manager",
+            role: "Project Manager",
+            responsibility: "Project Leadership",
+            status: "Active",
+            isProjectManager: true,
+            isExplicitMember: true,
+          });
+        }
+      }
 
       for (const task of tasks) {
         const employeeId =
@@ -11564,6 +12019,11 @@ router.get(
             employeeName:
               task.assignedEmployeeName ||
               "Unassigned",
+
+            role: "Task Assignee",
+            responsibility: "Assigned Project Tasks",
+            status: "Active",
+            isExplicitMember: false,
           }
         );
       }
@@ -11677,6 +12137,14 @@ router.get(
               summary?.completedTasks ||
               0,
 
+            inProgressTasks:
+              summary?.inProgressTasks ||
+              0,
+
+            blockedTasks:
+              summary?.blockedTasks ||
+              0,
+
             overdueTasks:
               summary?.overdueTasks ||
               0,
@@ -11685,6 +12153,10 @@ router.get(
               summary?.progress ||
               0,
           },
+
+          teamMembers:
+            refreshedProject.teamMembers ||
+            [],
 
           team,
 
@@ -12339,6 +12811,531 @@ if (status === "Completed") {
     }
   }
 );
+
+/* =====================================================
+   PROJECT STAGE TRANSITION (PROFESSIONAL WORKFLOW)
+   PATCH /api/admin/project/:id/stage-transition
+===================================================== */
+
+router.patch("/project/:id/stage-transition", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid project ID.",
+      });
+    }
+
+    const {
+      stage,
+      status,
+      notes,
+      testingOwner,
+      clientReviewDate,
+      completionNotes,
+      closureNotes,
+      closureDate,
+    } = req.body || {};
+
+    const targetStage = String(stage || "").trim();
+
+    if (!targetStage) {
+      return res.status(400).json({
+        success: false,
+        message: "Target project stage is required.",
+      });
+    }
+
+    const project = await Project.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: "Project not found.",
+      });
+    }
+
+    if (rejectLockedProject(project, res)) {
+      return;
+    }
+
+    const previousStage = project.stage || "Planning";
+    const previousStatus = project.status || "Planned";
+
+    project.stage = targetStage;
+
+    if (status && ["Planned", "Active", "On Hold", "Completed", "Cancelled"].includes(status)) {
+      project.status = status;
+    } else {
+      if (["In Progress", "Testing / Review", "Client Review"].includes(targetStage)) {
+        if (project.status === "Planned") {
+          project.status = "Active";
+        }
+      } else if (["Completed", "Closed"].includes(targetStage)) {
+        project.status = "Completed";
+        if (!project.completedDate) project.completedDate = new Date();
+      }
+    }
+
+    project.updatedBy = req.user._id;
+    project.updatedByName = req.user.name || "Admin";
+
+    let timelineDesc = `Project moved to stage ${targetStage}.`;
+    if (notes) timelineDesc += ` Note: ${notes}`;
+    if (testingOwner) timelineDesc += ` Testing Owner: ${testingOwner}`;
+    if (clientReviewDate) timelineDesc += ` Review Date: ${new Date(clientReviewDate).toLocaleDateString()}`;
+    if (completionNotes) timelineDesc += ` Completion: ${completionNotes}`;
+    if (closureNotes) timelineDesc += ` Closure: ${closureNotes}`;
+
+    project.timeline = project.timeline || [];
+    project.timeline.push({
+      action: `Stage: ${previousStage} → ${targetStage}`,
+      description: timelineDesc,
+      oldStage: previousStage,
+      newStage: targetStage,
+      oldStatus: previousStatus,
+      newStatus: project.status,
+      notes: notes || completionNotes || closureNotes || "",
+      performedBy: req.user._id,
+      performedByName: req.user.name || "Admin",
+      performedByRole: "admin",
+      createdAt: new Date(),
+    });
+
+    await project.save();
+
+    await createActivityLog({
+      action: "Project Stage Changed",
+      category: "Project",
+      description: `${project.projectName} stage moved from ${previousStage} to ${targetStage}.`,
+      entityType: "project",
+      entityId: project._id,
+      entityCode: project.projectCode,
+      entityName: project.projectName,
+      clientId: project.clientId,
+      clientName: project.clientName,
+      performedBy: req.user._id,
+      performedByName: req.user.name || "Admin",
+      performedByRole: "admin",
+      metadata: {
+        previousStage,
+        newStage: targetStage,
+        previousStatus,
+        newStatus: project.status,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Project stage updated to ${targetStage} successfully.`,
+      data: projectResponse(project),
+    });
+  } catch (error) {
+    console.error("Project stage transition error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Unable to update project stage.",
+    });
+  }
+});
+
+/* =====================================================
+   ADD PROJECT TEAM MEMBER
+   POST /api/admin/project/:id/team-members
+===================================================== */
+
+router.post("/project/:id/team-members", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid project ID.",
+      });
+    }
+
+    const { employeeId, role, responsibility } = req.body || {};
+
+    if (!employeeId || !mongoose.Types.ObjectId.isValid(employeeId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid employee ID is required.",
+      });
+    }
+
+    const project = await Project.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: "Project not found.",
+      });
+    }
+
+    const employee = await mongoose.connection.collection("employees").findOne({
+      _id: new mongoose.Types.ObjectId(employeeId),
+      isDeleted: { $ne: true },
+    });
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found or is inactive.",
+      });
+    }
+
+    const empObjectId = new mongoose.Types.ObjectId(employee._id);
+
+    // 1. Check if employee is already an active member
+    const alreadyActive = project.teamMembers && project.teamMembers.some(
+      (m) => String(m.employeeId) === String(employee._id) && m.status === "Active"
+    );
+    if (alreadyActive) {
+      return res.status(409).json({
+        success: false,
+        message: `${employee.name} is already an active member of this project team.`,
+      });
+    }
+
+    const timelineEntry = {
+      action: "Team Member Added",
+      description: `${employee.name} added as ${role || "Team Member"}.`,
+      performedBy: req.user._id,
+      performedByName: req.user.name || "Admin",
+      performedByRole: "admin",
+      createdAt: new Date(),
+    };
+
+    let updatedProject = null;
+
+    // 2. If member exists in team (e.g. was Removed/Inactive), reactivate atomically
+    const existingMember = project.teamMembers && project.teamMembers.find(
+      (m) => String(m.employeeId) === String(employee._id)
+    );
+
+    if (existingMember) {
+      updatedProject = await Project.findOneAndUpdate(
+        {
+          _id: id,
+          isDeleted: false,
+          teamMembers: {
+            $elemMatch: {
+              employeeId: empObjectId,
+              status: { $ne: "Active" }
+            }
+          }
+        },
+        {
+          $set: {
+            "teamMembers.$.status": "Active",
+            "teamMembers.$.role": String(role || "Team Member").trim(),
+            "teamMembers.$.responsibility": String(responsibility || "").trim(),
+            "teamMembers.$.addedAt": new Date(),
+            updatedBy: req.user._id,
+            updatedByName: req.user.name || "Admin",
+          },
+          $push: { timeline: timelineEntry }
+        },
+        { returnDocument: "after" }
+      );
+    } else {
+      // 3. Brand new member: push ONLY IF not already in teamMembers
+      updatedProject = await Project.findOneAndUpdate(
+        {
+          _id: id,
+          isDeleted: false,
+          "teamMembers.employeeId": { $ne: empObjectId }
+        },
+        {
+          $push: {
+            teamMembers: {
+              _id: new mongoose.Types.ObjectId(),
+              employeeId: empObjectId,
+              employeeName: employee.name,
+              employeeCode: employee.employeeCode || "",
+              employeeEmail: employee.email || "",
+              role: String(role || "Team Member").trim(),
+              responsibility: String(responsibility || "").trim(),
+              addedAt: new Date(),
+              status: "Active",
+            },
+            timeline: timelineEntry
+          },
+          $set: {
+            updatedBy: req.user._id,
+            updatedByName: req.user.name || "Admin",
+          }
+        },
+        { returnDocument: "after" }
+      );
+    }
+
+    if (!updatedProject) {
+      return res.status(409).json({
+        success: false,
+        message: `${employee.name} is already an active member of this project team.`,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `${employee.name} added to project team successfully.`,
+      data: updatedProject.teamMembers,
+    });
+  } catch (error) {
+    console.error("Add project team member error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Unable to add team member.",
+    });
+  }
+});
+
+/* =====================================================
+   UPDATE PROJECT TEAM MEMBER
+   PATCH /api/admin/project/:id/team-members/:memberId
+===================================================== */
+
+router.patch("/project/:id/team-members/:memberId", async (req, res) => {
+  try {
+    const { id, memberId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(memberId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid project ID or member ID.",
+      });
+    }
+
+    const { role, responsibility, status } = req.body || {};
+
+    const project = await Project.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: "Project not found.",
+      });
+    }
+
+    project.teamMembers = project.teamMembers || [];
+
+    const member = project.teamMembers.find(
+      (m) => String(m._id) === String(memberId) || String(m.employeeId) === String(memberId)
+    );
+
+    if (!member) {
+      return res.status(404).json({
+        success: false,
+        message: "Team member not found in project.",
+      });
+    }
+
+    if (role !== undefined) member.role = String(role).trim();
+    if (responsibility !== undefined) member.responsibility = String(responsibility).trim();
+    if (status !== undefined && ["Active", "Removed"].includes(status)) member.status = status;
+
+    project.timeline = project.timeline || [];
+    project.timeline.push({
+      action: "Team Member Updated",
+      description: `Role/details updated for ${member.employeeName} (${member.role}).`,
+      performedBy: req.user._id,
+      performedByName: req.user.name || "Admin",
+      performedByRole: "admin",
+      createdAt: new Date(),
+    });
+
+    project.updatedBy = req.user._id;
+    project.updatedByName = req.user.name || "Admin";
+
+    await project.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Team member updated successfully.",
+      data: project.teamMembers,
+    });
+  } catch (error) {
+    console.error("Update project team member error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Unable to update team member.",
+    });
+  }
+});
+
+/* =====================================================
+   REMOVE PROJECT TEAM MEMBER
+   DELETE /api/admin/project/:id/team-members/:memberId
+===================================================== */
+
+router.delete("/project/:id/team-members/:memberId", async (req, res) => {
+  try {
+    const { id, memberId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(memberId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid project ID or member ID.",
+      });
+    }
+
+    const project = await Project.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: "Project not found.",
+      });
+    }
+
+    project.teamMembers = project.teamMembers || [];
+
+    const member = project.teamMembers.find(
+      (m) => String(m._id) === String(memberId) || String(m.employeeId) === String(memberId)
+    );
+
+    if (!member) {
+      return res.status(404).json({
+        success: false,
+        message: "Team member not found in project.",
+      });
+    }
+
+    // Mark as Removed (does NOT delete Employee or Tasks)
+    member.status = "Removed";
+
+    project.timeline = project.timeline || [];
+    project.timeline.push({
+      action: "Team Member Removed",
+      description: `${member.employeeName} removed from active project team.`,
+      performedBy: req.user._id,
+      performedByName: req.user.name || "Admin",
+      performedByRole: "admin",
+      createdAt: new Date(),
+    });
+
+    project.updatedBy = req.user._id;
+    project.updatedByName = req.user.name || "Admin";
+
+    await project.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `${member.employeeName} removed from project team.`,
+      data: project.teamMembers,
+    });
+  } catch (error) {
+    console.error("Remove project team member error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Unable to remove team member.",
+    });
+  }
+});
+
+/* =====================================================
+   ASSIGN/UPDATE PROJECT MANAGER
+   PATCH /api/admin/project/:id/project-manager
+===================================================== */
+
+router.patch("/project/:id/project-manager", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid project ID.",
+      });
+    }
+
+    const { projectManagerId } = req.body || {};
+
+    const project = await Project.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: "Project not found.",
+      });
+    }
+
+    let pmName = "";
+    if (projectManagerId) {
+      if (!mongoose.Types.ObjectId.isValid(projectManagerId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid Project Manager ID.",
+        });
+      }
+      const pm = await mongoose.connection.collection("employees").findOne({
+        _id: new mongoose.Types.ObjectId(projectManagerId),
+        isDeleted: { $ne: true },
+      });
+      if (!pm) {
+        return res.status(404).json({
+          success: false,
+          message: "Selected Project Manager not found or is inactive.",
+        });
+      }
+      project.projectManager = pm._id;
+      project.projectManagerName = pm.name;
+      pmName = pm.name;
+    } else {
+      project.projectManager = null;
+      project.projectManagerName = "";
+    }
+
+    project.timeline = project.timeline || [];
+    project.timeline.push({
+      action: "Project Manager Assigned",
+      description: pmName ? `Project Manager set to ${pmName}.` : "Project Manager cleared.",
+      performedBy: req.user._id,
+      performedByName: req.user.name || "Admin",
+      performedByRole: "admin",
+      createdAt: new Date(),
+    });
+
+    project.updatedBy = req.user._id;
+    project.updatedByName = req.user.name || "Admin";
+
+    await project.save();
+
+    return res.status(200).json({
+      success: true,
+      message: pmName ? `Project Manager assigned to ${pmName}.` : "Project Manager cleared.",
+      data: {
+        projectManager: project.projectManager,
+        projectManagerName: project.projectManagerName,
+      },
+    });
+  } catch (error) {
+    console.error("Assign Project Manager error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Unable to assign Project Manager.",
+    });
+  }
+});
 
 /* =====================================================
    COMPLETE PROJECT
@@ -17702,15 +18699,28 @@ router.patch(
           });
       }
 
-      requirement.status =
-        status;
+      const previousStatus = requirement.status;
 
-      requirement.updatedBy =
-        req.user._id;
+      requirement.status = status;
 
-      requirement.updatedByName =
-        req.user.name ||
-        "Admin";
+      requirement.updatedBy = req.user._id;
+
+      requirement.updatedByName = req.user.name || "Admin";
+
+      const noteText = req.body.notes || req.body.note || "";
+      if (noteText) requirement.notes = String(noteText).trim();
+
+      requirement.timeline = requirement.timeline || [];
+      requirement.timeline.push({
+        action: `Status: ${previousStatus} → ${status}`,
+        oldStatus: previousStatus,
+        newStatus: status,
+        notes: noteText,
+        performedBy: req.user._id,
+        performedByName: req.user.name || "Admin",
+        performedByRole: req.user.role || "admin",
+        createdAt: new Date(),
+      });
 
       await requirement.save();
 
@@ -17736,6 +18746,208 @@ router.patch(
     }
   }
 );
+
+/* =====================================================
+   REQUIREMENT STAGE TRANSITION (PROFESSIONAL WORKFLOW)
+   PATCH /api/admin/requirement/:id/stage-transition
+===================================================== */
+
+router.patch(
+  "/requirement/:id/stage-transition",
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid requirement ID.",
+        });
+      }
+
+      const allowedStatuses = [
+        "New",
+        "Discussion",
+        "Analysis",
+        "Estimate Pending",
+        "Quotation Pending",
+        "Quotation Sent",
+        "Negotiation",
+        "Approved",
+        "Rejected",
+        "On Hold",
+        "Converted to Project",
+      ];
+
+      const {
+        status,
+        notes,
+        nextAction,
+        followUpDate,
+        contactMethod,
+        contactPerson,
+        demoDate,
+        demoOwner,
+        quotationReference,
+        quotationAmount,
+        quotationDate,
+        validUntil,
+        lostReason,
+        competitor,
+        holdReason,
+        assignedEmployeeId,
+        stageData,
+      } = req.body || {};
+
+      const targetStatus = String(status || "").trim();
+
+      if (!allowedStatuses.includes(targetStatus)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid requirement target status.",
+        });
+      }
+
+      const requirement = await Requirement.findOne({
+        _id: id,
+        isDeleted: false,
+      });
+
+      if (!requirement) {
+        return res.status(404).json({
+          success: false,
+          message: "Requirement not found.",
+        });
+      }
+
+      if (
+        requirement.status === "Converted to Project" &&
+        targetStatus !== "Converted to Project"
+      ) {
+        return res.status(409).json({
+          success: false,
+          message: "Converted requirement cannot be moved back to another status.",
+        });
+      }
+
+      const previousStatus = requirement.status;
+
+      requirement.status = targetStatus;
+
+      if (notes !== undefined) requirement.notes = String(notes || "").trim();
+      if (nextAction !== undefined) requirement.nextAction = String(nextAction || "").trim();
+      if (followUpDate !== undefined) {
+        requirement.followUpDate = followUpDate ? new Date(followUpDate) : null;
+      }
+      if (contactMethod !== undefined) requirement.contactMethod = String(contactMethod || "").trim();
+      if (contactPerson !== undefined) requirement.contactPerson = String(contactPerson || "").trim();
+      if (demoDate !== undefined) {
+        requirement.demoDate = demoDate ? new Date(demoDate) : null;
+      }
+      if (demoOwner !== undefined) requirement.demoOwner = String(demoOwner || "").trim();
+      if (quotationReference !== undefined) {
+        requirement.quotationReference = String(quotationReference || "").trim();
+        requirement.quotationNo = String(quotationReference || "").trim();
+      }
+      if (validUntil !== undefined) {
+        requirement.validUntil = validUntil ? new Date(validUntil) : null;
+      }
+      if (lostReason !== undefined) requirement.lostReason = String(lostReason || "").trim();
+      if (competitor !== undefined) requirement.competitor = String(competitor || "").trim();
+      if (holdReason !== undefined) requirement.holdReason = String(holdReason || "").trim();
+
+      if (quotationAmount !== undefined && !isNaN(Number(quotationAmount))) {
+        requirement.quotedAmount = Math.max(0, Number(quotationAmount));
+      }
+      if (quotationDate !== undefined) {
+        requirement.quotationDate = quotationDate ? new Date(quotationDate) : null;
+      }
+
+      if (stageData && typeof stageData === "object") {
+        requirement.stageData = { ...(requirement.stageData || {}), ...stageData };
+      }
+
+      if (assignedEmployeeId && mongoose.Types.ObjectId.isValid(assignedEmployeeId)) {
+        const EmployeeModel = mongoose.models.Employee || mongoose.model("Employee");
+        const emp = await EmployeeModel.findById(assignedEmployeeId);
+        if (emp) {
+          requirement.assignedEmployeeId = emp._id;
+          requirement.assignedEmployeeName = emp.name;
+          requirement.assignedEmployeeCode = emp.employeeCode || "";
+        }
+      }
+
+      requirement.updatedBy = req.user._id;
+      requirement.updatedByName = req.user.name || "Admin";
+
+      let timelineDesc = `Transitioned from ${previousStatus} to ${targetStatus}.`;
+      if (notes) timelineDesc += ` Notes: ${notes}`;
+      if (nextAction) timelineDesc += ` Next: ${nextAction}`;
+      if (targetStatus === "Rejected" && lostReason) timelineDesc += ` Reason: ${lostReason}`;
+      if (targetStatus === "On Hold" && holdReason) timelineDesc += ` Reason: ${holdReason}`;
+
+      requirement.timeline = requirement.timeline || [];
+      requirement.timeline.push({
+        action: `Status: ${previousStatus} → ${targetStatus}`,
+        oldStatus: previousStatus,
+        newStatus: targetStatus,
+        notes: notes || "",
+        nextAction: nextAction || "",
+        followUpDate: followUpDate ? new Date(followUpDate) : null,
+        performedBy: req.user._id,
+        performedByName: req.user.name || "Admin",
+        performedByRole: req.user.role || "admin",
+        metadata: {
+          lostReason: lostReason || "",
+          competitor: competitor || "",
+          holdReason: holdReason || "",
+          contactMethod: contactMethod || "",
+          contactPerson: contactPerson || "",
+          demoDate: demoDate || null,
+          demoOwner: demoOwner || "",
+          quotationReference: quotationReference || "",
+          quotationAmount: quotationAmount || 0,
+        },
+        createdAt: new Date(),
+      });
+
+      await requirement.save();
+
+      await createActivityLog({
+        action: "Requirement Stage Changed",
+        category: "Requirement",
+        description: `${requirement.requirementCode} transitioned from ${previousStatus} to ${targetStatus}.`,
+        entityType: "requirement",
+        entityId: requirement._id,
+        entityCode: requirement.requirementCode,
+        entityName: requirement.title,
+        clientId: requirement.clientId,
+        clientName: requirement.clientName || requirement.prospectName,
+        performedBy: req.user._id,
+        performedByName: req.user.name || "Admin",
+        performedByRole: "admin",
+        metadata: {
+          previousStatus,
+          targetStatus,
+          lostReason: lostReason || null,
+          nextAction: nextAction || null,
+        },
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: `Requirement moved to ${targetStatus} successfully.`,
+        data: requirement,
+      });
+    } catch (error) {
+      console.error("Requirement stage transition error:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message || "Unable to transition requirement stage.",
+      });
+    }
+  }
+);
 /* =====================================================
    CONVERT REQUIREMENT TO PROJECT
 ===================================================== */
@@ -17758,51 +18970,59 @@ router.post(
           });
       }
 
-      const requirement =
-        await Requirement.findOne({
-          _id:
-            req.params.id,
-
-          isDeleted:
-            false,
-        });
+      const requirement = await Requirement.findOneAndUpdate(
+        {
+          _id: req.params.id,
+          status: "Approved",
+          $or: [{ convertedProjectId: null }, { convertedProjectId: { $exists: false } }],
+          isDeleted: false,
+        },
+        {
+          $set: { status: "Converting to Project" },
+        },
+        { new: false }
+      );
 
       if (!requirement) {
-        return res
-          .status(404)
-          .json({
+        const existing = await Requirement.findOne({
+          _id: req.params.id,
+          isDeleted: false,
+        });
+
+        if (!existing) {
+          return res.status(404).json({
             success: false,
-            message:
-              "Requirement not found.",
+            message: "Requirement not found.",
           });
+        }
+
+        if (
+          existing.convertedProjectId ||
+          existing.status === "Converted to Project" ||
+          existing.status === "Converting to Project"
+        ) {
+          return res.status(409).json({
+            success: false,
+            message: "Requirement is already converted to a project.",
+          });
+        }
+
+        return res.status(400).json({
+          success: false,
+          message: "Requirement must be Approved before converting to a project.",
+        });
       }
 
-      if (
-        requirement.convertedProjectId
-      ) {
-        return res
-          .status(409)
-          .json({
-            success: false,
-
-            message:
-              "Requirement is already converted to a project.",
-          });
-      }
-
-      if (
-        requirement.status !==
-        "Approved"
-      ) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-
-            message:
-              "Requirement must be Approved before converting to a project.",
-          });
-      }
+      const unlockRequirement = async () => {
+        try {
+          await Requirement.updateOne(
+            { _id: req.params.id, status: "Converting to Project" },
+            { $set: { status: "Approved" } }
+          );
+        } catch (e) {
+          console.error("Unlock requirement error:", e);
+        }
+      };
 
       /*
        * For phase 1:
@@ -17833,6 +19053,7 @@ if (
     "New Prospect" &&
   !requestedClientId
 ) {
+  await unlockRequirement();
   return res
     .status(409)
     .json({
@@ -17852,6 +19073,7 @@ if (
     requestedClientId
   )
 ) {
+  await unlockRequirement();
   return res
     .status(400)
     .json({
@@ -17876,6 +19098,7 @@ if (
   requestedClientId &&
   !client
 ) {
+  await unlockRequirement();
   return res
     .status(404)
     .json({
@@ -17912,7 +19135,7 @@ if (
 }
 
       const {
-          clientId,
+        clientId,
         projectCode,
         projectName,
         projectType,
@@ -17923,6 +19146,8 @@ if (
         amcApplicable,
         proposedAmcAmount,
         warrantyEndDate,
+        projectManagerId,
+        initialTeamMembers,
       } = req.body || {};
 
       const normalizedCode =
@@ -17933,6 +19158,7 @@ if (
           .toUpperCase();
 
       if (!normalizedCode) {
+        await unlockRequirement();
         return res
           .status(400)
           .json({
@@ -17953,6 +19179,7 @@ if (
         });
 
       if (duplicateProject) {
+        await unlockRequirement();
         return res
           .status(409)
           .json({
@@ -17971,6 +19198,7 @@ if (
         );
 
       if (!selectedPriority) {
+        await unlockRequirement();
         return res
           .status(400)
           .json({
@@ -18049,6 +19277,9 @@ if (
           status:
             "Planned",
 
+          stage:
+            "Planning",
+
           progress:
             0,
 
@@ -18098,6 +19329,56 @@ if (
             "Admin",
         });
 
+      if (projectManagerId && mongoose.Types.ObjectId.isValid(projectManagerId)) {
+        const EmployeeModel = mongoose.models.Employee || mongoose.model("Employee");
+        const pm = await EmployeeModel.findById(projectManagerId);
+        if (pm) {
+          project.projectManager = pm._id;
+          project.projectManagerName = pm.name;
+        }
+      }
+
+      if (Array.isArray(initialTeamMembers) && initialTeamMembers.length > 0) {
+        const EmployeeModel = mongoose.models.Employee || mongoose.model("Employee");
+        for (const tm of initialTeamMembers) {
+          if (tm.employeeId && mongoose.Types.ObjectId.isValid(tm.employeeId)) {
+            const emp = await EmployeeModel.findById(tm.employeeId);
+            if (emp) {
+              project.teamMembers.push({
+                employeeId: emp._id,
+                employeeName: emp.name,
+                employeeCode: emp.employeeCode || "",
+                employeeEmail: emp.email || "",
+                role: tm.role || "Team Member",
+                responsibility: tm.responsibility || "",
+                addedAt: new Date(),
+                status: "Active",
+              });
+            }
+          }
+        }
+      }
+
+      if (project.projectManager || (project.teamMembers && project.teamMembers.length > 0)) {
+        project.stage = "Team Assigned";
+      }
+
+      project.timeline = project.timeline || [];
+      project.timeline.push({
+        action: "Project Created from Requirement",
+        description: `Created from requirement ${requirement.requirementCode}.`,
+        oldStage: "Project Created",
+        newStage: project.stage,
+        oldStatus: "Planned",
+        newStatus: "Planned",
+        performedBy: req.user._id,
+        performedByName: req.user.name || "Admin",
+        performedByRole: "admin",
+        createdAt: new Date(),
+      });
+
+      await project.save();
+
       requirement.status =
         "Converted to Project";
 
@@ -18116,6 +19397,23 @@ if (
       requirement.updatedByName =
         req.user.name ||
         "Admin";
+
+      requirement.timeline = requirement.timeline || [];
+      requirement.timeline.push({
+        action: "Converted to Project",
+        oldStatus: "Approved",
+        newStatus: "Converted to Project",
+        notes: `Converted to project ${project.projectCode} - ${project.projectName}.`,
+        performedBy: req.user._id,
+        performedByName: req.user.name || "Admin",
+        performedByRole: "admin",
+        metadata: {
+          projectId: project._id,
+          projectCode: project.projectCode,
+          projectName: project.projectName,
+        },
+        createdAt: new Date(),
+      });
 
       await requirement.save();
 
@@ -18137,6 +19435,14 @@ if (
         "Convert requirement to project error:",
         error
       );
+      try {
+        await Requirement.updateOne(
+          { _id: req.params.id, status: "Converting to Project" },
+          { $set: { status: "Approved" } }
+        );
+      } catch (e) {
+        console.error("Failed to restore requirement status:", e);
+      }
 
       return res
         .status(500)
@@ -19165,7 +20471,7 @@ router.get("/task/:id", async (req, res) => {
     }
 
     if (req.user.role === "employee") {
-      const employee = await Employee.findOne({ userId: req.user._id });
+      const employee = await getEmployeeForUser(req.user);
       if (!employee || String(task.assignedEmployeeId) !== String(employee._id)) {
         return res.status(403).json({ success: false, message: "You can view only your assigned tasks." });
       }
@@ -19630,7 +20936,127 @@ router.put("/task/:id", async (req, res) => {
 
 router.patch("/task/:id/status", async (req, res) => {
   try {
-    // ... existing code up to the point where task is saved and employee summaries are updated ...
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid task ID.",
+      });
+    }
+
+    const {
+      status,
+      note,
+      blockerReason,
+      waitingFor,
+      expectedResolutionDate,
+      completionNote,
+      actualMinutes,
+      progress,
+    } = req.body || {};
+
+    if (!status || typeof status !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Task status is required.",
+      });
+    }
+
+    const trimmedStatus = status.trim();
+
+    const task = await Task.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found.",
+      });
+    }
+
+    const previousStatus = task.status;
+    const wasCompleted =
+      previousStatus === "Completed" || Number(task.progress || 0) >= 100;
+    const isCompleted = trimmedStatus === "Completed";
+
+    task.status = trimmedStatus;
+
+    if (isCompleted) {
+      task.completedAt = task.completedAt || new Date();
+      task.progress = 100;
+      if (completionNote) {
+        task.resolutionNote = String(completionNote).trim();
+      }
+      if (actualMinutes !== undefined && !isNaN(Number(actualMinutes))) {
+        task.spentMinutes = Math.max(0, Number(actualMinutes));
+      }
+    } else {
+      if (wasCompleted) {
+        task.completedAt = null;
+      }
+      if (progress !== undefined && !isNaN(Number(progress))) {
+        task.progress = Math.min(100, Math.max(0, Number(progress)));
+      }
+    }
+
+    if (trimmedStatus === "Blocked") {
+      if (blockerReason) {
+        task.blockerReason = String(blockerReason).trim();
+      }
+      if (waitingFor) {
+        task.waitingFor = String(waitingFor).trim();
+      }
+      if (expectedResolutionDate) {
+        task.expectedResolutionDate = new Date(expectedResolutionDate);
+      }
+    }
+
+    let timelineDesc = `Status changed from ${previousStatus} to ${trimmedStatus}.`;
+    if (note) timelineDesc += ` Note: ${note}`;
+    if (trimmedStatus === "Blocked" && blockerReason) {
+      timelineDesc += ` Blocker: ${blockerReason}`;
+    }
+    if (isCompleted && completionNote) {
+      timelineDesc += ` Resolution: ${completionNote}`;
+    }
+
+    task.timeline = task.timeline || [];
+    task.timeline.push({
+      action: `Status Changed to ${trimmedStatus}`,
+      description: timelineDesc,
+      performedBy: req.user._id,
+      performedByName: req.user.name || "Admin",
+      performedByRole: req.user.role || "admin",
+      createdAt: new Date(),
+    });
+
+    await task.save();
+
+    await createActivityLog({
+      action: "Task Status Updated",
+      category: "Task",
+      description: `${task.taskCode} status updated from ${previousStatus} to ${trimmedStatus}.`,
+      entityType: "task",
+      entityId: task._id,
+      entityCode: task.taskCode,
+      entityName: task.title,
+      clientId: task.clientId,
+      clientName: task.clientName,
+      employeeId: task.assignedEmployeeId,
+      employeeName: task.assignedEmployeeName,
+      performedBy: req.user._id,
+      performedByName: req.user.name || "Admin",
+      performedByRole: req.user.role || "admin",
+      metadata: {
+        previousStatus,
+        currentStatus: trimmedStatus,
+        blockerReason: blockerReason || null,
+        completionNote: completionNote || null,
+      },
+    });
 
     if (isCompleted && !wasCompleted) {
       await updateEmployeeTaskSummary(
@@ -19736,6 +21162,226 @@ if (
     });
   }
 });
+
+/* =====================================================
+   ADD TASK CHECKLIST ITEM
+   POST /api/admin/task/:id/checklist
+===================================================== */
+
+router.post("/task/:id/checklist", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { text } = req.body || {};
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid task ID.",
+      });
+    }
+
+    const trimmedText = String(text || "").trim();
+    if (!trimmedText) {
+      return res.status(400).json({
+        success: false,
+        message: "Checklist item text is required.",
+      });
+    }
+
+    const task = await Task.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found.",
+      });
+    }
+
+    task.checklist = task.checklist || [];
+    task.checklist.push({
+      text: trimmedText,
+      completed: false,
+    });
+
+    task.timeline = task.timeline || [];
+    task.timeline.push({
+      action: "Checklist Item Added",
+      description: `Added checklist item: "${trimmedText}"`,
+      performedBy: req.user._id,
+      performedByName: req.user.name || "User",
+      performedByRole: req.user.role || "user",
+      createdAt: new Date(),
+    });
+
+    await task.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Checklist item added.",
+      data: task.checklist,
+    });
+  } catch (error) {
+    console.error("Add task checklist item error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Unable to add checklist item.",
+    });
+  }
+});
+
+/* =====================================================
+   UPDATE / TOGGLE TASK CHECKLIST ITEM
+   PATCH /api/admin/task/:id/checklist/:itemId
+===================================================== */
+
+router.patch("/task/:id/checklist/:itemId", async (req, res) => {
+  try {
+    const { id, itemId } = req.params;
+    const { completed, text } = req.body || {};
+
+    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(itemId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid task or item ID.",
+      });
+    }
+
+    const task = await Task.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found.",
+      });
+    }
+
+    task.checklist = task.checklist || [];
+    const item =
+      task.checklist.id ? task.checklist.id(itemId) : task.checklist.find((i) => String(i._id) === String(itemId));
+
+    if (!item) {
+      return res.status(404).json({
+        success: false,
+        message: "Checklist item not found.",
+      });
+    }
+
+    if (text !== undefined) {
+      item.text = String(text).trim();
+    }
+
+    if (completed !== undefined) {
+      item.completed = Boolean(completed);
+      if (item.completed) {
+        item.completedBy = req.user._id;
+        item.completedByName = req.user.name || "User";
+        item.completedAt = new Date();
+      } else {
+        item.completedBy = null;
+        item.completedByName = "";
+        item.completedAt = null;
+      }
+
+      task.timeline = task.timeline || [];
+      task.timeline.push({
+        action: item.completed ? "Checklist Completed" : "Checklist Unchecked",
+        description: `Checklist item "${item.text}" marked as ${item.completed ? "completed" : "incomplete"}.`,
+        performedBy: req.user._id,
+        performedByName: req.user.name || "User",
+        performedByRole: req.user.role || "user",
+        createdAt: new Date(),
+      });
+    }
+
+    await task.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Checklist item updated.",
+      data: task.checklist,
+    });
+  } catch (error) {
+    console.error("Update task checklist item error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Unable to update checklist item.",
+    });
+  }
+});
+
+/* =====================================================
+   DELETE TASK CHECKLIST ITEM
+   DELETE /api/admin/task/:id/checklist/:itemId
+===================================================== */
+
+router.delete("/task/:id/checklist/:itemId", async (req, res) => {
+  try {
+    const { id, itemId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(itemId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid task or item ID.",
+      });
+    }
+
+    const task = await Task.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found.",
+      });
+    }
+
+    task.checklist = task.checklist || [];
+    const itemIndex = task.checklist.findIndex((i) => String(i._id) === String(itemId));
+
+    if (itemIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: "Checklist item not found.",
+      });
+    }
+
+    const removedItem = task.checklist[itemIndex];
+    task.checklist.splice(itemIndex, 1);
+
+    task.timeline = task.timeline || [];
+    task.timeline.push({
+      action: "Checklist Item Removed",
+      description: `Removed checklist item: "${removedItem.text}"`,
+      performedBy: req.user._id,
+      performedByName: req.user.name || "User",
+      performedByRole: req.user.role || "user",
+      createdAt: new Date(),
+    });
+
+    await task.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Checklist item removed.",
+      data: task.checklist,
+    });
+  } catch (error) {
+    console.error("Delete task checklist item error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Unable to remove checklist item.",
+    });
+  }
+});
+
 /* =====================================================
    ADD TASK COMMENT
    POST /api/admin/task/:id/comment
@@ -19772,17 +21418,19 @@ router.post("/task/:id/comment", async (req, res) => {
       });
     }
 
+    let commenterName = req.user.name || "User";
     if (req.user.role === "employee") {
-      const employee = await Employee.findOne({ userId: req.user._id });
+      const employee = await getEmployeeForUser(req.user);
       if (!employee || String(task.assignedEmployeeId) !== String(employee._id)) {
         return res.status(403).json({ success: false, message: "You can comment only on your assigned tasks." });
       }
+      commenterName = employee.name || commenterName;
     }
 
     task.comments.push({
       message: String(message).trim(),
       authorId: req.user._id,
-      authorName: req.user.name || "Employee",
+      authorName: commenterName,
       authorRole: req.user.role,
     });
 
@@ -21533,7 +23181,7 @@ if (!ticket) {
 
 let uploaderName = req.user.name || "Admin";
 if (req.user.role === "employee") {
-  const employee = await Employee.findOne({ userId: req.user._id });
+  const employee = await getEmployeeForUser(req.user);
   if (!employee || String(ticket.assignedEmployeeId) !== String(employee._id)) {
     fs.unlink(req.file.path, () => {});
     return res.status(403).json({ success: false, message: "You can only attach files to your assigned tickets." });
@@ -30607,7 +32255,7 @@ router.post(
          FIND CURRENT / LATEST INVOICE
       ================================================= */
 
-      const previousInvoice =
+      let previousInvoice =
         await AmcInvoice.findOne({
           amcContractId:
             contract._id,
@@ -30624,12 +32272,22 @@ router.post(
           createdAt: -1,
         });
 
-      if (!previousInvoice) {
-        return res.status(404).json({
-          success: false,
-          message:
-            "No existing AMC invoice was found for this contract.",
+      if (!previousInvoice && contract.currentInvoiceId) {
+        previousInvoice = await AmcInvoice.findOne({
+          _id: contract.currentInvoiceId,
+          isDeleted: false,
         });
+      }
+
+      if (!previousInvoice) {
+        previousInvoice = {
+          invoiceCode: contract.currentInvoiceCode || contract.contractCode || "PREV",
+          taxableAmount: contract.taxableAmount || 0,
+          cgstRate: contract.cgstRate || 0,
+          sgstRate: contract.sgstRate || 0,
+          igstRate: contract.igstRate || 0,
+          contractExpiryDate: contract.expiryDate,
+        };
       }
 
       /* =================================================
@@ -31107,6 +32765,16 @@ contract.invoiceDate =
       contract.updatedByName =
         req.user.name ||
         "Admin";
+
+      contract.timeline = contract.timeline || [];
+      contract.timeline.push({
+        type: "renewal",
+        title: "AMC Contract Renewed",
+        description: `Contract ${contract.contractCode} renewed. New invoice ${createdInvoice.invoiceCode} generated.`,
+        performedBy: req.user._id,
+        performedByName: req.user.name || "Admin",
+        performedByRole: req.user.role || "admin",
+      });
 
       await contract.save();
 

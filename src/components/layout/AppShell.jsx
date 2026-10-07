@@ -17,6 +17,9 @@ export default function AppShell({
   onOpenSettings,
   badgeCounts = {},
   notifications = [],
+  onApproveAttendance,
+  onRejectAttendance,
+  attendanceApprovalActionId,
   clients = [],
   children,
 }) {
@@ -95,6 +98,9 @@ export default function AppShell({
           onQuickAdd={onQuickAdd}
           onOpenSettings={onOpenSettings}
           notifications={notifications}
+          onApproveAttendance={onApproveAttendance}
+          onRejectAttendance={onRejectAttendance}
+          attendanceApprovalActionId={attendanceApprovalActionId}
           sidebarCollapsed={sidebarCollapsed}
           onToggleMobileSidebar={() => setMobileSidebarOpen((prev) => !prev)}
           onNavigate={onSelectMenu}

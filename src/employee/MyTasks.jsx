@@ -30,7 +30,9 @@ import {
     Upload,
     UserRound,
     X,
+    ShieldAlert,
 } from "lucide-react";
+import TaskStatusModal from "../admin/tasks/TaskStatusModal";
 
 const initialTasks = [
     {
@@ -953,16 +955,36 @@ export default function MyTasks() {
         if (!response.ok || !result.success) throw new Error(result.message || "Unable to update task timer.");
         await loadTasksDashboard();
     };
-    const updateTaskStatus = async (taskId, status, progress) => {
+    const updateTaskStatus = async (taskId, status, options = {}) => {
+        const payload = typeof options === "object" ? options : { progress: options };
         const response = await fetch(`${API_URL}/api/admin/task/${taskId}/status`, {
             method: "PATCH",
             headers: { Authorization: `Bearer ${getAuthToken()}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ status, progress }),
+            body: JSON.stringify({
+                status,
+                progress: payload.progress !== undefined ? payload.progress : (status === "Completed" ? 100 : undefined),
+                blockerReason: payload.blockerReason,
+                waitingFor: payload.waitingFor,
+                expectedResolutionDate: payload.expectedResolutionDate,
+                completionNote: payload.completionNote,
+                actualMinutes: payload.actualMinutes,
+                note: payload.note,
+            }),
         });
         const result = await response.json();
         if (!response.ok || !result.success) throw new Error(result.message || "Unable to update task.");
         await loadTasksDashboard();
+        if (selectedTaskId === taskId && result.data) {
+            const fresh = result.data;
+            setTasks((cur) => cur.map((t) => t.id === taskId ? { ...t, ...fresh, id: fresh._id, taskNo: fresh.taskCode } : t));
+        }
+        return result.data;
     };
+
+    const [statusModalOpen, setStatusModalOpen] = useState(false);
+    const [statusModalTarget, setStatusModalTarget] = useState("Blocked");
+    const [statusModalLoading, setStatusModalLoading] = useState(false);
+    const [statusModalTask, setStatusModalTask] = useState(null);
 
     const [tasks, setTasks] = useState([]);
     const [selectedTaskId, setSelectedTaskId] = useState(null);
@@ -1053,9 +1075,14 @@ export default function MyTasks() {
                             .includes(search)
                     );
 
-                const matchesStatus =
-                    statusFilter === "All" ||
-                    task.status === statusFilter;
+                let matchesStatus = true;
+                if (statusFilter === "Attention") {
+                    matchesStatus = isTaskOverdue(task) || isTaskDueToday(task) || ["Blocked", "Waiting"].includes(task.status);
+                } else if (statusFilter === "Today") {
+                    matchesStatus = isTaskDueToday(task);
+                } else if (statusFilter !== "All") {
+                    matchesStatus = task.status === statusFilter;
+                }
 
                 const matchesPriority =
                     priorityFilter === "All" ||
@@ -1396,6 +1423,15 @@ export default function MyTasks() {
             if (!response.ok || !result.success) throw new Error(result.message || "Unable to load task details.");
             const detail = { ...result.data, id: result.data._id, taskNo: result.data.taskCode, ticketNo: result.data.ticketCode, client: result.data.clientName, project: result.data.projectName, module: result.data.productName, spentSeconds: Number(result.data.elapsedSeconds || result.data.elapsedMinutes * 60 || 0) };
             setTasks((current) => current.map((item) => item.id === detail.id ? { ...item, ...detail } : item));
+            setChecklists((detail.checklist || []).map((item) => ({
+                id: item._id,
+                _id: item._id,
+                taskId: detail.id,
+                title: item.text,
+                completed: Boolean(item.completed),
+                completedByName: item.completedByName,
+                completedAt: item.completedAt,
+            })));
             setComments((detail.comments || []).map((item) => ({ id: item._id, taskId: detail.id, user: item.authorName, initials: String(item.authorName || "").split(" ").map((name) => name[0]).join(""), message: item.message, createdAt: item.createdAt })));
             setFiles((detail.attachments || []).map((item) => ({ id: item._id, taskId: detail.id, name: item.fileName, type: item.fileType || "File", size: item.fileSize ? `${Math.max(1, Math.round(item.fileSize / 1024))} KB` : "—", uploadedBy: item.uploadedByName, uploadedAt: item.uploadedAt, fileUrl: item.fileUrl })));
             setTimeline((detail.timeline || []).map((item) => ({ id: item._id, taskId: detail.id, type: item.action === "Attachment Uploaded" ? "file" : "started", title: item.action, description: item.description, createdAt: item.createdAt })));
@@ -1495,10 +1531,22 @@ export default function MyTasks() {
 
     const handleStatusChange = async (event) => {
         if (!selectedTask) return;
-
         const nextStatus = event.target.value;
-
-        try { await updateTaskStatus(selectedTask.id, nextStatus, nextStatus === "Completed" ? 100 : selectedTask.progress); } catch (error) { alert(error.message); }
+        if (nextStatus === "Blocked") {
+            setStatusModalTarget("Blocked");
+            setStatusModalOpen(true);
+            return;
+        }
+        if (nextStatus === "Completed") {
+            setStatusModalTarget("Completed");
+            setStatusModalOpen(true);
+            return;
+        }
+        try {
+            await updateTaskStatus(selectedTask.id, nextStatus);
+        } catch (error) {
+            alert(error.message);
+        }
     };
 
     const handleProgressChange = async (event) => {
@@ -1509,83 +1557,110 @@ export default function MyTasks() {
             100
         );
 
-        try { await updateTaskStatus(selectedTask.id, progress === 100 ? "Completed" : selectedTask.status, progress); } catch (error) { alert(error.message); }
+        try {
+            await updateTaskStatus(selectedTask.id, progress === 100 ? "Completed" : selectedTask.status, { progress });
+        } catch (error) {
+            alert(error.message);
+        }
     };
 
-    const toggleChecklistItem = (itemId) => {
-        setChecklists((current) =>
-            current.map((item) =>
-                item.id === itemId
-                    ? {
-                        ...item,
-                        completed: !item.completed,
-                    }
-                    : item
-            )
-        );
-    };
-
-    const addChecklistItem = (event) => {
-        event.preventDefault();
-
-        if (!selectedTask || !checklistText.trim()) return;
-
-        setChecklists((current) => [
-            ...current,
-            {
-                id: Date.now(),
+    const toggleChecklistItem = async (item) => {
+        if (!selectedTask) return;
+        try {
+            const res = await fetch(`${API_URL}/api/admin/task/${selectedTask.id}/checklist/${item.id || item._id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAuthToken()}` },
+                body: JSON.stringify({ completed: !item.completed }),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.message || "Failed to update checklist item.");
+            setChecklists((data.data || []).map((i) => ({
+                id: i._id,
+                _id: i._id,
                 taskId: selectedTask.id,
-                title: checklistText.trim(),
-                completed: false,
-            },
-        ]);
-
-        addTimelineEntry(
-            selectedTask.id,
-            "created",
-            "Checklist item added",
-            checklistText.trim()
-        );
-
-        setChecklistText("");
+                title: i.text,
+                completed: Boolean(i.completed),
+                completedByName: i.completedByName,
+                completedAt: i.completedAt,
+            })));
+        } catch (error) {
+            alert(error.message);
+        }
     };
 
-    const deleteChecklistItem = (itemId) => {
-        setChecklists((current) =>
-            current.filter((item) => item.id !== itemId)
-        );
-    };
-
-    const addComment = (event) => {
+    const addChecklistItem = async (event) => {
         event.preventDefault();
+        if (!selectedTask || !checklistText.trim()) return;
+        try {
+            const res = await fetch(`${API_URL}/api/admin/task/${selectedTask.id}/checklist`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAuthToken()}` },
+                body: JSON.stringify({ text: checklistText.trim() }),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.message || "Failed to add checklist item.");
+            setChecklists((data.data || []).map((i) => ({
+                id: i._id,
+                _id: i._id,
+                taskId: selectedTask.id,
+                title: i.text,
+                completed: Boolean(i.completed),
+                completedByName: i.completedByName,
+                completedAt: i.completedAt,
+            })));
+            setChecklistText("");
+        } catch (error) {
+            alert(error.message);
+        }
+    };
 
+    const deleteChecklistItem = async (itemId) => {
+        if (!selectedTask) return;
+        try {
+            const res = await fetch(`${API_URL}/api/admin/task/${selectedTask.id}/checklist/${itemId}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${getAuthToken()}` },
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.message || "Failed to delete checklist item.");
+            setChecklists((data.data || []).map((i) => ({
+                id: i._id,
+                _id: i._id,
+                taskId: selectedTask.id,
+                title: i.text,
+                completed: Boolean(i.completed),
+                completedByName: i.completedByName,
+                completedAt: i.completedAt,
+            })));
+        } catch (error) {
+            alert(error.message);
+        }
+    };
+
+    const addComment = async (event) => {
+        event.preventDefault();
         if (!selectedTask || !commentText.trim()) return;
-
-        const newComment = {
-            id: Date.now(),
-            taskId: selectedTask.id,
-            user: "Akash Pawar",
-            initials: "AP",
-            message: commentText.trim(),
-            createdAt: new Date().toLocaleString("en-IN", {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-            }),
-        };
-
-        setComments((current) => [...current, newComment]);
-
-        addTimelineEntry(
-            selectedTask.id,
-            "comment",
-            "Comment added",
-            newComment.message
-        );
-
-        setCommentText("");
+        try {
+            const res = await fetch(`${API_URL}/api/admin/task/${selectedTask.id}/comment`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAuthToken()}` },
+                body: JSON.stringify({ message: commentText.trim() }),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.message || "Failed to add comment.");
+            const freshComments = data.data?.comments || [];
+            setComments(freshComments.map((item) => ({
+                id: item._id,
+                taskId: selectedTask.id,
+                user: item.authorName,
+                initials: String(item.authorName || "").split(" ").map((name) => name[0]).join(""),
+                message: item.message,
+                createdAt: item.createdAt,
+            })));
+            setCommentText("");
+        } catch (error) {
+            alert(error.message);
+        }
     };
 
     const handleFileSelection = (event) => {
@@ -1615,41 +1690,34 @@ export default function MyTasks() {
         });
     };
 
-    const uploadSelectedFile = () => {
-        if (!selectedTask || !selectedFile) return;
+    const uploadSelectedFile = async () => {
+        if (!selectedTask || !selectedFile?.file) return;
 
-        const uploadedFile = {
-            id: Date.now(),
-            taskId: selectedTask.id,
-            name: selectedFile.name,
-            type: selectedFile.type,
-            size: selectedFile.size,
-            uploadedBy: "Akash Pawar",
-            uploadedAt: new Date().toLocaleString("en-IN", {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-            }),
-        };
-
-        setFiles((current) => [
-            uploadedFile,
-            ...current,
-        ]);
-
-        addTimelineEntry(
-            selectedTask.id,
-            "file",
-            "File uploaded",
-            uploadedFile.name
-        );
-
-        setSelectedFile(null);
-
-        if (fileInputRef.current) {
-            fileInputRef.current.value = "";
+        try {
+            const formData = new FormData();
+            formData.append("attachment", selectedFile.file);
+            const res = await fetch(`${API_URL}/api/admin/task/${selectedTask.id}/attachment`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${getAuthToken()}` },
+                body: formData,
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.message || "Failed to upload file.");
+            const freshAttachments = data.data?.attachments || [];
+            setFiles(freshAttachments.map((item) => ({
+                id: item._id,
+                taskId: selectedTask.id,
+                name: item.fileName,
+                type: item.fileType || "File",
+                size: item.fileSize ? `${Math.max(1, Math.round(item.fileSize / 1024))} KB` : "—",
+                uploadedBy: item.uploadedByName,
+                uploadedAt: item.uploadedAt,
+                fileUrl: item.fileUrl,
+            })));
+            setSelectedFile(null);
+            if (fileInputRef.current) fileInputRef.current.value = "";
+        } catch (error) {
+            alert(error.message);
         }
     };
 
@@ -1965,6 +2033,41 @@ export default function MyTasks() {
 
 
 
+                {/* Quick Filters */}
+                <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 bg-slate-50/60 px-4 py-2.5">
+                    <span className="mr-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Quick:</span>
+                    {[
+                        { id: "Attention", label: "Attention" },
+                        { id: "Today", label: "Today" },
+                        { id: "In Progress", label: "In Progress" },
+                        { id: "Testing", label: "Testing" },
+                        { id: "Blocked", label: "Blocked" },
+                        { id: "Completed", label: "Completed" },
+                        { id: "All", label: "All" },
+                    ].map((tab) => {
+                        const isActive = statusFilter === tab.id;
+                        return (
+                            <button
+                                key={tab.id}
+                                type="button"
+                                onClick={() => {
+                                    setStatusFilter(tab.id);
+                                    if (tab.id === "Today") {
+                                        setDueFilter("All");
+                                    }
+                                }}
+                                className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                                    isActive
+                                        ? "bg-violet-600 text-white shadow-xs"
+                                        : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
+                                }`}
+                            >
+                                {tab.label}
+                            </button>
+                        );
+                    })}
+                </div>
+
                 <div className="space-y-2.5 bg-slate-50/40 p-3.5 sm:p-4">
                     {taskSections.map((section) => (
                         <TaskDaySection
@@ -2028,6 +2131,95 @@ export default function MyTasks() {
                                     Assigned by{" "}
                                     {selectedTask.assignedBy}
                                 </p>
+
+                                <div className="mt-3 flex flex-wrap items-center gap-2">
+                                    {selectedTask.status === "Assigned" && (
+                                        <button
+                                            type="button"
+                                            onClick={() => updateTimer(selectedTask.id, "start")}
+                                            className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-violet-700 transition"
+                                        >
+                                            <Play size={12} fill="currentColor" /> Start Task
+                                        </button>
+                                    )}
+                                    {selectedTask.status === "In Progress" && (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={() => updateTaskStatus(selectedTask.id, "Testing")}
+                                                className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-blue-700 transition"
+                                            >
+                                                Move to Testing
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setStatusModalTarget("Blocked");
+                                                    setStatusModalOpen(true);
+                                                }}
+                                                className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition"
+                                            >
+                                                Block Task
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setStatusModalTarget("Completed");
+                                                    setStatusModalOpen(true);
+                                                }}
+                                                className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 transition"
+                                            >
+                                                Complete Task
+                                            </button>
+                                        </>
+                                    )}
+                                    {selectedTask.status === "Testing" && (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setStatusModalTarget("Completed");
+                                                    setStatusModalOpen(true);
+                                                }}
+                                                className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 transition"
+                                            >
+                                                Complete Task
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setStatusModalTarget("Blocked");
+                                                    setStatusModalOpen(true);
+                                                }}
+                                                className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition"
+                                            >
+                                                Block Task
+                                            </button>
+                                        </>
+                                    )}
+                                    {selectedTask.status === "Blocked" && (
+                                        <button
+                                            type="button"
+                                            onClick={() => updateTaskStatus(selectedTask.id, "In Progress", { note: "Resumed from Blocked." })}
+                                            className="flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-rose-700 transition"
+                                        >
+                                            <Play size={12} fill="currentColor" /> Resume Task
+                                        </button>
+                                    )}
+                                    {selectedTask.status === "Completed" && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setStatusModalTarget("In Progress");
+                                                setStatusModalTask(selectedTask);
+                                                setStatusModalOpen(true);
+                                            }}
+                                            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 transition"
+                                        >
+                                            Reopen Task
+                                        </button>
+                                    )}
+                                </div>
                             </div>
 
                             <button
@@ -2038,6 +2230,37 @@ export default function MyTasks() {
                                 <X size={17} />
                             </button>
                         </div>
+
+                        {selectedTask.status === "Blocked" && (
+                            <div className="border-b border-rose-200 bg-rose-50/90 px-6 py-3">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="flex items-start gap-2.5">
+                                        <ShieldAlert size={18} className="text-rose-600 shrink-0 mt-0.5" />
+                                        <div>
+                                            <h4 className="text-xs font-bold text-rose-900">Task Currently Blocked</h4>
+                                            <p className="mt-0.5 text-xs text-rose-800">
+                                                <strong>Reason:</strong> {selectedTask.blockerReason || "Administrative blocker"}
+                                            </p>
+                                            <div className="mt-1 flex flex-wrap gap-x-4 text-[11px] text-rose-700">
+                                                {selectedTask.waitingFor && (
+                                                    <span><strong>Waiting For:</strong> {selectedTask.waitingFor}</span>
+                                                )}
+                                                {selectedTask.expectedResolutionDate && (
+                                                    <span><strong>Expected Date:</strong> {new Date(selectedTask.expectedResolutionDate).toLocaleDateString()}</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => updateTaskStatus(selectedTask.id, "In Progress", { note: "Resumed from Blocked." })}
+                                        className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-rose-700 transition"
+                                    >
+                                        Resume
+                                    </button>
+                                </div>
+                            </div>
+                        )}
 
                         <div className="border-b border-slate-200 px-6">
                             <div className="flex gap-1 overflow-x-auto">
@@ -2867,6 +3090,32 @@ export default function MyTasks() {
                     </aside>
                 </>
             )}
+
+            {/* Task Status Modal for Blocked / Completed / Reopened */}
+            <TaskStatusModal
+                isOpen={statusModalOpen}
+                targetStatus={statusModalTarget}
+                task={statusModalTask || selectedTask}
+                loading={statusModalLoading}
+                onClose={() => {
+                    setStatusModalOpen(false);
+                    setStatusModalTask(null);
+                }}
+                onSubmit={async (payload) => {
+                    const targetTask = statusModalTask || selectedTask;
+                    if (!targetTask) return;
+                    setStatusModalLoading(true);
+                    try {
+                        await updateTaskStatus(targetTask.id, statusModalTarget, payload);
+                        setStatusModalOpen(false);
+                        setStatusModalTask(null);
+                    } catch (err) {
+                        alert(err.message || "Failed to update task status.");
+                    } finally {
+                        setStatusModalLoading(false);
+                    }
+                }}
+            />
         </div>
     );
 }

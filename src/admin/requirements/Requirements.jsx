@@ -5,9 +5,11 @@ import {
 } from "react";
 
 import {
+    ArrowRightLeft,
     CheckCircle2,
     CircleDollarSign,
     ClipboardList,
+    Eye,
     Plus,
     RefreshCw,
     Trash2,
@@ -16,6 +18,8 @@ import {
 
 import API_URL from "../../config/api";
 import DataTable from "../../components/data/DataTable";
+import RequirementTransitionModal from "./RequirementTransitionModal";
+import RequirementDetailsDrawer from "./RequirementDetailsDrawer";
 const STATUS_OPTIONS = [
     "All",
     "New",
@@ -229,6 +233,26 @@ const [
 const [
     selectedRequirement,
     setSelectedRequirement,
+] = useState(null);
+
+const [
+    moveModalOpen,
+    setMoveModalOpen,
+] = useState(false);
+
+const [
+    selectedForMove,
+    setSelectedForMove,
+] = useState(null);
+
+const [
+    detailsDrawerOpen,
+    setDetailsDrawerOpen,
+] = useState(false);
+
+const [
+    selectedForDetails,
+    setSelectedForDetails,
 ] = useState(null);
 
 const [
@@ -705,6 +729,36 @@ const getSuggestedProjectType =
         return "Client Implementation";
     };
 
+    const openMoveModal = (requirement) => {
+        setSelectedForMove(requirement);
+        setMoveModalOpen(true);
+    };
+
+    const closeMoveModal = () => {
+        setMoveModalOpen(false);
+        setSelectedForMove(null);
+    };
+
+    const openDetailsDrawer = (requirement) => {
+        setSelectedForDetails(requirement);
+        setDetailsDrawerOpen(true);
+    };
+
+    const closeDetailsDrawer = () => {
+        setDetailsDrawerOpen(false);
+        setSelectedForDetails(null);
+    };
+
+    const handleTransitionSuccess = async (updatedRequirement) => {
+        await loadRequirements();
+        if (
+            selectedForDetails &&
+            (selectedForDetails._id === updatedRequirement?._id ||
+                selectedForDetails.id === updatedRequirement?.id)
+        ) {
+            setSelectedForDetails(updatedRequirement);
+        }
+    };
 
 const openConvertProject =
     (requirement) => {
@@ -1129,11 +1183,17 @@ const convertRequirementToProject =
                         label: "Requirement",
                         sortable: true,
                         render: (_, item) => (
-                            <div>
-                                <span className="font-semibold text-violet-600 text-xs">
+                            <div
+                                className="cursor-pointer group"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    openDetailsDrawer(item);
+                                }}
+                            >
+                                <span className="font-semibold text-violet-600 group-hover:text-violet-800 text-xs">
                                     {item.requirementCode}
                                 </span>
-                                <p className="font-medium text-slate-900 truncate max-w-[260px] text-xs">
+                                <p className="font-medium text-slate-900 group-hover:text-violet-900 truncate max-w-[260px] text-xs">
                                     {item.title}
                                 </p>
                                 <span className="text-[10px] text-slate-400">
@@ -1149,7 +1209,7 @@ const convertRequirementToProject =
                         render: (_, item) => {
                             const customerName =
                                 item.sourceType === "Existing Client"
-                                    ? item.clientName || "—"
+                                     ? item.clientName || "—"
                                     : item.prospectCompany || item.prospectName || "—";
                             return (
                                 <div>
@@ -1222,21 +1282,29 @@ const convertRequirementToProject =
                         label: "Status",
                         sortable: true,
                         render: (_, item) => (
-                            <select
-                                value={item.status}
-                                disabled={item.status === "Converted to Project"}
-                                onChange={(e) => updateStatus(item, e.target.value)}
-                                className={`rounded-lg border px-2 py-1 text-[11px] font-semibold outline-hidden cursor-pointer ${getStatusStyle(
-                                    item.status
-                                )}`}
+                            <div
+                                className="flex items-center gap-1.5"
                                 onClick={(e) => e.stopPropagation()}
                             >
-                                {STATUS_OPTIONS.filter((s) => s !== "All").map((status) => (
-                                    <option key={status} value={status}>
-                                        {status}
-                                    </option>
-                                ))}
-                            </select>
+                                <span
+                                    className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${getStatusStyle(
+                                        item.status
+                                    )}`}
+                                >
+                                    {item.status}
+                                </span>
+                                {item.status !== "Converted to Project" && (
+                                    <button
+                                        type="button"
+                                        onClick={() => openMoveModal(item)}
+                                        className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 hover:text-violet-700 hover:border-violet-300 transition"
+                                        title="Move Requirement Stage"
+                                    >
+                                        <ArrowRightLeft size={10} />
+                                        <span>Move</span>
+                                    </button>
+                                )}
+                            </div>
                         ),
                     },
                 ]}
@@ -1245,6 +1313,7 @@ const convertRequirementToProject =
                 error={error}
                 onRetry={loadRequirements}
                 idKey="_id"
+                onRowClick={(item) => openDetailsDrawer(item)}
                 searchPlaceholder="Search requirement, client or prospect..."
                 statusFilters={STATUS_OPTIONS.map((s) => ({ label: s, value: s }))}
                 activeStatusFilter={statusFilter}
@@ -1288,10 +1357,23 @@ const convertRequirementToProject =
                 }
                 rowActions={[
                     {
+                        label: "View Details",
+                        icon: Eye,
+                        className: "text-slate-700 hover:text-slate-900 hover:bg-slate-100",
+                        onClick: (item) => openDetailsDrawer(item),
+                    },
+                    {
+                        label: "Move Requirement",
+                        icon: ArrowRightLeft,
+                        condition: (item) => item.status !== "Converted to Project",
+                        className: "text-violet-600 hover:text-violet-800 hover:bg-violet-50",
+                        onClick: (item) => openMoveModal(item),
+                    },
+                    {
                         label: "Convert to Project",
                         icon: CircleDollarSign,
                         condition: (item) => item.status === "Approved",
-                        className: "text-violet-600 hover:text-violet-800 hover:bg-violet-50",
+                        className: "text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50",
                         onClick: (item) => openConvertProject(item),
                     },
                     {
@@ -2306,6 +2388,23 @@ const convertRequirementToProject =
             </aside>
         </>
     )}
+
+            <RequirementTransitionModal
+                isOpen={moveModalOpen}
+                onClose={closeMoveModal}
+                requirement={selectedForMove}
+                employees={employees}
+                onSuccess={handleTransitionSuccess}
+                onOpenConvertProject={openConvertProject}
+            />
+
+            <RequirementDetailsDrawer
+                isOpen={detailsDrawerOpen}
+                onClose={closeDetailsDrawer}
+                requirement={selectedForDetails}
+                onOpenMoveModal={openMoveModal}
+                onOpenConvertProject={openConvertProject}
+            />
         </div>
     );
 }

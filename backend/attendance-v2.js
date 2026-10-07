@@ -727,6 +727,12 @@ const AttendanceApprovalRequest =
           default: null,
         },
 
+        reviewedByName: {
+          type: String,
+          default: "",
+          trim: true,
+        },
+
         reviewedAt: {
           type: Date,
           default: null,
@@ -2667,12 +2673,22 @@ router.get(
           .sort({
             requestedAt: -1,
           })
+          .limit(100)
+          .populate("reviewedBy", "name email")
           .lean();
+
+      const mapped = requests.map((item) => ({
+        ...item,
+        reviewedByName:
+          item.reviewedByName ||
+          item.reviewedBy?.name ||
+          (item.status !== "Pending" ? "Admin" : ""),
+      }));
 
       return res.json({
         success: true,
-        count: requests.length,
-        data: requests,
+        count: mapped.length,
+        data: mapped,
       });
     } catch (error) {
       next(error);
@@ -2727,17 +2743,20 @@ router.patch(
         return res.status(409).json({
           success: false,
           message:
-            `Request is already ${approvalRequest.status}.`,
+            `This approval request has already been processed (${approvalRequest.status}).`,
+          status: approvalRequest.status,
         });
       }
 
       const approvalType =
         String(
           req.body.approvalType ||
+          (approvalRequest.requestType === "Remote Login" ? "Work From Home" : approvalRequest.requestType) ||
           "Work From Home"
         ).trim();
 
       const allowedApprovalTypes = [
+        "Remote Login",
         "Work From Home",
         "Client Site",
         "Office Exception",
@@ -2928,6 +2947,9 @@ halfDayThresholdMinutes:
       approvalRequest.reviewedBy =
         req.user._id;
 
+      approvalRequest.reviewedByName =
+        req.user.name || "Admin";
+
       approvalRequest.reviewedAt =
         new Date();
 
@@ -2940,6 +2962,28 @@ halfDayThresholdMinutes:
         attendance._id;
 
       await approvalRequest.save();
+
+      if (approvalRequest.deviceId) {
+        try {
+          await AgentDevice.updateOne(
+            {
+              deviceId: approvalRequest.deviceId,
+              employeeCode: employee.employeeCode,
+            },
+            {
+              $set: {
+                isApproved: true,
+                approvedBy: req.user._id,
+                approvedAt: new Date(),
+                approvalNote: `Approved by ${req.user.name || "Admin"} on attendance approval`,
+                isActive: true,
+              },
+            }
+          );
+        } catch (deviceErr) {
+          console.error("AgentDevice auto-approval note:", deviceErr);
+        }
+      }
 
       await updateEmployeeStatus(
         employee,
@@ -3013,7 +3057,8 @@ router.patch(
         return res.status(409).json({
           success: false,
           message:
-            `Request is already ${approvalRequest.status}.`,
+            `This approval request has already been processed (${approvalRequest.status}).`,
+          status: approvalRequest.status,
         });
       }
 
@@ -3023,12 +3068,16 @@ router.patch(
       approvalRequest.reviewedBy =
         req.user._id;
 
+      approvalRequest.reviewedByName =
+        req.user.name || "Admin";
+
       approvalRequest.reviewedAt =
         new Date();
 
       approvalRequest.reviewNote =
         String(
           req.body.note ||
+          req.body.reason ||
           "Attendance request rejected by admin."
         ).trim();
 
@@ -3036,6 +3085,25 @@ router.patch(
         null;
 
       await approvalRequest.save();
+
+      if (approvalRequest.deviceId) {
+        try {
+          await AgentDevice.updateOne(
+            {
+              deviceId: approvalRequest.deviceId,
+              employeeCode: approvalRequest.employeeCode,
+            },
+            {
+              $set: {
+                isApproved: false,
+                approvalNote: approvalRequest.reviewNote,
+              },
+            }
+          );
+        } catch (deviceErr) {
+          console.error("AgentDevice reject note error:", deviceErr);
+        }
+      }
 
       /*
        * IMPORTANT:

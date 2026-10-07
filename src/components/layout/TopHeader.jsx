@@ -39,6 +39,9 @@ export default function TopHeader({
   onQuickAdd,
   onOpenSettings,
   notifications = [],
+  onApproveAttendance,
+  onRejectAttendance,
+  attendanceApprovalActionId,
   sidebarCollapsed = false,
   onToggleMobileSidebar,
   onNavigate,
@@ -48,6 +51,13 @@ export default function TopHeader({
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [ziaOpen, setZiaOpen] = useState(false);
   const [remindersOpen, setRemindersOpen] = useState(false);
+
+  // Attendance approval actions in notification dropdown
+  const [rejectModalOpen, setRejectModalOpen] = useState(false);
+  const [rejectingNotif, setRejectingNotif] = useState(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [processingReject, setProcessingReject] = useState(false);
+  const [localActionLoadingId, setLocalActionLoadingId] = useState(null);
 
   const profileRef = useRef(null);
   const quickAddRef = useRef(null);
@@ -417,51 +427,221 @@ export default function TopHeader({
 
         {/* 5. Notification Bell Dropdown */}
         <div className="relative" ref={notifRef}>
-          <button
-            type="button"
-            onClick={() => setNotificationsOpen((prev) => !prev)}
-            title="Notifications"
-            aria-label="Notifications"
-            className="relative flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition"
-          >
-            <Bell size={15} />
-            {notifications.length > 0 && (
-              <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold text-white ring-2 ring-white">
-                {notifications.length}
-              </span>
-            )}
-          </button>
+          {(() => {
+            const pendingCount = notifications.filter((n) =>
+              n.status ? n.status === "Pending" : true
+            ).length;
 
-          {notificationsOpen && (
-            <div className="absolute right-0 mt-2 w-80 rounded-xl border border-slate-200 bg-white shadow-xl shadow-slate-900/10 z-50 animate-in fade-in zoom-in-95 duration-100">
-              <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-                <span className="text-xs font-bold text-slate-900 uppercase tracking-wide">
-                  Notifications
-                </span>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-                  {notifications.length} Unread
-                </span>
-              </div>
-              <div className="max-h-72 overflow-y-auto p-2 divide-y divide-slate-50">
-                {notifications.length === 0 ? (
-                  <div className="py-8 text-center text-xs text-slate-400">
-                    <CheckCircle2 size={24} className="mx-auto mb-2 text-emerald-500" />
-                    No unread notifications
-                  </div>
-                ) : (
-                  notifications.map((notif, i) => (
-                    <div key={i} className="p-2.5 text-xs hover:bg-slate-50 rounded-lg">
-                      <p className="font-semibold text-slate-800">{notif.title}</p>
-                      <p className="text-slate-500 text-[11px] mt-0.5">{notif.message}</p>
-                      <span className="text-[10px] text-slate-400 mt-1 block">
-                        {notif.time || "Just now"}
+            const handleApprove = async (notif) => {
+              if (!onApproveAttendance || !notif.id) return;
+              try {
+                setLocalActionLoadingId(notif.id);
+                await onApproveAttendance(notif.id);
+              } catch (err) {
+                console.error("Approve error:", err);
+              } finally {
+                setLocalActionLoadingId(null);
+              }
+            };
+
+            const openRejectModal = (notif) => {
+              setRejectingNotif(notif);
+              setRejectReason("");
+              setRejectModalOpen(true);
+            };
+
+            return (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setNotificationsOpen((prev) => !prev)}
+                  title="Notifications"
+                  aria-label="Notifications"
+                  className="relative flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition"
+                >
+                  <Bell size={15} />
+                  {pendingCount > 0 && (
+                    <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold text-white ring-2 ring-white">
+                      {pendingCount}
+                    </span>
+                  )}
+                </button>
+
+                {notificationsOpen && (
+                  <div className="absolute right-0 mt-2 w-84 sm:w-[400px] rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/10 z-50 animate-in fade-in zoom-in-95 duration-100 overflow-hidden">
+                    <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 bg-slate-50/70">
+                      <span className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                        Notifications
+                      </span>
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                        {pendingCount} {pendingCount === 1 ? "Pending" : "Pending"}
                       </span>
                     </div>
-                  ))
+
+                    <div className="max-h-84 overflow-y-auto p-2 space-y-2">
+                      {notifications.length === 0 ? (
+                        <div className="py-8 text-center text-xs text-slate-400">
+                          <CheckCircle2 size={24} className="mx-auto mb-2 text-emerald-500" />
+                          No notifications
+                        </div>
+                      ) : (
+                        notifications.map((notif, i) => {
+                          const isApproval = notif.type === "attendance_approval";
+                          const isItemProcessing =
+                            attendanceApprovalActionId === notif.id ||
+                            localActionLoadingId === notif.id;
+
+                          if (!isApproval) {
+                            return (
+                              <div
+                                key={notif.id || i}
+                                className="p-2.5 text-xs hover:bg-slate-50 rounded-xl border border-slate-100"
+                              >
+                                <p className="font-semibold text-slate-800">{notif.title}</p>
+                                <p className="text-slate-500 text-[11px] mt-0.5">{notif.message}</p>
+                                <span className="text-[10px] text-slate-400 mt-1 block">
+                                  {notif.time || "Just now"}
+                                </span>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div
+                              key={notif.id || i}
+                              className="rounded-xl border border-slate-200/90 bg-white p-3 shadow-2xs hover:border-slate-300 transition text-xs space-y-2"
+                            >
+                              {/* Header: Type and Status */}
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <span className="text-[10px] font-bold uppercase tracking-wider text-violet-600 block">
+                                    Attendance / Device Approval
+                                  </span>
+                                  <p className="font-bold text-slate-900 mt-0.5">
+                                    {notif.employeeName || notif.title}
+                                    {notif.employeeCode && (
+                                      <span className="ml-1 text-slate-400 font-normal font-mono text-[11px]">
+                                        ({notif.employeeCode})
+                                      </span>
+                                    )}
+                                  </p>
+                                </div>
+
+                                {notif.status === "Approved" ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
+                                    <Check size={10} strokeWidth={3} />
+                                    Approved
+                                  </span>
+                                ) : notif.status === "Rejected" ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700 border border-rose-200">
+                                    <X size={10} strokeWidth={3} />
+                                    Rejected
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 border border-amber-200">
+                                    <Clock size={10} />
+                                    Pending
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Details context box */}
+                              <div className="rounded-lg bg-slate-50 p-2 text-[11px] text-slate-600 space-y-1 border border-slate-100">
+                                <div className="flex items-center justify-between text-[10px] text-slate-500">
+                                  <span>Login detected at {notif.time || "Today"}</span>
+                                  {notif.networkType && (
+                                    <span className="font-medium text-slate-700">
+                                      {notif.networkType}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {notif.pcName && (
+                                  <p className="text-[10px] text-slate-500 font-mono">
+                                    Workstation: {notif.pcName}
+                                  </p>
+                                )}
+
+                                <p className="text-slate-700">
+                                  <span className="text-slate-400">Reason:</span>{" "}
+                                  {notif.reason || "Login requires admin approval."}
+                                </p>
+                              </div>
+
+                              {/* State: Pending Actions vs Processed Audit */}
+                              {notif.status === "Pending" ? (
+                                <div className="flex items-center justify-end gap-2 pt-0.5">
+                                  <button
+                                    type="button"
+                                    disabled={isItemProcessing}
+                                    onClick={() => openRejectModal(notif)}
+                                    className="h-7 px-3 rounded-lg border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 text-[11px] font-semibold transition disabled:opacity-50"
+                                  >
+                                    Reject
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    disabled={isItemProcessing}
+                                    onClick={() => handleApprove(notif)}
+                                    className="inline-flex items-center gap-1 h-7 px-3.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 text-[11px] font-semibold transition disabled:opacity-50 shadow-xs"
+                                  >
+                                    {isItemProcessing ? (
+                                      <Clock size={11} className="animate-spin" />
+                                    ) : (
+                                      <Check size={11} strokeWidth={3} />
+                                    )}
+                                    <span>Approve</span>
+                                  </button>
+                                </div>
+                              ) : notif.status === "Approved" ? (
+                                <div className="flex items-center justify-between text-[10px] text-slate-500 pt-0.5">
+                                  <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                                    <Check size={11} strokeWidth={3} />
+                                    Approved by {notif.reviewedByName || "Admin"}
+                                  </span>
+                                  {notif.reviewedAt && (
+                                    <span className="font-mono text-slate-400">
+                                      {new Date(notif.reviewedAt).toLocaleTimeString([], {
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="text-[10px] text-slate-500 pt-0.5 space-y-0.5">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-rose-700 font-semibold flex items-center gap-1">
+                                      <X size={11} strokeWidth={3} />
+                                      Rejected by {notif.reviewedByName || "Admin"}
+                                    </span>
+                                    {notif.reviewedAt && (
+                                      <span className="font-mono text-slate-400">
+                                        {new Date(notif.reviewedAt).toLocaleTimeString([], {
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                        })}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {notif.reviewNote && (
+                                    <p className="text-slate-500 text-[10px] italic">
+                                      Note: "{notif.reviewNote}"
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
                 )}
-              </div>
-            </div>
-          )}
+              </>
+            );
+          })()}
         </div>
 
         {/* 6. Settings Gear Button */}
@@ -560,6 +740,94 @@ export default function TopHeader({
           )}
         </div>
       </div>
+
+      {/* Attendance / Device Approval Reject Modal */}
+      {rejectModalOpen && rejectingNotif && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/45 backdrop-blur-xs">
+          <div className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5 text-rose-600">
+                <AlertCircle size={16} />
+                Reject Attendance Request
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setRejectModalOpen(false);
+                  setRejectingNotif(null);
+                  setRejectReason("");
+                }}
+                className="text-slate-400 hover:text-slate-700 transition"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="py-3 text-xs text-slate-600 space-y-2.5">
+              <p>
+                Rejecting login / attendance request for{" "}
+                <strong className="text-slate-900">
+                  {rejectingNotif.employeeName || rejectingNotif.title}
+                  {rejectingNotif.employeeCode && ` (${rejectingNotif.employeeCode})`}
+                </strong>.
+              </p>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                  Reason for rejection (optional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  placeholder="e.g. Workstation not verified, unapproved remote login..."
+                  className="w-full rounded-lg border border-slate-200 p-2.5 text-xs text-slate-800 outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={processingReject}
+                onClick={() => {
+                  setRejectModalOpen(false);
+                  setRejectingNotif(null);
+                  setRejectReason("");
+                }}
+                className="h-8 px-3 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                disabled={processingReject}
+                onClick={async () => {
+                  if (!onRejectAttendance || !rejectingNotif?.id) return;
+                  try {
+                    setProcessingReject(true);
+                    await onRejectAttendance(
+                      rejectingNotif.id,
+                      rejectReason.trim()
+                    );
+                    setRejectModalOpen(false);
+                    setRejectingNotif(null);
+                    setRejectReason("");
+                  } catch (err) {
+                    console.error("Reject error:", err);
+                  } finally {
+                    setProcessingReject(false);
+                  }
+                }}
+                className="h-8 px-3.5 rounded-lg bg-rose-600 text-white text-xs font-semibold hover:bg-rose-700 transition disabled:opacity-50 shadow-xs"
+              >
+                {processingReject ? "Rejecting..." : "Confirm Reject"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 }

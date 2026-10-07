@@ -25,10 +25,17 @@ PackagePlus,
     Search,
     Trash2,
     X,
+    ArrowRightLeft,
 } from "lucide-react";
 
 import API_URL from "../../config/api";
 import DataTable from "../../components/data/DataTable";
+import ProjectTransitionModal, {
+    getStageStyle,
+} from "./ProjectTransitionModal";
+import ProjectManagerModal from "./ProjectManagerModal";
+import ProjectTeamMemberModal from "./ProjectTeamMemberModal";
+import ProjectDetailsDrawer from "./ProjectDetailsDrawer";
 
 const STATUS_OPTIONS = [
     "All",
@@ -142,12 +149,18 @@ function getStatusStyle(status) {
 export default function Projects({
     clients = [],
     products = [],
+    employees: initialEmployees = [],
     onCreateProjectTask = null,
 }) {
     const [
         projects,
         setProjects,
     ] = useState([]);
+
+    const [
+        employees,
+        setEmployees,
+    ] = useState(Array.isArray(initialEmployees) ? initialEmployees : []);
 
     const [
         stats,
@@ -213,8 +226,22 @@ export default function Projects({
     });
 
     /* =====================================================
-   PROJECT DETAILS
-===================================================== */
+       PROJECT WORKFLOW & TEAM MODAL STATES
+    ===================================================== */
+    const [moveModalOpen, setMoveModalOpen] = useState(false);
+    const [projectToMove, setProjectToMove] = useState(null);
+
+    const [pmModalOpen, setPmModalOpen] = useState(false);
+    const [projectForPm, setProjectForPm] = useState(null);
+
+    const [teamModalOpen, setTeamModalOpen] = useState(false);
+    const [projectForTeam, setProjectForTeam] = useState(null);
+    const [memberToEdit, setMemberToEdit] = useState(null);
+    const [initialEmployeeForTeam, setInitialEmployeeForTeam] = useState(null);
+
+    /* =====================================================
+       PROJECT DETAILS
+    ===================================================== */
 
     const [
         detailsOpen,
@@ -287,6 +314,28 @@ const [
             "client-connect-token"
         ) ||
         "";
+
+    useEffect(() => {
+        if (Array.isArray(initialEmployees) && initialEmployees.length > 0) {
+            setEmployees(initialEmployees);
+        } else {
+            fetch(`${API_URL}/api/admin/employees`, {
+                headers: {
+                    Accept: "application/json",
+                    Authorization: `Bearer ${getAuthToken()}`,
+                },
+            })
+                .then((r) => r.json())
+                .then((d) => {
+                    if (d.success && Array.isArray(d.data)) {
+                        setEmployees(d.data);
+                    }
+                })
+                .catch((err) =>
+                    console.error("Load employees fallback error:", err)
+                );
+        }
+    }, [initialEmployees]);
 
     const loadProjects =
         async () => {
@@ -629,7 +678,80 @@ const [
             setProjectDetails(null);
         };
 
-        const openCompleteProject = () => {
+    const openMoveProject = (proj) => {
+        setProjectToMove(proj);
+        setMoveModalOpen(true);
+    };
+
+    const openAssignPm = (proj) => {
+        setProjectForPm(proj);
+        setPmModalOpen(true);
+    };
+
+    const openAddMember = (proj, initialEmp = null) => {
+        setProjectForTeam(proj);
+        setMemberToEdit(null);
+        setInitialEmployeeForTeam(initialEmp);
+        setTeamModalOpen(true);
+    };
+
+    const openEditMember = (proj, member) => {
+        setProjectForTeam(proj);
+        setMemberToEdit(member);
+        setInitialEmployeeForTeam(null);
+        setTeamModalOpen(true);
+    };
+
+    const handleRemoveMember = async (member) => {
+        const proj = projectDetails?.project;
+        if (!proj) return;
+        const memberId = member._id || member.id;
+        const res = await fetch(
+            `${API_URL}/api/admin/project/${proj._id || proj.id}/team-members/${memberId}`,
+            {
+                method: "DELETE",
+                headers: {
+                    Accept: "application/json",
+                    Authorization: `Bearer ${getAuthToken()}`,
+                },
+            }
+        );
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            throw new Error(data.message || "Failed to remove team member.");
+        }
+        await openProjectDetails(proj);
+        await loadProjects();
+    };
+
+    const handleStageTransitionSuccess = async (updatedProject) => {
+        if (
+            projectDetails?.project &&
+            (projectDetails.project._id === updatedProject._id ||
+                projectDetails.project.id === updatedProject._id)
+        ) {
+            await openProjectDetails(updatedProject);
+        }
+        await loadProjects();
+    };
+
+    const handleAssignPmSuccess = async () => {
+        const proj = projectDetails?.project || projectForPm;
+        if (proj) {
+            await openProjectDetails(proj);
+        }
+        await loadProjects();
+    };
+
+    const handleTeamMemberSuccess = async () => {
+        const proj = projectDetails?.project || projectForTeam;
+        if (proj) {
+            await openProjectDetails(proj);
+        }
+        await loadProjects();
+    };
+
+    const openCompleteProject = () => {
     const project =
         projectDetails?.project;
 
@@ -1491,11 +1613,11 @@ const handleConversionChange =
                                 <span className="font-semibold text-violet-600 text-xs">
                                     {project.projectCode}
                                 </span>
-                                <p className="font-medium text-slate-900 truncate max-w-[220px] text-xs">
+                                <p className="font-medium text-slate-900 truncate max-w-[210px] text-xs">
                                     {project.projectName}
                                 </p>
                                 <span className="text-[10px] text-slate-400">
-                                    {project.priority}
+                                    {project.priority || "Medium"}
                                 </span>
                             </div>
                         ),
@@ -1511,42 +1633,32 @@ const handleConversionChange =
                         ),
                     },
                     {
-                        key: "requirementCode",
-                        label: "Requirement",
+                        key: "projectManagerName",
+                        label: "Project Manager",
                         sortable: true,
                         render: (val) => (
-                            <span className="text-violet-600 font-medium text-xs">
-                                {val || "—"}
+                            <span className={`text-xs ${val ? "font-semibold text-slate-800" : "text-slate-400 italic"}`}>
+                                {val || "Unassigned"}
                             </span>
                         ),
                     },
                     {
-                        key: "projectType",
-                        label: "Type",
+                        key: "status",
+                        label: "Business Status",
                         sortable: true,
                         render: (val) => (
-                            <span className="text-slate-600 text-xs">
-                                {val || "—"}
+                            <span className={`inline-flex px-2 py-0.5 rounded-lg border text-xs font-semibold ${getStatusStyle(val)}`}>
+                                {val || "Planned"}
                             </span>
                         ),
                     },
                     {
-                        key: "finalAmount",
-                        label: "Value",
+                        key: "stage",
+                        label: "Workflow Stage",
                         sortable: true,
                         render: (val) => (
-                            <span className="font-semibold text-slate-900 text-xs">
-                                {money(val)}
-                            </span>
-                        ),
-                    },
-                    {
-                        key: "dueDate",
-                        label: "Due Date",
-                        sortable: true,
-                        render: (val) => (
-                            <span className="text-slate-600 text-xs">
-                                {formatDate(val)}
+                            <span className={`inline-flex px-2 py-0.5 rounded-lg border text-xs font-semibold ${getStageStyle(val)}`}>
+                                {val || "Planning"}
                             </span>
                         ),
                     },
@@ -1560,10 +1672,10 @@ const handleConversionChange =
                                 100
                             );
                             return (
-                                <div className="w-[120px]">
+                                <div className="w-[110px]">
                                     <div className="mb-1 flex items-center justify-between text-[11px]">
                                         <span className="text-slate-500">
-                                            Progress
+                                            Done
                                         </span>
                                         <span className="font-semibold text-slate-700">
                                             {prog}%
@@ -1580,38 +1692,13 @@ const handleConversionChange =
                         },
                     },
                     {
-                        key: "status",
-                        label: "Status",
+                        key: "dueDate",
+                        label: "Target Date",
                         sortable: true,
-                        render: (_, project) => (
-                            <select
-                                disabled={Boolean(
-                                    project.convertedToProduct ||
-                                        project.isReadOnly
-                                )}
-                                value={project.status}
-                                onChange={(e) =>
-                                    updateProjectStatus(
-                                        project,
-                                        e.target.value
-                                    )
-                                }
-                                className={`rounded-lg border px-2 py-1 text-[11px] font-semibold outline-hidden cursor-pointer ${getStatusStyle(
-                                    project.status
-                                )}`}
-                                onClick={(e) => e.stopPropagation()}
-                            >
-                                {STATUS_OPTIONS.filter(
-                                    (status) =>
-                                        status !== "All" &&
-                                        (status !== "Completed" ||
-                                            project.status === "Completed")
-                                ).map((status) => (
-                                    <option key={status} value={status}>
-                                        {status}
-                                    </option>
-                                ))}
-                            </select>
+                        render: (val) => (
+                            <span className="text-slate-600 text-xs">
+                                {formatDate(val)}
+                            </span>
                         ),
                     },
                 ]}
@@ -1667,10 +1754,17 @@ const handleConversionChange =
                 }
                 rowActions={[
                     {
-                        label: "View Project",
+                        label: "Move Project",
+                        icon: ArrowRightLeft,
+                        className:
+                            "text-violet-600 hover:text-violet-800 hover:bg-violet-50 font-semibold",
+                        onClick: (project) => openMoveProject(project),
+                    },
+                    {
+                        label: "View Workspace",
                         icon: Eye,
                         className:
-                            "text-violet-600 hover:text-violet-800 hover:bg-violet-50",
+                            "text-slate-700 hover:text-slate-900 hover:bg-slate-50",
                         onClick: (project) => openProjectDetails(project),
                     },
                     {
@@ -2163,824 +2257,76 @@ const handleConversionChange =
             )}
 
             {/* =====================================================
-    PROJECT DETAILS DRAWER
-===================================================== */}
-
-            {detailsOpen && (
-                <>
-                    <button
-                        type="button"
-                        aria-label="Close project details"
-                        onClick={
-                            closeProjectDetails
-                        }
-                        className="fixed inset-0 z-[90] bg-slate-950/40 backdrop-blur-[2px]"
-                    />
-
-                    <aside className="fixed inset-y-0 right-0 z-[100] flex w-full max-w-[900px] flex-col bg-white shadow-[-24px_0_70px_rgba(15,23,42,0.18)]">
-
-                        {/* HEADER */}
-
-                        <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
-                            <div>
-                                <p className="text-xs font-semibold uppercase tracking-[0.15em] text-violet-600">
-                                    Project Workspace
-                                </p>
-
-                                <h2 className="mt-1 text-xl font-semibold text-slate-950">
-                                    {projectDetails?.project?.projectName ||
-                                        "Project Details"}
-                                </h2>
-
-                                {projectDetails?.project && (
-                                    <p className="mt-1 text-xs text-slate-500">
-                                        {
-                                            projectDetails.project.projectCode
-                                        }
-
-                                        {projectDetails.project.requirementCode
-                                            ? ` • ${projectDetails.project.requirementCode}`
-                                            : ""}
-                                    </p>
-                                )}
-                            </div>
-
-                            <button
-                                type="button"
-                                onClick={
-                                    closeProjectDetails
-                                }
-                                className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-                            >
-                                <X size={18} />
-                            </button>
-                        </div>
-
-                        {/* BODY */}
-
-                        <div className="flex-1 overflow-y-auto bg-slate-50/60 p-6">
-
-                            {detailsLoading ? (
-                                <div className="flex min-h-[400px] items-center justify-center">
-                                    <div className="text-center">
-                                        <RefreshCw
-                                            size={25}
-                                            className="mx-auto animate-spin text-violet-600"
-                                        />
-
-                                        <p className="mt-3 text-sm text-slate-500">
-                                            Loading project details...
-                                        </p>
-                                    </div>
-                                </div>
-                            ) : projectDetails ? (
-                                <div className="space-y-6">
-
-                                    {/* PROJECT OVERVIEW */}
-
-                                    <section className="rounded-2xl border border-slate-200 bg-white p-5">
-                                        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-
-                                            <div>
-                                                <div className="flex flex-wrap items-center gap-2">
-                                                    <span className="text-xs font-semibold text-violet-600">
-                                                        {
-                                                            projectDetails.project.projectCode
-                                                        }
-                                                    </span>
-
-                                                    <span
-                                                        className={`rounded-lg border px-2.5 py-1 text-xs font-semibold ${getStatusStyle(
-                                                            projectDetails.project.status
-                                                        )}`}
-                                                    >
-                                                        {
-                                                            projectDetails.project.status
-                                                        }
-                                                    </span>
-                                                </div>
-
-                                                <h3 className="mt-2 text-lg font-semibold text-slate-950">
-                                                    {
-                                                        projectDetails.project.projectName
-                                                    }
-                                                </h3>
-
-                                                <p className="mt-1 text-sm text-slate-500">
-                                                    {projectDetails.project.clientName ||
-                                                        "Internal Project"}
-
-                                                    {projectDetails.project.projectType
-                                                        ? ` • ${projectDetails.project.projectType}`
-                                                        : ""}
-                                                </p>
-                                            </div>
-
-                                            <div className="min-w-[210px]">
-                                                <div className="flex items-center justify-between">
-                                                    <span className="text-xs font-medium text-slate-500">
-                                                        Overall Progress
-                                                    </span>
-
-                                                    <span className="text-lg font-semibold text-violet-700">
-                                                        {Number(
-                                                            projectDetails.summary?.progress ||
-                                                            0
-                                                        )}
-                                                        %
-                                                    </span>
-                                                </div>
-
-                                                <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-100">
-                                                    <div
-                                                        className="h-full rounded-full bg-violet-600 transition-all"
-                                                        style={{
-                                                            width: `${Math.min(
-                                                                Math.max(
-                                                                    Number(
-                                                                        projectDetails.summary?.progress ||
-                                                                        0
-                                                                    ),
-                                                                    0
-                                                                ),
-                                                                100
-                                                            )}%`,
-                                                        }}
-                                                    />
-                                                </div>
-
-                                                <p className="mt-2 text-right text-[11px] text-slate-400">
-                                                    Calculated from project tasks
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        <div className="mt-5 grid gap-4 border-t border-slate-100 pt-5 sm:grid-cols-2 lg:grid-cols-4">
-
-                                            <ProjectInfo
-                                                label="Client"
-                                                value={
-                                                    projectDetails.project.clientName ||
-                                                    "Internal"
-                                                }
-                                            />
-
-                                            <ProjectInfo
-                                                label="Requirement"
-                                                value={
-                                                    projectDetails.project.requirementCode ||
-                                                    "—"
-                                                }
-                                            />
-
-                                            <ProjectInfo
-                                                label="Project Value"
-                                                value={money(
-                                                    projectDetails.project.finalAmount
-                                                )}
-                                            />
-
-                                            <ProjectInfo
-                                                label="Due Date"
-                                                value={formatDate(
-                                                    projectDetails.project.dueDate
-                                                )}
-                                            />
-                                        </div>
-                                    </section>
-                                    {/* PROJECT COMPLETION ACTION */}
-
-{projectDetails.project.status !==
-    "Completed" && (
-    <section
-        className={`rounded-2xl border p-5 ${
-            Number(
-                projectDetails.summary?.totalTasks ||
-                    0
-            ) > 0 &&
-            Number(
-                projectDetails.summary?.completedTasks ||
-                    0
-            ) ===
-                Number(
-                    projectDetails.summary?.totalTasks ||
-                        0
-                ) &&
-            Number(
-                projectDetails.summary?.progress ||
-                    0
-            ) >= 100
-                ? "border-emerald-200 bg-emerald-50/70"
-                : "border-amber-200 bg-amber-50/70"
-        }`}
-    >
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-                <div className="flex items-center gap-2">
-                    <CheckCircle2
-                        size={18}
-                        className={
-                            Number(
-                                projectDetails.summary?.progress ||
-                                    0
-                            ) >= 100
-                                ? "text-emerald-600"
-                                : "text-amber-600"
-                        }
-                    />
-
-                    <h3 className="text-sm font-semibold text-slate-900">
-                        Project Completion
-                    </h3>
-                </div>
-
-                <p className="mt-1 text-xs text-slate-600">
-                    {Number(
-                        projectDetails.summary?.totalTasks ||
-                            0
-                    ) === 0
-                        ? "Create project tasks before completing this project."
-                        : Number(
-                              projectDetails.summary?.completedTasks ||
-                                  0
-                          ) ===
-                              Number(
-                                  projectDetails.summary?.totalTasks ||
-                                      0
-                              ) &&
-                          Number(
-                              projectDetails.summary?.progress ||
-                                  0
-                          ) >= 100
-                        ? "All project tasks are completed. This project is ready for delivery and closure."
-                        : `${Number(
-                              projectDetails.summary?.completedTasks ||
-                                  0
-                          )}/${Number(
-                              projectDetails.summary?.totalTasks ||
-                                  0
-                          )} tasks completed. Finish all tasks before completing the project.`}
-                </p>
-            </div>
-
-            <button
-                type="button"
-                onClick={
-                    openCompleteProject
-                }
-                disabled={
-                    Number(
-                        projectDetails.summary?.totalTasks ||
-                            0
-                    ) === 0 ||
-                    Number(
-                        projectDetails.summary?.completedTasks ||
-                            0
-                    ) !==
-                        Number(
-                            projectDetails.summary?.totalTasks ||
-                                0
-                        ) ||
-                    Number(
-                        projectDetails.summary?.progress ||
-                            0
-                    ) < 100
-                }
-                className="h-10 shrink-0 rounded-xl bg-emerald-600 px-5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-            >
-                Complete Project
-            </button>
-        </div>
-    </section>
-)}
-{projectDetails.project.status ===
-    "Completed" && (
-    <section className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-5">
-        <div className="flex items-center gap-2">
-            <CheckCircle2
-                size={18}
-                className="text-emerald-600"
+                PROJECT WORKSPACE DETAILS DRAWER
+            ===================================================== */}
+            <ProjectDetailsDrawer
+                isOpen={detailsOpen}
+                onClose={closeProjectDetails}
+                projectDetails={projectDetails}
+                loading={detailsLoading}
+                employees={employees}
+                onRefresh={() => {
+                    const p = projectDetails?.project;
+                    if (p) openProjectDetails(p);
+                }}
+                onCreateProjectTask={(project) => {
+                    if (typeof onCreateProjectTask === "function") {
+                        onCreateProjectTask(project);
+                    }
+                }}
+                onOpenCompleteProject={openCompleteProject}
+                onOpenConvertProduct={openConvertToProduct}
+                onOpenMoveProject={openMoveProject}
+                onOpenAssignPm={openAssignPm}
+                onOpenAddMember={openAddMember}
+                onOpenEditMember={openEditMember}
+                onRemoveMember={handleRemoveMember}
             />
 
-            <h3 className="text-sm font-semibold text-emerald-900">
-                Project Completed
-            </h3>
-        </div>
-
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <ProjectInfo
-                label="Completion Date"
-                value={formatDate(
-                    projectDetails.project.completedDate
-                )}
+            {/* =====================================================
+                MOVE PROJECT WORKFLOW STAGE MODAL
+            ===================================================== */}
+            <ProjectTransitionModal
+                isOpen={moveModalOpen}
+                onClose={() => {
+                    setMoveModalOpen(false);
+                    setProjectToMove(null);
+                }}
+                project={projectToMove}
+                onSuccess={handleStageTransitionSuccess}
             />
 
-            <ProjectInfo
-                label="Delivery / Go-Live"
-                value={formatDate(
-                    projectDetails.project.deliveryDate
-                )}
+            {/* =====================================================
+                ASSIGN / CHANGE PROJECT MANAGER MODAL
+            ===================================================== */}
+            <ProjectManagerModal
+                isOpen={pmModalOpen}
+                onClose={() => {
+                    setPmModalOpen(false);
+                    setProjectForPm(null);
+                }}
+                project={projectForPm}
+                employees={employees}
+                onSuccess={handleAssignPmSuccess}
             />
 
-            <ProjectInfo
-                label="Final Amount"
-                value={money(
-                    projectDetails.project.finalAmount
-                )}
+            {/* =====================================================
+                ADD / EDIT PROJECT TEAM MEMBER MODAL
+            ===================================================== */}
+            <ProjectTeamMemberModal
+                isOpen={teamModalOpen}
+                onClose={() => {
+                    setTeamModalOpen(false);
+                    setProjectForTeam(null);
+                    setMemberToEdit(null);
+                    setInitialEmployeeForTeam(null);
+                }}
+                project={projectForTeam}
+                memberToEdit={memberToEdit}
+                initialEmployee={initialEmployeeForTeam}
+                employees={employees}
+                onSuccess={handleTeamMemberSuccess}
             />
-
-            <ProjectInfo
-                label="Completed By"
-                value={
-                    projectDetails.project.completedByName ||
-                    "Admin"
-                }
-            />
-        </div>
-    </section>
-)}
-
-
-                                    {/* TASK SUMMARY */}
-
-                                    <section>
-                                        <div className="mb-3 flex items-center justify-between">
-                                            <div>
-                                                <h3 className="text-sm font-semibold text-slate-900">
-                                                    Task Summary
-                                                </h3>
-
-                                                <p className="mt-0.5 text-xs text-slate-500">
-                                                    Live status of work linked to this project.
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-
-                                            <ProjectStatCard
-                                                label="Total Tasks"
-                                                value={
-                                                    projectDetails.summary?.totalTasks ||
-                                                    0
-                                                }
-                                                icon={ListTodo}
-                                            />
-
-                                            <ProjectStatCard
-                                                label="Active"
-                                                value={
-                                                    projectDetails.summary?.activeTasks ||
-                                                    0
-                                                }
-                                                icon={Clock3}
-                                            />
-
-                                            <ProjectStatCard
-                                                label="Completed"
-                                                value={
-                                                    projectDetails.summary?.completedTasks ||
-                                                    0
-                                                }
-                                                icon={CheckCircle2}
-                                            />
-
-                                            <ProjectStatCard
-                                                label="Overdue"
-                                                value={
-                                                    projectDetails.summary?.overdueTasks ||
-                                                    0
-                                                }
-                                                icon={AlertTriangle}
-                                            />
-                                        </div>
-                                    </section>
-
-                                    {/* TEAM */}
-
-                                    <section className="rounded-2xl border border-slate-200 bg-white p-5">
-                                        <div className="flex items-center gap-2">
-                                            <Users
-                                                size={17}
-                                                className="text-violet-600"
-                                            />
-
-                                            <h3 className="text-sm font-semibold text-slate-900">
-                                                Project Team
-                                            </h3>
-                                        </div>
-
-                                        {Array.isArray(
-                                            projectDetails.team
-                                        ) &&
-                                            projectDetails.team.length >
-                                            0 ? (
-                                            <div className="mt-4 flex flex-wrap gap-3">
-                                                {projectDetails.team.map(
-                                                    (member) => (
-                                                        <div
-                                                            key={
-                                                                member.employeeId ||
-                                                                member.employeeCode
-                                                            }
-                                                            className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5"
-                                                        >
-                                                            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-violet-100 text-violet-700">
-                                                                <UserRound
-                                                                    size={16}
-                                                                />
-                                                            </div>
-
-                                                            <div>
-                                                                <p className="text-sm font-semibold text-slate-800">
-                                                                    {
-                                                                        member.employeeName
-                                                                    }
-                                                                </p>
-
-                                                                <p className="text-[11px] text-slate-400">
-                                                                    {member.employeeCode ||
-                                                                        "Employee"}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                    )
-                                                )}
-                                            </div>
-                                        ) : (
-                                            <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-5 text-center">
-                                                <Users
-                                                    size={22}
-                                                    className="mx-auto text-slate-300"
-                                                />
-
-                                                <p className="mt-2 text-sm font-medium text-slate-600">
-                                                    No team members yet
-                                                </p>
-
-                                                <p className="mt-1 text-xs text-slate-400">
-                                                    Employees will appear here when project tasks are assigned.
-                                                </p>
-                                            </div>
-                                        )}
-                                    </section>
-
-                                    {/* PROJECT TASKS */}
-
-                                    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-
-                                        <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                                            <div>
-                                                <h3 className="text-sm font-semibold text-slate-900">
-                                                    Project Tasks
-                                                </h3>
-
-                                                <p className="mt-0.5 text-xs text-slate-500">
-                                                    Tasks assigned specifically to this project.
-                                                </p>
-                                            </div>
-
-                                         {!(
-    projectDetails.project.convertedToProduct ||
-    projectDetails.project.isReadOnly
-) ? (
-    <button
-        type="button"
-        onClick={() => {
-            const project =
-                projectDetails?.project;
-
-            if (!project) {
-                return;
-            }
-
-            if (
-                typeof onCreateProjectTask ===
-                "function"
-            ) {
-                onCreateProjectTask(
-                    project
-                );
-            }
-        }}
-        className="flex h-9 items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700"
-    >
-        <Plus size={14} />
-        Create Task
-    </button>
-) : (
-    <div className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-medium text-slate-500">
-        <LockKeyhole
-            size={13}
-        />
-
-        Historical Tasks
-    </div>
-)}
-                                        </div>
-
-                                        {Array.isArray(
-                                            projectDetails.tasks
-                                        ) &&
-                                            projectDetails.tasks.length >
-                                            0 ? (
-                                            <div className="overflow-x-auto">
-                                                <table className="min-w-full">
-                                                    <thead className="bg-slate-50">
-                                                        <tr className="text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                                                            <th className="px-4 py-3">
-                                                                Task
-                                                            </th>
-
-                                                            <th className="px-4 py-3">
-                                                                Employee
-                                                            </th>
-
-                                                            <th className="px-4 py-3">
-                                                                Priority
-                                                            </th>
-
-                                                            <th className="px-4 py-3">
-                                                                Due Date
-                                                            </th>
-
-                                                            <th className="px-4 py-3">
-                                                                Progress
-                                                            </th>
-
-                                                            <th className="px-4 py-3">
-                                                                Status
-                                                            </th>
-                                                        </tr>
-                                                    </thead>
-
-                                                    <tbody className="divide-y divide-slate-100">
-                                                        {projectDetails.tasks.map(
-                                                            (
-                                                                task
-                                                            ) => (
-                                                                <tr
-                                                                    key={
-                                                                        task.id ||
-                                                                        task.taskCode
-                                                                    }
-                                                                    className="hover:bg-slate-50/70"
-                                                                >
-                                                                    <td className="px-4 py-3">
-                                                                        <p className="text-[11px] font-semibold text-violet-600">
-                                                                            {
-                                                                                task.taskCode
-                                                                            }
-                                                                        </p>
-
-                                                                        <p className="mt-1 max-w-[220px] truncate text-sm font-medium text-slate-800">
-                                                                            {
-                                                                                task.title
-                                                                            }
-                                                                        </p>
-                                                                    </td>
-
-                                                                    <td className="px-4 py-3">
-                                                                        <p className="text-sm text-slate-700">
-                                                                            {task.assignedEmployeeName ||
-                                                                                "Unassigned"}
-                                                                        </p>
-
-                                                                        <p className="text-[11px] text-slate-400">
-                                                                            {
-                                                                                task.assignedEmployeeCode
-                                                                            }
-                                                                        </p>
-                                                                    </td>
-
-                                                                    <td className="px-4 py-3 text-xs font-medium text-slate-600">
-                                                                        {
-                                                                            task.priority
-                                                                        }
-                                                                    </td>
-
-                                                                    <td className="px-4 py-3 text-xs text-slate-600">
-                                                                        {formatDate(
-                                                                            task.dueDate
-                                                                        )}
-                                                                    </td>
-
-                                                                    <td className="px-4 py-3">
-                                                                        <div className="w-[120px]">
-                                                                            <div className="mb-1 flex items-center justify-between text-[10px]">
-                                                                                <span className="text-slate-400">
-                                                                                    Progress
-                                                                                </span>
-
-                                                                                <span className="font-semibold text-slate-700">
-                                                                                    {Number(
-                                                                                        task.progress ||
-                                                                                        0
-                                                                                    )}
-                                                                                    %
-                                                                                </span>
-                                                                            </div>
-
-                                                                            <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
-                                                                                <div
-                                                                                    className="h-full rounded-full bg-violet-600"
-                                                                                    style={{
-                                                                                        width: `${Math.min(
-                                                                                            Math.max(
-                                                                                                Number(
-                                                                                                    task.progress ||
-                                                                                                    0
-                                                                                                ),
-                                                                                                0
-                                                                                            ),
-                                                                                            100
-                                                                                        )}%`,
-                                                                                    }}
-                                                                                />
-                                                                            </div>
-                                                                        </div>
-                                                                    </td>
-
-                                                                    <td className="px-4 py-3">
-                                                                        <span
-                                                                            className={`inline-flex rounded-lg border px-2.5 py-1 text-[11px] font-semibold ${getTaskStatusStyle(
-                                                                                task.status
-                                                                            )}`}
-                                                                        >
-                                                                            {
-                                                                                task.status
-                                                                            }
-                                                                        </span>
-                                                                    </td>
-                                                                </tr>
-                                                            )
-                                                        )}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        ) : (
-                                            <div className="px-5 py-12 text-center">
-                                                <ListTodo
-                                                    size={28}
-                                                    className="mx-auto text-slate-300"
-                                                />
-
-                                                <p className="mt-3 text-sm font-medium text-slate-700">
-                                                    No project tasks yet
-                                                </p>
-
-                                                <p className="mt-1 text-xs text-slate-400">
-                                                    Create the first task and assign it to an employee.
-                                                </p>
-                                            </div>
-                                        )}
-                                    </section>
-
-                                    {/* AMC */}
-
-                                    {projectDetails.project.amcApplicable && (
-                                        <section className="rounded-2xl border border-slate-200 bg-white p-5">
-                                            <h3 className="text-sm font-semibold text-slate-900">
-                                                AMC & Warranty
-                                            </h3>
-
-                                            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                                                <ProjectInfo
-                                                    label="Proposed Yearly AMC"
-                                                    value={money(
-                                                        projectDetails.project.proposedAmcAmount
-                                                    )}
-                                                />
-
-                                                <ProjectInfo
-                                                    label="Warranty End"
-                                                    value={formatDate(
-                                                        projectDetails.project.warrantyEndDate
-                                                    )}
-                                                />
-                                            </div>
-                                        </section>
-                                    )}
-                                    {/* =====================================================
-    PRODUCT CONVERSION
-===================================================== */}
-
-{projectDetails.project.status === "Completed" &&
-    !projectDetails.project.convertedToProduct &&
-    !projectDetails.project.isReadOnly &&
-    !projectDetails.project.productId && (
-        <section className="rounded-2xl border border-violet-200 bg-violet-50/70 p-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-
-                <div>
-                    <div className="flex items-center gap-2">
-                        <PackagePlus
-                            size={18}
-                            className="text-violet-600"
-                        />
-
-                        <h3 className="text-sm font-semibold text-slate-900">
-                            Create Reusable Product
-                        </h3>
-                    </div>
-
-                    <p className="mt-1 max-w-[600px] text-xs leading-5 text-slate-600">
-                        If this completed development can be sold,
-                        installed or supported for other clients,
-                        convert it into Product Master.
-                    </p>
-
-                    <p className="mt-1 text-[11px] font-medium text-amber-700">
-                        After conversion this project becomes a
-                        permanent read-only development record.
-                    </p>
-                </div>
-
-                <button
-                    type="button"
-                    onClick={openConvertToProduct}
-                    className="flex h-10 shrink-0 items-center gap-2 rounded-xl bg-violet-600 px-5 text-sm font-semibold text-white transition hover:bg-violet-700"
-                >
-                    <PackagePlus size={16} />
-
-                    Convert to Product
-                </button>
-            </div>
-        </section>
-    )}
-
-
-{/* =====================================================
-    CONVERTED PROJECT / READ ONLY
-===================================================== */}
-
-{(projectDetails.project.convertedToProduct ||
-    projectDetails.project.isReadOnly) && (
-        <section className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-5">
-
-            <div className="flex items-start gap-3">
-
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
-                    <PackageCheck size={19} />
-                </div>
-
-                <div>
-                    <div className="flex flex-wrap items-center gap-2">
-
-                        <h3 className="text-sm font-semibold text-emerald-900">
-                            Converted to Product
-                        </h3>
-
-                        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-                            <LockKeyhole size={11} />
-                            Read Only
-                        </span>
-
-                    </div>
-
-                    <p className="mt-1 text-sm font-semibold text-slate-900">
-                        {projectDetails.project.productCode || "Product"}
-                        {" - "}
-                        {projectDetails.project.productName ||
-                            projectDetails.project.projectName}
-                    </p>
-
-                    <p className="mt-1 text-xs leading-5 text-slate-600">
-                        Development is complete and this project is
-                        retained as a permanent historical record.
-                        Future sales, client assignments, support and
-                        AMC should use the Product record.
-                    </p>
-
-                    {projectDetails.project.convertedProductAt && (
-                        <p className="mt-2 text-[11px] text-slate-500">
-                            Converted on{" "}
-                            {formatDate(
-                                projectDetails.project.convertedProductAt
-                            )}
-
-                            {projectDetails.project.convertedProductByName
-                                ? ` by ${projectDetails.project.convertedProductByName}`
-                                : ""}
-                        </p>
-                    )}
-
-                </div>
-            </div>
-        </section>
-    )}
-
-
-                                </div>
-                            ) : (
-                                <div className="py-20 text-center text-sm text-slate-500">
-                                    Project details are unavailable.
-                                </div>
-                            )}
-                        </div>
-                    </aside>
-                </>
-            )}
             {/* =====================================================
     COMPLETE PROJECT MODAL
 ===================================================== */}

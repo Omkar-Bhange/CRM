@@ -987,7 +987,7 @@ export default function Admin({ user: propUser = null, onLogout }) {
             setAttendanceApprovalError("");
 
             const response = await fetch(
-                `${API_URL}/api/attendance/admin/approval-requests?status=Pending`,
+                `${API_URL}/api/attendance/admin/approval-requests?status=All`,
                 {
                     headers: {
                         Accept: "application/json",
@@ -1027,7 +1027,7 @@ export default function Admin({ user: propUser = null, onLogout }) {
         }
     };
 
-    const approveAttendanceRequest = async (requestId) => {
+    const approveAttendanceRequest = async (requestId, customNote, customType) => {
         if (!requestId) return;
 
         try {
@@ -1044,9 +1044,13 @@ export default function Admin({ user: propUser = null, onLogout }) {
                     },
                     body: JSON.stringify({
                         approvalType:
-                            attendanceApprovalType,
+                            customType ||
+                            attendanceApprovalType ||
+                            "Work From Home",
                         note:
-                            attendanceApprovalNote,
+                            customNote ||
+                            attendanceApprovalNote ||
+                            "Approved by Admin",
                     }),
                 }
             );
@@ -1061,8 +1065,8 @@ export default function Admin({ user: propUser = null, onLogout }) {
             }
 
             setAttendanceApprovalNote("");
-
             await loadAttendanceApprovalRequests();
+            return { success: true, data: result.data };
         } catch (error) {
             console.error(
                 "Approve attendance request error:",
@@ -1073,11 +1077,13 @@ export default function Admin({ user: propUser = null, onLogout }) {
                 error.message ||
                 "Unable to approve attendance request."
             );
+            await loadAttendanceApprovalRequests();
+            return { success: false, message: error.message };
         } finally {
             setAttendanceApprovalActionId(null);
         }
     };
-    const rejectAttendanceRequest = async (requestId) => {
+    const rejectAttendanceRequest = async (requestId, customReason) => {
         if (!requestId) return;
 
         try {
@@ -1094,6 +1100,11 @@ export default function Admin({ user: propUser = null, onLogout }) {
                     },
                     body: JSON.stringify({
                         note:
+                            customReason ||
+                            attendanceApprovalNote ||
+                            "Attendance request rejected by admin.",
+                        reason:
+                            customReason ||
                             attendanceApprovalNote ||
                             "Attendance request rejected by admin.",
                     }),
@@ -1110,8 +1121,8 @@ export default function Admin({ user: propUser = null, onLogout }) {
             }
 
             setAttendanceApprovalNote("");
-
             await loadAttendanceApprovalRequests();
+            return { success: true, data: result.data };
         } catch (error) {
             console.error(
                 "Reject attendance request error:",
@@ -1122,6 +1133,8 @@ export default function Admin({ user: propUser = null, onLogout }) {
                 error.message ||
                 "Unable to reject attendance request."
             );
+            await loadAttendanceApprovalRequests();
+            return { success: false, message: error.message };
         } finally {
             setAttendanceApprovalActionId(null);
         }
@@ -4337,18 +4350,54 @@ export default function Admin({ user: propUser = null, onLogout }) {
                 onLogout={onLogout}
                 badgeCounts={{
                     tickets: 3,
-                    attendance: attendanceApprovalRequests.length,
+                    attendance: attendanceApprovalRequests.filter(
+                        (r) => r.status === "Pending"
+                    ).length,
                 }}
                 notifications={attendanceApprovalRequests.map((req) => ({
-                    title: `${req.employeeName} (${req.employeeCode})`,
-                    message: `Attendance approval requested for ${req.date}`,
+                    id: req._id,
+                    type: "attendance_approval",
+                    title: req.employeeName,
+                    employeeName: req.employeeName,
+                    employeeCode: req.employeeCode,
+                    date: req.date,
+                    pcName: req.pcName || "",
+                    networkType: req.networkType || "",
+                    requestType: req.requestType || "Remote Login",
+                    reason: req.reason || "Login requires admin approval.",
+                    status: req.status || "Pending",
+                    message:
+                        req.status === "Pending"
+                            ? `Login detected at ${
+                                  req.requestedAt
+                                      ? new Date(
+                                            req.requestedAt
+                                        ).toLocaleTimeString([], {
+                                            hour: "2-digit",
+                                            minute: "2-digit",
+                                        })
+                                      : "today"
+                              }`
+                            : req.status === "Approved"
+                            ? `Approved by ${req.reviewedByName || "Admin"}`
+                            : `Rejected by ${req.reviewedByName || "Admin"}`,
                     time: req.requestedAt
                         ? new Date(req.requestedAt).toLocaleTimeString([], {
                               hour: "2-digit",
                               minute: "2-digit",
                           })
                         : "Pending",
+                    requestedAt: req.requestedAt,
+                    reviewedAt: req.reviewedAt,
+                    reviewedBy: req.reviewedBy,
+                    reviewedByName:
+                        req.reviewedByName ||
+                        (req.reviewedBy?.name ? req.reviewedBy.name : (req.reviewedBy ? "Admin" : "")),
+                    reviewNote: req.reviewNote || "",
                 }))}
+                onApproveAttendance={approveAttendanceRequest}
+                onRejectAttendance={rejectAttendanceRequest}
+                attendanceApprovalActionId={attendanceApprovalActionId}
                 onQuickAdd={(targetModule) => {
                     if (targetModule === "clients") {
                         openClientDrawer();
@@ -5386,6 +5435,7 @@ export default function Admin({ user: propUser = null, onLogout }) {
 
                                                                     <button
                                                                         type="button"
+                                                                        onClick={() => setActiveMenu("billing")}
                                                                         className="flex h-9 items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700"
                                                                     >
                                                                         <Plus size={15} />
@@ -5623,6 +5673,16 @@ export default function Admin({ user: propUser = null, onLogout }) {
                                                                                                     <FileDown size={15} />
                                                                                                 </button>
 
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    onClick={() => setActiveMenu("billing")}
+                                                                                                    className="flex h-9 items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 text-[10px] font-semibold text-amber-700 transition hover:bg-amber-100"
+                                                                                                    title="Renew AMC in AMC & Contracts"
+                                                                                                >
+                                                                                                    <RefreshCw size={13} />
+                                                                                                    Renew AMC
+                                                                                                </button>
+
                                                                                                 {balance > 0 && (
                                                                                                     <button
                                                                                                         type="button"
@@ -5667,6 +5727,7 @@ export default function Admin({ user: propUser = null, onLogout }) {
 
                                                                 <button
                                                                     type="button"
+                                                                    onClick={() => setActiveMenu("billing")}
                                                                     className="flex items-center gap-1 font-semibold text-violet-600 transition hover:text-violet-700"
                                                                 >
                                                                     Open complete AMC history
@@ -7108,6 +7169,7 @@ export default function Admin({ user: propUser = null, onLogout }) {
                                 <Projects
                                     clients={clients}
                                     products={productMasters}
+                                    employees={employees}
                                     onCreateProjectTask={(project) => {
                                         setProjectForNewTask(
                                             project

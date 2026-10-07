@@ -470,6 +470,10 @@ const normalizeAmcContractFromApi = (
         status:
             contract.status ||
             "Pending",
+        isCurrent:
+            contract.isCurrent !== undefined
+                ? Boolean(contract.isCurrent)
+                : contract.status !== "Cancelled" && !contract.isDeleted,
         assignedEmployeeId:
             contract.assignedEmployeeId
                 ? String(
@@ -2609,86 +2613,69 @@ export default function AmcBilling() {
         };
 
     const openRenewalModal = (record) => {
-
         if (!record) {
             return;
         }
 
-        const isCurrent =
-            record.isCurrent === true;
-
-        const pendingAmount =
-            Number(
-                record.pendingAmount || 0
-            );
-
-        /*
-        * Renewal is allowed only from
-        * the current AMC cycle.
-        */
-
-        if (!isCurrent) {
-            alert(
-                "Only the current AMC cycle can be renewed."
-            );
-
+        const isCancelled = record.status === "Cancelled" || record.isDeleted === true;
+        if (isCancelled) {
+            alert("Cancelled AMC contracts cannot be renewed.");
             return;
         }
 
-        /*
-        * Do not renew while the current
-        * invoice still has outstanding.
-        */
+        if (record.isCurrent === false) {
+            alert("Only the current AMC cycle can be renewed.");
+            return;
+        }
+
+        const pendingAmount = Number(record.pendingAmount || 0);
+
         if (pendingAmount > 0) {
-            const confirmed =
-                window.confirm(
-                    `This AMC still has ${formatCurrency(
-                        pendingAmount
-                    )} outstanding.\n\n` +
-                    `Renewal will create a NEW AMC invoice. ` +
-                    `The old pending amount will remain against this invoice.\n\n` +
-                    `Do you want to continue?`
-                );
+            const confirmed = window.confirm(
+                `This AMC still has ${formatCurrency(
+                    pendingAmount
+                )} outstanding.\n\n` +
+                `Renewal will create a NEW AMC invoice. ` +
+                `The old pending amount will remain against this invoice.\n\n` +
+                `Do you want to continue?`
+            );
 
             if (!confirmed) {
                 return;
             }
         }
 
-        /*
-        * New AMC starts one day after
-        * current AMC expiry.
-        */
         let startDate = "";
+        let defaultExpiryDate = "";
+        let defaultDueDate = "";
 
         if (record.expiryDate) {
-            const expiry =
-                new Date(
-                    record.expiryDate
-                );
+            const expiry = new Date(record.expiryDate);
+            if (!Number.isNaN(expiry.getTime())) {
+                const nextStart = new Date(expiry);
+                nextStart.setDate(nextStart.getDate() + 1);
+                startDate = nextStart.toISOString().slice(0, 10);
 
-            if (
-                !Number.isNaN(
-                    expiry.getTime()
-                )
-            ) {
-                expiry.setDate(
-                    expiry.getDate() + 1
-                );
-
-                startDate =
-                    expiry
-                        .toISOString()
-                        .slice(0, 10);
+                const nextEnd = new Date(nextStart);
+                nextEnd.setFullYear(nextEnd.getFullYear() + 1);
+                nextEnd.setDate(nextEnd.getDate() - 1);
+                defaultExpiryDate = nextEnd.toISOString().slice(0, 10);
+                defaultDueDate = startDate;
             }
         }
 
-        setRenewalRecord(
-            record
-        );
+        if (!startDate) {
+            const today = new Date();
+            startDate = today.toISOString().slice(0, 10);
+            const nextEnd = new Date(today);
+            nextEnd.setFullYear(nextEnd.getFullYear() + 1);
+            nextEnd.setDate(nextEnd.getDate() - 1);
+            defaultExpiryDate = nextEnd.toISOString().slice(0, 10);
+            defaultDueDate = startDate;
+        }
 
+        setRenewalRecord(record);
         setFormError("");
-
         setRenewalForm({
             amount: String(
                 record.taxableAmount ||
@@ -2696,17 +2683,10 @@ export default function AmcBilling() {
                 record.totalAmount ||
                 ""
             ),
-
             startDate,
-
-            expiryDate: "",
-
-            dueDate: "",
-
-            plan:
-                record.plan ||
-                "Standard",
-
+            expiryDate: defaultExpiryDate,
+            dueDate: defaultDueDate,
+            plan: record.plan || "Standard",
             notes: "",
         });
     };
@@ -3543,6 +3523,14 @@ export default function AmcBilling() {
         } finally {
             setDeletingAmcId(null);
         }
+    };
+
+    const handleRenewClientGroupAmc = (clientGroup) => {
+        if (!clientGroup || !clientGroup.records || clientGroup.records.length === 0) {
+            alert("No AMC contract found for this client.");
+            return;
+        }
+        openRenewalModal(clientGroup.records[0]);
     };
 
     const handleEditClientGroupAmc = (clientGroup) => {
@@ -5235,75 +5223,18 @@ AMC INVOICE / CYCLE DETAIL
                                 <FileText size={16} />
                                 Invoice Preview
                             </button>
-                            {(() => {
-                                if (!invoice.isCurrent) {
-                                    return false;
-                                }
-
-                                if (!invoice.expiryDate) {
-                                    return false;
-                                }
-
-                                const expiryDate =
-                                    new Date(invoice.expiryDate);
-
-                                if (
-                                    Number.isNaN(
-                                        expiryDate.getTime()
-                                    )
-                                ) {
-                                    return false;
-                                }
-
-                                const today =
-                                    new Date();
-
-                                today.setHours(
-                                    0,
-                                    0,
-                                    0,
-                                    0
-                                );
-
-                                expiryDate.setHours(
-                                    0,
-                                    0,
-                                    0,
-                                    0
-                                );
-
-                                const diffMs =
-                                    expiryDate.getTime() -
-                                    today.getTime();
-
-                                const daysRemaining =
-                                    Math.ceil(
-                                        diffMs /
-                                        (
-                                            1000 *
-                                            60 *
-                                            60 *
-                                            24
-                                        )
-                                    );
-
-                                /*
-                                * Show renewal when AMC expires
-                                * within 30 days or is already expired.
-                                */
-                                return daysRemaining <= 30;
-                            })() && (
-                                    <button
-                                        type="button"
-                                        onClick={() =>
-                                            openRenewalModal(invoice)
-                                        }
-                                        className="flex h-10 items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 text-xs font-semibold text-violet-700 transition hover:bg-violet-100"
-                                    >
-                                        <RefreshCw size={16} />
-                                        Renew AMC
-                                    </button>
-                                )}
+                            {selectedRecord.status !== "Cancelled" && (
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        openRenewalModal(invoice || selectedRecord)
+                                    }
+                                    className="flex h-11 items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 text-xs font-semibold text-amber-700 transition hover:bg-amber-100"
+                                >
+                                    <RefreshCw size={15} />
+                                    Renew AMC
+                                </button>
+                            )}
                             {selectedRecord.pendingAmount > 0 && (
                                 <button
                                     type="button"
@@ -7121,6 +7052,24 @@ AMC INVOICE / CYCLE DETAIL
                                                                         <button
                                                                             type="button"
                                                                             onClick={() =>
+                                                                                openRenewalModal(
+                                                                                    record
+                                                                                )
+                                                                            }
+                                                                            className="flex h-9 items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 text-[10px] font-semibold text-amber-700 hover:bg-amber-100"
+                                                                            title="Renew AMC Contract"
+                                                                        >
+                                                                            <RefreshCw
+                                                                                size={
+                                                                                    13
+                                                                                }
+                                                                            />
+                                                                            Renew
+                                                                        </button>
+
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() =>
                                                                                 handleOpenEditAmc(
                                                                                     record
                                                                                 )
@@ -7207,6 +7156,126 @@ AMC INVOICE / CYCLE DETAIL
                         error={editAmcError}
                         onSubmit={handleSaveEditAmc}
                     />
+                )}
+
+                {renewalRecord && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                        <button
+                            type="button"
+                            onClick={closeRenewalModal}
+                            className="enterprise-backdrop absolute inset-0 bg-slate-950/45 backdrop-blur-sm"
+                        />
+                        <form
+                            onSubmit={handleGenerateRenewal}
+                            className="enterprise-modal relative w-full max-w-[620px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+                        >
+                            <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
+                                <div>
+                                    <h2 className="text-base font-semibold text-slate-950">Renew AMC Contract</h2>
+                                    <p className="mt-1 text-xs text-slate-500">{renewalRecord.client || renewalRecord.clientName} · {renewalRecord.product || renewalRecord.productName}</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={closeRenewalModal}
+                                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500"
+                                >
+                                    <X size={17} />
+                                </button>
+                            </div>
+                            <div className="space-y-5 px-6 py-6">
+                                <div className="grid gap-5 sm:grid-cols-2">
+                                    <div>
+                                        <label className="mb-2 block text-xs font-semibold text-slate-700">AMC amount *</label>
+                                        <input
+                                            type="number"
+                                            name="amount"
+                                            value={renewalForm.amount}
+                                            onChange={handleRenewalChange}
+                                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-2 block text-xs font-semibold text-slate-700">Plan</label>
+                                        <select
+                                            name="plan"
+                                            value={renewalForm.plan}
+                                            onChange={handleRenewalChange}
+                                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none"
+                                        >
+                                            <option>Premium</option>
+                                            <option>Standard</option>
+                                            <option>Basic</option>
+                                            <option>Custom</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div className="grid gap-5 sm:grid-cols-3">
+                                    <div>
+                                        <label className="mb-2 block text-xs font-semibold text-slate-700">Start date *</label>
+                                        <input
+                                            type="date"
+                                            name="startDate"
+                                            value={renewalForm.startDate}
+                                            onChange={handleRenewalChange}
+                                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-2 block text-xs font-semibold text-slate-700">Expiry date *</label>
+                                        <input
+                                            type="date"
+                                            name="expiryDate"
+                                            value={renewalForm.expiryDate}
+                                            onChange={handleRenewalChange}
+                                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-2 block text-xs font-semibold text-slate-700">Due date *</label>
+                                        <input
+                                            type="date"
+                                            name="dueDate"
+                                            value={renewalForm.dueDate}
+                                            onChange={handleRenewalChange}
+                                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none"
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="mb-2 block text-xs font-semibold text-slate-700">Notes</label>
+                                    <textarea
+                                        name="notes"
+                                        value={renewalForm.notes}
+                                        onChange={handleRenewalChange}
+                                        rows={3}
+                                        className="w-full resize-none rounded-xl border border-slate-200 px-3 py-3 text-sm outline-none"
+                                    />
+                                </div>
+                                {formError && (
+                                    <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-medium text-rose-700">
+                                        {formError}
+                                    </div>
+                                )}
+                            </div>
+                            <div className="flex justify-end gap-3 border-t border-slate-200 bg-slate-50/60 px-6 py-4">
+                                <button
+                                    type="button"
+                                    onClick={closeRenewalModal}
+                                    className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={savingAmc}
+                                    className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                                >
+                                    <FileText size={15} />
+                                    {savingAmc ? "Renewing..." : "Generate Renewal"}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
                 )}
             </>
         );
@@ -7545,6 +7614,12 @@ AMC INVOICE / CYCLE DETAIL
                             icon: Eye,
                             className: "text-violet-600 hover:text-violet-800 hover:bg-violet-50",
                             onClick: (clientGroup) => setSelectedClientGroup(clientGroup),
+                        },
+                        {
+                            label: "Renew AMC",
+                            icon: RefreshCw,
+                            className: "text-amber-600 hover:text-amber-800 hover:bg-amber-50",
+                            onClick: (clientGroup) => handleRenewClientGroupAmc(clientGroup),
                         },
                         {
                             label: "Edit AMC",
