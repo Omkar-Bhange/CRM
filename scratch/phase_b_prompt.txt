@@ -1,0 +1,779 @@
+<USER_REQUEST>
+PHASE A ANALYSIS IS APPROVED.
+
+Proceed ONLY with:
+
+PHASE B — CLIENT OVERVIEW DASHBOARD & ACTION REQUIRED EXPERIENCE
+
+Do NOT start Bills & AMC redesign yet.
+Do NOT start Products, Support Tickets, Documents, or Mobile cleanup yet.
+
+============================================================
+PRIMARY GOAL
+============================================================
+
+Make the Client Overview page immediately useful to a non-technical client.
+
+The page should answer:
+
+1. Is anything requiring my attention?
+2. Do I owe any money?
+3. Is my AMC / support expiring soon?
+4. Do I have open support tickets?
+5. What products are active?
+
+The page should feel like a polished customer self-service portal,
+not an internal CRM dashboard.
+
+============================================================
+STRICT SAFETY RULES
+============================================================
+
+DO NOT:
+
+- change Admin CRM
+- change Employee workspace
+- change Requirement workflow
+- change Project workflow
+- change Task workflow
+- change Attendance
+- change AMC calculation logic
+- change invoice totals
+- change payment allocation logic
+- change GST calculations
+- change ticket backend workflow
+- change authentication
+- change client tenancy/security
+- modify database schema
+- create new collections
+- redesign the whole client portal
+- change Nexora branding
+- modify unrelated client pages
+
+Phase B should focus primarily on:
+
+src/client/ClientDashboard.jsx
+
+Only make minimal backend changes if absolutely required for data already available in existing APIs.
+
+============================================================
+1. FIX THE EXISTING INVOICE OVERWRITE BUG FIRST
+============================================================
+
+The Phase A audit found:
+
+invoiceResult.data is loaded into billingHistory
+
+but later:
+
+data.billingHistory
+
+overwrites it with an empty dashboard response.
+
+Fix this bug first.
+
+Do not change the backend invoice logic.
+
+The successfully fetched invoice list must remain available.
+
+Verify:
+
+- invoices load
+- invoices remain in state
+- no second assignment wipes them out
+- existing rendering still works
+
+============================================================
+2. REMOVE THE FAKE PDF ALERT
+============================================================
+
+The Overview currently contains an alert similar to:
+
+"The AMC invoice PDF will be connected when the billing backend is added."
+
+But the backend already has:
+
+GET /api/client/amc/invoice/:id/pdf
+
+Remove this fake placeholder behavior.
+
+Connect the existing Download Invoice / Download PDF action to the
+real endpoint.
+
+Do not create a new PDF generation system.
+
+Use the existing API.
+
+============================================================
+3. CLIENT GREETING
+============================================================
+
+Improve the top greeting.
+
+Example:
+
+Good afternoon, Rushi
+
+DABAR
+
+or:
+
+Welcome back, Rushi
+DABAR
+
+Use the existing contact person and company name.
+
+Do not make this section oversized.
+
+Keep it professional and compact.
+
+============================================================
+4. ACTION REQUIRED HERO — MOST IMPORTANT
+============================================================
+
+Add ONE primary client-friendly section near the top:
+
+ACTION REQUIRED
+
+This section must be conditional.
+
+Do not show multiple large warning boxes.
+
+Determine the highest-priority client action.
+
+Recommended priority:
+
+1. Overdue payment
+2. Pending payment
+3. AMC / contract expiring soon
+4. Support ticket waiting for client
+5. Otherwise: All caught up
+
+============================================================
+5. OVERDUE PAYMENT STATE
+============================================================
+
+If there is an unpaid invoice and:
+
+dueDate < today
+
+show:
+
+PAYMENT OVERDUE
+
+₹59,000
+
+Invoice:
+AMC-INV-2026-38019341
+
+Due:
+31 Aug 2026
+
+"Payment is overdue."
+
+Primary action:
+
+[View Invoice]
+
+Secondary:
+
+[Download PDF]
+
+Use subtle red / danger styling.
+
+Do not exaggerate with large bright red backgrounds.
+
+============================================================
+6. PENDING PAYMENT STATE
+============================================================
+
+If payment is outstanding but not overdue:
+
+show:
+
+PAYMENT DUE
+
+₹59,000
+
+Due:
+31 Dec 2026
+
+Product:
+Transport Management
+
+Actions:
+
+[View Invoice]
+[Download PDF]
+
+Use subtle amber styling.
+
+============================================================
+7. AMC / SUPPORT EXPIRING SOON
+============================================================
+
+If no payment is currently more urgent and AMC expires within
+30 days:
+
+show:
+
+RENEWAL COMING UP
+
+ERP Software
+
+AMC expires:
+31 Dec 2026
+
+18 days remaining
+
+Action:
+
+[View AMC]
+
+Do not invent renewal logic.
+
+Use existing contract dates only.
+
+============================================================
+8. SUPPORT WAITING FOR CLIENT
+============================================================
+
+If the existing ticket API can identify a ticket waiting for client
+response:
+
+show:
+
+SUPPORT NEEDS YOUR RESPONSE
+
+Ticket:
+TKT-2026-0012
+
+Subject:
+GST Invoice Issue
+
+Last update:
+Today
+
+Action:
+
+[Respond]
+
+Do not invent a new ticket state if the current backend does not
+support "Waiting for Client".
+
+If unavailable:
+skip this action type and report it.
+
+============================================================
+9. ALL CAUGHT UP STATE
+============================================================
+
+If there is:
+
+- no overdue payment
+- no pending payment
+- no urgent renewal
+- no support action required
+
+show:
+
+YOU'RE ALL CAUGHT UP
+
+No payments or actions require your attention right now.
+
+Optional small secondary text:
+
+Your products and support remain active.
+
+Use calm green/success styling.
+
+This should reassure the client.
+
+============================================================
+10. TOP KPI CARDS
+============================================================
+
+Keep only FOUR important KPI cards.
+
+Recommended:
+
+ACTIVE PRODUCTS
+
+Example:
+3
+
+AMC / SUPPORT
+
+Example:
+Active
+Valid until 31 Dec 2026
+
+PAYMENT DUE
+
+Example:
+₹59,000
+
+or:
+₹0
+No payment due
+
+OPEN TICKETS
+
+Example:
+2
+
+Do not show low-value internal statistics.
+
+============================================================
+11. PAYMENT DUE KPI LOGIC
+============================================================
+
+Very important:
+
+If outstanding amount > 0:
+
+show:
+
+₹XX,XXX
+Payment due
+
+If outstanding amount === 0:
+
+show:
+
+₹0
+No payment due
+
+Do NOT show warning language when ₹0 is due.
+
+Use normal/success styling.
+
+============================================================
+12. AMC CARD
+============================================================
+
+Make AMC status client-friendly.
+
+Possible display states:
+
+ACTIVE
+Expires 31 Dec 2026
+
+EXPIRING SOON
+18 days remaining
+
+EXPIRED
+Expired 12 days ago
+
+NO ACTIVE AMC
+
+Use actual contract dates.
+
+Do not change contract calculations.
+
+============================================================
+13. REMOVE STATIC / FAKE PRODUCT PROGRESS
+============================================================
+
+The current Purchased Software card uses a static/hardcoded
+progress appearance.
+
+Do not display fake percentage progress for purchased software.
+
+Replace it with actual useful information.
+
+Example:
+
+ERP SOFTWARE
+
+Active
+
+Support:
+Valid until 31 Dec 2026
+
+[View Product]
+
+If no meaningful percentage exists, remove the progress bar.
+
+Do not invent product progress.
+
+============================================================
+14. RECENT ACTIVITY
+============================================================
+
+If the existing dashboard already contains recent activity:
+
+keep it compact.
+
+Prioritize client-facing activities such as:
+
+Invoice generated
+Payment received
+Ticket updated
+Document shared
+AMC renewed
+
+Do not expose internal admin actions.
+
+Do not build a new audit engine in Phase B.
+
+============================================================
+15. QUICK ACTIONS
+============================================================
+
+Add a small Quick Actions section if it fits the existing layout.
+
+Maximum 3-4 actions:
+
+Raise Support Ticket
+View Bills & AMC
+View Products
+View Documents
+
+Do not overcrowd the page.
+
+============================================================
+16. SUPPORT SUMMARY
+============================================================
+
+Show a compact support section.
+
+Example:
+
+SUPPORT
+
+2 Open Tickets
+1 In Progress
+
+[View Support Tickets]
+
+If there are no tickets:
+
+"No open support issues."
+
+[Raise Ticket]
+
+Keep it simple.
+
+============================================================
+17. UPCOMING RENEWAL
+============================================================
+
+If the current contract has a future expiry:
+
+show:
+
+Next Renewal
+
+31 Dec 2026
+
+120 days remaining
+
+If expired:
+
+Renewal Due
+
+Expired 12 days ago
+
+Do not show:
+
+0 days remaining
+
+for an already expired contract.
+
+============================================================
+18. DATE CALCULATION
+============================================================
+
+Use actual:
+
+start date
+end date
+today
+
+to calculate:
+
+days remaining
+
+Do not use hardcoded percentages or days.
+
+Ensure dates render correctly in India locale.
+
+Example:
+
+31 Dec 2026
+
+Avoid raw ISO timestamps in client-facing UI.
+
+============================================================
+19. EMPTY DATA HANDLING
+============================================================
+
+Client may have no:
+
+products
+invoice
+AMC
+ticket
+activity
+
+The page must remain useful.
+
+Examples:
+
+No active products
+"Contact our team if you need assistance."
+
+No AMC
+"No active AMC contract."
+
+No tickets
+"No open support issues."
+
+No invoice
+"No billing activity yet."
+
+Do not show broken empty cards.
+
+============================================================
+20. LOADING EXPERIENCE
+============================================================
+
+Replace blank/jerky content with lightweight skeleton/loading states.
+
+Do not add heavy animation.
+
+The layout should not jump excessively when API calls complete.
+
+============================================================
+21. ERROR EXPERIENCE
+============================================================
+
+Do not expose raw API or server errors.
+
+If dashboard load fails:
+
+"We couldn't load your account overview right now."
+
+[Try Again]
+
+Use existing toast/error patterns.
+
+============================================================
+22. CLIENT-SAFE INFORMATION ONLY
+============================================================
+
+Audit the Overview page for:
+
+Mongo ObjectIds
+internal employee IDs
+debug fields
+raw database status values
+storage filenames
+internal workflow metadata
+
+Do not display them.
+
+If data is unavailable, show:
+
+—
+
+not database identifiers.
+
+============================================================
+23. NAVIGATION
+============================================================
+
+Use existing client routes.
+
+Example:
+
+View Invoice
+→ Bills & AMC / invoice view
+
+Raise Support Ticket
+→ Support Tickets
+
+View Product
+→ My Products
+
+View Documents
+→ Documents
+
+Do not create duplicate pages.
+
+============================================================
+24. RESPONSIVE BEHAVIOR
+============================================================
+
+Overview must work cleanly on:
+
+Desktop
+Tablet
+Mobile
+
+Desktop:
+4 KPI cards in row if space permits.
+
+Tablet:
+2 × 2 grid.
+
+Mobile:
+stack cards.
+
+Action Required hero:
+full width.
+
+Buttons:
+large enough for touch.
+
+Do not modify global navigation in Phase B.
+
+============================================================
+25. DESIGN STYLE
+============================================================
+
+Preserve current Nexora Client Portal design.
+
+Use:
+
+white cards
+navy text
+blue primary actions
+subtle green success
+subtle amber warning
+subtle red overdue
+thin borders
+compact spacing
+
+Avoid:
+
+large gradients
+bright backgrounds
+huge icons
+excessive animation
+complex graphs
+
+The page should feel:
+
+simple
+premium
+calm
+clear
+
+============================================================
+26. DO NOT TOUCH CLIENT BILLING PAGE YET
+============================================================
+
+Even though Phase A found issues in ClientBilling.jsx:
+
+- ₹0 payment card
+- raw invoice ObjectIds
+- hardcoded 92% progress
+- table density
+
+DO NOT fix those in Phase B.
+
+Those belong to Phase C.
+
+Exception:
+
+If a shared helper must be minimally fixed to make Overview data
+correct, document it and keep the change narrowly scoped.
+
+============================================================
+27. TEST CASES
+============================================================
+
+Test Overview with:
+
+1. Client with no amount due
+2. Client with pending amount
+3. Client with overdue invoice
+4. Client with active AMC
+5. Client with AMC expiring in < 30 days
+6. Client with expired AMC
+7. Client with open tickets
+8. Client with no tickets
+9. Client with products
+10. Client with no products
+11. Client with invoices
+12. Client with no invoices
+13. Download invoice PDF
+14. Failed dashboard API
+15. Failed invoice API
+16. Mobile width
+17. Tablet width
+18. Desktop width
+19. No internal IDs displayed
+20. Production build
+
+============================================================
+28. VERIFY NO REGRESSION
+============================================================
+
+After changes verify:
+
+Client login works
+
+My Products still opens
+
+Bills & AMC still opens
+
+Support Tickets still opens
+
+Documents still opens
+
+Company Profile still opens
+
+Admin application unaffected
+
+Employee application unaffected
+
+============================================================
+29. PHASE B FINAL REPORT
+============================================================
+
+After implementation provide:
+
+A. Files changed
+
+B. Overview before vs after
+
+C. Action Required logic
+
+D. KPI logic
+
+E. AMC status logic
+
+F. PDF download fix
+
+G. Invoice overwrite bug fix
+
+H. Loading/error behavior
+
+I. Responsive behavior
+
+J. Tests
+
+K. Build result
+
+L. Any remaining issue
+
+Then STOP.
+
+DO NOT start Phase C automatically.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-10-07T17:17:18+05:30.
+
+The user's current state is as follows:
+Active Document: c:\Users\Admin\Desktop\CRM\client-connect-track\src\admin\requirements\Requirements.jsx (LANGUAGE_UNSPECIFIED)
+Cursor is on line: 2088
+Other open documents:
+- c:\Users\Admin\Desktop\CRM\client-connect-track\src\admin\attendance\Attendance.jsx (LANGUAGE_UNSPECIFIED)
+- c:\Users\Admin\Desktop\CRM\client-connect-track\src\admin\tasks\Tasks.jsx (LANGUAGE_UNSPECIFIED)
+- c:\Users\Admin\Desktop\CRM\client-connect-track\src\admin\tickets\SupportTickets.jsx (LANGUAGE_UNSPECIFIED)
+- c:\Users\Admin\Desktop\CRM\client-connect-track\src\employee\EmployeeDashboard.jsx (LANGUAGE_UNSPECIFIED)
+- c:\Users\Admin\Desktop\CRM\client-connect-track\src\admin\billing\AmcBilling.jsx (LANGUAGE_UNSPECIFIED)
+</ADDITIONAL_METADATA>

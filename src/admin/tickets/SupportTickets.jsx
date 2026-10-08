@@ -45,6 +45,7 @@ import {
   Trash2,
   Download,
   Eye,
+  Star,
 } from "lucide-react";
 
 import API_URL from "../../config/api";
@@ -333,6 +334,28 @@ const normalizeTicketFromApi = (
       : "",
   linkedTaskCode:
     ticket.linkedTaskCode || "",
+  firstResponseAt:
+    ticket.firstResponseAt || null,
+  firstResponseAtFormatted:
+    ticket.firstResponseAt
+      ? formatApiDateTime(ticket.firstResponseAt)
+      : "",
+  firstResolvedAt:
+    ticket.firstResolvedAt || null,
+  slaFirstResponseMinutes:
+    ticket.slaFirstResponseMinutes,
+  slaResolutionMinutes:
+    ticket.slaResolutionMinutes,
+  firstResponseDueAt:
+    ticket.firstResponseDueAt || null,
+  resolutionDueAt:
+    ticket.resolutionDueAt || null,
+  slaPolicyVersion:
+    ticket.slaPolicyVersion || "",
+  sla:
+    ticket.sla || null,
+  clientFeedback:
+    ticket.clientFeedback || null,
 });
 
 const normalizeClientFromApi = (
@@ -909,6 +932,51 @@ function AdminTicketQueueRow({ ticket, onOpen }) {
             <span className="truncate text-[9px] text-slate-500">
               {ticket.source}
             </span>
+            {ticket.sla && (
+              <>
+                <span className="text-[8px] text-slate-300">•</span>
+                <span
+                  className={`rounded px-1 py-0.2 text-[8px] font-bold ${
+                    ticket.sla.firstRespondedAt || ["Resolved", "Verified", "Closed"].includes(ticket.status)
+                      ? ticket.sla.firstResponseStatus === "Met"
+                        ? "bg-emerald-50 text-emerald-700"
+                        : "bg-amber-50 text-amber-700"
+                      : ticket.sla.firstResponseStatus === "Overdue"
+                        ? "bg-rose-50 text-rose-700"
+                        : "bg-blue-50 text-blue-700"
+                  }`}
+                  title={`First Response: ${ticket.sla.firstResponseStatus}`}
+                >
+                  Resp: {ticket.sla.firstRespondedAt || ["Resolved", "Verified", "Closed"].includes(ticket.status) ? (ticket.sla.firstResponseStatus === "Met" ? "Met" : (ticket.sla.firstResponseDisplay || "Breached")) : ticket.sla.firstResponseStatus}
+                </span>
+                <span
+                  className={`rounded px-1 py-0.2 text-[8px] font-bold ${
+                    ticket.sla.resolvedAt || ["Resolved", "Verified", "Closed"].includes(ticket.status)
+                      ? ticket.sla.resolutionStatus === "Met"
+                        ? "bg-emerald-50 text-emerald-700"
+                        : "bg-amber-50 text-amber-700"
+                      : ticket.sla.resolutionStatus === "Overdue"
+                        ? "bg-rose-50 text-rose-700"
+                        : "bg-slate-100 text-slate-700"
+                  }`}
+                  title={`Resolution: ${ticket.sla.resolutionStatus}`}
+                >
+                  Res: {ticket.sla.resolvedAt || ["Resolved", "Verified", "Closed"].includes(ticket.status) ? (ticket.sla.resolutionStatus === "Met" ? "Met" : (ticket.sla.resolutionDisplay || "Breached")) : ticket.sla.resolutionStatus}
+                </span>
+              </>
+            )}
+            {ticket.clientFeedback?.rating && (
+              <>
+                <span className="text-[8px] text-slate-300">•</span>
+                <span
+                  className="inline-flex items-center gap-0.5 rounded bg-amber-50 px-1 py-0.2 text-[8px] font-bold text-amber-700"
+                  title={`Client Feedback: ${ticket.clientFeedback.rating}/5 stars${ticket.clientFeedback.comment ? ` - "${ticket.clientFeedback.comment}"` : ""}`}
+                >
+                  <Star size={9} className="fill-amber-400 text-amber-500" />
+                  <span>{ticket.clientFeedback.rating}/5</span>
+                </span>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -2205,6 +2273,164 @@ export default function SupportTickets() {
             </p>
           </section>
 
+          {/* SLA Performance & Targets */}
+          {selectedTicket.sla && (
+            <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-[0_4px_12px_rgba(15,23,42,0.04)]">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-50 text-violet-600">
+                    <Clock3 size={16} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-900">
+                      SLA Performance & Targets
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      Measured on continuous 24x7 calendar time
+                    </p>
+                  </div>
+                </div>
+                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                  {selectedTicket.priority} Priority
+                </span>
+              </div>
+
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                {/* First Response SLA */}
+                <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                      First Response SLA
+                    </span>
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ring-inset ${
+                        selectedTicket.sla.firstRespondedAt || ["Resolved", "Verified", "Closed"].includes(selectedTicket.status)
+                          ? selectedTicket.sla.firstResponseStatus === "Met"
+                            ? "bg-emerald-50 text-emerald-700 ring-emerald-600/20"
+                            : "bg-amber-50 text-amber-700 ring-amber-600/20"
+                          : selectedTicket.sla.firstResponseStatus === "Overdue"
+                            ? "bg-rose-50 text-rose-700 ring-rose-600/20"
+                            : selectedTicket.sla.firstResponseStatus === "Due Soon"
+                              ? "bg-amber-50 text-amber-700 ring-amber-600/20"
+                              : "bg-blue-50 text-blue-700 ring-blue-600/20"
+                      }`}
+                    >
+                      {selectedTicket.sla.firstRespondedAt || ["Resolved", "Verified", "Closed"].includes(selectedTicket.status)
+                        ? selectedTicket.sla.firstResponseStatus === "Met"
+                          ? "Met ✓"
+                          : "Breached"
+                        : selectedTicket.sla.firstResponseStatus}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5 text-xs text-slate-600">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Target Window:</span>
+                      <span className="font-semibold text-slate-900">
+                        {minutesToDisplay(selectedTicket.sla.firstResponseTargetMinutes)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Target Deadline:</span>
+                      <span className="font-medium text-slate-800">
+                        {formatApiDateTime(selectedTicket.sla.firstResponseDueAt)}
+                      </span>
+                    </div>
+                    {selectedTicket.sla.firstRespondedAt || ["Resolved", "Verified", "Closed"].includes(selectedTicket.status) ? (
+                      <div className="flex justify-between border-t border-slate-200/60 pt-1.5 font-medium">
+                        <span className="text-slate-500">First Responded:</span>
+                        <span className="font-bold text-emerald-700">
+                          {selectedTicket.firstResponseAtFormatted || formatApiDateTime(selectedTicket.sla.firstRespondedAt || selectedTicket.resolvedAt) || "At resolution"} ({selectedTicket.sla.firstResponseDisplay || selectedTicket.sla.resolutionDisplay || "N/A"})
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex justify-between border-t border-slate-200/60 pt-1.5 font-medium">
+                        <span className="text-slate-500">Remaining:</span>
+                        <span
+                          className={`font-bold ${
+                            selectedTicket.sla.firstResponseStatus === "Overdue"
+                              ? "text-rose-600"
+                              : "text-blue-600"
+                          }`}
+                        >
+                          {selectedTicket.sla.firstResponseStatus === "Overdue"
+                            ? `Overdue by ${minutesToDisplay(-selectedTicket.sla.firstResponseRemainingMinutes)}`
+                            : minutesToDisplay(selectedTicket.sla.firstResponseRemainingMinutes)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Resolution SLA */}
+                <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                      Resolution SLA
+                    </span>
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ring-inset ${
+                        selectedTicket.sla.resolvedAt || ["Resolved", "Verified", "Closed"].includes(selectedTicket.status)
+                          ? selectedTicket.sla.resolutionStatus === "Met"
+                            ? "bg-emerald-50 text-emerald-700 ring-emerald-600/20"
+                            : "bg-amber-50 text-amber-700 ring-amber-600/20"
+                          : selectedTicket.sla.resolutionStatus === "Overdue"
+                            ? "bg-rose-50 text-rose-700 ring-rose-600/20"
+                            : selectedTicket.sla.resolutionStatus === "Due Soon"
+                              ? "bg-amber-50 text-amber-700 ring-amber-600/20"
+                              : "bg-blue-50 text-blue-700 ring-blue-600/20"
+                      }`}
+                    >
+                      {selectedTicket.sla.resolvedAt || ["Resolved", "Verified", "Closed"].includes(selectedTicket.status)
+                        ? selectedTicket.sla.resolutionStatus === "Met"
+                          ? "Met ✓"
+                          : "Breached"
+                        : selectedTicket.sla.resolutionStatus}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5 text-xs text-slate-600">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Target Window:</span>
+                      <span className="font-semibold text-slate-900">
+                        {minutesToDisplay(selectedTicket.sla.resolutionTargetMinutes)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Target Deadline:</span>
+                      <span className="font-medium text-slate-800">
+                        {formatApiDateTime(selectedTicket.sla.resolutionDueAt)}
+                      </span>
+                    </div>
+                    {selectedTicket.sla.resolvedAt || ["Resolved", "Verified", "Closed"].includes(selectedTicket.status) ? (
+                      <div className="flex justify-between border-t border-slate-200/60 pt-1.5 font-medium">
+                        <span className="text-slate-500">Resolved At:</span>
+                        <span className="font-bold text-emerald-700">
+                          {selectedTicket.resolvedAt || formatApiDateTime(selectedTicket.sla.resolvedAt)} ({selectedTicket.sla.resolutionDisplay || "N/A"})
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex justify-between border-t border-slate-200/60 pt-1.5 font-medium">
+                        <span className="text-slate-500">Remaining:</span>
+                        <span
+                          className={`font-bold ${
+                            selectedTicket.sla.resolutionStatus === "Overdue"
+                              ? "text-rose-600"
+                              : "text-blue-600"
+                          }`}
+                        >
+                          {selectedTicket.sla.resolutionStatus === "Overdue"
+                            ? `Overdue by ${minutesToDisplay(-selectedTicket.sla.resolutionRemainingMinutes)}`
+                            : minutesToDisplay(selectedTicket.sla.resolutionRemainingMinutes)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
           {/* Client & Product Info */}
           <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-[0_4px_12px_rgba(15,23,42,0.04)]">
             <h3 className="text-sm font-semibold text-slate-900">
@@ -2261,6 +2487,37 @@ export default function SupportTickets() {
                   <p className="mt-3 text-[10px] font-medium text-emerald-700">
                     Resolved {selectedTicket.resolvedAt || "recently"}
                   </p>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* Client Satisfaction Feedback */}
+          {selectedTicket.clientFeedback?.rating && (
+            <section className="rounded-xl border border-amber-200 bg-amber-50/60 p-6 shadow-[0_4px_12px_rgba(15,23,42,0.04)]">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+                  <Star size={19} className="fill-amber-400 text-amber-500" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-sm font-semibold text-amber-950">
+                      Client Satisfaction Feedback
+                    </h3>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-800">
+                      ★ {selectedTicket.clientFeedback.rating} / 5
+                    </span>
+                  </div>
+                  {selectedTicket.clientFeedback.comment && (
+                    <p className="mt-2 text-sm italic leading-relaxed text-amber-900 bg-white/80 p-3 rounded-lg border border-amber-200/60">
+                      "{selectedTicket.clientFeedback.comment}"
+                    </p>
+                  )}
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] font-medium text-amber-700">
+                    <span>Submitted by {selectedTicket.clientFeedback.submittedByName || selectedTicket.client}</span>
+                    <span>·</span>
+                    <span>{selectedTicket.clientFeedback.submittedAt ? formatApiDateTime(selectedTicket.clientFeedback.submittedAt) : "Recently"}</span>
+                  </div>
                 </div>
               </div>
             </section>

@@ -14,6 +14,12 @@ const {
 } = require("./settings");
 const AgentDailySummary = require("./agentSession");
 const AgentDevice = require("./models/AgentDevice");
+const {
+  getTicketSlaPolicy,
+  calculateDueAt,
+  calculateTicketSla,
+  SLA_POLICY_VERSION,
+} = require("./slaConfig");
 
 const SETTINGS_KEY =
   "system";
@@ -4740,6 +4746,7 @@ const ticketTimelineSchema =
           "task",
           "updated",
           "deleted",
+          "feedback",
         ],
         default: "updated",
       },
@@ -4952,6 +4959,39 @@ const ticketAttachmentSchema =
     },
     { _id: true }
   );
+
+const ticketClientFeedbackSchema = new mongoose.Schema(
+  {
+    rating: {
+      type: Number,
+      required: true,
+      min: 1,
+      max: 5,
+    },
+    comment: {
+      type: String,
+      default: "",
+      trim: true,
+      maxlength: 1000,
+    },
+    submittedAt: {
+      type: Date,
+      default: Date.now,
+    },
+    submittedByClientId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Client",
+      default: null,
+    },
+    submittedByName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+  },
+  { _id: false }
+);
+
 const supportTicketSchema =
   new mongoose.Schema(
     {
@@ -5169,6 +5209,40 @@ const supportTicketSchema =
         default: null,
       },
 
+      // SLA Snapshot & Milestone Fields (Enhancement 4)
+      slaFirstResponseMinutes: {
+        type: Number,
+        default: null,
+      },
+
+      slaResolutionMinutes: {
+        type: Number,
+        default: null,
+      },
+
+      firstResponseDueAt: {
+        type: Date,
+        default: null,
+        index: true,
+      },
+
+      resolutionDueAt: {
+        type: Date,
+        default: null,
+        index: true,
+      },
+
+      firstResolvedAt: {
+        type: Date,
+        default: null,
+      },
+
+      slaPolicyVersion: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
       resolutionNote: {
         type: String,
         default: "",
@@ -5221,6 +5295,11 @@ const supportTicketSchema =
       timeline: {
         type: [ticketTimelineSchema],
         default: [],
+      },
+
+      clientFeedback: {
+        type: ticketClientFeedbackSchema,
+        default: null,
       },
 
       createdBy: {
@@ -6796,7 +6875,203 @@ const AmcReminder =
     amcReminderSchema
   );
 
+/* =====================================================
+   APP COUNTER SCHEMA (Atomic Sequence Generator)
+===================================================== */
+const appCounterSchema = new mongoose.Schema({
+  _id: { type: String, required: true },
+  seq: { type: Number, default: 0 },
+});
 
+const AppCounter =
+  mongoose.models.AppCounter ||
+  mongoose.model("AppCounter", appCounterSchema);
+
+/* =====================================================
+   CLIENT AMC REQUEST SCHEMA (Renewal & Quotation Requests)
+===================================================== */
+const clientAmcRequestSchema = new mongoose.Schema(
+  {
+    requestCode: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      uppercase: true,
+      index: true,
+    },
+    activeRequestKey: {
+      type: String,
+      default: null,
+    },
+    clientId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Client",
+      required: true,
+      index: true,
+    },
+    clientCode: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    clientName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    contractId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "AmcContract",
+      required: true,
+      index: true,
+    },
+    contractCode: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    productId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+      default: null,
+    },
+    productName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    currentExpiryDate: {
+      type: Date,
+      default: null,
+    },
+    requestType: {
+      type: String,
+      enum: ["AMC Renewal", "Quotation Request"],
+      required: true,
+      index: true,
+    },
+    renewalPeriod: {
+      type: String,
+      enum: ["1 Year"],
+      default: "1 Year",
+    },
+    preferredStartDate: {
+      type: Date,
+      default: null,
+    },
+    remarks: {
+      type: String,
+      default: "",
+      trim: true,
+      maxlength: 1000,
+    },
+    status: {
+      type: String,
+      enum: [
+        "Submitted",
+        "Under Review",
+        "Quotation Ready",
+        "Completed",
+        "Rejected",
+        "Cancelled",
+      ],
+      default: "Submitted",
+      index: true,
+    },
+    quotationAmount: {
+      type: Number,
+      default: 0,
+    },
+    quotationDetails: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    quotationDocument: {
+      fileName: { type: String, default: "" },
+      fileUrl: { type: String, default: "" },
+      filePath: { type: String, default: "" },
+      fileSize: { type: Number, default: 0 },
+      mimeType: { type: String, default: "" },
+      uploadedAt: { type: Date, default: null },
+    },
+    adminNotes: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    reviewedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    reviewedByName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    reviewedAt: {
+      type: Date,
+      default: null,
+    },
+    assignedEmployeeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Employee",
+      default: null,
+    },
+    assignedEmployeeCode: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    assignedEmployeeName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    timeline: [
+      {
+        action: { type: String, required: true },
+        status: { type: String, required: true },
+        remarks: { type: String, default: "" },
+        performedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          default: null,
+        },
+        performedByName: { type: String, default: "" },
+        performedByRole: { type: String, default: "client" },
+        timestamp: { type: Date, default: Date.now },
+      },
+    ],
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+  },
+  {
+    timestamps: true,
+    collection: "clientamcrequests",
+  }
+);
+
+clientAmcRequestSchema.index(
+  { activeRequestKey: 1 },
+  {
+    unique: true,
+    sparse: true,
+    partialFilterExpression: { activeRequestKey: { $type: "string" } },
+  }
+);
+clientAmcRequestSchema.index({ clientId: 1, createdAt: -1 });
+clientAmcRequestSchema.index({ contractId: 1, createdAt: -1 });
+clientAmcRequestSchema.index({ status: 1, createdAt: -1 });
+
+const ClientAmcRequest =
+  mongoose.models.ClientAmcRequest ||
+  mongoose.model("ClientAmcRequest", clientAmcRequestSchema);
 
 /* =====================================================
    CLIENT DOCUMENT SCHEMA (metadata only, no file storage)
@@ -9050,6 +9325,30 @@ function ticketResponse(ticket) {
 
     updatedAt:
       ticket.updatedAt,
+
+    slaFirstResponseMinutes:
+      ticket.slaFirstResponseMinutes,
+    slaResolutionMinutes:
+      ticket.slaResolutionMinutes,
+    firstResponseDueAt:
+      ticket.firstResponseDueAt,
+    resolutionDueAt:
+      ticket.resolutionDueAt,
+    firstResolvedAt:
+      ticket.firstResolvedAt,
+    slaPolicyVersion:
+      ticket.slaPolicyVersion,
+    sla:
+      calculateTicketSla(ticket),
+    clientFeedback:
+      ticket.clientFeedback && ticket.clientFeedback.rating
+        ? {
+            rating: ticket.clientFeedback.rating,
+            comment: ticket.clientFeedback.comment || "",
+            submittedAt: ticket.clientFeedback.submittedAt || null,
+            submittedByName: ticket.clientFeedback.submittedByName || "",
+          }
+        : null,
   };
 }
 
@@ -21108,6 +21407,12 @@ router.patch("/task/:id/status", async (req, res) => {
       if (ticket && !["Resolved", "Closed"].includes(ticket.status)) {
         ticket.status = "Resolved";
         ticket.resolvedAt = new Date();
+        if (!ticket.firstResolvedAt) {
+          ticket.firstResolvedAt = ticket.resolvedAt;
+        }
+        if (!ticket.firstResponseAt) {
+          ticket.firstResponseAt = ticket.resolvedAt;
+        }
         ticket.resolutionNote = `Resolved by completing linked task ${task.taskCode}.`;
         ticket.timeline.push({
           type: "resolved",
@@ -22016,8 +22321,30 @@ router.post("/ticket", async (req, res) => {
       ? "Assigned"
       : "New";
 
+    const ticketCreatedAt = new Date();
+    const effectivePriority = priority || "Medium";
+    const slaPolicy = getTicketSlaPolicy(effectivePriority);
+    const slaFirstResponseMinutes = slaPolicy.firstResponseMinutes;
+    const slaResolutionMinutes = slaPolicy.resolutionMinutes;
+    const firstResponseDueAt = calculateDueAt(
+      ticketCreatedAt,
+      slaFirstResponseMinutes
+    );
+    const resolutionDueAt = calculateDueAt(
+      ticketCreatedAt,
+      slaResolutionMinutes
+    );
+
     const ticket = await SupportTicket.create({
       ticketCode: generateTicketCode(),
+
+      createdAt: ticketCreatedAt,
+
+      slaFirstResponseMinutes,
+      slaResolutionMinutes,
+      firstResponseDueAt,
+      resolutionDueAt,
+      slaPolicyVersion: SLA_POLICY_VERSION,
 
       title: normalizedTitle,
 
@@ -22074,7 +22401,7 @@ router.post("/ticket", async (req, res) => {
         source || "Admin",
 
       priority:
-        priority || "Medium",
+        effectivePriority,
 
       status: initialStatus,
 
@@ -23258,11 +23585,26 @@ if (req.user.role === "employee") {
       ticket.closedAt = null;
     }
 
+    if (status === "Resolved") {
+      ticket.resolvedAt =
+        new Date();
+
+      ticket.closedAt = null;
+
+      if (!ticket.firstResolvedAt) {
+        ticket.firstResolvedAt = ticket.resolvedAt;
+      }
+    }
+
     if (status === "Verified") {
       ticket.verifiedAt =
         new Date();
 
       ticket.closedAt = null;
+
+      if (!ticket.firstResolvedAt) {
+        ticket.firstResolvedAt = ticket.verifiedAt;
+      }
     }
 
     if (isClosing) {
@@ -23280,6 +23622,10 @@ if (req.user.role === "employee") {
 
       ticket.closedAt =
         new Date();
+
+      if (!ticket.firstResolvedAt) {
+        ticket.firstResolvedAt = ticket.closedAt;
+      }
     }
 
     if (status === "Cancelled") {
@@ -23614,7 +23960,7 @@ router.post("/ticket/:id/reply", async (req, res) => {
       authorRole: "admin",
     });
 
-    if (!ticket.firstResponseAt) {
+    if (replyType === "Public" && !ticket.firstResponseAt) {
       ticket.firstResponseAt =
         new Date();
     }
@@ -23767,6 +24113,14 @@ router.patch("/ticket/:id/resolve", async (req, res) => {
 
     ticket.resolvedAt =
       new Date();
+
+    if (!ticket.firstResolvedAt) {
+      ticket.firstResolvedAt = ticket.resolvedAt;
+    }
+
+    if (!ticket.firstResponseAt) {
+      ticket.firstResponseAt = ticket.resolvedAt;
+    }
 
     ticket.verifiedAt = null;
     ticket.closedAt = null;
@@ -33140,5 +33494,319 @@ router.get("/global-search", authenticateUser, async (req, res) => {
     });
   }
 });
+
+/* =====================================================
+   AMC RENEWAL & QUOTATION REQUESTS (ADMIN WORKFLOW)
+===================================================== */
+
+const quotationUploadDirectory = path.join(__dirname, "uploads", "quotations");
+if (!fs.existsSync(quotationUploadDirectory)) {
+  fs.mkdirSync(quotationUploadDirectory, { recursive: true });
+}
+
+const quotationStorage = multer.diskStorage({
+  destination: (req, file, callback) => {
+    callback(null, quotationUploadDirectory);
+  },
+  filename: (req, file, callback) => {
+    const originalExtension = path.extname(file.originalname);
+    const originalBaseName = path
+      .basename(file.originalname, originalExtension)
+      .replace(/[^a-zA-Z0-9-_]/g, "-")
+      .slice(0, 80);
+    const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1e9)}-${originalBaseName}${originalExtension}`;
+    callback(null, uniqueName);
+  },
+});
+
+const uploadQuotationDocument = multer({
+  storage: quotationStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, callback) => {
+    const allowed = [
+      "application/pdf",
+      "image/jpeg",
+      "image/png",
+      "image/jpg",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ];
+    if (allowed.includes(file.mimetype)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error("Unsupported file type. Upload a PDF, Word document, or image."));
+  },
+});
+
+function formatAdminAmcRequest(doc) {
+  if (!doc) return null;
+  const d = doc.toObject ? doc.toObject() : { ...doc };
+  return {
+    id: String(d._id),
+    _id: String(d._id),
+    requestCode: d.requestCode,
+    activeRequestKey: d.activeRequestKey,
+    clientId: String(d.clientId),
+    clientCode: d.clientCode || "",
+    clientName: d.clientName || "",
+    contractId: String(d.contractId),
+    contractCode: d.contractCode || "",
+    productId: d.productId ? String(d.productId) : null,
+    productName: d.productName || "",
+    currentExpiryDate: d.currentExpiryDate || null,
+    requestType: d.requestType,
+    renewalPeriod: d.renewalPeriod || "1 Year",
+    preferredStartDate: d.preferredStartDate || null,
+    remarks: d.remarks || "",
+    status: d.status,
+    quotationAmount: Number(d.quotationAmount || 0),
+    quotationDetails: d.quotationDetails || "",
+    quotationDocument: d.quotationDocument && d.quotationDocument.filePath ? {
+      fileName: d.quotationDocument.fileName || "",
+      fileUrl: d.quotationDocument.fileUrl || "",
+      fileSize: d.quotationDocument.fileSize || 0,
+      mimeType: d.quotationDocument.mimeType || "",
+      uploadedAt: d.quotationDocument.uploadedAt || null,
+    } : null,
+    adminNotes: d.adminNotes || "",
+    reviewedBy: d.reviewedBy ? String(d.reviewedBy) : null,
+    reviewedByName: d.reviewedByName || "",
+    reviewedAt: d.reviewedAt || null,
+    assignedEmployeeId: d.assignedEmployeeId ? String(d.assignedEmployeeId) : null,
+    assignedEmployeeCode: d.assignedEmployeeCode || "",
+    assignedEmployeeName: d.assignedEmployeeName || "",
+    timeline: (d.timeline || []).map((t) => ({
+      action: t.action,
+      status: t.status,
+      remarks: t.remarks || "",
+      performedByName: t.performedByName || (t.performedByRole === "client" ? "Client" : "Administrator"),
+      performedByRole: t.performedByRole || "system",
+      timestamp: t.timestamp,
+    })),
+    createdAt: d.createdAt,
+    updatedAt: d.updatedAt,
+  };
+}
+
+async function getNextAmcRequestCode() {
+  const year = new Date().getFullYear();
+  const counter = await AppCounter.findByIdAndUpdate(
+    `amc_req_${year}`,
+    { $inc: { seq: 1 } },
+    { new: true, upsert: true }
+  );
+  return `AMC-REQ-${year}-${String(counter.seq).padStart(4, "0")}`;
+}
+
+// GET /api/admin/amc-requests (with alias /amc/requests)
+router.get(["/amc-requests", "/amc/requests"], async (req, res) => {
+  try {
+    const { status = "All", requestType = "All", search = "", limit = 50, skip = 0 } = req.query;
+    const query = { isDeleted: false };
+    if (status && status !== "All") {
+      query.status = status;
+    }
+    if (requestType && requestType !== "All") {
+      query.requestType = requestType;
+    }
+    if (search && search.trim()) {
+      const regex = new RegExp(search.trim(), "i");
+      query.$or = [
+        { requestCode: regex },
+        { clientName: regex },
+        { clientCode: regex },
+        { productName: regex },
+        { contractCode: regex },
+      ];
+    }
+    const [total, requests] = await Promise.all([
+      ClientAmcRequest.countDocuments(query),
+      ClientAmcRequest.find(query)
+        .sort({ createdAt: -1 })
+        .skip(Number(skip) || 0)
+        .limit(Math.min(100, Math.max(1, Number(limit) || 50)))
+        .lean(),
+    ]);
+
+    return res.json({
+      success: true,
+      total,
+      data: requests.map(formatAdminAmcRequest),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to load AMC requests.",
+    });
+  }
+});
+
+// GET /api/admin/amc-requests/:id (with alias /amc/requests/:id)
+router.get(["/amc-requests/:id", "/amc/requests/:id"], async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Invalid request ID." });
+    }
+    const request = await ClientAmcRequest.findOne({ _id: id, isDeleted: false }).lean();
+    if (!request) {
+      return res.status(404).json({ success: false, message: "AMC request not found." });
+    }
+    return res.json({
+      success: true,
+      data: formatAdminAmcRequest(request),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch AMC request.",
+    });
+  }
+});
+
+// PATCH /api/admin/amc-requests/:id/status (with alias /amc/requests/:id/status)
+router.patch(
+  ["/amc-requests/:id/status", "/amc/requests/:id/status"],
+  uploadQuotationDocument.single("quotationFile"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ success: false, message: "Invalid request ID." });
+      }
+
+      const request = await ClientAmcRequest.findOne({ _id: id, isDeleted: false });
+      if (!request) {
+        return res.status(404).json({ success: false, message: "AMC request not found." });
+      }
+
+      const {
+        status,
+        adminNotes,
+        clientRemarks,
+        remarks,
+        quotationAmount,
+        quotationDetails,
+        assignedEmployeeId,
+      } = req.body;
+
+      const validStatuses = [
+        "Submitted",
+        "Under Review",
+        "Quotation Ready",
+        "Completed",
+        "Rejected",
+        "Cancelled",
+      ];
+      if (status && !validStatuses.includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
+        });
+      }
+
+      const previousStatus = request.status;
+      const targetStatus = status || previousStatus;
+
+      if (adminNotes !== undefined) request.adminNotes = (adminNotes || "").trim();
+      if (quotationDetails !== undefined) request.quotationDetails = (quotationDetails || "").trim();
+      if (quotationAmount !== undefined && quotationAmount !== "" && !isNaN(Number(quotationAmount))) {
+        request.quotationAmount = Math.max(0, Number(quotationAmount));
+      }
+
+      if (req.file) {
+        request.quotationDocument = {
+          fileName: req.file.originalname,
+          fileUrl: `/uploads/quotations/${req.file.filename}`,
+          filePath: req.file.path,
+          fileSize: req.file.size,
+          mimeType: req.file.mimetype,
+          uploadedAt: new Date(),
+        };
+      }
+
+      request.reviewedBy = req.user ? req.user._id : null;
+      request.reviewedByName = req.user ? (req.user.name || "Administrator") : "Administrator";
+      request.reviewedAt = new Date();
+
+      if (assignedEmployeeId && mongoose.Types.ObjectId.isValid(assignedEmployeeId)) {
+        request.assignedEmployeeId = assignedEmployeeId;
+      }
+
+      if (status && status !== previousStatus) {
+        request.status = targetStatus;
+        if (["Completed", "Rejected", "Cancelled"].includes(targetStatus)) {
+          request.activeRequestKey = null;
+        }
+
+        const timelineRemark = (clientRemarks || remarks || `Status updated to ${targetStatus}`).trim();
+        request.timeline.push({
+          action: `Status changed to ${targetStatus}`,
+          status: targetStatus,
+          remarks: timelineRemark,
+          performedBy: req.user ? req.user._id : null,
+          performedByName: req.user ? (req.user.name || "Administrator") : "Administrator",
+          performedByRole: "admin",
+          timestamp: new Date(),
+        });
+      } else if (req.file || quotationAmount || quotationDetails || adminNotes) {
+        request.timeline.push({
+          action: "Quotation updated",
+          status: request.status,
+          remarks: "Quotation details or attachment updated by Administrator",
+          performedBy: req.user ? req.user._id : null,
+          performedByName: req.user ? (req.user.name || "Administrator") : "Administrator",
+          performedByRole: "admin",
+          timestamp: new Date(),
+        });
+      }
+
+      await request.save();
+
+      return res.json({
+        success: true,
+        message: "AMC request updated successfully.",
+        data: formatAdminAmcRequest(request),
+      });
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message || "Failed to update AMC request status.",
+      });
+    }
+  }
+);
+
+// GET /api/admin/amc-requests/:id/quotation (with alias /amc/requests/:id/quotation)
+router.get(
+  ["/amc-requests/:id/quotation", "/amc/requests/:id/quotation"],
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ success: false, message: "Invalid request ID." });
+      }
+      const request = await ClientAmcRequest.findOne({ _id: id, isDeleted: false });
+      if (!request || !request.quotationDocument || !request.quotationDocument.filePath) {
+        return res.status(404).json({ success: false, message: "Quotation document not found." });
+      }
+      if (!fs.existsSync(request.quotationDocument.filePath)) {
+        return res.status(404).json({ success: false, message: "Quotation file not found on server." });
+      }
+      res.setHeader("Content-Type", request.quotationDocument.mimeType || "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `inline; filename="${encodeURIComponent(request.quotationDocument.fileName || 'quotation.pdf')}"`
+      );
+      fs.createReadStream(request.quotationDocument.filePath).pipe(res);
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message || "Error reading quotation document.",
+      });
+    }
+  }
+);
 
 module.exports = router;

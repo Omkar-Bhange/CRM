@@ -5,6 +5,7 @@ const mongoose = require("mongoose");
 
 const bcrypt = require("bcryptjs");
 require("./admin");
+const { calculateTicketSla } = require("./slaConfig");
 const authenticateUser = require("./authMiddleware");
 
 const User =
@@ -392,6 +393,12 @@ async function resolveLinkedTicket(task) {
 
   ticket.status = "Resolved";
   ticket.resolvedAt = new Date();
+  if (!ticket.firstResolvedAt) {
+    ticket.firstResolvedAt = ticket.resolvedAt;
+  }
+  if (!ticket.firstResponseAt) {
+    ticket.firstResponseAt = ticket.resolvedAt;
+  }
   ticket.resolutionNote = `Resolved by completing linked task ${task.taskCode} – ${task.title}.`;
   ticket.timeline.push({
     type: "resolved",
@@ -1217,6 +1224,7 @@ router.get("/my-tickets", async (req, res, next) => {
     for (const ticket of tickets) {
       // Ticket time is always independent
       ticket.timeSpentMinutes = Number(ticket.spentMinutes || 0);
+      ticket.sla = calculateTicketSla(ticket);
 
       if (ticket.linkedTaskId) {
         const linkedTask = await Task.findById(ticket.linkedTaskId).lean();
@@ -1302,6 +1310,12 @@ router.patch(
 
       if (status === "Resolved") {
         ticket.resolvedAt = new Date();
+        if (!ticket.firstResolvedAt) {
+          ticket.firstResolvedAt = ticket.resolvedAt;
+        }
+        if (!ticket.firstResponseAt) {
+          ticket.firstResponseAt = ticket.resolvedAt;
+        }
       } else if (ticket.resolvedAt) {
         ticket.resolvedAt = null;
       }
@@ -1341,9 +1355,12 @@ router.patch(
         );
       }
 
+      const ticketObj = ticket.toObject();
+      ticketObj.sla = calculateTicketSla(ticketObj);
+
       return res.json({
         success: true,
-        ticket,
+        ticket: ticketObj,
       });
     } catch (error) {
       next(error);
@@ -1424,11 +1441,18 @@ router.post(
         createdAt: new Date(),
       });
 
+      if (!ticket.firstResponseAt) {
+        ticket.firstResponseAt = new Date();
+      }
+
       await ticket.save();
+
+      const ticketObj = ticket.toObject();
+      ticketObj.sla = calculateTicketSla(ticketObj);
 
       res.json({
         success: true,
-        ticket,
+        ticket: ticketObj,
       });
     } catch (err) {
       next(err);

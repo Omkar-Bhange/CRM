@@ -5,6 +5,7 @@ import {
 } from "react";
 import AmcReminderModal from "./AmcReminderModal";
 import AmcInvoice from "./AmcInvoice";
+import AmcRenewalRequestsTab from "./AmcRenewalRequestsTab";
 import DataTable from "../../components/data/DataTable";
 import {
     AlertCircle,
@@ -1495,10 +1496,74 @@ export default function AmcBilling() {
     const [localDocuments, setLocalDocuments] = useState({});
     const [documentType, setDocumentType] = useState("AMC Agreement");
     const [documentError, setDocumentError] = useState("");
-    const [
-        uploadingDocument,
-        setUploadingDocument,
-    ] = useState(false);
+    const [uploadingDocument, setUploadingDocument] = useState(false);
+    const [amcMainTab, setAmcMainTab] = useState("contracts");
+    const [adminAmcRequests, setAdminAmcRequests] = useState([]);
+    const [adminRequestsLoading, setAdminRequestsLoading] = useState(false);
+    const [adminRequestsError, setAdminRequestsError] = useState("");
+
+    const loadAdminAmcRequests = async () => {
+        try {
+            setAdminRequestsLoading(true);
+            setAdminRequestsError("");
+            const token = getAuthToken();
+            if (!token) return;
+            const res = await fetch(`${API_URL}/api/admin/amc-requests`, {
+                headers: {
+                    Accept: "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+            const result = await res.json();
+            if (!res.ok || !result.success) {
+                throw new Error(result.message || "Failed to load AMC requests.");
+            }
+            setAdminAmcRequests(Array.isArray(result.data) ? result.data : []);
+        } catch (err) {
+            setAdminRequestsError(err.message || "Network error loading AMC requests.");
+        } finally {
+            setAdminRequestsLoading(false);
+        }
+    };
+
+    const pendingAmcRequestsCount = useMemo(() => {
+        return adminAmcRequests.filter((r) =>
+            ["Submitted", "Under Review"].includes(r.status)
+        ).length;
+    }, [adminAmcRequests]);
+
+    const handleOpenAmcContractFromRequest = (contractId, contractCode) => {
+        const found = records.find(
+            (r) =>
+                r.id === contractId ||
+                r._id === contractId ||
+                r.contractCode === contractCode
+        );
+        if (found) {
+            setAmcMainTab("contracts");
+            setSelectedRecord(found);
+        } else {
+            setAmcMainTab("contracts");
+            setSearchValue(contractCode || "");
+        }
+    };
+
+    const handleGoToAmcRenewalFromRequest = (contractId, contractCode) => {
+        const found = records.find(
+            (r) =>
+                r.id === contractId ||
+                r._id === contractId ||
+                r.contractCode === contractCode
+        );
+        if (found) {
+            setAmcMainTab("contracts");
+            setSelectedRecord(found);
+            openRenewalModal(found);
+        } else {
+            setAmcMainTab("contracts");
+            setSearchValue(contractCode || "");
+        }
+    };
 
     const createAmcTimelineEvent = ({
         type,
@@ -1712,6 +1777,7 @@ export default function AmcBilling() {
     useEffect(() => {
         loadAmcContracts();
         loadAmcMasters();
+        loadAdminAmcRequests();
     }, []);
 
     const stats = backendStats;
@@ -7313,8 +7379,64 @@ AMC INVOICE / CYCLE DETAIL
                     </div>
                 </section>
 
-                {/* Statistics - High Density Linear Standard */}
-                <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {/* Main Navigation Tabs */}
+                <div className="flex items-center gap-1 border-b border-slate-200">
+                    <button
+                        type="button"
+                        onClick={() => setAmcMainTab("contracts")}
+                        className={`flex items-center gap-2 border-b-2 px-4 py-3 text-xs font-semibold transition ${
+                            amcMainTab === "contracts"
+                                ? "border-blue-600 text-blue-600 font-bold"
+                                : "border-transparent text-slate-500 hover:text-slate-900"
+                        }`}
+                    >
+                        <FolderOpen size={15} />
+                        <span>AMC Contracts</span>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                            {records.length}
+                        </span>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setAmcMainTab("requests");
+                            loadAdminAmcRequests();
+                        }}
+                        className={`flex items-center gap-2 border-b-2 px-4 py-3 text-xs font-semibold transition ${
+                            amcMainTab === "requests"
+                                ? "border-blue-600 text-blue-600 font-bold"
+                                : "border-transparent text-slate-500 hover:text-slate-900"
+                        }`}
+                    >
+                        <RefreshCw size={15} />
+                        <span>Renewal Requests</span>
+                        {pendingAmcRequestsCount > 0 ? (
+                            <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-bold text-white shadow-xs">
+                                {pendingAmcRequestsCount} Pending
+                            </span>
+                        ) : (
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                                {adminAmcRequests.length}
+                            </span>
+                        )}
+                    </button>
+                </div>
+
+                {amcMainTab === "requests" ? (
+                    <AmcRenewalRequestsTab
+                        requests={adminAmcRequests}
+                        loading={adminRequestsLoading}
+                        error={adminRequestsError}
+                        onRefresh={loadAdminAmcRequests}
+                        records={records}
+                        onOpenContract={handleOpenAmcContractFromRequest}
+                        onGoToRenewal={handleGoToAmcRenewalFromRequest}
+                    />
+                ) : (
+                    <>
+                        {/* Statistics - High Density Linear Standard */}
+                        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     <button
                         type="button"
                         onClick={() => setActiveSummary("Collected")}
@@ -7638,6 +7760,8 @@ AMC INVOICE / CYCLE DETAIL
                     emptyTitle="No AMC clients found"
                     emptyDescription="Try changing your search or filters or create a new AMC contract."
                 />
+                    </>
+                )}
             </div>
 
             {/* Modals (only visible when not in detail view) */}

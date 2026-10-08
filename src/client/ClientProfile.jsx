@@ -1,5 +1,7 @@
 import { useState } from "react";
+import API_URL from "../config/api";
 import {
+    AlertCircle,
     Building2,
     CalendarDays,
     CheckCircle2,
@@ -7,6 +9,7 @@ import {
     CreditCard,
     FileText,
     KeyRound,
+    Loader2,
     LockKeyhole,
     Mail,
     MapPin,
@@ -129,6 +132,17 @@ export default function ClientProfile({ client }) {
         newPassword: "",
         confirmPassword: "",
     });
+    const [passwordLoading, setPasswordLoading] = useState(false);
+    const [passwordError, setPasswordError] = useState("");
+    const [passwordSuccess, setPasswordSuccess] = useState("");
+
+    const getAuthToken = () => {
+        return (
+            localStorage.getItem("client-connect-token") ||
+            sessionStorage.getItem("client-connect-token") ||
+            ""
+        );
+    };
 
 
     const [savedRequests, setSavedRequests] = useState([
@@ -243,22 +257,22 @@ const purchasedProducts = (client?.products || []).map((product) => ({
         );
     };
 
-    const submitPasswordChange = (event) => {
+    const submitPasswordChange = async (event) => {
         event.preventDefault();
+        setPasswordError("");
+        setPasswordSuccess("");
 
         if (
             !passwordForm.currentPassword ||
             !passwordForm.newPassword ||
             !passwordForm.confirmPassword
         ) {
-            alert("Please complete all password fields.");
+            setPasswordError("Please complete all password fields.");
             return;
         }
 
-        if (passwordForm.newPassword.length < 8) {
-            alert(
-                "New password must contain at least 8 characters."
-            );
+        if (passwordForm.newPassword.length < 6) {
+            setPasswordError("New password must contain at least 6 characters.");
             return;
         }
 
@@ -266,23 +280,46 @@ const purchasedProducts = (client?.products || []).map((product) => ({
             passwordForm.newPassword !==
             passwordForm.confirmPassword
         ) {
-            alert(
-                "New password and confirm password do not match."
-            );
+            setPasswordError("New password and confirm password do not match.");
             return;
         }
 
-        setPasswordForm({
-            currentPassword: "",
-            newPassword: "",
-            confirmPassword: "",
-        });
+        try {
+            setPasswordLoading(true);
+            const token = getAuthToken();
+            const response = await fetch(`${API_URL}/api/auth/change-password`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    currentPassword: passwordForm.currentPassword,
+                    newPassword: passwordForm.newPassword,
+                }),
+            });
 
-        setPasswordOpen(false);
+            const data = await response.json();
 
-        alert(
-            "Password change will be completed after authentication API integration."
-        );
+            if (response.ok && data.success) {
+                setPasswordSuccess(data.message || "Password updated successfully.");
+                setPasswordForm({
+                    currentPassword: "",
+                    newPassword: "",
+                    confirmPassword: "",
+                });
+                setTimeout(() => {
+                    setPasswordOpen(false);
+                    setPasswordSuccess("");
+                }, 1500);
+            } else {
+                setPasswordError(data.message || "Failed to update password. Please check your current password.");
+            }
+        } catch (err) {
+            setPasswordError("Network error. Unable to change password right now.");
+        } finally {
+            setPasswordLoading(false);
+        }
     };
 
     return (
@@ -1022,6 +1059,20 @@ const purchasedProducts = (client?.products || []).map((product) => ({
                             onSubmit={submitPasswordChange}
                             className="p-4 sm:p-5 space-y-3"
                         >
+                            {passwordError && (
+                                <div className="flex items-start gap-2 p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs">
+                                    <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                                    <span>{passwordError}</span>
+                                </div>
+                            )}
+
+                            {passwordSuccess && (
+                                <div className="flex items-start gap-2 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs">
+                                    <CheckCircle2 size={14} className="shrink-0 mt-0.5" />
+                                    <span>{passwordSuccess}</span>
+                                </div>
+                            )}
+
                             <div>
                                 <label className="mb-1.5 block text-xs font-semibold text-slate-700">
                                     Current Password
@@ -1058,7 +1109,7 @@ const purchasedProducts = (client?.products || []).map((product) => ({
                                 />
 
                                 <p className="mt-1 text-[10px] text-slate-400">
-                                    Use at least 8 characters.
+                                    Use at least 6 characters.
                                 </p>
                             </div>
 
@@ -1083,20 +1134,33 @@ const purchasedProducts = (client?.products || []).map((product) => ({
                             <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
                                 <button
                                     type="button"
-                                    onClick={() =>
-                                        setPasswordOpen(false)
-                                    }
-                                    className="h-8.5 px-4 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                                    disabled={passwordLoading}
+                                    onClick={() => {
+                                        setPasswordOpen(false);
+                                        setPasswordError("");
+                                        setPasswordSuccess("");
+                                    }}
+                                    className="h-8.5 px-4 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
                                 >
                                     Cancel
                                 </button>
 
                                 <button
                                     type="submit"
-                                    className="flex h-8.5 items-center justify-center gap-1.5 rounded-lg bg-[#1B59F8] px-4 text-xs font-semibold text-white shadow-2xs transition hover:bg-blue-700"
+                                    disabled={passwordLoading}
+                                    className="flex h-8.5 items-center justify-center gap-1.5 rounded-lg bg-[#1B59F8] px-4 text-xs font-semibold text-white shadow-2xs transition hover:bg-blue-700 disabled:opacity-50"
                                 >
-                                    <Save size={13} />
-                                    Update Password
+                                    {passwordLoading ? (
+                                        <>
+                                            <Loader2 size={13} className="animate-spin" />
+                                            Updating...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Save size={13} />
+                                            Update Password
+                                        </>
+                                    )}
                                 </button>
                             </div>
                         </form>

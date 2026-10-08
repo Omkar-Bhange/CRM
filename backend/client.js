@@ -46,6 +46,12 @@ const upload = multer({
 // Ensure Client / SupportTicket / ActivityLog models are registered
 // before we grab them below (same pattern employee.js uses for admin.js).
 require("./admin");
+const {
+  getTicketSlaPolicy,
+  calculateDueAt,
+  calculateTicketSla,
+  SLA_POLICY_VERSION,
+} = require("./slaConfig");
 
 const authenticateUser = require("./authMiddleware");
 
@@ -55,6 +61,100 @@ const ActivityLog = mongoose.models.ActivityLog;
 const AmcContract = mongoose.models.AmcContract;
 const AmcInvoice = mongoose.models.AmcInvoice;
 const AmcPayment = mongoose.models.AmcPayment;
+const ClientAmcRequest = mongoose.models.ClientAmcRequest;
+const AppCounter = mongoose.models.AppCounter;
+
+let ClientNotification = mongoose.models.ClientNotification;
+if (!ClientNotification) {
+  const clientNotificationSchema = new mongoose.Schema(
+    {
+      clientId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Client",
+        required: true,
+        index: true,
+      },
+      type: {
+        type: String,
+        enum: [
+          "INVOICE_GENERATED",
+          "PAYMENT_RECEIVED",
+          "AMC_EXPIRING",
+          "AMC_RENEWED",
+          "AMC_REQUEST_SUBMITTED",
+          "AMC_REQUEST_UPDATED",
+          "AMC_QUOTATION_READY",
+          "TICKET_CREATED",
+          "TICKET_UPDATED",
+          "TICKET_RESOLVED",
+          "DOCUMENT_SHARED",
+        ],
+        required: true,
+        index: true,
+      },
+      title: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      message: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      entityType: {
+        type: String,
+        enum: ["invoice", "payment", "amc", "ticket", "document", "other"],
+        default: "other",
+      },
+      entityCode: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+      entityId: {
+        type: mongoose.Schema.Types.ObjectId,
+        default: null,
+      },
+      navigationTarget: {
+        type: String,
+        enum: ["overview", "products", "billing", "tickets", "documents", "profile"],
+        default: "overview",
+      },
+      isRead: {
+        type: Boolean,
+        default: false,
+        index: true,
+      },
+      readAt: {
+        type: Date,
+        default: null,
+      },
+      dedupKey: {
+        type: String,
+        default: "",
+        index: true,
+      },
+    },
+    {
+      timestamps: true,
+      collection: "clientnotifications",
+    }
+  );
+
+  clientNotificationSchema.index({ clientId: 1, createdAt: -1 });
+  clientNotificationSchema.index({ clientId: 1, isRead: 1 });
+  clientNotificationSchema.index({ clientId: 1, dedupKey: 1 }, { unique: true });
+
+  ClientNotification = mongoose.model("ClientNotification", clientNotificationSchema);
+}
+
+let jsPDF = null;
+try {
+  jsPDF = require("jspdf").jsPDF;
+} catch (e) {
+  // handled safely
+}
 
 const router = express.Router();
 
@@ -149,11 +249,49 @@ function formatTicket(ticket, req) {
 
   const data = ticket.toObject ? ticket.toObject() : { ...ticket };
 
+  // Filter out internal notes or internal replies from client view
+  const safeReplies = (data.replies || [])
+    .filter((r) => r.replyType !== "Internal")
+    .map((r) => ({
+      id: String(r._id || r.id || ""),
+      _id: String(r._id || r.id || ""),
+      message: r.message,
+      replyType: r.replyType || "Public",
+      authorName: r.authorName || (r.authorRole === "client" ? "You" : "Support Engineer"),
+      authorRole: r.authorRole || "support",
+      createdAt: r.createdAt,
+    }));
+
+  // Clean timeline for client
+  const safeTimeline = (data.timeline || []).map((t) => ({
+    id: String(t._id || t.id || ""),
+    _id: String(t._id || t.id || ""),
+    type: t.type,
+    title: t.title,
+    description: t.description,
+    performedByName: t.performedByName || (t.performedByRole === "client" ? "You" : "Support Desk"),
+    performedByRole: t.performedByRole || "system",
+    createdAt: t.createdAt,
+  }));
+
   return {
     ...data,
+    internalNotes: [], // client must never see internal notes
+    replies: safeReplies,
+    timeline: safeTimeline,
     attachments: (data.attachments || []).map((file) =>
       formatAttachment(file, req)
     ),
+    sla: calculateTicketSla(data),
+    clientFeedback:
+      data.clientFeedback && data.clientFeedback.rating
+        ? {
+            rating: data.clientFeedback.rating,
+            comment: data.clientFeedback.comment || "",
+            submittedAt: data.clientFeedback.submittedAt || null,
+            submittedByName: data.clientFeedback.submittedByName || "",
+          }
+        : null,
   };
 }
 
@@ -353,6 +491,23 @@ totalAmount:
     contractEnd: data.contractExpiryDate || null,
   };
 }
+function sanitizeClientFileName(fileName) {
+  if (!fileName) return "Document";
+  // Strip leading timestamp prefixes e.g. 1729384729-file.pdf or 1729384729_file.pdf
+  let clean = String(fileName).replace(/^\d{9,14}[-_]/, "");
+  return clean || fileName;
+}
+
+function mapClientDocumentCategory(documentType) {
+  const dt = String(documentType || "").toLowerCase();
+  if (dt.includes("invoice") || dt.includes("bill")) return "Invoices";
+  if (dt.includes("receipt") || dt.includes("payment")) return "Receipts";
+  if (dt.includes("amc") || dt.includes("contract")) return "AMC / Contracts";
+  if (dt.includes("agreement") || dt.includes("sla") || dt.includes("nda")) return "Agreements";
+  if (dt.includes("quotation") || dt.includes("proposal") || dt.includes("purchase order") || dt.includes("estimate") || dt.includes("po")) return "Proposals";
+  return "Other";
+}
+
 function formatClientAmcDocument(
   document,
   contract
@@ -372,6 +527,10 @@ function formatClientAmcDocument(
     contract.id ||
     ""
   );
+
+  const rawFileName = document.fileName || "Document";
+  const cleanName = sanitizeClientFileName(rawFileName);
+  const clientCategory = mapClientDocumentCategory(document.documentType);
 
   return {
     id: documentId,
@@ -395,13 +554,10 @@ function formatClientAmcDocument(
       contract.productName ||
       "",
 
-    name:
-      document.fileName ||
-      "Document",
-
-    fileName:
-      document.fileName ||
-      "Document",
+    name: cleanName,
+    displayName: cleanName,
+    fileName: rawFileName,
+    documentTitle: document.title || cleanName,
 
     documentType:
       document.documentType ||
@@ -411,7 +567,8 @@ function formatClientAmcDocument(
       document.documentType ||
       "Other Document",
 
-    category:
+    category: clientCategory,
+    rawCategory:
       document.documentType ||
       "Other Document",
 
@@ -443,7 +600,7 @@ function formatClientAmcDocument(
 
     uploadedByName:
       document.uploadedByName ||
-      "Admin",
+      "Support Desk",
 
     previewUrl:
       `/api/client/amc/document/${documentId}/view`,
@@ -537,11 +694,18 @@ function formatClientAmcPayment(payment) {
 
   const data = payment.toObject ? payment.toObject() : { ...payment };
 
+  const invoiceCode =
+    data.invoiceCode ||
+    (data.amcInvoiceId && typeof data.amcInvoiceId === "object" ? data.amcInvoiceId.invoiceCode : "") ||
+    "";
+
   return {
     id: String(data._id || data.id || ""),
     paymentCode: data.paymentCode || "",
-    invoiceId: String(data.amcInvoiceId || ""),
-    contractId: String(data.amcContractId || ""),
+    invoiceCode: invoiceCode || "",
+    invoiceId: String(data.amcInvoiceId?._id || data.amcInvoiceId || ""),
+    contractId: String(data.amcContractId?._id || data.amcContractId || ""),
+    contractCode: data.contractCode || "",
     clientId: String(data.clientId || ""),
     amount: Number(data.amount ?? 0),
     paymentDate: data.paymentDate || null,
@@ -713,6 +877,318 @@ router.get("/amc/contracts", async (req, res, next) => {
       success: true,
       data: contracts.map(formatClientAmcContract),
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/* =========================================================
+   AMC RENEWAL & QUOTATION REQUESTS (CLIENT PORTAL)
+========================================================= */
+
+function formatClientAmcRequest(reqDoc) {
+  if (!reqDoc) return null;
+  const d = reqDoc.toObject ? reqDoc.toObject() : { ...reqDoc };
+  return {
+    id: String(d._id),
+    _id: String(d._id),
+    requestCode: d.requestCode,
+    contractId: String(d.contractId),
+    contractCode: d.contractCode || "",
+    productId: d.productId ? String(d.productId) : null,
+    productName: d.productName || "",
+    currentExpiryDate: d.currentExpiryDate || null,
+    requestType: d.requestType,
+    renewalPeriod: d.renewalPeriod || "1 Year",
+    preferredStartDate: d.preferredStartDate || null,
+    remarks: d.remarks || "",
+    status: d.status,
+    quotationAmount: Number(d.quotationAmount || 0),
+    quotationDetails: d.quotationDetails || "",
+    hasQuotationDocument: Boolean(d.quotationDocument && d.quotationDocument.filePath),
+    quotationDocumentName: d.quotationDocument ? d.quotationDocument.fileName : "",
+    quotationDocumentSize: d.quotationDocument ? d.quotationDocument.fileSize : 0,
+    quotationDownloadUrl: d.quotationDocument && d.quotationDocument.filePath
+      ? `/api/client/amc/requests/${d._id}/quotation`
+      : null,
+    timeline: (d.timeline || []).map((t) => ({
+      action: t.action,
+      status: t.status,
+      remarks: t.remarks || "",
+      performedByName: t.performedByRole === "client" ? "You" : (t.performedByName || "AMC Support Desk"),
+      performedByRole: t.performedByRole || "system",
+      timestamp: t.timestamp,
+    })),
+    createdAt: d.createdAt,
+    updatedAt: d.updatedAt,
+  };
+}
+
+async function getNextAmcRequestCode() {
+  const year = new Date().getFullYear();
+  const counter = await AppCounter.findByIdAndUpdate(
+    `amc_req_${year}`,
+    { $inc: { seq: 1 } },
+    { new: true, upsert: true }
+  );
+  return `AMC-REQ-${year}-${String(counter.seq).padStart(4, "0")}`;
+}
+
+// GET /api/client/amc/requests
+router.get("/amc/requests", async (req, res, next) => {
+  try {
+    const { client, error } = await findOwnClient(req);
+    if (error) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+
+    const requests = await ClientAmcRequest.find({
+      clientId: client._id,
+      isDeleted: false,
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.json({
+      success: true,
+      data: requests.map(formatClientAmcRequest),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/client/amc/renewal-request
+router.post("/amc/renewal-request", async (req, res, next) => {
+  try {
+    const { client, error } = await findOwnClient(req);
+    if (error) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+
+    const {
+      contractId,
+      requestType = "AMC Renewal",
+      renewalPeriod = "1 Year",
+      preferredStartDate,
+      remarks = "",
+    } = req.body;
+
+    // 1. Validate contractId
+    if (!contractId || !mongoose.Types.ObjectId.isValid(contractId)) {
+      return res.status(400).json({
+        success: false,
+        message: "A valid AMC contract is required.",
+      });
+    }
+
+    // 2. Validate requestType
+    const allowedTypes = ["AMC Renewal", "Quotation Request"];
+    if (!allowedTypes.includes(requestType)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid request type. Must be one of: ${allowedTypes.join(", ")}`,
+      });
+    }
+
+    // 3. Validate renewalPeriod
+    if (renewalPeriod !== "1 Year") {
+      return res.status(400).json({
+        success: false,
+        message: "Renewal period currently only supports '1 Year'.",
+      });
+    }
+
+    // 4. Verify contract belongs to logged-in client (tenant isolation)
+    const contract = await AmcContract.findOne({
+      _id: contractId,
+      clientId: client._id,
+      isDeleted: false,
+    });
+
+    if (!contract) {
+      return res.status(404).json({
+        success: false,
+        message: "AMC contract not found or does not belong to your account.",
+      });
+    }
+
+    // 5. Pre-check for active request of the same type
+    const existingActive = await ClientAmcRequest.findOne({
+      clientId: client._id,
+      contractId: contract._id,
+      requestType,
+      status: { $in: ["Submitted", "Under Review", "Quotation Ready"] },
+      isDeleted: false,
+    });
+
+    if (existingActive) {
+      return res.status(409).json({
+        success: false,
+        message: `An active ${requestType} request (${existingActive.requestCode}) is already pending for this contract.`,
+      });
+    }
+
+    // 6. Generate unique request code and activeRequestKey
+    const requestCode = await getNextAmcRequestCode();
+    const activeRequestKey = `${client._id}:${contract._id}:${requestType}`;
+
+    const newRequest = new ClientAmcRequest({
+      requestCode,
+      activeRequestKey,
+      clientId: client._id,
+      clientCode: client.clientCode || "",
+      clientName: client.companyName || client.contactPerson || "",
+      contractId: contract._id,
+      contractCode: contract.contractCode || "",
+      productId: contract.productId || null,
+      productName: contract.productName || "AMC Software Support",
+      currentExpiryDate: contract.expiryDate || contract.endDate || null,
+      requestType,
+      renewalPeriod: "1 Year",
+      preferredStartDate: preferredStartDate ? new Date(preferredStartDate) : null,
+      remarks: String(remarks || "").trim().slice(0, 1000),
+      status: "Submitted",
+      timeline: [
+        {
+          action: "Request Submitted",
+          status: "Submitted",
+          remarks: String(remarks || "").trim() || `${requestType} submitted by client`,
+          performedBy: req.user._id,
+          performedByName: client.companyName || client.contactPerson || "Client",
+          performedByRole: "client",
+          timestamp: new Date(),
+        },
+      ],
+    });
+
+    await newRequest.save();
+
+    return res.status(201).json({
+      success: true,
+      message: "Your request has been submitted successfully.",
+      data: formatClientAmcRequest(newRequest),
+    });
+  } catch (err) {
+    if (err.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "An active renewal or quotation request is already pending for this contract.",
+      });
+    }
+    next(err);
+  }
+});
+
+// PATCH /api/client/amc/requests/:id/cancel
+router.patch("/amc/requests/:id/cancel", async (req, res, next) => {
+  try {
+    const { client, error } = await findOwnClient(req);
+    if (error) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+
+    const { id } = req.params;
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Invalid request ID." });
+    }
+
+    const request = await ClientAmcRequest.findOne({
+      _id: id,
+      clientId: client._id,
+      isDeleted: false,
+    });
+
+    if (!request) {
+      return res.status(404).json({ success: false, message: "Request not found." });
+    }
+
+    // Cancellation policy:
+    // Only "Submitted" requests can be cancelled directly by the client.
+    // If "Under Review" or "Quotation Ready", return 409 Conflict.
+    if (["Under Review", "Quotation Ready"].includes(request.status)) {
+      return res.status(409).json({
+        success: false,
+        message: "This request is already under review and cannot be cancelled directly. Please contact support.",
+      });
+    }
+
+    if (["Completed", "Rejected", "Cancelled"].includes(request.status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Request is already ${request.status.toLowerCase()}.`,
+      });
+    }
+
+    // Cancel the request and clear activeRequestKey so sparse unique index is freed
+    request.status = "Cancelled";
+    request.activeRequestKey = null;
+    request.timeline.push({
+      action: "Request Cancelled",
+      status: "Cancelled",
+      remarks: String(req.body.remarks || "Cancelled by client").trim(),
+      performedBy: req.user._id,
+      performedByName: client.companyName || client.contactPerson || "Client",
+      performedByRole: "client",
+      timestamp: new Date(),
+    });
+
+    await request.save();
+
+    return res.json({
+      success: true,
+      message: "Request cancelled successfully.",
+      data: formatClientAmcRequest(request),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/client/amc/requests/:id/quotation
+router.get("/amc/requests/:id/quotation", async (req, res, next) => {
+  try {
+    const { client, error } = await findOwnClient(req);
+    if (error) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+
+    const { id } = req.params;
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Invalid request ID." });
+    }
+
+    const request = await ClientAmcRequest.findOne({
+      _id: id,
+      clientId: client._id,
+      isDeleted: false,
+    });
+
+    if (!request) {
+      return res.status(404).json({ success: false, message: "Request not found." });
+    }
+
+    if (!request.quotationDocument || !request.quotationDocument.filePath) {
+      return res.status(404).json({
+        success: false,
+        message: "Quotation document is not available for this request.",
+      });
+    }
+
+    const filePath = request.quotationDocument.filePath;
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({
+        success: false,
+        message: "Quotation file was not found on the server.",
+      });
+    }
+
+    res.setHeader("Content-Type", request.quotationDocument.mimeType || "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="${encodeURIComponent(request.quotationDocument.fileName || 'quotation.pdf')}"`
+    );
+    fs.createReadStream(filePath).pipe(res);
   } catch (error) {
     next(error);
   }
@@ -1185,6 +1661,379 @@ router.get("/amc/payments", async (req, res, next) => {
   }
 });
 
+/* =========================================================
+   GENERATE CLIENT PAYMENT RECEIPT PDF
+   ========================================================= */
+function generatePaymentReceiptPdf({ payment, client, invoice, company }) {
+  if (!jsPDF) {
+    throw new Error("PDF generation library is unavailable.");
+  }
+
+  const doc = new jsPDF({
+    orientation: "portrait",
+    unit: "mm",
+    format: "a4",
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth(); // 210mm
+  const margin = 15;
+  const contentWidth = pageWidth - margin * 2; // 180mm
+
+  // 1. Top Decorative Brand Bar
+  doc.setFillColor(27, 89, 248); // #1B59F8 Royal Blue
+  doc.rect(0, 0, pageWidth, 5, "F");
+
+  // 2. Header: Company Info on Left, RECEIPT on Right
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(20);
+  doc.setTextColor(27, 89, 248);
+  doc.text((company.name || "TOTAL SOLUTION").toUpperCase(), margin, 20);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(100, 116, 139);
+  doc.text(company.tagline || "Client Connect & AMC Maintenance Management", margin, 25);
+  doc.text(company.address || "Billing & Customer Support", margin, 29);
+  doc.text(`Email: ${company.email || "billing@totalsolution.in"} | Phone: ${company.phone || "+91 98765 43210"}`, margin, 33);
+  if (company.gstNo) {
+    doc.text(`GSTIN: ${company.gstNo}`, margin, 37);
+  }
+
+  // Right Header
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(16);
+  doc.setTextColor(15, 23, 42);
+  doc.text("PAYMENT RECEIPT", pageWidth - margin, 20, { align: "right" });
+
+  // Receipt Number & Date Badge
+  doc.setFillColor(241, 245, 249);
+  doc.roundedRect(pageWidth - margin - 65, 25, 65, 14, 2, 2, "F");
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(27, 89, 248);
+  doc.text("RECEIPT NO:", pageWidth - margin - 62, 30);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(15, 23, 42);
+  doc.text(payment.paymentCode || "AMC-PAY", pageWidth - margin - 3, 30, { align: "right" });
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(100, 116, 139);
+  doc.text("DATE:", pageWidth - margin - 62, 35);
+  doc.setTextColor(15, 23, 42);
+  doc.text(payment.formattedDate || "—", pageWidth - margin - 3, 35, { align: "right" });
+
+  // Divider Line
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.4);
+  doc.line(margin, 43, pageWidth - margin, 43);
+
+  // 3. Two Information Cards: Received From & Payment Details
+  const cardY = 48;
+  const cardHeight = 38;
+  const colWidth = (contentWidth - 6) / 2;
+
+  // Card 1: Received From (Left)
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(margin, cardY, colWidth, cardHeight, 2, 2, "FD");
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(27, 89, 248);
+  doc.text("RECEIVED FROM", margin + 4, cardY + 6);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(15, 23, 42);
+  doc.text(client.companyName || "Valued Client", margin + 4, cardY + 12);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(71, 85, 105);
+  let cy = cardY + 17;
+  if (client.contactPerson) {
+    doc.text(`Contact: ${client.contactPerson}`, margin + 4, cy);
+    cy += 4.5;
+  }
+  if (client.address) {
+    doc.text(client.address.substring(0, 48), margin + 4, cy);
+    cy += 4.5;
+  }
+  if (client.gstNo) {
+    doc.text(`GSTIN: ${client.gstNo}`, margin + 4, cy);
+  }
+
+  // Card 2: Payment Details (Right)
+  const col2X = margin + colWidth + 6;
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(col2X, cardY, colWidth, cardHeight, 2, 2, "FD");
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(27, 89, 248);
+  doc.text("PAYMENT DETAILS", col2X + 4, cardY + 6);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text("Payment Mode:", col2X + 4, cardY + 12);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(15, 23, 42);
+  doc.text(payment.mode || "Bank Transfer", col2X + colWidth - 4, cardY + 12, { align: "right" });
+
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(100, 116, 139);
+  doc.text("Reference / UTR:", col2X + 4, cardY + 17);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(15, 23, 42);
+  doc.text(payment.referenceNo || "—", col2X + colWidth - 4, cardY + 17, { align: "right" });
+
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(100, 116, 139);
+  doc.text("Payment Status:", col2X + 4, cardY + 22);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(16, 185, 129);
+  doc.text("VERIFIED & RECEIVED", col2X + colWidth - 4, cardY + 22, { align: "right" });
+
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(100, 116, 139);
+  doc.text("Processed By:", col2X + 4, cardY + 27);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(15, 23, 42);
+  doc.text(payment.receivedByName || "Billing Desk", col2X + colWidth - 4, cardY + 27, { align: "right" });
+
+  // 4. Breakdown Table
+  const tableY = 94;
+  doc.setFillColor(27, 89, 248);
+  doc.rect(margin, tableY, contentWidth, 8, "F");
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(255, 255, 255);
+  doc.text("DESCRIPTION / PARTICULARS", margin + 4, tableY + 5.5);
+  doc.text("AGAINST INVOICE", margin + 100, tableY + 5.5);
+  doc.text("AMOUNT RECEIVED", pageWidth - margin - 4, tableY + 5.5, { align: "right" });
+
+  // Table Row
+  const rowY = tableY + 8;
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(226, 232, 240);
+  doc.rect(margin, rowY, contentWidth, 14, "FD");
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(15, 23, 42);
+  doc.text(payment.productName ? `AMC Support - ${payment.productName}` : "Annual Maintenance Contract (AMC) Payment", margin + 4, rowY + 5.5);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(100, 116, 139);
+  doc.text(payment.contractCode ? `Contract Ref: ${payment.contractCode}` : "Official Support Installment", margin + 4, rowY + 10);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(27, 89, 248);
+  doc.text(payment.invoiceCode || "—", margin + 100, rowY + 5.5);
+
+  if (invoice && invoice.invoiceDate) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Dated: ${invoice.invoiceDate}`, margin + 100, rowY + 10);
+  }
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(15, 23, 42);
+  doc.text(`INR ${Number(payment.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`, pageWidth - margin - 4, rowY + 7, { align: "right" });
+
+  // 5. Total Highlight Box
+  const totalY = rowY + 18;
+  doc.setFillColor(240, 253, 244);
+  doc.setDrawColor(187, 247, 208);
+  doc.roundedRect(pageWidth - margin - 85, totalY, 85, 18, 2, 2, "FD");
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(22, 101, 52);
+  doc.text("TOTAL AMOUNT RECEIVED:", pageWidth - margin - 80, totalY + 7);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.setTextColor(22, 101, 52);
+  doc.text(`INR ${Number(payment.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`, pageWidth - margin - 4, totalY + 13, { align: "right" });
+
+  // 6. Remarks / Notes (if any)
+  if (payment.notes) {
+    const notesY = totalY + 24;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(71, 85, 105);
+    doc.text("Remarks / Notes:", margin, notesY);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(100, 116, 139);
+    doc.text(String(payment.notes), margin, notesY + 5);
+  }
+
+  // 7. Verification Seal & Sign-off
+  const footerY = 165;
+  doc.setDrawColor(226, 232, 240);
+  doc.line(margin, footerY, pageWidth - margin, footerY);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(148, 163, 184);
+  doc.text("This is a computer-generated official payment receipt. No physical signature is required.", margin, footerY + 6);
+  doc.text(`For billing inquiries or GST-stamped copies, contact ${company.email || "billing@totalsolution.in"}`, margin, footerY + 11);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(15, 23, 42);
+  doc.text(`FOR ${(company.name || "TOTAL SOLUTION").toUpperCase()}`, pageWidth - margin, footerY + 6, { align: "right" });
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(100, 116, 139);
+  doc.text("Authorized Finance Signatory", pageWidth - margin, footerY + 18, { align: "right" });
+
+  return Buffer.from(doc.output("arraybuffer"));
+}
+
+/* =========================================================
+   GET /api/client/amc/payment/:id/receipt
+   Download authenticated official payment receipt PDF
+   ========================================================= */
+router.get("/amc/payment/:id/receipt", async (req, res, next) => {
+  try {
+    const { client, error } = await findOwnClient(req);
+
+    if (error) {
+      return res
+        .status(error.status)
+        .json({ success: false, message: error.message });
+    }
+
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid payment ID.",
+      });
+    }
+
+    const payment = await AmcPayment.findOne({
+      _id: id,
+      clientId: client._id,
+      isDeleted: false,
+    }).lean();
+
+    if (!payment) {
+      return res.status(404).json({
+        success: false,
+        message: "Payment receipt not found.",
+      });
+    }
+
+    let relatedInvoice = null;
+    if (payment.amcInvoiceId) {
+      relatedInvoice = await AmcInvoice.findOne({
+        _id: payment.amcInvoiceId,
+        clientId: client._id,
+        isDeleted: false,
+      }).lean();
+    }
+
+    let company = {
+      name: "Total Solution",
+      tagline: "Client Connect & AMC Maintenance Management",
+      address: "Billing & Customer Support",
+      email: "billing@totalsolution.in",
+      phone: "+91 98765 43210",
+      gstNo: "",
+    };
+
+    try {
+      const SystemSettings = mongoose.models.SystemSettings;
+      if (SystemSettings) {
+        const settings = await SystemSettings.findOne().lean();
+        if (settings?.company?.companyName) {
+          company.name = settings.company.companyName;
+        }
+        if (settings?.company?.address) {
+          company.address = [settings.company.address, settings.company.city, settings.company.state].filter(Boolean).join(", ");
+        }
+        if (settings?.company?.email) {
+          company.email = settings.company.email;
+        }
+        if (settings?.company?.mobile) {
+          company.phone = settings.company.mobile;
+        }
+        if (settings?.company?.gstNo) {
+          company.gstNo = settings.company.gstNo;
+        }
+      }
+    } catch (e) {
+      // Fallback cleanly to default branding
+    }
+
+    const formattedPaymentDate = payment.paymentDate
+      ? new Date(payment.paymentDate).toLocaleDateString("en-IN", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        })
+      : "—";
+
+    const formattedInvoiceDate = relatedInvoice?.invoiceDate
+      ? new Date(relatedInvoice.invoiceDate).toLocaleDateString("en-IN", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        })
+      : null;
+
+    const pdfBuffer = generatePaymentReceiptPdf({
+      payment: {
+        paymentCode: payment.paymentCode || "AMC-PAY",
+        amount: payment.amount || 0,
+        mode: payment.mode || "Bank Transfer",
+        referenceNo: payment.referenceNo || "—",
+        productName: payment.productName || "",
+        contractCode: payment.contractCode || "",
+        invoiceCode: payment.invoiceCode || relatedInvoice?.invoiceCode || "—",
+        formattedDate: formattedPaymentDate,
+        notes: payment.notes || "",
+        receivedByName: payment.receivedByName || "Billing Desk",
+      },
+      client: {
+        companyName: client.companyName || client.name || "Valued Client",
+        contactPerson: client.contactPerson || "",
+        address: [client.addressLine1, client.addressLine2, client.city, client.state, client.pinCode].filter(Boolean).join(", "),
+        gstNo: client.gstNo || "",
+      },
+      invoice: {
+        invoiceCode: relatedInvoice?.invoiceCode || payment.invoiceCode || "—",
+        invoiceDate: formattedInvoiceDate,
+      },
+      company,
+    });
+
+    const cleanPaymentCode = (payment.paymentCode || id).replace(/[^a-zA-Z0-9_-]/g, "_");
+    const filename = `Payment-Receipt-${cleanPaymentCode}.pdf`;
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Length", pdfBuffer.length);
+    return res.end(pdfBuffer);
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get("/amc/invoice/:id/pdf", async (req, res, next) => {
   try {
     const { client, error } = await findOwnClient(req);
@@ -1386,6 +2235,254 @@ router.put("/tickets/:id", upload.single("attachment"), async (req, res, next) =
     next(error);
   }
 });
+
+/* =========================================================
+   CLIENT ADD TICKET REPLY
+   POST /api/client/tickets/:id/reply
+========================================================= */
+router.post("/tickets/:id/reply", async (req, res, next) => {
+  try {
+    const { client, error } = await findOwnClient(req);
+    if (error) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+
+    const { id } = req.params;
+    const { message } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Invalid ticket ID." });
+    }
+
+    const normalizedMessage = String(message || "").trim();
+    if (!normalizedMessage) {
+      return res.status(400).json({ success: false, message: "Reply message cannot be empty." });
+    }
+
+    const ticket = await SupportTicket.findOne({
+      _id: id,
+      clientId: client._id,
+      isDeleted: false,
+    });
+
+    if (!ticket) {
+      return res.status(404).json({ success: false, message: "Support ticket not found." });
+    }
+
+    const authorName = client.contactPerson || client.companyName || "Client";
+
+    ticket.replies.push({
+      message: normalizedMessage,
+      replyType: "Public",
+      authorId: req.user._id,
+      authorName,
+      authorRole: "client",
+      createdAt: new Date(),
+    });
+
+    ticket.timeline.push({
+      type: "reply",
+      title: "Client Replied",
+      description: normalizedMessage.length > 80 ? normalizedMessage.substring(0, 77) + "..." : normalizedMessage,
+      performedBy: req.user._id,
+      performedByName: authorName,
+      performedByRole: "client",
+      createdAt: new Date(),
+    });
+
+    ticket.updatedAt = new Date();
+    await ticket.save();
+
+    return res.json({
+      success: true,
+      message: "Reply sent successfully.",
+      data: formatTicket(ticket, req),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/* =========================================================
+   CLIENT UPDATE TICKET STATUS (CONFIRM RESOLUTION / REOPEN)
+   POST /api/client/tickets/:id/status
+========================================================= */
+router.post("/tickets/:id/status", async (req, res, next) => {
+  try {
+    const { client, error } = await findOwnClient(req);
+    if (error) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+
+    const { id } = req.params;
+    const { status, note } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Invalid ticket ID." });
+    }
+
+    if (!["Closed", "New", "In Progress"].includes(status)) {
+      return res.status(400).json({ success: false, message: "Invalid status update action." });
+    }
+
+    const ticket = await SupportTicket.findOne({
+      _id: id,
+      clientId: client._id,
+      isDeleted: false,
+    });
+
+    if (!ticket) {
+      return res.status(404).json({ success: false, message: "Support ticket not found." });
+    }
+
+    const authorName = client.contactPerson || client.companyName || "Client";
+
+    if (status === "Closed") {
+      ticket.status = "Closed";
+      ticket.closedAt = new Date();
+      if (!ticket.resolvedAt) {
+        ticket.resolvedAt = ticket.closedAt;
+      }
+      if (!ticket.firstResolvedAt) {
+        ticket.firstResolvedAt = ticket.resolvedAt;
+      }
+      if (!ticket.firstResponseAt) {
+        ticket.firstResponseAt = ticket.resolvedAt;
+      }
+      ticket.timeline.push({
+        type: "closed",
+        title: "Ticket Closed by Client",
+        description: note || "Client confirmed satisfactory resolution.",
+        performedBy: req.user._id,
+        performedByName: authorName,
+        performedByRole: "client",
+        createdAt: new Date(),
+      });
+    } else {
+      ticket.status = "New";
+      ticket.timeline.push({
+        type: "reopened",
+        title: "Ticket Reopened by Client",
+        description: note || "Client requested further assistance on this issue.",
+        performedBy: req.user._id,
+        performedByName: authorName,
+        performedByRole: "client",
+        createdAt: new Date(),
+      });
+    }
+
+    ticket.updatedAt = new Date();
+    await ticket.save();
+
+    return res.json({
+      success: true,
+      message: `Ticket marked as ${ticket.status}.`,
+      data: formatTicket(ticket, req),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/* =========================================================
+   SUBMIT CLIENT FEEDBACK
+   POST /api/client/tickets/:id/feedback
+========================================================= */
+router.post("/tickets/:id/feedback", async (req, res, next) => {
+  try {
+    const { client, error } = await findOwnClient(req);
+    if (error) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Invalid ticket ID." });
+    }
+
+    const ticket = await SupportTicket.findOne({
+      _id: id,
+      clientId: client._id,
+      isDeleted: false,
+    });
+
+    if (!ticket) {
+      return res.status(404).json({ success: false, message: "Support ticket not found." });
+    }
+
+    // Verify ticket is in an eligible post-resolution state
+    const eligibleStatuses = ["Resolved", "Verified", "Closed"];
+    if (!eligibleStatuses.includes(ticket.status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Feedback can only be submitted for resolved or closed tickets.",
+      });
+    }
+
+    // Prevent duplicate feedback
+    if (ticket.clientFeedback && ticket.clientFeedback.rating) {
+      return res.status(409).json({
+        success: false,
+        message: "Feedback has already been submitted for this ticket.",
+      });
+    }
+
+    // Validate rating: integer 1..5
+    const rawRating = req.body.rating;
+    const rating = Number(rawRating);
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      return res.status(400).json({
+        success: false,
+        message: "Rating must be an integer between 1 and 5.",
+      });
+    }
+
+    // Validate comment: optional, max 1000 characters
+    let comment = "";
+    if (typeof req.body.comment === "string") {
+      comment = req.body.comment.trim();
+      if (comment.length > 1000) {
+        return res.status(400).json({
+          success: false,
+          message: "Comment cannot exceed 1000 characters.",
+        });
+      }
+    }
+
+    const authorName = client.contactPerson || client.companyName || "Client";
+
+    ticket.clientFeedback = {
+      rating,
+      comment,
+      submittedAt: new Date(),
+      submittedByClientId: client._id,
+      submittedByName: authorName,
+    };
+
+    ticket.timeline.push({
+      type: "feedback",
+      title: "Client Feedback Submitted",
+      description: `Client submitted a ${rating}-star rating.`,
+      performedBy: req.user._id,
+      performedByName: authorName,
+      performedByRole: "client",
+      createdAt: new Date(),
+    });
+
+    ticket.updatedAt = new Date();
+    await ticket.save();
+
+    return res.json({
+      success: true,
+      message: "Thank you for your feedback.",
+      data: formatTicket(ticket, req),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 async function findBestEmployeeForTicket(client) {
   const Employee =
     mongoose.models.Employee;
@@ -1735,9 +2832,29 @@ console.log(
   }
 );
 
+const ticketCreatedAt = new Date();
+const effectivePriority = priority || "Medium";
+const slaPolicy = getTicketSlaPolicy(effectivePriority);
+const slaFirstResponseMinutes = slaPolicy.firstResponseMinutes;
+const slaResolutionMinutes = slaPolicy.resolutionMinutes;
+const firstResponseDueAt = calculateDueAt(
+  ticketCreatedAt,
+  slaFirstResponseMinutes
+);
+const resolutionDueAt = calculateDueAt(
+  ticketCreatedAt,
+  slaResolutionMinutes
+);
+
 const ticket =
   await SupportTicket.create({
       ticketCode,
+      createdAt: ticketCreatedAt,
+      slaFirstResponseMinutes,
+      slaResolutionMinutes,
+      firstResponseDueAt,
+      resolutionDueAt,
+      slaPolicyVersion: SLA_POLICY_VERSION,
       title: String(title).trim(),
       description: String(description).trim(),
 
@@ -1754,7 +2871,7 @@ const ticket =
 
       module: module || "General",
       category: category || "Other",
-      priority: priority || "Medium",
+      priority: effectivePriority,
       source: "Client Portal",
 
 assignedEmployeeId:
@@ -1814,6 +2931,23 @@ assignedAt:
       { _id: client._id },
       { $inc: { openTickets: 1 } }
     );
+
+    try {
+      await ClientNotification.create({
+        clientId: client._id,
+        type: "TICKET_CREATED",
+        title: "Support Ticket Raised",
+        message: `Support ticket ${ticket.ticketCode} (${ticket.title}) has been registered.`,
+        entityType: "ticket",
+        entityCode: ticket.ticketCode || "",
+        entityId: ticket._id,
+        navigationTarget: "tickets",
+        dedupKey: `tkt_created_${ticket._id}`,
+        createdAt: ticket.createdAt || new Date(),
+      });
+    } catch (notifErr) {
+      // Non-blocking for notification insertion
+    }
 
     return res.status(201).json({
       success: true,
@@ -2266,4 +3400,515 @@ Instructions:
   }
 });
 
+/* =========================================================
+   CLIENT NOTIFICATIONS & EVENT SYNC
+========================================================= */
+
+async function syncClientNotifications(clientId) {
+  try {
+    const [invoices, payments, tickets, contracts, amcRequests] = await Promise.all([
+      AmcInvoice.find({ clientId, isDeleted: false }).lean(),
+      AmcPayment.find({ clientId, isDeleted: false }).lean(),
+      SupportTicket.find({ clientId, isDeleted: false }).lean(),
+      AmcContract.find({ clientId, isDeleted: false }).lean(),
+      ClientAmcRequest ? ClientAmcRequest.find({ clientId, isDeleted: false }).lean() : [],
+    ]);
+
+    const existing = await ClientNotification.find({ clientId }).select("dedupKey").lean();
+    const existingSet = new Set(existing.map((n) => n.dedupKey).filter(Boolean));
+
+    const toInsert = [];
+
+    // 1. Invoices
+    for (const inv of invoices) {
+      const key = `inv_${inv._id}`;
+      if (!existingSet.has(key)) {
+        const amtStr = inv.totalAmount ? Number(inv.totalAmount).toLocaleString("en-IN") : "0";
+        toInsert.push({
+          clientId,
+          type: "INVOICE_GENERATED",
+          title: "Invoice Generated",
+          message: `Invoice ${inv.invoiceCode || "AMC"} for ₹${amtStr} has been generated.`,
+          entityType: "invoice",
+          entityCode: inv.invoiceCode || "",
+          entityId: inv._id,
+          navigationTarget: "billing",
+          dedupKey: key,
+          createdAt: inv.createdAt || inv.invoiceDate || new Date(),
+        });
+        existingSet.add(key);
+      }
+    }
+
+    // 2. Payments
+    for (const pay of payments) {
+      const key = `pay_${pay._id}`;
+      if (!existingSet.has(key)) {
+        const amtStr = pay.amount ? Number(pay.amount).toLocaleString("en-IN") : "0";
+        toInsert.push({
+          clientId,
+          type: "PAYMENT_RECEIVED",
+          title: "Payment Received",
+          message: `Payment of ₹${amtStr} received against invoice ${pay.invoiceCode || "—"}. Receipt ${pay.paymentCode || ""}.`,
+          entityType: "payment",
+          entityCode: pay.paymentCode || "",
+          entityId: pay._id,
+          navigationTarget: "billing",
+          dedupKey: key,
+          createdAt: pay.createdAt || pay.paymentDate || new Date(),
+        });
+        existingSet.add(key);
+      }
+    }
+
+    // 3. Support Tickets
+    for (const tkt of tickets) {
+      const createdKey = `tkt_created_${tkt._id}`;
+      if (!existingSet.has(createdKey)) {
+        toInsert.push({
+          clientId,
+          type: "TICKET_CREATED",
+          title: "Support Ticket Raised",
+          message: `Support ticket ${tkt.ticketCode} (${tkt.title}) has been registered.`,
+          entityType: "ticket",
+          entityCode: tkt.ticketCode || "",
+          entityId: tkt._id,
+          navigationTarget: "tickets",
+          dedupKey: createdKey,
+          createdAt: tkt.createdAt || new Date(),
+        });
+        existingSet.add(createdKey);
+      }
+
+      // Process ticket timeline transitions (supports repeated transitions like New -> In Progress -> Resolved -> Reopened -> In Progress)
+      if (Array.isArray(tkt.timeline) && tkt.timeline.length > 0) {
+        for (const entry of tkt.timeline) {
+          if (!entry || !entry._id) continue;
+
+          // Skip the creation timeline event since it's already covered by tkt_created_${tkt._id}
+          const isCreationEntry =
+            entry.type === "created" ||
+            (entry.title && entry.title.toLowerCase() === "ticket created");
+          if (isCreationEntry) continue;
+
+          const entryType = (entry.type || "").toLowerCase();
+          const entryTitle = (entry.title || "").toLowerCase();
+          const entryDesc = (entry.description || "");
+
+          const isResolved =
+            entryType === "resolved" ||
+            entryTitle.includes("resolved") ||
+            entryDesc.toLowerCase().includes("status changed to resolved");
+
+          const isClosed =
+            entryType === "closed" ||
+            entryTitle.includes("closed") ||
+            entryDesc.toLowerCase().includes("status changed to closed");
+
+          const isReopened =
+            entryType === "reopened" ||
+            entryTitle.includes("reopened");
+
+          const isStatusChange =
+            entryType === "status" ||
+            entryTitle.includes("status") ||
+            isReopened;
+
+          const statusKey = `tkt_status_${tkt._id}_${entry._id}`;
+
+          if (isResolved) {
+            const legacyResolvedKey = `tkt_resolved_${tkt._id}`;
+            if (!existingSet.has(statusKey) && !existingSet.has(legacyResolvedKey)) {
+              toInsert.push({
+                clientId,
+                type: "TICKET_RESOLVED",
+                title: "Support Ticket Resolved",
+                message: `Support ticket ${tkt.ticketCode} has been marked as resolved.`,
+                entityType: "ticket",
+                entityCode: tkt.ticketCode || "",
+                entityId: tkt._id,
+                navigationTarget: "tickets",
+                dedupKey: statusKey,
+                createdAt: entry.createdAt || tkt.resolvedAt || new Date(),
+              });
+              existingSet.add(statusKey);
+            }
+          } else if (isClosed) {
+            const legacyResolvedKey = `tkt_resolved_${tkt._id}`;
+            if (!existingSet.has(statusKey) && !existingSet.has(legacyResolvedKey)) {
+              toInsert.push({
+                clientId,
+                type: "TICKET_RESOLVED",
+                title: "Support Ticket Closed",
+                message: `Support ticket ${tkt.ticketCode} has been closed.`,
+                entityType: "ticket",
+                entityCode: tkt.ticketCode || "",
+                entityId: tkt._id,
+                navigationTarget: "tickets",
+                dedupKey: statusKey,
+                createdAt: entry.createdAt || tkt.closedAt || new Date(),
+              });
+              existingSet.add(statusKey);
+            }
+          } else if (isStatusChange) {
+            if (!existingSet.has(statusKey)) {
+              let statusName = "";
+              if (isReopened) {
+                statusName = "Reopened";
+              } else {
+                const match = entryDesc.match(/to\s+([A-Za-z\s]+)/i);
+                if (match && match[1]) {
+                  statusName = match[1].trim();
+                } else if (entryTitle.includes("in progress")) {
+                  statusName = "In Progress";
+                }
+              }
+
+              const msg = statusName
+                ? `Support ticket ${tkt.ticketCode} status updated to ${statusName}.`
+                : `Support ticket ${tkt.ticketCode} status updated.`;
+
+              toInsert.push({
+                clientId,
+                type: "TICKET_UPDATED",
+                title: isReopened ? "Support Ticket Reopened" : "Support Ticket Updated",
+                message: msg,
+                entityType: "ticket",
+                entityCode: tkt.ticketCode || "",
+                entityId: tkt._id,
+                navigationTarget: "tickets",
+                dedupKey: statusKey,
+                createdAt: entry.createdAt || tkt.updatedAt || new Date(),
+              });
+              existingSet.add(statusKey);
+            }
+          }
+        }
+      }
+
+      // Safe fallback for legacy tickets without timeline status entries
+      const hasTimelineStatus =
+        Array.isArray(tkt.timeline) &&
+        tkt.timeline.some((e) =>
+          ["status", "resolved", "closed", "reopened"].includes((e.type || "").toLowerCase())
+        );
+
+      if (!hasTimelineStatus) {
+        if (["Resolved", "Closed"].includes(tkt.status)) {
+          const resolvedKey = `tkt_resolved_${tkt._id}`;
+          if (!existingSet.has(resolvedKey)) {
+            toInsert.push({
+              clientId,
+              type: "TICKET_RESOLVED",
+              title: "Support Ticket Resolved",
+              message: `Support ticket ${tkt.ticketCode} has been marked as ${tkt.status.toLowerCase()}.`,
+              entityType: "ticket",
+              entityCode: tkt.ticketCode || "",
+              entityId: tkt._id,
+              navigationTarget: "tickets",
+              dedupKey: resolvedKey,
+              createdAt: tkt.resolvedAt || tkt.updatedAt || new Date(),
+            });
+            existingSet.add(resolvedKey);
+          }
+        } else if (tkt.status && !["Open", "New"].includes(tkt.status)) {
+          const updateKey = `tkt_status_${tkt._id}_${tkt.status}`;
+          if (!existingSet.has(updateKey)) {
+            toInsert.push({
+              clientId,
+              type: "TICKET_UPDATED",
+              title: "Support Ticket Updated",
+              message: `Support ticket ${tkt.ticketCode} status updated to ${tkt.status}.`,
+              entityType: "ticket",
+              entityCode: tkt.ticketCode || "",
+              entityId: tkt._id,
+              navigationTarget: "tickets",
+              dedupKey: updateKey,
+              createdAt: tkt.updatedAt || new Date(),
+            });
+            existingSet.add(updateKey);
+          }
+        }
+      }
+    }
+
+    // 4. AMC Contracts & Documents
+    const now = new Date();
+    for (const ctr of contracts) {
+      if (ctr.expiryDate) {
+        const expDate = new Date(ctr.expiryDate);
+        const diffMs = expDate - now;
+        const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+        if (days > 0 && days <= 30) {
+          const expDateIso = expDate.toISOString().slice(0, 10);
+          const expKey = `amc_exp_${ctr._id}_${expDateIso}_30d`;
+          const legacyMonthKey = `${expDate.getFullYear()}_${expDate.getMonth() + 1}`;
+          const legacyExpKey = `amc_exp_${ctr._id}_${legacyMonthKey}`;
+
+          if (!existingSet.has(expKey) && !existingSet.has(legacyExpKey)) {
+            toInsert.push({
+              clientId,
+              type: "AMC_EXPIRING",
+              title: "AMC Expiring Soon",
+              message: `Your ${ctr.productName || "AMC Support"} contract expires in ${days} days.`,
+              entityType: "amc",
+              entityCode: ctr.contractCode || "",
+              entityId: ctr._id,
+              navigationTarget: "billing",
+              dedupKey: expKey,
+              createdAt: new Date(),
+            });
+            existingSet.add(expKey);
+          }
+        }
+      }
+
+      if (ctr.renewalStatus === "Renewed") {
+        const renKey = `amc_renewed_${ctr._id}`;
+        if (!existingSet.has(renKey)) {
+          toInsert.push({
+            clientId,
+            type: "AMC_RENEWED",
+            title: "AMC Contract Renewed",
+            message: `Your ${ctr.productName || "AMC Support"} contract has been renewed successfully.`,
+            entityType: "amc",
+            entityCode: ctr.contractCode || "",
+            entityId: ctr._id,
+            navigationTarget: "billing",
+            dedupKey: renKey,
+            createdAt: ctr.updatedAt || ctr.createdAt || new Date(),
+          });
+          existingSet.add(renKey);
+        }
+      }
+
+      // Shared Documents
+      if (Array.isArray(ctr.documents)) {
+        for (const doc of ctr.documents) {
+          if (!doc.isDeleted && doc.status !== "Archived") {
+            const docKey = `doc_${doc._id}`;
+            if (!existingSet.has(docKey)) {
+              toInsert.push({
+                clientId,
+                type: "DOCUMENT_SHARED",
+                title: "New Document Shared",
+                message: `A new document (${doc.documentType || "Agreement"}) has been shared with you.`,
+                entityType: "document",
+                entityCode: doc.fileName || "",
+                entityId: doc._id,
+                navigationTarget: "documents",
+                dedupKey: docKey,
+                createdAt: doc.uploadedAt || ctr.createdAt || new Date(),
+              });
+              existingSet.add(docKey);
+            }
+          }
+        }
+      }
+    }
+
+    // 5. AMC Renewal & Quotation Requests
+    if (Array.isArray(amcRequests)) {
+      for (const req of amcRequests) {
+        // Submission notification
+        const subKey = `amc_req_sub_${req._id}`;
+        if (!existingSet.has(subKey)) {
+          toInsert.push({
+            clientId,
+            type: "AMC_REQUEST_SUBMITTED",
+            title: `${req.requestType} Submitted`,
+            message: `Your ${req.requestType} request (${req.requestCode}) for ${req.productName} has been submitted for review.`,
+            entityType: "amc",
+            entityCode: req.requestCode || "",
+            entityId: req.contractId || req._id,
+            navigationTarget: "billing",
+            dedupKey: subKey,
+            createdAt: req.createdAt || new Date(),
+          });
+          existingSet.add(subKey);
+        }
+
+        // Quotation ready notification
+        if (req.status === "Quotation Ready") {
+          const quoteKey = `amc_req_quote_${req._id}`;
+          if (!existingSet.has(quoteKey)) {
+            toInsert.push({
+              clientId,
+              type: "AMC_QUOTATION_READY",
+              title: "Quotation Ready",
+              message: `Quotation for ${req.requestCode} (${req.productName}) is ready for your review.`,
+              entityType: "amc",
+              entityCode: req.requestCode || "",
+              entityId: req.contractId || req._id,
+              navigationTarget: "billing",
+              dedupKey: quoteKey,
+              createdAt: req.updatedAt || new Date(),
+            });
+            existingSet.add(quoteKey);
+          }
+        }
+
+        // Completed notification
+        if (req.status === "Completed") {
+          const compKey = `amc_req_comp_${req._id}`;
+          if (!existingSet.has(compKey)) {
+            toInsert.push({
+              clientId,
+              type: "AMC_REQUEST_UPDATED",
+              title: "AMC Request Processed",
+              message: `Your ${req.requestType} request (${req.requestCode}) has been processed.`,
+              entityType: "amc",
+              entityCode: req.requestCode || "",
+              entityId: req.contractId || req._id,
+              navigationTarget: "billing",
+              dedupKey: compKey,
+              createdAt: req.updatedAt || new Date(),
+            });
+            existingSet.add(compKey);
+          }
+        }
+      }
+    }
+
+    if (toInsert.length > 0) {
+      await ClientNotification.insertMany(toInsert, { ordered: false }).catch(() => {
+        // Ignore duplicate key conflicts gracefully
+      });
+    }
+  } catch (err) {
+    console.error("Error in syncClientNotifications:", err.message);
+  }
+}
+
+function formatClientNotification(n) {
+  if (!n) return null;
+  return {
+    id: String(n._id),
+    _id: String(n._id),
+    type: n.type,
+    title: n.title,
+    message: n.message,
+    entityType: n.entityType || "other",
+    entityCode: n.entityCode || "",
+    entityId: n.entityId ? String(n.entityId) : null,
+    navigationTarget: n.navigationTarget || "overview",
+    isRead: Boolean(n.isRead),
+    readAt: n.readAt || null,
+    createdAt: n.createdAt,
+    updatedAt: n.updatedAt,
+  };
+}
+
+/* =========================================================
+   CLIENT NOTIFICATIONS ENDPOINTS
+   GET /api/client/notifications
+   PATCH /api/client/notifications/:id/read
+   PATCH /api/client/notifications/read-all
+========================================================= */
+
+router.get("/notifications", async (req, res, next) => {
+  try {
+    const { client, error } = await findOwnClient(req);
+    if (error) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+
+    // Idempotent background sync
+    await syncClientNotifications(client._id);
+
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const skip = (page - 1) * limit;
+    const filter = String(req.query.filter || "all").toLowerCase();
+
+    const query = { clientId: client._id };
+    if (filter === "unread") {
+      query.isRead = false;
+    } else if (filter === "billing") {
+      query.entityType = { $in: ["invoice", "payment"] };
+    } else if (filter === "tickets") {
+      query.entityType = "ticket";
+    } else if (filter === "amc" || filter === "contracts") {
+      query.entityType = "amc";
+    } else if (filter === "documents") {
+      query.entityType = "document";
+    }
+
+    const [total, unreadCount, notifs] = await Promise.all([
+      ClientNotification.countDocuments(query),
+      ClientNotification.countDocuments({ clientId: client._id, isRead: false }),
+      ClientNotification.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+    ]);
+
+    return res.json({
+      success: true,
+      notifications: notifs.map(formatClientNotification),
+      unreadCount,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit) || 1,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.patch("/notifications/:id/read", async (req, res, next) => {
+  try {
+    const { client, error } = await findOwnClient(req);
+    if (error) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Invalid notification ID." });
+    }
+
+    const notification = await ClientNotification.findOneAndUpdate(
+      { _id: id, clientId: client._id },
+      { $set: { isRead: true, readAt: new Date() } },
+      { new: true }
+    ).lean();
+
+    if (!notification) {
+      return res.status(404).json({ success: false, message: "Notification not found." });
+    }
+
+    const unreadCount = await ClientNotification.countDocuments({ clientId: client._id, isRead: false });
+
+    return res.json({
+      success: true,
+      notification: formatClientNotification(notification),
+      unreadCount,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.patch("/notifications/read-all", async (req, res, next) => {
+  try {
+    const { client, error } = await findOwnClient(req);
+    if (error) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+
+    await ClientNotification.updateMany(
+      { clientId: client._id, isRead: false },
+      { $set: { isRead: true, readAt: new Date() } }
+    );
+
+    return res.json({
+      success: true,
+      message: "All notifications marked as read.",
+      unreadCount: 0,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 module.exports = router;
+

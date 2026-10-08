@@ -7,7 +7,10 @@ import ClientBilling from "./ClientBilling";
 import MyProducts from "./MyProducts";
 import ClientDashboard from "./ClientDashboard";
 import ZiaAssistantDrawer from "./ZiaAssistantDrawer";
-import BottomDock from "../components/layout/BottomDock";
+import NotificationHistoryDrawer, {
+  formatRelativeTime,
+  getNotificationMeta,
+} from "./NotificationHistoryDrawer";
 import API_URL from "../config/api";
 import {
   Bell,
@@ -107,6 +110,13 @@ export default function ClientLayout({ onLogout }) {
   const [ziaOpen, setZiaOpen] = useState(false);
   const [remindersOpen, setRemindersOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
+  const [notificationHistoryOpen, setNotificationHistoryOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifFilter, setNotifFilter] = useState("all");
+  const [notifPage, setNotifPage] = useState(1);
+  const [notifHasMore, setNotifHasMore] = useState(false);
+  const [notifLoading, setNotifLoading] = useState(false);
   const [client, setClient] = useState(null);
 
   const profileRef = useRef(null);
@@ -122,6 +132,85 @@ export default function ClientLayout({ onLogout }) {
       sessionStorage.getItem("client-connect-token") ||
       ""
     );
+  };
+
+  const fetchNotifications = async (page = 1, filter = "all", append = false) => {
+    try {
+      setNotifLoading(true);
+      const params = new URLSearchParams({ page: String(page), limit: "20" });
+      if (filter && filter !== "all") {
+        params.append("filter", filter);
+      }
+      const response = await fetch(`${API_URL}/api/client/notifications?${params.toString()}`, {
+        headers: {
+          Authorization: `Bearer ${getAuthToken()}`,
+        },
+      });
+      const data = await response.json();
+      if (data.success) {
+        if (append) {
+          setNotifications((prev) => [...prev, ...(data.notifications || [])]);
+        } else {
+          setNotifications(data.notifications || []);
+        }
+        setUnreadCount(typeof data.unreadCount === "number" ? data.unreadCount : 0);
+        setNotifHasMore(data.page < data.totalPages);
+        setNotifPage(data.page || 1);
+      }
+    } catch (err) {
+      console.error("Failed to load notifications:", err);
+    } finally {
+      setNotifLoading(false);
+    }
+  };
+
+  const handleMarkAsRead = async (id) => {
+    try {
+      const response = await fetch(`${API_URL}/api/client/notifications/${id}/read`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${getAuthToken()}`,
+        },
+      });
+      const data = await response.json();
+      if (data.success) {
+        setNotifications((prev) =>
+          prev.map((n) => ((n.id === id || n._id === id) ? { ...n, isRead: true, readAt: new Date() } : n))
+        );
+        setUnreadCount((prev) => Math.max(0, prev - 1));
+      }
+    } catch (err) {
+      console.error("Failed to mark notification as read:", err);
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/client/notifications/read-all`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${getAuthToken()}`,
+        },
+      });
+      const data = await response.json();
+      if (data.success) {
+        setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true, readAt: new Date() })));
+        setUnreadCount(0);
+      }
+    } catch (err) {
+      console.error("Failed to mark all as read:", err);
+    }
+  };
+
+  const handleFilterChange = (newFilter) => {
+    setNotifFilter(newFilter);
+    fetchNotifications(1, newFilter, false);
+  };
+
+  const handleLoadMoreNotifications = () => {
+    if (!notifLoading && notifHasMore) {
+      fetchNotifications(notifPage + 1, notifFilter, true);
+    }
   };
 
   useEffect(() => {
@@ -144,6 +233,7 @@ export default function ClientLayout({ onLogout }) {
     };
 
     loadClient();
+    fetchNotifications(1, "all", false);
   }, []);
 
   // Keyboard shortcut Ctrl+B to toggle sidebar
@@ -192,8 +282,11 @@ export default function ClientLayout({ onLogout }) {
     [activeMenu]
   );
 
-  const handleNavigation = (menuId) => {
+  const [navParams, setNavParams] = useState({});
+
+  const handleNavigation = (menuId, params = {}) => {
     setActiveMenu(menuId);
+    setNavParams(params || {});
     setSidebarOpen(false);
     setProfileMenuOpen(false);
     setNotificationOpen(false);
@@ -203,14 +296,6 @@ export default function ClientLayout({ onLogout }) {
     item.label.toLowerCase().includes(portalSearch.toLowerCase()) ||
     item.description.toLowerCase().includes(portalSearch.toLowerCase())
   );
-
-  const clientPins = [
-    { id: "overview", label: "Overview" },
-    { id: "products", label: "My Products" },
-    { id: "billing", label: "Bills & AMC" },
-    { id: "tickets", label: "Support Tickets" },
-    { id: "documents", label: "Documents" },
-  ];
 
   const renderPage = () => {
     if (activeMenu === "overview") {
@@ -223,10 +308,10 @@ export default function ClientLayout({ onLogout }) {
       return <ClientBilling />;
     }
     if (activeMenu === "tickets") {
-      return <ClientTickets client={client} />;
+      return <ClientTickets client={client} navParams={navParams} onNavigate={handleNavigation} />;
     }
     if (activeMenu === "documents") {
-      return <ClientDocuments />;
+      return <ClientDocuments onNavigate={handleNavigation} />;
     }
     if (activeMenu === "profile") {
       return <ClientProfile client={client} />;
@@ -358,50 +443,6 @@ export default function ClientLayout({ onLogout }) {
             </div>
           </div>
         )}
-
-        {/* Top Zoho Shortcuts Strip */}
-        <div className="flex items-center justify-around border-b border-[#1E293B] px-2 py-1.5 text-slate-400">
-          <button
-            type="button"
-            onClick={() => handleNavigation("overview")}
-            title="Overview"
-            className={`flex h-7 w-7 items-center justify-center rounded hover:bg-[#1E293B] hover:text-white transition ${
-              activeMenu === "overview" ? "bg-[#1B59F8]/20 text-blue-400" : ""
-            }`}
-          >
-            <LayoutDashboard size={14} />
-          </button>
-          <button
-            type="button"
-            onClick={() => handleNavigation("products")}
-            title="My Products"
-            className={`flex h-7 w-7 items-center justify-center rounded hover:bg-[#1E293B] hover:text-white transition ${
-              activeMenu === "products" ? "bg-[#1B59F8]/20 text-blue-400" : ""
-            }`}
-          >
-            <Boxes size={14} />
-          </button>
-          <button
-            type="button"
-            onClick={() => handleNavigation("billing")}
-            title="Bills & AMC"
-            className={`flex h-7 w-7 items-center justify-center rounded hover:bg-[#1E293B] hover:text-white transition ${
-              activeMenu === "billing" ? "bg-[#1B59F8]/20 text-blue-400" : ""
-            }`}
-          >
-            <CreditCard size={14} />
-          </button>
-          <button
-            type="button"
-            onClick={() => handleNavigation("tickets")}
-            title="Support Tickets"
-            className={`flex h-7 w-7 items-center justify-center rounded hover:bg-[#1E293B] hover:text-white transition ${
-              activeMenu === "tickets" ? "bg-[#1B59F8]/20 text-blue-400" : ""
-            }`}
-          >
-            <Headphones size={14} />
-          </button>
-        </div>
 
         {/* Navigation Links */}
         <nav className="flex-1 overflow-y-auto px-2 py-2 space-y-1">
@@ -545,23 +586,8 @@ export default function ClientLayout({ onLogout }) {
             </div>
           </div>
 
-          {/* Center: Zoho Omni-Search Records Bar */}
-          <div className="hidden sm:flex flex-1 max-w-md mx-4 items-center justify-center">
-            <div className="relative w-full">
-              <Search
-                size={13}
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
-              />
-              <input
-                type="text"
-                placeholder="Search tickets, bills, products, files..."
-                className="h-8 w-full rounded-lg border border-slate-200 bg-slate-50/90 pl-8 pr-12 text-xs text-slate-800 placeholder:text-slate-400 focus:border-[#1B59F8] focus:ring-1 focus:ring-[#1B59F8]/20 focus:bg-white focus:outline-hidden transition shadow-2xs"
-              />
-              <kbd className="absolute right-2 top-1/2 -translate-y-1/2 rounded border border-slate-200 bg-white px-1 py-0.5 text-[9px] font-semibold text-slate-400">
-                Ctrl K
-              </kbd>
-            </div>
-          </div>
+          {/* Center spacer / layout balance */}
+          <div className="hidden sm:block flex-1 max-w-xs" />
 
           {/* Right Action Cluster */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
@@ -661,7 +687,7 @@ export default function ClientLayout({ onLogout }) {
                 <div className="absolute right-0 mt-2 w-72 rounded-xl border border-slate-200 bg-white p-2.5 shadow-xl z-50 text-xs">
                   <div className="border-b border-slate-100 pb-1.5 mb-1.5 flex items-center justify-between">
                     <span className="font-bold text-slate-900">Account Reminders</span>
-                    <span className="text-[10px] text-slate-400">Zoho Alert</span>
+                    <span className="text-[10px] text-slate-400 font-medium">Account Notice</span>
                   </div>
                   <div className="space-y-1.5">
                     <div className="p-2 rounded-lg bg-slate-50 border border-slate-100">
@@ -686,18 +712,107 @@ export default function ClientLayout({ onLogout }) {
                 className="relative flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
               >
                 <Bell size={15} />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow-xs animate-in zoom-in-50 duration-150">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
               </button>
 
               {notificationOpen && (
-                <div className="absolute right-0 mt-2 w-80 rounded-xl border border-slate-200 bg-white p-2 shadow-xl z-50 text-xs">
-                  <div className="border-b border-slate-100 px-2 py-1.5 flex items-center justify-between">
-                    <span className="font-bold text-slate-900 uppercase tracking-wide">Account Updates</span>
-                  </div>
-                  <div className="py-2 px-1">
-                    <div className="p-2 rounded-lg bg-slate-50">
-                      <p className="font-semibold text-slate-800">Support Desk Online</p>
-                      <p className="text-[11px] text-slate-500 mt-0.5">You can submit new support tickets or check resolution updates anytime.</p>
+                <div className="absolute right-0 mt-2 w-80 sm:w-88 rounded-xl border border-slate-200 bg-white p-2 shadow-xl z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
+                  <div className="border-b border-slate-100 px-2.5 py-1.5 flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-slate-900 uppercase tracking-wide">
+                        Account Updates
+                      </span>
+                      {unreadCount > 0 && (
+                        <span className="rounded-full bg-rose-500 px-1.5 py-0.2 text-[9px] font-bold text-white">
+                          {unreadCount}
+                        </span>
+                      )}
                     </div>
+                    {unreadCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleMarkAllAsRead}
+                        className="text-[11px] font-semibold text-[#1B59F8] hover:underline cursor-pointer"
+                      >
+                        Mark all read
+                      </button>
+                    )}
+                  </div>
+
+                  {/* List of latest 5 */}
+                  <div className="py-1 divide-y divide-slate-100 max-h-80 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <div className="p-4 text-center text-slate-400">
+                        <p className="text-xs">No notifications yet</p>
+                      </div>
+                    ) : (
+                      notifications.slice(0, 5).map((n) => {
+                        const meta = getNotificationMeta(n.type);
+                        const Icon = meta.icon;
+                        return (
+                          <div
+                            key={n.id || n._id}
+                            onClick={() => {
+                              if (!n.isRead) handleMarkAsRead(n.id || n._id);
+                              if (n.navigationTarget) handleNavigation(n.navigationTarget);
+                              setNotificationOpen(false);
+                            }}
+                            className={`p-2.5 rounded-lg transition cursor-pointer flex items-start gap-2.5 ${
+                              n.isRead
+                                ? "hover:bg-slate-50"
+                                : "bg-blue-50/50 hover:bg-blue-50/80"
+                            }`}
+                          >
+                            <div
+                              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border ${meta.color}`}
+                            >
+                              <Icon size={13} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-1">
+                                <p
+                                  className={`text-xs truncate ${
+                                    n.isRead
+                                      ? "font-semibold text-slate-800"
+                                      : "font-bold text-slate-900"
+                                  }`}
+                                >
+                                  {n.title}
+                                </p>
+                                <span className="text-[10px] text-slate-400 shrink-0">
+                                  {formatRelativeTime(n.createdAt)}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-600 line-clamp-2 mt-0.5">
+                                {n.message}
+                              </p>
+                            </div>
+                            {!n.isRead && (
+                              <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#1B59F8] shrink-0" />
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* Footer CTA */}
+                  <div className="border-t border-slate-100 pt-1.5 mt-1 px-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNotificationOpen(false);
+                        setNotificationHistoryOpen(true);
+                      }}
+                      className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-xs font-semibold text-[#1B59F8] transition cursor-pointer"
+                    >
+                      <span>View All Notifications</span>
+                      <ArrowRight size={13} />
+                    </button>
                   </div>
                 </div>
               )}
@@ -730,28 +845,12 @@ export default function ClientLayout({ onLogout }) {
           </div>
         </header>
 
-        {/* Page Content View with bottom dock clearance */}
-        <main className="flex-1 p-4 sm:p-5 md:p-6 pb-20 overflow-y-auto">
+        {/* Page Content View */}
+        <main className="flex-1 p-4 sm:p-5 md:p-6 pb-8 overflow-y-auto">
           <div className="mx-auto max-w-[1600px] w-full">
             {renderPage()}
           </div>
         </main>
-
-        {/* Zoho Bottom Quick Dock */}
-        <BottomDock
-          sidebarCollapsed={sidebarCollapsed}
-          onNavigate={handleNavigation}
-          pins={clientPins}
-          appName="Nexora Client Portal"
-          reminderCount={0}
-          reminders={[
-            {
-              title: "AMC Renewal Support",
-              message: "Dedicated support is active across all registered software licences.",
-              date: "Active",
-            },
-          ]}
-        />
 
         {/* Real Zia AI Assistant Drawer */}
         <ZiaAssistantDrawer
@@ -759,6 +858,22 @@ export default function ClientLayout({ onLogout }) {
           onClose={() => setZiaOpen(false)}
           client={client}
           onNavigate={handleNavigation}
+        />
+
+        {/* Real Client Notification History Drawer */}
+        <NotificationHistoryDrawer
+          isOpen={notificationHistoryOpen}
+          onClose={() => setNotificationHistoryOpen(false)}
+          notifications={notifications}
+          unreadCount={unreadCount}
+          filter={notifFilter}
+          onFilterChange={handleFilterChange}
+          onMarkAsRead={handleMarkAsRead}
+          onMarkAllAsRead={handleMarkAllAsRead}
+          onNavigate={handleNavigation}
+          onLoadMore={handleLoadMoreNotifications}
+          hasMore={notifHasMore}
+          loading={notifLoading}
         />
       </div>
     </div>
