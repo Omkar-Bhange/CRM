@@ -13,6 +13,7 @@ import {
   Sparkles,
   Receipt,
   Info,
+  Scale,
 } from "lucide-react";
 import API_URL from "../../config/api";
 
@@ -66,6 +67,7 @@ export default function RenewAmcModal({
   const [basicAmount, setBasicAmount] = useState(0);
   const [gstApplicable, setGstApplicable] = useState("YES");
   const [gstRate, setGstRate] = useState(18);
+  const [zeroGstReason, setZeroGstReason] = useState("Commercial Invoice (Zero-GST / Non-Taxable Supply)");
   const [notes, setNotes] = useState("");
   const [idempotencyKey, setIdempotencyKey] = useState("");
 
@@ -101,6 +103,7 @@ export default function RenewAmcModal({
       const prevGst = String(contract.gstApplicable || "YES").toUpperCase() === "NO" ? "NO" : "YES";
       setGstApplicable(prevGst);
       setGstRate(18);
+      setZeroGstReason("Commercial Invoice (Zero-GST / Non-Taxable Supply)");
       setNotes("");
 
       // Generate unique idempotency key for this session
@@ -166,7 +169,7 @@ export default function RenewAmcModal({
         totalTaxAmount: 0,
         totalAmount: taxable,
         taxType,
-        taxClassification: "Non-GST Supply",
+        taxClassification: zeroGstReason || "Commercial Invoice (Zero-GST / Non-Taxable Supply)",
       };
     }
 
@@ -174,12 +177,15 @@ export default function RenewAmcModal({
     let cgstRate = 0;
     let sgstRate = 0;
     let igstRate = 0;
+    let resolvedTaxClassification = "";
 
     if (taxType === "intra") {
       cgstRate = rate / 2;
       sgstRate = rate / 2;
+      resolvedTaxClassification = `Intra-State Taxable Supply (${rate}% GST)`;
     } else {
       igstRate = rate;
+      resolvedTaxClassification = `Inter-State Taxable Supply (${rate}% IGST)`;
     }
 
     const cgstAmount = roundAmount((taxable * cgstRate) / 100);
@@ -199,9 +205,9 @@ export default function RenewAmcModal({
       totalTaxAmount,
       totalAmount,
       taxType,
-      taxClassification: `Standard Rate (${rate}%)`,
+      taxClassification: resolvedTaxClassification,
     };
-  }, [basicAmount, gstApplicable, gstRate, taxType]);
+  }, [basicAmount, gstApplicable, gstRate, taxType, zeroGstReason]);
 
   // Handle Form Submission
   const handleSubmitRenewal = async (e) => {
@@ -662,9 +668,34 @@ export default function RenewAmcModal({
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-center space-x-2.5 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-600 shadow-xs">
-                    <Info className="h-4 w-4 shrink-0 text-slate-400" />
-                    <span>GST is turned OFF for this renewal. No tax will be added; Total Invoice Amount equals Basic Amount.</span>
+                  <div className="space-y-2.5 pt-1">
+                    <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-900">
+                      <div className="flex items-center space-x-1.5 font-bold mb-1">
+                        <Scale className="h-4 w-4 text-amber-700" />
+                        <span>Statutory Zero-GST Rationale</span>
+                      </div>
+                      <select
+                        value={zeroGstReason}
+                        onChange={(e) => setZeroGstReason(e.target.value)}
+                        className="w-full mt-1.5 rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      >
+                        <option value="Commercial Invoice (Zero-GST / Non-Taxable Supply)">
+                          Commercial Invoice (Zero-GST / Non-Taxable Supply)
+                        </option>
+                        <option value="SEZ Unit / Developer (Supply under LUT without IGST)">
+                          SEZ Unit / Developer (Supply under LUT without IGST)
+                        </option>
+                        <option value="Export of Services (Zero-Rated under LUT)">
+                          Export of Services (Zero-Rated under LUT)
+                        </option>
+                        <option value="Tax Exempt Supply as per Statutory Notification">
+                          Tax Exempt Supply as per Statutory Notification
+                        </option>
+                        <option value="Custom Commercial Agreement (Zero-Tax)">
+                          Custom Commercial Agreement (Zero-Tax)
+                        </option>
+                      </select>
+                    </div>
                   </div>
                 )}
               </section>
