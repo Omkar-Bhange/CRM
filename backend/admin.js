@@ -32888,6 +32888,56 @@ router.post(
         ? String(taxType).toLowerCase()
         : derivedTaxType;
 
+      // Statutory Tax Classification & Eligibility Validation
+      const validZeroGstReasons = [
+        "Commercial Invoice (Zero-GST / Non-Taxable Supply)",
+        "SEZ Unit / Developer (Supply under LUT without IGST)",
+        "Export of Services (Zero-Rated under LUT)",
+        "Tax Exempt Supply as per Statutory Notification",
+        "Custom Commercial Agreement (Zero-Tax)",
+      ];
+
+      let resolvedTaxClassification = "";
+
+      if (normalizedGstApplicable === "NO") {
+        const suppliedReason = String(taxClassification || "").trim();
+        if (suppliedReason && !validZeroGstReasons.includes(suppliedReason)) {
+          return res.status(400).json({
+            success: false,
+            message: `Invalid statutory zero-tax reason. Must be one of: ${validZeroGstReasons.join(", ")}`,
+          });
+        }
+        resolvedTaxClassification = suppliedReason || "Commercial Invoice (Zero-GST / Non-Taxable Supply)";
+
+        // Enforce statutory eligibility for specific tax concessions
+        if (resolvedTaxClassification === "SEZ Unit / Developer (Supply under LUT without IGST)") {
+          const clientGstin = String(client?.gstNumber || client?.gstin || "").trim();
+          if (!clientGstin && !client?.isSez) {
+            return res.status(400).json({
+              success: false,
+              message: "SEZ zero-tax supply requires a valid recipient GSTIN or registered SEZ unit designation.",
+            });
+          }
+        }
+
+        if (resolvedTaxClassification === "Export of Services (Zero-Rated under LUT)") {
+          const clientCountry = String(client?.billingAddress?.country || client?.country || "India").trim().toLowerCase();
+          const isIndia = clientCountry === "india" || clientCountry === "in" || clientCountry === "";
+          if (isIndia && !req.body.isExportSupply) {
+            return res.status(400).json({
+              success: false,
+              message: "Export of Services (Zero-Rated under LUT) requires foreign place of supply or certified export declaration.",
+            });
+          }
+        }
+      } else {
+        if (normalizedTaxType === "intra") {
+          resolvedTaxClassification = `Intra-State Taxable Supply (${authorizedGstRate}% GST)`;
+        } else {
+          resolvedTaxClassification = `Inter-State Taxable Supply (${authorizedGstRate}% IGST)`;
+        }
+      }
+
       /* =================================================
          CALCULATE NEW AMC PERIOD
       ================================================= */
@@ -33100,20 +33150,14 @@ router.post(
             let calculatedCgstRate = 0;
             let calculatedSgstRate = 0;
             let calculatedIgstRate = 0;
-            let resolvedTaxClassification = "Commercial Invoice (Zero-GST / Non-Taxable Supply)";
 
             if (normalizedGstApplicable === "YES") {
               if (normalizedTaxType === "intra") {
                 calculatedCgstRate = authorizedGstRate / 2;
                 calculatedSgstRate = authorizedGstRate / 2;
-                resolvedTaxClassification = `Intra-State Taxable Supply (${authorizedGstRate}% GST)`;
               } else {
                 calculatedIgstRate = authorizedGstRate;
-                resolvedTaxClassification = `Inter-State Taxable Supply (${authorizedGstRate}% IGST)`;
               }
-            } else {
-              resolvedTaxClassification =
-                taxClassification || "Commercial Invoice (Zero-GST / Non-Taxable Supply)";
             }
 
             const authoritativeAmounts = calculateAmcAmounts({
