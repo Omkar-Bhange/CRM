@@ -5684,6 +5684,48 @@ const amcRenewalHistorySchema =
         trim: true,
       },
 
+      cycleNumber: {
+        type: Number,
+        default: 1,
+      },
+
+      previousInvoiceId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "AmcInvoice",
+        default: null,
+      },
+
+      previousInvoiceCode: {
+        type: String,
+        default: "",
+        trim: true,
+        uppercase: true,
+      },
+
+      gstApplicable: {
+        type: String,
+        enum: ["YES", "NO"],
+        default: "YES",
+      },
+
+      taxType: {
+        type: String,
+        enum: ["intra", "inter"],
+        default: "intra",
+      },
+
+      totalTaxAmount: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      taxClassification: {
+        type: String,
+        default: "Standard Rate (18%)",
+        trim: true,
+      },
+
       notes: {
         type: String,
         default: "",
@@ -6045,6 +6087,126 @@ timeline: {
 
   default: [],
 },
+
+      upcomingRenewal: {
+        invoiceId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "AmcInvoice",
+          default: null,
+        },
+        invoiceCode: {
+          type: String,
+          default: "",
+          trim: true,
+          uppercase: true,
+        },
+        startDate: {
+          type: Date,
+          default: null,
+        },
+        expiryDate: {
+          type: Date,
+          default: null,
+        },
+        dueDate: {
+          type: Date,
+          default: null,
+        },
+        plan: {
+          type: String,
+          default: "Standard",
+          trim: true,
+        },
+        licensedUsers: {
+          type: Number,
+          default: 1,
+          min: 1,
+        },
+        taxableAmount: {
+          type: Number,
+          default: 0,
+          min: 0,
+        },
+        cgstRate: {
+          type: Number,
+          default: 0,
+          min: 0,
+        },
+        cgstAmount: {
+          type: Number,
+          default: 0,
+          min: 0,
+        },
+        sgstRate: {
+          type: Number,
+          default: 0,
+          min: 0,
+        },
+        sgstAmount: {
+          type: Number,
+          default: 0,
+          min: 0,
+        },
+        igstRate: {
+          type: Number,
+          default: 0,
+          min: 0,
+        },
+        igstAmount: {
+          type: Number,
+          default: 0,
+          min: 0,
+        },
+        totalTaxAmount: {
+          type: Number,
+          default: 0,
+          min: 0,
+        },
+        totalAmount: {
+          type: Number,
+          default: 0,
+          min: 0,
+        },
+        gstApplicable: {
+          type: String,
+          enum: ["YES", "NO"],
+          default: "YES",
+        },
+        taxType: {
+          type: String,
+          enum: ["intra", "inter"],
+          default: "intra",
+        },
+        taxClassification: {
+          type: String,
+          default: "Standard Rate (18%)",
+          trim: true,
+        },
+        paymentStatus: {
+          type: String,
+          default: "Pending",
+          trim: true,
+        },
+        notes: {
+          type: String,
+          default: "",
+          trim: true,
+        },
+        createdAt: {
+          type: Date,
+          default: null,
+        },
+      },
+
+      renewalLockAt: {
+        type: Date,
+        default: null,
+      },
+
+      renewalVersion: {
+        type: Number,
+        default: 0,
+      },
 
       createdBy: {
         type: mongoose.Schema.Types.ObjectId,
@@ -6452,6 +6614,20 @@ const amcInvoiceSchema =
         trim: true,
       },
 
+      taxClassification: {
+        type: String,
+        default: "Standard Rate (18%)",
+        trim: true,
+      },
+
+      idempotencyKey: {
+        type: String,
+        default: null,
+        trim: true,
+        index: true,
+        sparse: true,
+      },
+
       /*
        * Financial records should normally be cancelled,
        * not physically removed.
@@ -6500,6 +6676,25 @@ amcInvoiceSchema.index({
   invoiceDate: -1,
 });
 
+amcInvoiceSchema.index(
+  {
+    amcContractId: 1,
+    contractStartDate: 1,
+    isDeleted: 1,
+  },
+  {
+    unique: true,
+    name: "uniq_amc_contract_active_start",
+    partialFilterExpression: {
+      isDeleted: false,
+      status: {
+        $in: ["Issued", "Partially Paid", "Paid", "Overdue"],
+        $in: ["Issued", "Draft"],
+      },
+    },
+  }
+);
+
 amcInvoiceSchema.index({
   invoiceCode: "text",
   contractCode: "text",
@@ -6516,52 +6711,98 @@ const AmcInvoice =
     amcInvoiceSchema
   );
 
-  async function getNextAmcInvoiceIdentity() {
-  const now =
-    new Date();
+/* =====================================================
+   IDEMPOTENCY LOG SCHEMA (Persistent Multi-Tier Idempotency)
+===================================================== */
+const idempotencyLogSchema = new mongoose.Schema(
+  {
+    idempotencyKey: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      index: true,
+    },
+    endpoint: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    contractId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+      index: true,
+    },
+    payloadHash: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    status: {
+      type: String,
+      enum: ["IN_PROGRESS", "COMPLETED", "FAILED"],
+      default: "IN_PROGRESS",
+      index: true,
+    },
+    responseStatus: {
+      type: Number,
+      default: 200,
+    },
+    responseBody: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now,
+      expires: "7d",
+    },
+  },
+  {
+    timestamps: true,
+    collection: "idempotencylogs",
+  }
+);
 
-  const year =
-    now.getFullYear();
+const IdempotencyLog =
+  mongoose.models.IdempotencyLog ||
+  mongoose.model("IdempotencyLog", idempotencyLogSchema);
+
+async function getNextAmcInvoiceIdentity(options = {}) {
+  const now = new Date();
+  const year = now.getFullYear();
+  const session = options?.session || null;
 
   /*
    * Get the highest invoiceNumber currently stored.
    */
-  const lastInvoice =
-    await AmcInvoice.findOne({
-      isDeleted: {
-        $ne: true,
-      },
+  const lastInvoiceQuery = AmcInvoice.findOne({
+    isDeleted: {
+      $ne: true,
+    },
+  })
+    .sort({
+      invoiceNumber: -1,
+      createdAt: -1,
     })
-      .sort({
-        invoiceNumber: -1,
-        createdAt: -1,
-      })
-      .select(
-        "invoiceNumber invoiceCode"
-      )
-      .lean();
+    .select("invoiceNumber invoiceCode")
+    .lean();
 
-  const nextNumber =
-    Math.max(
-      Number(
-        lastInvoice?.invoiceNumber ||
-        0
-      ) + 1,
-      1
-    );
+  if (session) {
+    lastInvoiceQuery.session(session);
+  }
 
-  const invoiceCode =
-    `AMC-INV-${year}-${String(
-      nextNumber
-    ).padStart(
-      4,
-      "0"
-    )}`;
+  const lastInvoice = await lastInvoiceQuery;
+
+  const nextNumber = Math.max(
+    Number(lastInvoice?.invoiceNumber || 0) + 1,
+    1
+  );
+
+  const invoiceCode = `AMC-INV-${year}-${String(nextNumber).padStart(4, "0")}`;
 
   return {
-    invoiceNumber:
-      nextNumber,
-
+    invoiceNumber: nextNumber,
     invoiceCode,
   };
 }
@@ -7768,6 +8009,11 @@ function amcInvoiceResponse(
 
     notes:
       invoice.notes,
+    taxClassification:
+      invoice.taxClassification || "",
+
+    idempotencyKey:
+      invoice.idempotencyKey || null,
 
     createdAt:
       invoice.createdAt,
@@ -24831,6 +25077,8 @@ router.post(
        *
        * Legacy invoice amount fields are temporarily kept
        * for frontend compatibility. Financial truth is now
+       * stor
+... [truncated for diff preview]
        * stored inside AmcInvoice.
        */
       createdContract =
@@ -32542,799 +32790,877 @@ router.get(
   }
 );
 /* =====================================================
+/* =====================================================
    RENEW AMC CONTRACT + CREATE NEW PERMANENT INVOICE
    POST /api/admin/amc/contract/:id/renew
 
-   IMPORTANT:
-   - Existing invoice is NEVER overwritten.
-   - Existing payments are NEVER changed.
-   - Same AMC contract continues.
-   - A NEW permanent AmcInvoice is created.
+   PRODUCTION-GRADE WORKFLOW:
+   - ACID MongoDB Session Transaction with Concurrency Write-Lock
+   - Multi-Tier Persistent Idempotency (IdempotencyLog + Ledger Check)
+   - Dual-Period Architecture (upcomingRenewal for Early Renewals)
+   - Authoritative GST & Place of Supply (POS) Calculation
+   - Immutable Historical Invoices & Receipts Guaranteed
 ===================================================== */
 
 router.post(
   "/amc/contract/:id/renew",
+  authenticateUser,
   async (req, res) => {
-    let createdInvoice = null;
-
     try {
       const { id } = req.params;
 
       /* =================================================
-         VALIDATE CONTRACT ID
+         AUTHORIZATION CHECK
       ================================================= */
-
-      if (
-        !mongoose.Types.ObjectId.isValid(
-          id
-        )
-      ) {
-        return res.status(400).json({
+      const userRole = String(req.user?.role || "").toLowerCase();
+      if (!req.user || !["admin", "superadmin", "super_admin"].includes(userRole)) {
+        return res.status(403).json({
           success: false,
-          message:
-            "Invalid AMC contract ID.",
+          message: "Unauthorized. Administrator privileges required to renew AMC contracts.",
         });
       }
 
       /* =================================================
-         LOAD CONTRACT
+         VALIDATE CONTRACT ID
       ================================================= */
-
-      const contract =
-        await AmcContract.findOne({
-          _id: id,
-          isDeleted: false,
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid AMC contract ID.",
         });
+      }
+
+      /* =================================================
+         LOAD CONTRACT & CLIENT
+      ================================================= */
+      const contract = await AmcContract.findOne({
+        _id: id,
+        isDeleted: false,
+      });
 
       if (!contract) {
         return res.status(404).json({
           success: false,
-          message:
-            "AMC contract was not found.",
+          message: "AMC contract was not found.",
         });
       }
 
-      if (
-        contract.status ===
-        "Cancelled"
-      ) {
+      if (contract.status === "Cancelled") {
         return res.status(400).json({
           success: false,
-          message:
-            "A cancelled AMC contract cannot be renewed.",
+          message: "A cancelled AMC contract cannot be renewed.",
         });
       }
+
+      const client = await Client.findById(contract.clientId).lean();
 
       /* =================================================
-         FIND CURRENT / LATEST INVOICE
+         PARSE & NORMALIZE INPUTS
       ================================================= */
-
-      let previousInvoice =
-        await AmcInvoice.findOne({
-          amcContractId:
-            contract._id,
-
-          isDeleted:
-            false,
-
-          status: {
-            $ne: "Cancelled",
-          },
-        }).sort({
-          contractExpiryDate: -1,
-          invoiceDate: -1,
-          createdAt: -1,
-        });
-
-      if (!previousInvoice && contract.currentInvoiceId) {
-        previousInvoice = await AmcInvoice.findOne({
-          _id: contract.currentInvoiceId,
-          isDeleted: false,
-        });
-      }
-
-      if (!previousInvoice) {
-        previousInvoice = {
-          invoiceCode: contract.currentInvoiceCode || contract.contractCode || "PREV",
-          taxableAmount: contract.taxableAmount || 0,
-          cgstRate: contract.cgstRate || 0,
-          sgstRate: contract.sgstRate || 0,
-          igstRate: contract.igstRate || 0,
-          contractExpiryDate: contract.expiryDate,
-        };
-      }
-
-      /* =================================================
-         OPTIONAL VALUES FROM FRONTEND
-
-         If frontend does not send them, values are copied
-         from the previous AMC invoice.
-      ================================================= */
-
       const {
         startDate,
         expiryDate,
         dueDate,
-
         taxableAmount,
-
         cgstRate,
         sgstRate,
         igstRate,
-
         plan,
         licensedUsers,
-
+        gstApplicable = "YES",
+        taxType,
+        gstRate = 18,
+        taxClassification,
+        idempotencyKey,
         notes,
       } = req.body || {};
+
+      const normalizedGstApplicable = String(gstApplicable || "YES").toUpperCase() === "NO" ? "NO" : "YES";
+      const allowedGstRates = [0, 5, 12, 18, 28];
+      const parsedGstRate = Number(gstRate !== undefined ? gstRate : 18);
+      const authorizedGstRate = allowedGstRates.includes(parsedGstRate) ? parsedGstRate : 18;
+
+      // Determine Place of Supply (POS)
+      const clientState = String(client?.billingAddress?.state || client?.state || "").trim().toLowerCase();
+      const isClientMaharashtra = clientState === "maharashtra" || clientState === "mh" || clientState === "27";
+      const derivedTaxType = isClientMaharashtra ? "intra" : "inter";
+      const normalizedTaxType = ["intra", "inter"].includes(String(taxType).toLowerCase())
+        ? String(taxType).toLowerCase()
+        : derivedTaxType;
 
       /* =================================================
          CALCULATE NEW AMC PERIOD
       ================================================= */
-
       let newStartDate;
-
       if (startDate) {
-        newStartDate =
-          new Date(startDate);
+        newStartDate = new Date(startDate);
       } else {
-        /*
-         * New AMC starts the day after previous expiry.
-         */
-        newStartDate =
-          new Date(
-            previousInvoice
-              .contractExpiryDate ||
-            contract.expiryDate
-          );
-
-        newStartDate.setDate(
-          newStartDate.getDate() + 1
-        );
+        const baseExpiry = contract.expiryDate ? new Date(contract.expiryDate) : new Date();
+        newStartDate = new Date(baseExpiry);
+        newStartDate.setDate(newStartDate.getDate() + 1);
       }
 
-      if (
-        Number.isNaN(
-          newStartDate.getTime()
-        )
-      ) {
+      if (Number.isNaN(newStartDate.getTime())) {
         return res.status(400).json({
           success: false,
-          message:
-            "Unable to determine the new AMC start date.",
+          message: "Unable to determine a valid AMC start date.",
         });
       }
 
       let newExpiryDate;
-
       if (expiryDate) {
-        newExpiryDate =
-          new Date(expiryDate);
+        newExpiryDate = new Date(expiryDate);
       } else {
-        /*
-         * Example:
-         *
-         * Previous:
-         * 01-Apr-2026 → 31-Mar-2027
-         *
-         * New:
-         * 01-Apr-2027 → 31-Mar-2028
-         */
-
-        newExpiryDate =
-          new Date(newStartDate);
-
-        newExpiryDate.setFullYear(
-          newExpiryDate.getFullYear() + 1
-        );
-
-        newExpiryDate.setDate(
-          newExpiryDate.getDate() - 1
-        );
+        newExpiryDate = new Date(newStartDate);
+        newExpiryDate.setFullYear(newExpiryDate.getFullYear() + 1);
+        newExpiryDate.setDate(newExpiryDate.getDate() - 1);
       }
 
-      if (
-        Number.isNaN(
-          newExpiryDate.getTime()
-        )
-      ) {
+      if (Number.isNaN(newExpiryDate.getTime())) {
         return res.status(400).json({
           success: false,
-          message:
-            "Unable to determine the new AMC expiry date.",
+          message: "Unable to determine a valid AMC expiry date.",
         });
       }
 
-      if (
-        newExpiryDate <=
-        newStartDate
-      ) {
+      if (newExpiryDate <= newStartDate) {
         return res.status(400).json({
           success: false,
-          message:
-            "AMC expiry date must be after the start date.",
+          message: "AMC expiry date must be strictly after the start date.",
         });
       }
-
-      /* =================================================
-         PREVENT DUPLICATE RENEWAL
-
-         Prevents double-click from creating two invoices
-         for exactly the same AMC period.
-      ================================================= */
-
-      const duplicateInvoice =
-        await AmcInvoice.findOne({
-          amcContractId:
-            contract._id,
-
-          contractStartDate:
-            newStartDate,
-
-          contractExpiryDate:
-            newExpiryDate,
-
-          isDeleted:
-            false,
-
-          status: {
-            $ne: "Cancelled",
-          },
-        });
-
-      if (duplicateInvoice) {
-        return res.status(409).json({
-          success: false,
-          message:
-            `AMC renewal already exists for this period (${duplicateInvoice.invoiceCode}).`,
-        });
-      }
-
-      /* =================================================
-         PAYMENT DUE DATE
-      ================================================= */
 
       let newDueDate;
-
       if (dueDate) {
-        newDueDate =
-          new Date(dueDate);
+        newDueDate = new Date(dueDate);
       } else {
-        /*
-         * By default payment becomes due on AMC start.
-         *
-         * You can change this later to +7 / +15 / +30 days
-         * if required.
-         */
-        newDueDate =
-          new Date(newStartDate);
+        newDueDate = new Date(newStartDate);
       }
 
-      if (
-        Number.isNaN(
-          newDueDate.getTime()
-        )
-      ) {
+      if (Number.isNaN(newDueDate.getTime())) {
         return res.status(400).json({
           success: false,
-          message:
-            "Invalid AMC payment due date.",
+          message: "Invalid AMC payment due date.",
         });
       }
 
       /* =================================================
-         COMMERCIAL VALUE
+         COMMERCIAL & TAX AMOUNTS
       ================================================= */
+      const newTaxableAmount = roundAmcAmount(
+        taxableAmount !== undefined
+          ? taxableAmount
+          : contract.taxableAmount || 0
+      );
 
-      const newTaxableAmount =
-        roundAmcAmount(
-          taxableAmount !==
-            undefined
-            ? taxableAmount
-            : previousInvoice
-                .taxableAmount
-        );
-
-      if (
-        !Number.isFinite(
-          newTaxableAmount
-        ) ||
-        newTaxableAmount <= 0
-      ) {
+      if (!Number.isFinite(newTaxableAmount) || newTaxableAmount <= 0) {
         return res.status(400).json({
           success: false,
-          message:
-            "Enter a valid AMC taxable amount.",
+          message: "Enter a valid positive AMC basic/taxable amount.",
         });
       }
 
-      const newCgstRate =
-        Number(
-          cgstRate !== undefined
-            ? cgstRate
-            : previousInvoice
-                .cgstRate || 0
-        );
-
-      const newSgstRate =
-        Number(
-          sgstRate !== undefined
-            ? sgstRate
-            : previousInvoice
-                .sgstRate || 0
-        );
-
-      const newIgstRate =
-        Number(
-          igstRate !== undefined
-            ? igstRate
-            : previousInvoice
-                .igstRate || 0
-        );
+      const normalizedPlan = String(plan || contract.plan || "Standard").trim();
+      const normalizedUsers = Math.max(Number(licensedUsers || contract.licensedUsers || 1), 1);
+      const normalizedIdempotencyKey = idempotencyKey ? String(idempotencyKey).trim() : null;
 
       /* =================================================
-         CALCULATE GST
+         CANONICAL PAYLOAD HASH FOR IDEMPOTENCY
       ================================================= */
+      const canonicalPayload = {
+        contractId: contract._id.toString(),
+        startDate: newStartDate.toISOString().slice(0, 10),
+        expiryDate: newExpiryDate.toISOString().slice(0, 10),
+        dueDate: newDueDate.toISOString().slice(0, 10),
+        taxableAmount: newTaxableAmount,
+        gstApplicable: normalizedGstApplicable,
+        taxType: normalizedTaxType,
+        gstRate: authorizedGstRate,
+        plan: normalizedPlan,
+      };
 
-      const cgstAmount =
-        roundAmcAmount(
-          newTaxableAmount *
-            newCgstRate /
-            100
-        );
-
-      const sgstAmount =
-        roundAmcAmount(
-          newTaxableAmount *
-            newSgstRate /
-            100
-        );
-
-      const igstAmount =
-        roundAmcAmount(
-          newTaxableAmount *
-            newIgstRate /
-            100
-        );
-
-      const totalAmount =
-        roundAmcAmount(
-          newTaxableAmount +
-          cgstAmount +
-          sgstAmount +
-          igstAmount
-        );
+      const payloadHash = crypto
+        .createHash("sha256")
+        .update(JSON.stringify(canonicalPayload))
+        .digest("hex");
 
       /* =================================================
-         GENERATE NEXT AMC INVOICE NUMBER
-
-         Uses your existing helper.
+         MULTI-TIER IDEMPOTENCY & DUPLICATE CHECKS
       ================================================= */
-
-      const invoiceIdentity =
-        await getNextAmcInvoiceIdentity();
-
-      /*
-       * Your helper may return:
-       *
-       * {
-       *   invoiceNumber,
-       *   invoiceCode
-       * }
-       *
-       * This is the same helper already used by your
-       * AMC creation logic.
-       */
-
-      /* =================================================
-         CREATE PERMANENT RENEWAL INVOICE
-      ================================================= */
-
-      createdInvoice =
-        await AmcInvoice.create({
-          invoiceCode:
-            invoiceIdentity.invoiceCode,
-
-          invoiceNumber:
-            invoiceIdentity.invoiceNumber,
-
-        invoiceType:
-            "Renewal",
-
-          amcContractId:
-            contract._id,
-
-          contractCode:
-            contract.contractCode,
-
-          clientId:
-            contract.clientId,
-
-          clientCode:
-            contract.clientCode,
-
-          clientName:
-            contract.clientName,
-
-          productId:
-            contract.productId,
-
-          productCode:
-            contract.productCode,
-
-          productName:
-            contract.productName,
-
-          clientProductId:
-            contract.clientProductId,
-
-          plan:
-            plan ||
-            previousInvoice.plan ||
-            contract.plan,
-
-          licensedUsers:
-            Math.max(
-              Number(
-                licensedUsers ||
-                previousInvoice
-                  .licensedUsers ||
-                contract.licensedUsers ||
-                1
-              ),
-              1
-            ),
-
-          contractStartDate:
-            newStartDate,
-
-          contractExpiryDate:
-            newExpiryDate,
-
-          invoiceDate:
-            new Date(),
-
-          dueDate:
-            newDueDate,
-
-          taxableAmount:
-            newTaxableAmount,
-
-          cgstRate:
-            newCgstRate,
-
-          sgstRate:
-            newSgstRate,
-
-          igstRate:
-            newIgstRate,
-
-          cgstAmount,
-
-          sgstAmount,
-
-          igstAmount,
-
-          totalAmount,
-
-          /*
-           * NEW invoice = no payment yet.
-           */
-
-          paidAmount:
-            0,
-
-          pendingAmount:
-            totalAmount,
-
-          paymentStatus:
-            "Pending",
-
-          status:
-            "Issued",
-
-          notes:
-            String(
-              notes ||
-              `AMC renewal after ${previousInvoice.invoiceCode}`
-            ).trim(),
-
-          createdBy:
-            req.user._id,
-
-          createdByName:
-            req.user.name ||
-            "Admin",
-
-          updatedBy:
-            req.user._id,
-
-          updatedByName:
-            req.user.name ||
-            "Admin",
-
-          isDeleted:
-            false,
+      if (normalizedIdempotencyKey) {
+        // Tier 1: In-Flight / Fast Cache Check
+        const existingLog = await IdempotencyLog.findOne({
+          idempotencyKey: normalizedIdempotencyKey,
         });
 
-      /* =================================================
-         UPDATE CURRENT CONTRACT PERIOD
-
-         Contract represents CURRENT AMC state.
-
-         Old invoice remains untouched in amcinvoices.
-      ================================================= */
-
-      contract.currentInvoiceId =
-    createdInvoice._id;
-
-contract.currentInvoiceCode =
-    createdInvoice.invoiceCode;
-
-contract.invoiceCode =
-    createdInvoice.invoiceCode;
-
-contract.invoiceDate =
-    createdInvoice.invoiceDate;
-      contract.startDate =
-        newStartDate;
-
-      contract.expiryDate =
-        newExpiryDate;
-
-      contract.plan =
-        plan ||
-        contract.plan;
-
-      contract.licensedUsers =
-        Math.max(
-          Number(
-            licensedUsers ||
-            contract.licensedUsers ||
-            1
-          ),
-          1
-        );
-
-      /*
-       * Current financial state now belongs to the
-       * newly generated renewal invoice.
-       */
-
-      contract.totalAmount =
-        totalAmount;
-
-      contract.paidAmount =
-        0;
-
-      contract.pendingAmount =
-        totalAmount;
-
-      contract.status =
-        "Pending";
-
-      contract.updatedBy =
-        req.user._id;
-
-      contract.updatedByName =
-        req.user.name ||
-        "Admin";
-
-      contract.timeline = contract.timeline || [];
-      contract.timeline.push({
-        type: "renewal",
-        title: "AMC Contract Renewed",
-        description: `Contract ${contract.contractCode} renewed. New invoice ${createdInvoice.invoiceCode} generated.`,
-        performedBy: req.user._id,
-        performedByName: req.user.name || "Admin",
-        performedByRole: req.user.role || "admin",
-      });
-
-      await contract.save();
-
-      /* =================================================
-         SYNCHRONIZE CLIENT PRODUCT
-      ================================================= */
-
-      const client =
-        await Client.findById(
-          contract.clientId
-        );
-
-      if (client) {
-        const clientProduct =
-          client.products.id(
-            contract.clientProductId
-          );
-
-        if (clientProduct) {
-          clientProduct.amcStatus =
-            "Pending";
-
-          clientProduct.expiryDate =
-            newExpiryDate
-              .toISOString()
-              .slice(0, 10);
+        if (existingLog) {
+          if (existingLog.payloadHash === payloadHash) {
+            return res.status(200).json({
+              ...(existingLog.responseBody || {}),
+              isReplay: true,
+            });
+          } else {
+            return res.status(422).json({
+              success: false,
+              message: "Idempotency key conflict: Request parameters do not match the original transaction.",
+            });
+          }
         }
 
-        /*
-         * Find nearest active AMC renewal for client.
-         */
+        // Tier 2: Durable Ledger Check by Idempotency Key
+        const existingInvoiceByKey = await AmcInvoice.findOne({
+          idempotencyKey: normalizedIdempotencyKey,
+          isDeleted: false,
+        });
 
-        client.amcStatus =
-          "Pending";
+        if (existingInvoiceByKey) {
+          const contractData = mergeAmcContractWithInvoice(contract, existingInvoiceByKey);
+          const invoiceData = amcInvoiceResponse(existingInvoiceByKey);
+          return res.status(200).json({
+            success: true,
+            isReplay: true,
+            message: `AMC renewal invoice already generated (${existingInvoiceByKey.invoiceCode}).`,
+            data: {
+              contract: contractData,
+              invoice: invoiceData,
+            },
+            contract: contractData,
+            invoice: invoiceData,
+          });
+        }
+      }
 
-        client.nextRenewal =
-          newExpiryDate
-            .toISOString()
-            .slice(0, 10);
+      // Durable Period Check (Exact Match)
+      const existingExactInvoice = await AmcInvoice.findOne({
+        amcContractId: contract._id,
+        contractStartDate: newStartDate,
+        contractExpiryDate: newExpiryDate,
+        isDeleted: false,
+        status: { $in: ["Issued", "Draft"] },
+      });
 
-        client.updatedBy =
-          req.user._id;
-
-        client.updatedByName =
-          req.user.name ||
-          "Admin";
-
-        await client.save();
+      if (existingExactInvoice) {
+        return res.status(409).json({
+          success: false,
+          message: `AMC renewal already exists for this exact coverage period (${existingExactInvoice.invoiceCode}).`,
+        });
       }
 
       /* =================================================
-         ACTIVITY LOG
+         TRANSACTION EXECUTION WITH RETRY HANDLING
       ================================================= */
+      let createdInvoice = null;
+      let isEarlyRenewal = false;
+      let finalContract = null;
 
-      await createActivityLog({
-        action:
-          "AMC Renewed",
+      const maxRetries = 3;
+      let attempt = 0;
+      let transactionSuccess = false;
 
-        category:
-          "AMC",
+      while (attempt < maxRetries && !transactionSuccess) {
+        attempt++;
+        const session = await mongoose.startSession();
 
-        description:
-          `${contract.contractCode} was renewed and invoice ${createdInvoice.invoiceCode} was generated.`,
+        try {
+          await session.withTransaction(async () => {
+            // 1. Atomic Per-Contract Concurrency Lock
+            const lockedContract = await AmcContract.findOneAndUpdate(
+              { _id: contract._id, isDeleted: false },
+              {
+                $set: { renewalLockAt: new Date() },
+                $inc: { renewalVersion: 1 },
+              },
+              { session, new: true }
+            );
 
-        entityType:
-          "amc",
+            if (!lockedContract) {
+              const err = new Error("AMC contract lock acquisition failed.");
+              err.statusCode = 409;
+              throw err;
+            }
 
-        entityId:
-          contract._id,
+            // 2. Transactional Period Overlap Check
+            const overlappingInvoice = await AmcInvoice.findOne({
+              amcContractId: contract._id,
+              isDeleted: false,
+              status: { $in: ["Issued", "Draft"] },
+              contractStartDate: { $lte: newExpiryDate },
+              contractExpiryDate: { $gte: newStartDate },
+            }).session(session);
 
-        entityCode:
-          contract.contractCode,
+            if (overlappingInvoice) {
+              const err = new Error(
+                `AMC renewal overlaps with existing active invoice (${overlappingInvoice.invoiceCode} for ${overlappingInvoice.contractStartDate.toISOString().slice(0, 10)} to ${overlappingInvoice.contractExpiryDate.toISOString().slice(0, 10)}).`
+              );
+              err.statusCode = 409;
+              throw err;
+            }
 
-        entityName:
-          `${contract.clientName} - ${contract.productName}`,
+            // 3. Authoritative Tax & Financial Calculation
+            let calculatedCgstRate = 0;
+            let calculatedSgstRate = 0;
+            let calculatedIgstRate = 0;
+            let resolvedTaxClassification = "Commercial Invoice (Zero-GST / Non-Taxable Supply)";
 
-        clientId:
-          contract.clientId,
+            if (normalizedGstApplicable === "YES") {
+              if (normalizedTaxType === "intra") {
+                calculatedCgstRate = authorizedGstRate / 2;
+                calculatedSgstRate = authorizedGstRate / 2;
+                resolvedTaxClassification = `Intra-State Taxable Supply (${authorizedGstRate}% GST)`;
+              } else {
+                calculatedIgstRate = authorizedGstRate;
+                resolvedTaxClassification = `Inter-State Taxable Supply (${authorizedGstRate}% IGST)`;
+              }
+            } else {
+              resolvedTaxClassification =
+                taxClassification || "Commercial Invoice (Zero-GST / Non-Taxable Supply)";
+            }
 
-        clientName:
-          contract.clientName,
+            const authoritativeAmounts = calculateAmcAmounts({
+              taxableAmount: newTaxableAmount,
+              cgstRate: calculatedCgstRate,
+              sgstRate: calculatedSgstRate,
+              igstRate: calculatedIgstRate,
+            });
 
-        employeeId:
-          contract.assignedEmployeeId,
+            // 4. Sequential Invoice Number Reservation
+            const invoiceIdentity = await getNextAmcInvoiceIdentity({ session });
 
-        employeeName:
-          contract.assignedEmployeeName,
+            // 5. Create Permanent AmcInvoice
+            createdInvoice = new AmcInvoice({
+              invoiceCode: invoiceIdentity.invoiceCode,
+              invoiceNumber: invoiceIdentity.invoiceNumber,
+              invoiceType: "Renewal",
+              amcContractId: contract._id,
+              contractCode: contract.contractCode,
+              clientId: contract.clientId,
+              clientCode: contract.clientCode,
+              clientName: contract.clientName,
+              productId: contract.productId,
+              productCode: contract.productCode,
+              productName: contract.productName,
+              clientProductId: contract.clientProductId,
+              plan: normalizedPlan,
+              licensedUsers: normalizedUsers,
+              contractStartDate: newStartDate,
+              contractExpiryDate: newExpiryDate,
+              invoiceDate: new Date(),
+              dueDate: newDueDate,
+              taxableAmount: authoritativeAmounts.taxableAmount,
+              cgstRate: authoritativeAmounts.cgstRate,
+              cgstAmount: authoritativeAmounts.cgstAmount,
+              sgstRate: authoritativeAmounts.sgstRate,
+              sgstAmount: authoritativeAmounts.sgstAmount,
+              igstRate: authoritativeAmounts.igstRate,
+              igstAmount: authoritativeAmounts.igstAmount,
+              totalTaxAmount: authoritativeAmounts.totalTaxAmount,
+              totalAmount: authoritativeAmounts.totalAmount,
+              paidAmount: 0,
+              pendingAmount: authoritativeAmounts.totalAmount,
+              paymentStatus: "Pending",
+              status: "Issued",
+              taxClassification: resolvedTaxClassification,
+              idempotencyKey: normalizedIdempotencyKey,
+              notes: String(
+                notes ||
+                `AMC renewal after ${contract.currentInvoiceCode || contract.contractCode}`
+              ).trim(),
+              createdBy: req.user?._id || null,
+              createdByName: req.user?.name || "Admin",
+              updatedBy: req.user?._id || null,
+              updatedByName: req.user?.name || "Admin",
+              isDeleted: false,
+            });
 
-        performedBy:
-          req.user._id,
+            await createdInvoice.save({ session });
 
-        performedByName:
-          req.user.name ||
-          "Admin",
+            // 6. Early Renewal vs Immediate Lifecycle Transition
+            const today = new Date();
+            const existingExpiry = contract.expiryDate ? new Date(contract.expiryDate) : null;
+            isEarlyRenewal =
+              contract.status !== "Cancelled" &&
+              existingExpiry &&
+              newStartDate > existingExpiry &&
+              today <= existingExpiry;
 
-        performedByRole:
-          req.user.role ||
-          "admin",
+            if (isEarlyRenewal) {
+              // Store as upcomingRenewal: ongoing active coverage stays untouched!
+              lockedContract.upcomingRenewal = {
+                invoiceId: createdInvoice._id,
+                invoiceCode: createdInvoice.invoiceCode,
+                startDate: newStartDate,
+                expiryDate: newExpiryDate,
+                dueDate: newDueDate,
+                plan: normalizedPlan,
+                licensedUsers: normalizedUsers,
+                taxableAmount: authoritativeAmounts.taxableAmount,
+                cgstRate: authoritativeAmounts.cgstRate,
+                cgstAmount: authoritativeAmounts.cgstAmount,
+                sgstRate: authoritativeAmounts.sgstRate,
+                sgstAmount: authoritativeAmounts.sgstAmount,
+                igstRate: authoritativeAmounts.igstRate,
+                igstAmount: authoritativeAmounts.igstAmount,
+                totalTaxAmount: authoritativeAmounts.totalTaxAmount,
+                totalAmount: authoritativeAmounts.totalAmount,
+                gstApplicable: normalizedGstApplicable,
+                taxType: normalizedTaxType,
+                taxClassification: resolvedTaxClassification,
+                paymentStatus: "Pending",
+                notes: createdInvoice.notes,
+                createdAt: new Date(),
+              };
 
-        metadata: {
-          previousInvoiceId:
-            previousInvoice._id,
+              lockedContract.timeline = lockedContract.timeline || [];
+              lockedContract.timeline.push({
+                type: "renewal",
+                title: "AMC Future Renewal Scheduled",
+                description: `Renewal invoice ${createdInvoice.invoiceCode} generated for future period ${newStartDate.toISOString().slice(0, 10)} to ${newExpiryDate.toISOString().slice(0, 10)}. Ongoing coverage remains active until ${existingExpiry.toISOString().slice(0, 10)}.`,
+                performedBy: req.user?._id || null,
+                performedByName: req.user?.name || "Admin",
+                performedByRole: req.user?.role || "admin",
+              });
+            } else {
+              // Standard / Post-expiry Renewal: Archive prior cycle and transition contract
+              lockedContract.renewalHistory = lockedContract.renewalHistory || [];
+              lockedContract.renewalHistory.push({
+                cycleNumber: (lockedContract.renewalHistory?.length || 0) + 1,
+                previousInvoiceId: lockedContract.currentInvoiceId || null,
+                previousInvoiceCode: lockedContract.currentInvoiceCode || lockedContract.invoiceCode || "",
+                startDate: lockedContract.startDate,
+                expiryDate: lockedContract.expiryDate,
+                dueDate: lockedContract.dueDate,
+                plan: lockedContract.plan,
+                licensedUsers: lockedContract.licensedUsers,
+                taxableAmount: lockedContract.taxableAmount,
+                cgstRate: lockedContract.cgstRate,
+                cgstAmount: lockedContract.cgstAmount,
+                sgstRate: lockedContract.sgstRate,
+                sgstAmount: lockedContract.sgstAmount,
+                igstRate: lockedContract.igstRate,
+                igstAmount: lockedContract.igstAmount,
+                totalTaxAmount: lockedContract.totalTaxAmount,
+                totalAmount: lockedContract.totalAmount,
+                paidAmount: lockedContract.paidAmount,
+                pendingAmount: lockedContract.pendingAmount,
+                status: lockedContract.status,
+                gstApplicable: lockedContract.gstApplicable || "YES",
+                taxType: lockedContract.taxType || "intra",
+                taxClassification: lockedContract.taxClassification || "Standard Rate (18%)",
+                notes: lockedContract.notes,
+                archivedAt: new Date(),
+                archivedBy: req.user?._id || null,
+                archivedByName: req.user?.name || "Admin",
+              });
 
-          previousInvoiceCode:
-            previousInvoice.invoiceCode,
+              lockedContract.startDate = newStartDate;
+              lockedContract.expiryDate = newExpiryDate;
+              lockedContract.dueDate = newDueDate;
+              lockedContract.plan = normalizedPlan;
+              lockedContract.licensedUsers = normalizedUsers;
+              lockedContract.taxableAmount = authoritativeAmounts.taxableAmount;
+              lockedContract.cgstRate = authoritativeAmounts.cgstRate;
+              lockedContract.cgstAmount = authoritativeAmounts.cgstAmount;
+              lockedContract.sgstRate = authoritativeAmounts.sgstRate;
+              lockedContract.sgstAmount = authoritativeAmounts.sgstAmount;
+              lockedContract.igstRate = authoritativeAmounts.igstRate;
+              lockedContract.igstAmount = authoritativeAmounts.igstAmount;
+              lockedContract.totalTaxAmount = authoritativeAmounts.totalTaxAmount;
+              lockedContract.totalAmount = authoritativeAmounts.totalAmount;
+              lockedContract.paidAmount = 0;
+              lockedContract.pendingAmount = authoritativeAmounts.totalAmount;
+              lockedContract.gstApplicable = normalizedGstApplicable;
+              lockedContract.taxType = normalizedTaxType;
+              lockedContract.taxClassification = resolvedTaxClassification;
+              lockedContract.currentInvoiceId = createdInvoice._id;
+              lockedContract.currentInvoiceCode = createdInvoice.invoiceCode;
+              lockedContract.invoiceCode = createdInvoice.invoiceCode;
+              lockedContract.invoiceDate = createdInvoice.invoiceDate;
+              lockedContract.status = "Pending";
+              lockedContract.upcomingRenewal = {
+                invoiceId: null,
+                invoiceCode: "",
+                startDate: null,
+                expiryDate: null,
+                dueDate: null,
+                plan: "Standard",
+                licensedUsers: 1,
+                taxableAmount: 0,
+                cgstRate: 0,
+                cgstAmount: 0,
+                sgstRate: 0,
+                sgstAmount: 0,
+                igstRate: 0,
+                igstAmount: 0,
+                totalTaxAmount: 0,
+                totalAmount: 0,
+                gstApplicable: "YES",
+                taxType: "intra",
+                taxClassification: "Standard Rate (18%)",
+                paymentStatus: "Pending",
+                notes: "",
+                createdAt: null,
+              };
 
-          newInvoiceId:
-            createdInvoice._id,
+              // Synchronize Client Document
+              const clientDoc = await Client.findById(contract.clientId).session(session);
+              if (clientDoc) {
+                const clientProduct = clientDoc.products.id(contract.clientProductId);
+                if (clientProduct) {
+                  clientProduct.amcStatus = "Pending";
+                  clientProduct.expiryDate = newExpiryDate.toISOString().slice(0, 10);
+                }
+                clientDoc.amcStatus = "Pending";
+                clientDoc.nextRenewal = newExpiryDate.toISOString().slice(0, 10);
+                clientDoc.updatedBy = req.user?._id || null;
+                clientDoc.updatedByName = req.user?.name || "Admin";
+                await clientDoc.save({ session });
+              }
 
-          newInvoiceCode:
-            createdInvoice.invoiceCode,
+              lockedContract.timeline = lockedContract.timeline || [];
+              lockedContract.timeline.push({
+                type: "renewal",
+                title: "AMC Contract Renewed",
+                description: `Contract ${contract.contractCode} renewed. New invoice ${createdInvoice.invoiceCode} generated.`,
+                performedBy: req.user?._id || null,
+                performedByName: req.user?.name || "Admin",
+                performedByRole: req.user?.role || "admin",
+              });
+            }
 
-          startDate:
-            newStartDate,
+            lockedContract.updatedBy = req.user?._id || null;
+            lockedContract.updatedByName = req.user?.name || "Admin";
+            await lockedContract.save({ session });
+            finalContract = lockedContract;
 
-          expiryDate:
-            newExpiryDate,
+            // 7. Activity Log
+            await createActivityLog({
+              action: isEarlyRenewal ? "AMC Future Renewal Scheduled" : "AMC Renewed",
+              category: "AMC",
+              description: `${contract.contractCode} renewal invoice ${createdInvoice.invoiceCode} was generated.`,
+              entityType: "amc",
+              entityId: contract._id,
+              entityCode: contract.contractCode,
+              entityName: `${contract.clientName} - ${contract.productName}`,
+              clientId: contract.clientId,
+              clientName: contract.clientName,
+              employeeId: contract.assignedEmployeeId,
+              employeeName: contract.assignedEmployeeName,
+              performedBy: req.user?._id || null,
+              performedByName: req.user?.name || "Admin",
+              performedByRole: req.user?.role || "admin",
+              metadata: {
+                isEarlyRenewal,
+                newInvoiceId: createdInvoice._id,
+                newInvoiceCode: createdInvoice.invoiceCode,
+                startDate: newStartDate,
+                expiryDate: newExpiryDate,
+                taxableAmount: authoritativeAmounts.taxableAmount,
+                totalAmount: authoritativeAmounts.totalAmount,
+                gstApplicable: normalizedGstApplicable,
+              },
+            });
 
-          taxableAmount:
-            newTaxableAmount,
+            // 8. Record Idempotency Log
+            if (normalizedIdempotencyKey) {
+              await IdempotencyLog.create(
+                [
+                  {
+                    idempotencyKey: normalizedIdempotencyKey,
+                    endpoint: "/api/admin/amc/contract/:id/renew",
+                    contractId: contract._id,
+                    payloadHash,
+                    status: "COMPLETED",
+                    responseStatus: 201,
+                    responseBody: {
+                      success: true,
+                      message: isEarlyRenewal
+                        ? `AMC future renewal scheduled successfully. Invoice ${createdInvoice.invoiceCode} generated.`
+                        : `AMC renewed successfully. Invoice ${createdInvoice.invoiceCode} has been generated.`,
+                      data: {
+                        isEarlyRenewal,
+                        contract: mergeAmcContractWithInvoice(lockedContract, createdInvoice),
+                        invoice: amcInvoiceResponse(createdInvoice),
+                      },
+                      contract: mergeAmcContractWithInvoice(lockedContract, createdInvoice),
+                      invoice: amcInvoiceResponse(createdInvoice),
+                    },
+                  },
+                ],
+                { session }
+              );
+            }
+          });
 
-          totalAmount,
-        },
-      });
+          transactionSuccess = true;
+        } catch (error) {
+          const isTransient =
+            error.hasErrorLabel &&
+            (error.hasErrorLabel("TransientTransactionError") ||
+              error.hasErrorLabel("UnknownTransactionCommitResult"));
+
+          if (isTransient && attempt < maxRetries) {
+            console.warn(`Transient error during AMC renewal (attempt ${attempt}):`, error.message);
+            continue;
+          }
+
+          if (error.statusCode) {
+            return res.status(error.statusCode).json({
+              success: false,
+              message: error.message,
+            });
+          }
+
+          if (error.code === 11000) {
+            return res.status(409).json({
+              success: false,
+              message: "AMC renewal invoice or unique constraint collision. Please try again.",
+            });
+          }
+
+          console.error("AMC renewal transaction failed:", error);
+          return res.status(500).json({
+            success: false,
+            message: error.message || "Failed to complete AMC renewal transaction.",
+          });
+        } finally {
+          await session.endSession();
+        }
+      }
 
       /* =================================================
-         RESPONSE
+         FINAL RESPONSE
       ================================================= */
-
-      const contractData =
-        mergeAmcContractWithInvoice(
-          contract,
-          createdInvoice
-        );
+      const contractData = mergeAmcContractWithInvoice(finalContract, createdInvoice);
+      const invoiceData = amcInvoiceResponse(createdInvoice);
 
       return res.status(201).json({
         success: true,
-
-        message:
-          `AMC renewed successfully. Invoice ${createdInvoice.invoiceCode} has been generated.`,
-
+        isEarlyRenewal,
+        message: isEarlyRenewal
+          ? `AMC future renewal scheduled successfully. Invoice ${createdInvoice.invoiceCode} generated.`
+          : `AMC renewed successfully. Invoice ${createdInvoice.invoiceCode} has been generated.`,
         data: {
-          contract:
-            contractData,
-
-          invoice:
-            amcInvoiceResponse(
-              createdInvoice
-            ),
-
-          previousInvoice:
-            amcInvoiceResponse(
-              previousInvoice
-            ),
+          isEarlyRenewal,
+          contract: contractData,
+          invoice: invoiceData,
         },
-
-        contract:
-          contractData,
-
-        invoice:
-          amcInvoiceResponse(
-            createdInvoice
-          ),
+        contract: contractData,
+        invoice: invoiceData,
       });
     } catch (error) {
-      console.error(
-        "AMC renewal error:",
-        error
-      );
-
-      /*
-       * If invoice was created but something after that
-       * failed, remove ONLY the new invoice.
-       *
-       * Old invoices/payments remain untouched.
-       */
-
-      if (
-        createdInvoice?._id
-      ) {
-        await AmcInvoice.deleteOne({
-          _id:
-            createdInvoice._id,
-        }).catch(() => {});
-      }
-
-      if (
-        error.code === 11000
-      ) {
-        return res.status(409).json({
-          success: false,
-          message:
-            "AMC renewal invoice number already exists. Please try again.",
-        });
-      }
-
+      console.error("AMC renewal root error:", error);
       return res.status(500).json({
         success: false,
-
-        message:
-          error.message ||
-          "Unable to renew AMC contract.",
+        message: error.message || "Unable to renew AMC contract.",
       });
     }
   }
 );
+
+/* =====================================================
+   AUTONOMOUS FUTURE AMC ACTIVATION WORKER
+   syncUpcomingAmcRenewals()
+===================================================== */
+async function syncUpcomingAmcRenewals() {
+  const now = new Date();
+  const dueContracts = await AmcContract.find({
+    isDeleted: false,
+    "upcomingRenewal.startDate": { $lte: now },
+    "upcomingRenewal.invoiceId": { $ne: null },
+  });
+
+  if (!dueContracts || dueContracts.length === 0) {
+    return { activatedCount: 0 };
+  }
+
+  let activatedCount = 0;
+
+  for (const contract of dueContracts) {
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        const freshContract = await AmcContract.findById(contract._id).session(session);
+        if (
+          !freshContract ||
+          !freshContract.upcomingRenewal?.startDate ||
+          freshContract.upcomingRenewal.startDate > now
+        ) {
+          return;
+        }
+
+        const upcoming = freshContract.upcomingRenewal;
+
+        // 1. Archive previous active cycle
+        freshContract.renewalHistory = freshContract.renewalHistory || [];
+        freshContract.renewalHistory.push({
+          cycleNumber: (freshContract.renewalHistory?.length || 0) + 1,
+          previousInvoiceId: freshContract.currentInvoiceId || null,
+          previousInvoiceCode: freshContract.currentInvoiceCode || freshContract.invoiceCode || "",
+          startDate: freshContract.startDate,
+          expiryDate: freshContract.expiryDate,
+          dueDate: freshContract.dueDate,
+          plan: freshContract.plan,
+          licensedUsers: freshContract.licensedUsers,
+          taxableAmount: freshContract.taxableAmount,
+          cgstRate: freshContract.cgstRate,
+          cgstAmount: freshContract.cgstAmount,
+          sgstRate: freshContract.sgstRate,
+          sgstAmount: freshContract.sgstAmount,
+          igstRate: freshContract.igstRate,
+          igstAmount: freshContract.igstAmount,
+          totalTaxAmount: freshContract.totalTaxAmount,
+          totalAmount: freshContract.totalAmount,
+          paidAmount: freshContract.paidAmount,
+          pendingAmount: freshContract.pendingAmount,
+          status: freshContract.status,
+          gstApplicable: freshContract.gstApplicable || "YES",
+          taxType: freshContract.taxType || "intra",
+          taxClassification: freshContract.taxClassification || "Standard Rate (18%)",
+          notes: freshContract.notes,
+          archivedAt: now,
+          archivedBy: null,
+          archivedByName: "Autonomous AMC Scheduler",
+        });
+
+        // 2. Transition active cycle to the upcoming renewal
+        freshContract.startDate = upcoming.startDate;
+        freshContract.expiryDate = upcoming.expiryDate;
+        freshContract.dueDate = upcoming.dueDate;
+        freshContract.plan = upcoming.plan;
+        freshContract.licensedUsers = upcoming.licensedUsers;
+        freshContract.taxableAmount = upcoming.taxableAmount;
+        freshContract.cgstRate = upcoming.cgstRate;
+        freshContract.cgstAmount = upcoming.cgstAmount;
+        freshContract.sgstRate = upcoming.sgstRate;
+        freshContract.sgstAmount = upcoming.sgstAmount;
+        freshContract.igstRate = upcoming.igstRate;
+        freshContract.igstAmount = upcoming.igstAmount;
+        freshContract.totalTaxAmount = upcoming.totalTaxAmount;
+        freshContract.totalAmount = upcoming.totalAmount;
+        freshContract.gstApplicable = upcoming.gstApplicable;
+        freshContract.taxType = upcoming.taxType;
+        freshContract.taxClassification = upcoming.taxClassification;
+        freshContract.currentInvoiceId = upcoming.invoiceId;
+        freshContract.currentInvoiceCode = upcoming.invoiceCode;
+        freshContract.invoiceCode = upcoming.invoiceCode;
+        freshContract.invoiceDate = upcoming.createdAt || now;
+
+        const linkedInvoice = await AmcInvoice.findById(upcoming.invoiceId).session(session);
+        freshContract.paidAmount = linkedInvoice?.paidAmount || 0;
+        freshContract.pendingAmount = linkedInvoice?.pendingAmount || upcoming.totalAmount;
+        freshContract.status = linkedInvoice?.paymentStatus === "Paid" ? "Paid" : "Pending";
+
+        // 3. Clear upcomingRenewal
+        freshContract.upcomingRenewal = {
+          invoiceId: null,
+          invoiceCode: "",
+          startDate: null,
+          expiryDate: null,
+          dueDate: null,
+          plan: "Standard",
+          licensedUsers: 1,
+          taxableAmount: 0,
+          cgstRate: 0,
+          cgstAmount: 0,
+          sgstRate: 0,
+          sgstAmount: 0,
+          igstRate: 0,
+          igstAmount: 0,
+          totalTaxAmount: 0,
+          totalAmount: 0,
+          gstApplicable: "YES",
+          taxType: "intra",
+          taxClassification: "Standard Rate (18%)",
+          paymentStatus: "Pending",
+          notes: "",
+          createdAt: null,
+        };
+
+        // 4. Update Client Product Status
+        const client = await Client.findById(freshContract.clientId).session(session);
+        if (client) {
+          const clientProd = client.products.id(freshContract.clientProductId);
+          if (clientProd) {
+            clientProd.expiryDate = freshContract.expiryDate.toISOString().slice(0, 10);
+            clientProd.amcStatus = freshContract.status;
+          }
+          client.nextRenewal = freshContract.expiryDate.toISOString().slice(0, 10);
+          client.amcStatus = freshContract.status;
+          await client.save({ session });
+        }
+
+        freshContract.timeline = freshContract.timeline || [];
+        freshContract.timeline.push({
+          type: "renewal",
+          title: "Scheduled AMC Renewal Activated",
+          description: `Upcoming AMC cycle for ${freshContract.startDate.toISOString().slice(0, 10)} to ${freshContract.expiryDate.toISOString().slice(0, 10)} transitioned automatically.`,
+          performedByName: "Autonomous Scheduler",
+        });
+
+        await freshContract.save({ session });
+        activatedCount++;
+      });
+    } catch (err) {
+      console.error(`Autonomous renewal activation failed for contract ${contract.contractCode}:`, err);
+    } finally {
+      await session.endSession();
+    }
+  }
+
+  return { activatedCount };
+}
+
+/* =====================================================
+   SECURED CRON / WEBHOOK ENDPOINT FOR SCHEDULER
+   POST /api/admin/amc/cron/sync-renewals
+===================================================== */
+router.post("/amc/cron/sync-renewals", async (req, res) => {
+  try {
+    const cronSecret = process.env.CRON_SECRET;
+    const providedSecret = req.headers["x-cron-secret"] || req.query.secret;
+
+    let isAuthorized = false;
+    if (cronSecret && providedSecret && providedSecret === cronSecret) {
+      isAuthorized = true;
+    } else {
+      // Fallback to standard Bearer token authentication
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        try {
+          const jwt = require("jsonwebtoken");
+          const token = authHeader.split(" ")[1];
+          const decoded = jwt.verify(token, process.env.JWT_SECRET);
+          const role = String(decoded?.role || "").toLowerCase();
+          if (["admin", "superadmin", "super_admin"].includes(role)) {
+            isAuthorized = true;
+          }
+        } catch (jwtErr) {
+          isAuthorized = false;
+        }
+      }
+    }
+
+    if (!isAuthorized) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized. Valid cron secret or administrator credentials required.",
+      });
+    }
+
+    const result = await syncUpcomingAmcRenewals();
+    return res.status(200).json({
+      success: true,
+      message: `Autonomous AMC renewal sync completed successfully. Activated ${result.activatedCount} contract(s).`,
+      data: result,
+    });
+  } catch (error) {
+    console.error("Cron sync-renewals error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to execute autonomous AMC renewal sync.",
+    });
+  }
+});
 
 /* =========================================================
    OMNI GLOBAL SEARCH (Cross-Entity Unified Search)
@@ -33809,4 +34135,5 @@ router.get(
   }
 );
 
+router.syncUpcomingAmcRenewals = syncUpcomingAmcRenewals;
 module.exports = router;

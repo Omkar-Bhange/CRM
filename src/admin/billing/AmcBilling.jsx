@@ -6,6 +6,7 @@ import {
 import AmcReminderModal from "./AmcReminderModal";
 import AmcInvoice from "./AmcInvoice";
 import AmcRenewalRequestsTab from "./AmcRenewalRequestsTab";
+import RenewAmcModal from "./RenewAmcModal";
 import DataTable from "../../components/data/DataTable";
 import {
     AlertCircle,
@@ -6098,124 +6099,6 @@ AMC INVOICE / CYCLE DETAIL
                     </div>
                 )}
 
-                {renewalRecord && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                        <button
-                            type="button"
-                            onClick={closeRenewalModal}
-                            className="enterprise-backdrop absolute inset-0 bg-slate-950/45 backdrop-blur-sm"
-                        />
-                        <form
-                            onSubmit={handleGenerateRenewal}
-                            className="enterprise-modal relative w-full max-w-[620px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
-                        >
-                            <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
-                                <div>
-                                    <h2 className="text-base font-semibold text-slate-950">Renew AMC Contract</h2>
-                                    <p className="mt-1 text-xs text-slate-500">{renewalRecord.client} · {renewalRecord.product}</p>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={closeRenewalModal}
-                                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500"
-                                >
-                                    <X size={17} />
-                                </button>
-                            </div>
-                            <div className="space-y-5 px-6 py-6">
-                                <div className="grid gap-5 sm:grid-cols-2">
-                                    <div>
-                                        <label className="mb-2 block text-xs font-semibold text-slate-700">AMC amount *</label>
-                                        <input
-                                            type="number"
-                                            name="amount"
-                                            value={renewalForm.amount}
-                                            onChange={handleRenewalChange}
-                                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="mb-2 block text-xs font-semibold text-slate-700">Plan</label>
-                                        <select
-                                            name="plan"
-                                            value={renewalForm.plan}
-                                            onChange={handleRenewalChange}
-                                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none"
-                                        >
-                                            <option>Premium</option>
-                                            <option>Standard</option>
-                                            <option>Basic</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div className="grid gap-5 sm:grid-cols-3">
-                                    <div>
-                                        <label className="mb-2 block text-xs font-semibold text-slate-700">Start date *</label>
-                                        <input
-                                            type="date"
-                                            name="startDate"
-                                            value={renewalForm.startDate}
-                                            onChange={handleRenewalChange}
-                                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="mb-2 block text-xs font-semibold text-slate-700">Expiry date *</label>
-                                        <input
-                                            type="date"
-                                            name="expiryDate"
-                                            value={renewalForm.expiryDate}
-                                            onChange={handleRenewalChange}
-                                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="mb-2 block text-xs font-semibold text-slate-700">Due date *</label>
-                                        <input
-                                            type="date"
-                                            name="dueDate"
-                                            value={renewalForm.dueDate}
-                                            onChange={handleRenewalChange}
-                                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none"
-                                        />
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="mb-2 block text-xs font-semibold text-slate-700">Notes</label>
-                                    <textarea
-                                        name="notes"
-                                        value={renewalForm.notes}
-                                        onChange={handleRenewalChange}
-                                        rows={3}
-                                        className="w-full resize-none rounded-xl border border-slate-200 px-3 py-3 text-sm outline-none"
-                                    />
-                                </div>
-                                {formError && (
-                                    <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-medium text-rose-700">
-                                        {formError}
-                                    </div>
-                                )}
-                            </div>
-                            <div className="flex justify-end gap-3 border-t border-slate-200 bg-slate-50/60 px-6 py-4">
-                                <button
-                                    type="button"
-                                    onClick={closeRenewalModal}
-                                    className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-5 text-xs font-semibold text-white hover:bg-violet-700"
-                                >
-                                    <FileText size={15} />
-                                    Generate Renewal
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                )}
-
                 {newAmcOpen && (
                     <div className="fixed inset-0 z-[110] flex items-center justify-end p-3 sm:p-5 lg:p-7">
                         <button
@@ -7223,126 +7106,6 @@ AMC INVOICE / CYCLE DETAIL
                         onSubmit={handleSaveEditAmc}
                     />
                 )}
-
-                {renewalRecord && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                        <button
-                            type="button"
-                            onClick={closeRenewalModal}
-                            className="enterprise-backdrop absolute inset-0 bg-slate-950/45 backdrop-blur-sm"
-                        />
-                        <form
-                            onSubmit={handleGenerateRenewal}
-                            className="enterprise-modal relative w-full max-w-[620px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
-                        >
-                            <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
-                                <div>
-                                    <h2 className="text-base font-semibold text-slate-950">Renew AMC Contract</h2>
-                                    <p className="mt-1 text-xs text-slate-500">{renewalRecord.client || renewalRecord.clientName} · {renewalRecord.product || renewalRecord.productName}</p>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={closeRenewalModal}
-                                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500"
-                                >
-                                    <X size={17} />
-                                </button>
-                            </div>
-                            <div className="space-y-5 px-6 py-6">
-                                <div className="grid gap-5 sm:grid-cols-2">
-                                    <div>
-                                        <label className="mb-2 block text-xs font-semibold text-slate-700">AMC amount *</label>
-                                        <input
-                                            type="number"
-                                            name="amount"
-                                            value={renewalForm.amount}
-                                            onChange={handleRenewalChange}
-                                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="mb-2 block text-xs font-semibold text-slate-700">Plan</label>
-                                        <select
-                                            name="plan"
-                                            value={renewalForm.plan}
-                                            onChange={handleRenewalChange}
-                                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none"
-                                        >
-                                            <option>Premium</option>
-                                            <option>Standard</option>
-                                            <option>Basic</option>
-                                            <option>Custom</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div className="grid gap-5 sm:grid-cols-3">
-                                    <div>
-                                        <label className="mb-2 block text-xs font-semibold text-slate-700">Start date *</label>
-                                        <input
-                                            type="date"
-                                            name="startDate"
-                                            value={renewalForm.startDate}
-                                            onChange={handleRenewalChange}
-                                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="mb-2 block text-xs font-semibold text-slate-700">Expiry date *</label>
-                                        <input
-                                            type="date"
-                                            name="expiryDate"
-                                            value={renewalForm.expiryDate}
-                                            onChange={handleRenewalChange}
-                                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="mb-2 block text-xs font-semibold text-slate-700">Due date *</label>
-                                        <input
-                                            type="date"
-                                            name="dueDate"
-                                            value={renewalForm.dueDate}
-                                            onChange={handleRenewalChange}
-                                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none"
-                                        />
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="mb-2 block text-xs font-semibold text-slate-700">Notes</label>
-                                    <textarea
-                                        name="notes"
-                                        value={renewalForm.notes}
-                                        onChange={handleRenewalChange}
-                                        rows={3}
-                                        className="w-full resize-none rounded-xl border border-slate-200 px-3 py-3 text-sm outline-none"
-                                    />
-                                </div>
-                                {formError && (
-                                    <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-medium text-rose-700">
-                                        {formError}
-                                    </div>
-                                )}
-                            </div>
-                            <div className="flex justify-end gap-3 border-t border-slate-200 bg-slate-50/60 px-6 py-4">
-                                <button
-                                    type="button"
-                                    onClick={closeRenewalModal}
-                                    className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={savingAmc}
-                                    className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
-                                >
-                                    <FileText size={15} />
-                                    {savingAmc ? "Renewing..." : "Generate Renewal"}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                )}
             </>
         );
     }
@@ -7878,123 +7641,25 @@ AMC INVOICE / CYCLE DETAIL
                 </div>
             )}
 
-            {renewalRecord && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                    <button
-                        type="button"
-                        onClick={closeRenewalModal}
-                        className="enterprise-backdrop absolute inset-0 bg-slate-950/45 backdrop-blur-sm"
-                    />
-                    <form
-                        onSubmit={handleGenerateRenewal}
-                        className="enterprise-modal relative w-full max-w-[620px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
-                    >
-                        <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
-                            <div>
-                                <h2 className="text-base font-semibold text-slate-950">Renew AMC Contract</h2>
-                                <p className="mt-1 text-xs text-slate-500">{renewalRecord.client} · {renewalRecord.product}</p>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={closeRenewalModal}
-                                className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500"
-                            >
-                                <X size={17} />
-                            </button>
-                        </div>
-                        <div className="space-y-5 px-6 py-6">
-                            <div className="grid gap-5 sm:grid-cols-2">
-                                <div>
-                                    <label className="mb-2 block text-xs font-semibold text-slate-700">AMC amount *</label>
-                                    <input
-                                        type="number"
-                                        name="amount"
-                                        value={renewalForm.amount}
-                                        onChange={handleRenewalChange}
-                                        className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="mb-2 block text-xs font-semibold text-slate-700">Plan</label>
-                                    <select
-                                        name="plan"
-                                        value={renewalForm.plan}
-                                        onChange={handleRenewalChange}
-                                        className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none"
-                                    >
-                                        <option>Premium</option>
-                                        <option>Standard</option>
-                                        <option>Basic</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div className="grid gap-5 sm:grid-cols-3">
-                                <div>
-                                    <label className="mb-2 block text-xs font-semibold text-slate-700">Start date *</label>
-                                    <input
-                                        type="date"
-                                        name="startDate"
-                                        value={renewalForm.startDate}
-                                        onChange={handleRenewalChange}
-                                        className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="mb-2 block text-xs font-semibold text-slate-700">Expiry date *</label>
-                                    <input
-                                        type="date"
-                                        name="expiryDate"
-                                        value={renewalForm.expiryDate}
-                                        onChange={handleRenewalChange}
-                                        className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="mb-2 block text-xs font-semibold text-slate-700">Due date *</label>
-                                    <input
-                                        type="date"
-                                        name="dueDate"
-                                        value={renewalForm.dueDate}
-                                        onChange={handleRenewalChange}
-                                        className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none"
-                                    />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="mb-2 block text-xs font-semibold text-slate-700">Notes</label>
-                                <textarea
-                                    name="notes"
-                                    value={renewalForm.notes}
-                                    onChange={handleRenewalChange}
-                                    rows={3}
-                                    className="w-full resize-none rounded-xl border border-slate-200 px-3 py-3 text-sm outline-none"
-                                />
-                            </div>
-                            {formError && (
-                                <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-medium text-rose-700">
-                                    {formError}
-                                </div>
-                            )}
-                        </div>
-                        <div className="flex justify-end gap-3 border-t border-slate-200 bg-slate-50/60 px-6 py-4">
-                            <button
-                                type="button"
-                                onClick={closeRenewalModal}
-                                className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="submit"
-                                className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-5 text-xs font-semibold text-white hover:bg-violet-700"
-                            >
-                                <FileText size={15} />
-                                Generate Renewal
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            )}
+            <RenewAmcModal
+                isOpen={Boolean(renewalRecord)}
+                contract={renewalRecord}
+                client={clients.find((c) => String(c._id || c.id) === String(renewalRecord?.clientId || renewalRecord?.client?._id || renewalRecord?.client?.id))}
+                onClose={() => setRenewalRecord(null)}
+                onSuccess={(data) => {
+                    loadAmcContracts();
+                    loadAmcMasters();
+                    loadAdminAmcRequests();
+                }}
+                onViewInvoice={(invoice) => {
+                    if (invoice) {
+                        setSelectedInvoiceDetail(invoice);
+                    }
+                }}
+                onRecordPayment={(targetContract, invoice) => {
+                    openPaymentModal(targetContract || renewalRecord);
+                }}
+            />
 
             {newAmcOpen && (
                 <div className="fixed inset-0 z-[110] flex items-center justify-end p-3 sm:p-5 lg:p-7">
