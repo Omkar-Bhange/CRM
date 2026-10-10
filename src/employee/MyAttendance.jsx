@@ -15,6 +15,7 @@ import {
     LogIn,
     LogOut,
     Plus,
+    RefreshCw,
     Timer,
     UserCheck,
     X,
@@ -486,6 +487,7 @@ const loadSystemSettings = async () => {
 
     const [leaveDrawerOpen, setLeaveDrawerOpen] = useState(false);
     const [leaveForm, setLeaveForm] = useState(emptyLeaveForm);
+    const [isRefreshing, setIsRefreshing] = useState(false);
 
     const workedMinutes =
         todayWorkedMinutes;
@@ -1005,22 +1007,48 @@ const loadSystemSettings = async () => {
 
         init();
     }, []);
+    const handleManualRefresh = async () => {
+        try {
+            setIsRefreshing(true);
+            if (activeTab === "today" || activeTab === "history") {
+                await loadTodayAndHistory();
+            } else if (activeTab === "calendar") {
+                await loadMonthlyAttendance();
+            } else if (activeTab === "leave") {
+                await loadLeaveData();
+            } else if (activeTab === "holidays") {
+                await loadHolidays();
+            } else if (activeTab === "regularization") {
+                await loadRegularizations();
+            }
+        } catch (err) {
+            console.error("Manual refresh error:", err);
+        } finally {
+            setTimeout(() => setIsRefreshing(false), 400);
+        }
+    };
+
     useEffect(() => {
         loadMonthlyAttendance();
     }, [calendarDate]);
+
     useEffect(() => {
-        if (
-            activeTab === "holidays"
-        ) {
+        if (activeTab === "holidays") {
             loadHolidays();
         }
-    }, [
-        activeTab,
-        holidayYear,
-    ]);
+    }, [holidayYear]);
+
     useEffect(() => {
-        if (activeTab === "regularization") {
-            loadRegularizations();
+        if (activeTab === "today" || activeTab === "history") {
+            loadTodayAndHistory().catch(console.error);
+        } else if (activeTab === "calendar") {
+            loadMonthlyAttendance().catch(console.error);
+        } else if (activeTab === "leave") {
+            loadLeaveData().catch(console.error);
+        } else if (activeTab === "holidays") {
+            loadHolidays().catch(console.error);
+        } else if (activeTab === "regularization") {
+            loadRegularizations().catch(console.error);
         }
     }, [activeTab]);
 
@@ -1735,63 +1763,110 @@ const loadSystemSettings = async () => {
 
             <div className="mt-5 overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-2xs">
                 <div className="flex flex-col gap-3 border-b border-slate-200/80 px-4 py-3 sm:flex-row sm:items-center sm:justify-between bg-slate-50/40">
-                    <div className="flex gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1 border border-slate-200/60">
+                    <div className="flex gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1 border border-slate-200/60 scrollbar-none">
                         {[
                             {
                                 id: "today",
                                 label: "Today",
+                                icon: Clock3,
                             },
                             {
                                 id: "history",
                                 label: "Attendance History",
+                                icon: FileText,
+                                count: filteredAttendanceHistory.length || null,
                             },
                             {
                                 id: "calendar",
                                 label: "Monthly Calendar",
+                                icon: CalendarDays,
                             },
                             {
                                 id: "leave",
                                 label: "Leave & Balance",
+                                icon: Coffee,
+                                count: leaveBalances.length > 0
+                                    ? leaveBalances.reduce((sum, b) => sum + Number(b.availableDays || 0), 0)
+                                    : null,
+                                countSuffix: "d",
                             },
                             {
                                 id: "holidays",
                                 label: "Holidays",
+                                icon: CalendarCheck,
+                                count: holidays.length || null,
                             },
                             {
                                 id: "regularization",
                                 label: "Regularization",
+                                icon: AlertCircle,
+                                count: regularizations.filter((r) => r.status === "Pending").length || null,
+                                alertCount: true,
                             },
-                        ].map((tab) => (
-                            <button
-                                key={tab.id}
-                                type="button"
-                                onClick={() => setActiveTab(tab.id)}
-                                className={`whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-semibold transition ${activeTab === tab.id
-                                    ? "bg-white text-slate-900 shadow-2xs"
-                                    : "text-slate-500 hover:text-slate-800"
-                                    }`}
-                            >
-                                {tab.label}
-                            </button>
-                        ))}
+                        ].map((tab) => {
+                            const IconComponent = tab.icon;
+                            const isActive = activeTab === tab.id;
+                            return (
+                                <button
+                                    key={tab.id}
+                                    type="button"
+                                    onClick={() => setActiveTab(tab.id)}
+                                    className={`group inline-flex items-center gap-2 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${isActive
+                                        ? "bg-white text-slate-900 shadow-xs border border-slate-200/70"
+                                        : "text-slate-600 hover:bg-slate-200/60 hover:text-slate-900"
+                                        }`}
+                                >
+                                    <IconComponent
+                                        className={`h-3.5 w-3.5 transition ${isActive ? "text-[#1B59F8]" : "text-slate-400 group-hover:text-slate-600"}`}
+                                    />
+                                    <span>{tab.label}</span>
+                                    {tab.count !== null && tab.count !== undefined && (
+                                        <span
+                                            className={`inline-flex items-center rounded-full px-1.5 py-0.2 text-[10px] font-bold ${tab.alertCount
+                                                ? "bg-amber-100 text-amber-800"
+                                                : isActive
+                                                    ? "bg-blue-50 text-[#1B59F8]"
+                                                    : "bg-slate-200 text-slate-700"
+                                                }`}
+                                        >
+                                            {tab.count}{tab.countSuffix || ""}
+                                        </span>
+                                    )}
+                                </button>
+                            );
+                        })}
                     </div>
 
-                    <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-medium text-slate-500">Status:</span>
-                        <span
-                            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${attendanceStatus === "Working"
-                                ? "bg-emerald-50 text-emerald-700 ring-emerald-600/20"
-                                : attendanceStatus === "Break"
-                                    ? "bg-amber-50 text-amber-700 ring-amber-600/20"
-                                    : "bg-slate-100 text-slate-600 ring-slate-500/20"
-                                }`}
+                    <div className="flex items-center gap-2.5">
+                        <button
+                            type="button"
+                            onClick={handleManualRefresh}
+                            disabled={isRefreshing}
+                            title="Sync live attendance data"
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 shadow-xs transition hover:bg-slate-50 hover:text-slate-900 disabled:opacity-50"
                         >
-                            <span className={`h-1.5 w-1.5 rounded-full ${
-                                attendanceStatus === "Working" ? "bg-emerald-500 animate-pulse" :
-                                attendanceStatus === "Break" ? "bg-amber-500 animate-pulse" : "bg-slate-400"
-                            }`} />
-                            {attendanceStatus}
-                        </span>
+                            <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin text-[#1B59F8]" : ""}`} />
+                        </button>
+
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] font-medium text-slate-500">Status:</span>
+                            <span
+                                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${attendanceStatus === "Working"
+                                    ? "bg-emerald-50 text-emerald-700 ring-emerald-600/20"
+                                    : attendanceStatus === "Break"
+                                        ? "bg-amber-50 text-amber-700 ring-amber-600/20"
+                                        : "bg-slate-100 text-slate-600 ring-slate-500/20"
+                                    }`}
+                            >
+                                <span className={`h-1.5 w-1.5 rounded-full ${attendanceStatus === "Working"
+                                    ? "bg-emerald-500 animate-pulse"
+                                    : attendanceStatus === "Break"
+                                        ? "bg-amber-500 animate-pulse"
+                                        : "bg-slate-400"
+                                    }`} />
+                                {attendanceStatus}
+                            </span>
+                        </div>
                     </div>
                 </div>
 
