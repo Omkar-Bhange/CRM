@@ -9,6 +9,7 @@ import {
     AlertCircle,
     ArrowLeft,
     BriefcaseBusiness,
+    Building2,
     CalendarDays,
     CalendarClock,
     Check,
@@ -17,28 +18,47 @@ import {
     ChevronRight,
     CircleDot,
     Clock3,
+    Columns2,
+    ExternalLink,
     File,
     FileText,
     Filter,
     Headphones,
     Inbox,
+    Kanban,
+    Layers,
+    LayoutList,
     Link2,
     ListTodo,
+    Loader2,
     Mail,
+    MessageCircle,
     MessageSquare,
     Paperclip,
     Phone,
     PhoneCall,
+    Play,
     Plus,
     RotateCcw,
     Search,
     Send,
     ShieldAlert,
+    ShieldCheck,
+    Sparkles,
+    Star,
     Upload,
     UserRound,
     X,
-    Star,
 } from "lucide-react";
+
+function getAmcStatusClasses(status) {
+    if (!status) return "bg-slate-100 text-slate-600 ring-slate-500/10";
+    const s = String(status).toLowerCase();
+    if (s.includes("active")) return "bg-emerald-50 text-emerald-700 ring-emerald-600/20";
+    if (s.includes("warranty")) return "bg-cyan-50 text-cyan-700 ring-cyan-600/20";
+    if (s.includes("expired") || s.includes("out")) return "bg-rose-50 text-rose-700 ring-rose-600/20";
+    return "bg-slate-100 text-slate-600 ring-slate-500/10";
+}
 const initialTickets = [
     {
         id: 1,
@@ -532,14 +552,14 @@ function SummaryCard({
     );
 }
 
-function TicketQueueRow({ ticket, onOpen }) {
+function TicketQueueRow({ ticket, onOpen, onQuickCall, onStartTask, onStatusChange }) {
     const overdue = isTicketOverdue(ticket);
     const dueToday = isTicketDueToday(ticket);
     const completed = ["Resolved", "Closed"].includes(ticket.status);
 
     return (
         <div
-            className={`group grid gap-3 border-t border-slate-100 px-4 py-2.5 transition first:border-t-0 hover:bg-slate-50/80 xl:grid-cols-[minmax(300px,1.8fr)_minmax(170px,1fr)_105px_125px_120px_82px] xl:items-center ${
+            className={`group grid gap-3 border-t border-slate-100 px-4 py-2.5 transition first:border-t-0 hover:bg-slate-50/80 xl:grid-cols-[minmax(280px,1.8fr)_minmax(170px,1fr)_95px_130px_105px_150px] xl:items-center ${
                 overdue ? "bg-rose-50/30" : ""
             }`}
         >
@@ -582,9 +602,7 @@ function TicketQueueRow({ ticket, onOpen }) {
                         )}
 
                         {ticket.ticketNo && ticket.source && (
-                            <span className="text-[8px] text-slate-300">
-                                •
-                            </span>
+                            <span className="text-[8px] text-slate-300">•</span>
                         )}
 
                         {ticket.source && (
@@ -626,28 +644,20 @@ function TicketQueueRow({ ticket, onOpen }) {
                                 </span>
                             </>
                         )}
-
-                        {ticket.clientFeedback?.rating && (
-                            <>
-                                <span className="text-[8px] text-slate-300">•</span>
-                                <span
-                                    className="inline-flex items-center gap-0.5 rounded bg-amber-50 px-1 py-0.2 text-[8px] font-bold text-amber-700"
-                                    title={`Client Feedback: ${ticket.clientFeedback.rating}/5 stars${ticket.clientFeedback.comment ? ` - "${ticket.clientFeedback.comment}"` : ""}`}
-                                >
-                                    <Star size={9} className="fill-amber-400 text-amber-500" />
-                                    <span>{ticket.clientFeedback.rating}/5</span>
-                                </span>
-                            </>
-                        )}
                     </div>
                 </div>
             </div>
 
             {/* CLIENT / PROJECT */}
             <div className="min-w-0">
-                <p className="truncate text-[11px] font-semibold leading-4 text-slate-800">
-                    {ticket.client || "—"}
-                </p>
+                <div className="flex items-center gap-1.5">
+                    <p className="truncate text-[11px] font-semibold leading-4 text-slate-800">
+                        {ticket.client || "—"}
+                    </p>
+                    <span className={`shrink-0 rounded px-1.5 py-0.2 text-[8px] font-bold ring-1 ring-inset ${getAmcStatusClasses(ticket.amcStatus || "Active")}`}>
+                        {ticket.amcStatus || "AMC Active"}
+                    </span>
+                </div>
 
                 <p className="mt-0.5 truncate text-[9px] leading-3 text-slate-500">
                     {[ticket.project, ticket.module]
@@ -669,13 +679,19 @@ function TicketQueueRow({ ticket, onOpen }) {
 
             {/* STATUS */}
             <div>
-                <span
-                    className={`inline-flex rounded-full px-2 py-0.5 text-[9px] font-bold ring-1 ring-inset ${getStatusClasses(
+                <select
+                    value={ticket.status}
+                    onChange={(e) => onStatusChange && onStatusChange(ticket, e.target.value)}
+                    className={`rounded-full px-2 py-0.5 text-[9px] font-bold ring-1 ring-inset border-none outline-none cursor-pointer transition hover:opacity-80 ${getStatusClasses(
                         ticket.status
                     )}`}
                 >
-                    {ticket.status}
-                </span>
+                    {statusOptions.map((status) => (
+                        <option key={status} value={status}>
+                            {status}
+                        </option>
+                    ))}
+                </select>
             </div>
 
             {/* DUE */}
@@ -701,12 +717,33 @@ function TicketQueueRow({ ticket, onOpen }) {
                 )}
             </div>
 
-            {/* ACTION */}
-            <div className="flex justify-end">
+            {/* ACTIONS */}
+            <div className="flex items-center justify-end gap-1.5">
+                {ticket.contactMobile && (
+                    <button
+                        type="button"
+                        onClick={() => onQuickCall && onQuickCall(ticket)}
+                        title={`Call/WhatsApp ${ticket.contactPerson || ticket.client} (${ticket.contactMobile})`}
+                        className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
+                    >
+                        <Phone size={12} />
+                    </button>
+                )}
+                {!completed && (
+                    <button
+                        type="button"
+                        onClick={() => onStartTask && onStartTask(ticket)}
+                        title="Start Tracking Task for this ticket"
+                        className="flex h-7 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-[10px] font-semibold text-slate-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+                    >
+                        <Play size={10} className="fill-violet-600 text-violet-600" />
+                        <span>Task</span>
+                    </button>
+                )}
                 <button
                     type="button"
                     onClick={() => onOpen(ticket)}
-                    className="flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-semibold text-slate-600 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+                    className="flex h-7 items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-[10px] font-semibold text-slate-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
                 >
                     Open
                 </button>
@@ -720,6 +757,9 @@ function TicketDaySection({
     expanded,
     onToggle,
     onOpenTicket,
+    onQuickCall,
+    onStartTask,
+    onStatusChange,
 }) {
     const Icon = section.icon;
 
@@ -777,21 +817,18 @@ function TicketDaySection({
         },
 
         empty: {
-            wrapper: "border-slate-200",
+            wrapper: "border-slate-200/80",
             header:
-                "bg-gradient-to-r from-slate-50 to-white hover:bg-slate-50",
+                "bg-slate-50/40 hover:bg-slate-50",
             icon:
-                "bg-emerald-50 text-emerald-600",
+                "bg-slate-100 text-slate-400",
             count:
-                "bg-slate-100 text-slate-500",
+                "bg-slate-100 text-slate-400",
         },
     };
 
     const tone =
         toneClasses[section.tone] || toneClasses.normal;
-
-
-
 
     return (
         <section
@@ -873,7 +910,7 @@ function TicketDaySection({
 
             {expanded && (
                 <div className="border-t border-slate-100">
-                   <div className="hidden grid-cols-[minmax(300px,1.8fr)_minmax(170px,1fr)_105px_125px_120px_82px] gap-3 border-b border-slate-100 bg-slate-50/60 px-4 py-2 xl:grid">
+                   <div className="hidden grid-cols-[minmax(280px,1.8fr)_minmax(170px,1fr)_95px_130px_105px_150px] gap-3 border-b border-slate-100 bg-slate-50/60 px-4 py-2 xl:grid">
                         <span className="text-[8px] font-bold uppercase tracking-[0.14em] text-slate-400">
                             Ticket
                         </span>
@@ -895,7 +932,7 @@ function TicketDaySection({
                         </span>
 
                         <span className="text-right text-[8px] font-bold uppercase tracking-[0.14em] text-slate-400">
-                            Action
+                            Quick Actions
                         </span>
                     </div>
 
@@ -905,6 +942,9 @@ function TicketDaySection({
                                 key={ticket._id || ticket.id}
                                 ticket={ticket}
                                 onOpen={onOpenTicket}
+                                onQuickCall={onQuickCall}
+                                onStartTask={onStartTask}
+                                onStatusChange={onStatusChange}
                             />
                         ))
                     ) : (
@@ -942,6 +982,133 @@ function TicketDaySection({
         </section>
     );
 }
+
+function KanbanBoard({ tickets, onOpenTicket, onQuickCall, onStartTask, onStatusChange }) {
+    const columns = [
+        { id: "Assigned", label: "Assigned", tone: "bg-cyan-500", headerBg: "bg-cyan-50/80 border-cyan-200 text-cyan-800" },
+        { id: "In Progress", label: "In Progress", tone: "bg-violet-500", headerBg: "bg-violet-50/80 border-violet-200 text-violet-800" },
+        { id: "Waiting for Client", label: "Waiting on Client", tone: "bg-amber-500", headerBg: "bg-amber-50/80 border-amber-200 text-amber-800" },
+        { id: "Testing", label: "Testing / Review", tone: "bg-blue-500", headerBg: "bg-blue-50/80 border-blue-200 text-blue-800" },
+        { id: "Resolved", label: "Resolved", tone: "bg-emerald-500", headerBg: "bg-emerald-50/80 border-emerald-200 text-emerald-800" },
+    ];
+
+    return (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5 p-4 bg-slate-50/50">
+            {columns.map((col) => {
+                const colTickets = tickets.filter((t) => t.status === col.id);
+                return (
+                    <div key={col.id} className="flex flex-col rounded-2xl border border-slate-200/90 bg-slate-100/60 p-3 min-h-[520px]">
+                        <div className={`flex items-center justify-between rounded-xl border p-2.5 mb-3 bg-white shadow-2xs ${col.headerBg}`}>
+                            <div className="flex items-center gap-2">
+                                <span className={`h-2 w-2 rounded-full ${col.tone}`} />
+                                <span className="text-xs font-bold">{col.label}</span>
+                            </div>
+                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/80 text-[10px] font-bold text-slate-700 shadow-2xs">
+                                {colTickets.length}
+                            </span>
+                        </div>
+
+                        <div className="flex-1 space-y-2.5 overflow-y-auto">
+                            {colTickets.length === 0 ? (
+                                <div className="rounded-xl border border-dashed border-slate-200 bg-white/40 p-6 text-center text-xs text-slate-400">
+                                    No tickets in this stage
+                                </div>
+                            ) : (
+                                colTickets.map((ticket) => {
+                                    const overdue = isTicketOverdue(ticket);
+                                    return (
+                                        <div
+                                            key={ticket._id || ticket.id}
+                                            className={`rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-xs transition hover:border-violet-300 hover:shadow-sm ${
+                                                overdue ? "border-l-4 border-l-rose-500" : ""
+                                            }`}
+                                        >
+                                            <div className="flex items-start justify-between gap-2">
+                                                <span className="text-[10px] font-bold text-violet-600">
+                                                    {ticket.ticketNo || "TKT"}
+                                                </span>
+                                                <span
+                                                    className={`rounded-full px-2 py-0.5 text-[8px] font-bold ring-1 ring-inset ${getPriorityClasses(
+                                                        ticket.priority
+                                                    )}`}
+                                                >
+                                                    {ticket.priority}
+                                                </span>
+                                            </div>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => onOpenTicket(ticket)}
+                                                className="mt-1.5 block text-left text-xs font-semibold text-slate-900 line-clamp-2 hover:text-violet-700"
+                                            >
+                                                {ticket.title}
+                                            </button>
+
+                                            <div className="mt-2.5 flex items-center justify-between gap-2 text-[10px] text-slate-500">
+                                                <span className="truncate font-medium text-slate-700">
+                                                    {ticket.client || "Client"}
+                                                </span>
+                                                <span className={`shrink-0 rounded px-1.5 py-0.2 text-[8px] font-bold ring-1 ring-inset ${getAmcStatusClasses(ticket.amcStatus || "Active")}`}>
+                                                    {ticket.amcStatus || "AMC Active"}
+                                                </span>
+                                            </div>
+
+                                            {ticket.dueDate && (
+                                                <div className="mt-2 flex items-center justify-between text-[9px]">
+                                                    <span className={overdue ? "font-bold text-rose-600" : "text-slate-400"}>
+                                                        Due: {formatDate(ticket.dueDate)}
+                                                    </span>
+                                                    {ticket.timeSpentMinutes > 0 && (
+                                                        <span className="font-medium text-slate-500">
+                                                            {formatMinutes(ticket.timeSpentMinutes)}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            <div className="mt-3 flex items-center justify-between gap-1 border-t border-slate-100 pt-2.5">
+                                                <select
+                                                    value={ticket.status}
+                                                    onChange={(e) => onStatusChange && onStatusChange(ticket, e.target.value)}
+                                                    className="h-6 rounded-md border border-slate-200 bg-slate-50 px-1.5 text-[9px] font-semibold text-slate-700 outline-none"
+                                                >
+                                                    {statusOptions.map((s) => (
+                                                        <option key={s} value={s}>{s}</option>
+                                                    ))}
+                                                </select>
+
+                                                <div className="flex items-center gap-1">
+                                                    {ticket.contactMobile && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => onQuickCall && onQuickCall(ticket)}
+                                                            className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:text-emerald-600"
+                                                            title="Call client"
+                                                        >
+                                                            <Phone size={10} />
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => onOpenTicket(ticket)}
+                                                        className="flex h-6 items-center justify-center rounded-md border border-slate-200 bg-white px-2 text-[9px] font-semibold text-slate-700 hover:bg-violet-50 hover:text-violet-700"
+                                                    >
+                                                        Details
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
 export default function MyTickets() {
     const fileInputRef = useRef(null);
 
@@ -998,11 +1165,136 @@ const [openTicketSections, setOpenTicketSections] = useState({
         description: "",
     });
 
+    const [viewMode, setViewMode] = useState("list");
+    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const [isSubmittingTicket, setIsSubmittingTicket] = useState(false);
+    const [clientsList, setClientsList] = useState([]);
+    const [quickTicketForm, setQuickTicketForm] = useState({
+        clientId: "",
+        clientName: "",
+        contactPerson: "",
+        contactMobile: "",
+        contactEmail: "",
+        title: "",
+        description: "",
+        priority: "Medium",
+        module: "General",
+        productName: "",
+        source: "Phone Call",
+        dueDate: getTodayDateKey(),
+    });
+
     const selectedTicket =
         tickets.find(
             (ticket) =>
                 ticket._id === selectedTicketId
         ) || null;
+
+    const loadClientsBrief = async () => {
+        try {
+            const token = localStorage.getItem("client-connect-token") || sessionStorage.getItem("client-connect-token");
+            if (!token) return;
+            const res = await fetch(`${API_URL}/api/employee/clients-brief`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const data = await res.json();
+            if (data.success) {
+                setClientsList(data.clients || []);
+            }
+        } catch (e) {
+            console.error("Failed to load clients list", e);
+        }
+    };
+
+    const handleCreateQuickTicket = async (e) => {
+        e.preventDefault();
+        if (!quickTicketForm.title.trim()) {
+            alert("Please enter a ticket title.");
+            return;
+        }
+
+        try {
+            setIsSubmittingTicket(true);
+            const token = localStorage.getItem("client-connect-token") || sessionStorage.getItem("client-connect-token");
+            const response = await fetch(`${API_URL}/api/employee/my-tickets`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify(quickTicketForm),
+            });
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || "Failed to create ticket.");
+            }
+
+            setTickets((prev) => [data.ticket, ...prev]);
+            setIsCreateModalOpen(false);
+            setQuickTicketForm({
+                clientId: "",
+                clientName: "",
+                contactPerson: "",
+                contactMobile: "",
+                contactEmail: "",
+                title: "",
+                description: "",
+                priority: "Medium",
+                module: "General",
+                productName: "",
+                source: "Phone Call",
+                dueDate: getTodayDateKey(),
+            });
+        } catch (error) {
+            alert(error.message);
+        } finally {
+            setIsSubmittingTicket(false);
+        }
+    };
+
+    const handleQuickStatusChange = async (ticket, newStatus) => {
+        try {
+            const token = localStorage.getItem("client-connect-token") || sessionStorage.getItem("client-connect-token");
+            setTickets((prev) =>
+                prev.map((t) => (t._id === ticket._id ? { ...t, status: newStatus } : t))
+            );
+
+            const response = await fetch(`${API_URL}/api/employee/my-tickets/${ticket._id}/status`, {
+                method: "PATCH",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ status: newStatus }),
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.message || "Failed to update status.");
+            }
+            if (data.ticket) {
+                setTickets((prev) =>
+                    prev.map((t) => (t._id === ticket._id ? { ...t, ...data.ticket } : t))
+                );
+            }
+        } catch (error) {
+            console.error("Failed to update status", error);
+            loadTickets();
+        }
+    };
+
+    const handleQuickCall = (ticket) => {
+        if (!ticket.contactMobile) return;
+        const confirmCall = window.confirm(`Call ${ticket.contactPerson || ticket.client} at ${ticket.contactMobile}?`);
+        if (confirmCall) {
+            window.open(`tel:${ticket.contactMobile}`, "_self");
+        }
+    };
+
+    const handleStartTask = (ticket) => {
+        setSelectedTicketId(ticket._id);
+        setDetailsTab("overview");
+    };
+
     const loadTickets = async () => {
         try {
             setLoadingTickets(true);
@@ -1042,6 +1334,7 @@ const [openTicketSections, setOpenTicketSections] = useState({
     };
     useEffect(() => {
         loadTickets();
+        loadClientsBrief();
     }, []);
 
     const filteredTickets = useMemo(() => {
@@ -1296,7 +1589,7 @@ const [openTicketSections, setOpenTicketSections] = useState({
                         : "No tickets completed today",
 
                 tickets: completedTodayTickets,
-                tone: "success",
+                tone: completedTodayTickets.length > 0 ? "success" : "empty",
                 icon: CheckCircle2,
                 alwaysVisible: true,
             },
@@ -1865,23 +2158,32 @@ const [openTicketSections, setOpenTicketSections] = useState({
                     </h2>
 
                     <p className="mt-1 text-xs text-slate-500">
-                        Manage client issues assigned to you, communicate
-                        updates and record resolutions.
+                        Manage client issues assigned to you, communicate updates and record resolutions.
                     </p>
                 </div>
 
-                <div className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
-                    <Headphones size={17} className="text-blue-700" />
+                <div className="flex flex-wrap items-center gap-3">
+                    <button
+                        type="button"
+                        onClick={() => setIsCreateModalOpen(true)}
+                        className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white shadow-xs transition hover:bg-violet-700"
+                    >
+                        <Plus size={15} />
+                        <span>Log Ticket / Call</span>
+                    </button>
 
-                    <div>
-                        <p className="text-[10px] font-semibold text-blue-700">
-                            Support Queue
-                        </p>
+                    <div className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5">
+                        <Headphones size={17} className="text-blue-700" />
 
-                        <p className="mt-1 text-xs font-semibold text-slate-900">
-                            {openCount} active ticket
-                            {openCount !== 1 ? "s" : ""}
-                        </p>
+                        <div>
+                            <p className="text-[10px] font-semibold text-blue-700">
+                                Support Queue
+                            </p>
+
+                            <p className="mt-0.5 text-xs font-bold text-slate-900">
+                                {openCount} active ticket{openCount !== 1 ? "s" : ""}
+                            </p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1932,66 +2234,114 @@ const [openTicketSections, setOpenTicketSections] = useState({
                     descriptionClass="text-emerald-600"
                 />
             </div>
-            <div className="mt-6 flex flex-wrap items-center gap-2">
-                {[
-                    {
-                        label: "All",
-                        value: "All",
-                        count: tickets.length,
-                    },
-                    {
-                        label: "Pending",
-                        value: "Pending",
-                        count: openCount,
-                    },
-                    {
-                        label: "Today",
-                        value: "Today",
-                        count: tickets.filter(isTicketDueToday).length,
-                    },
-                    {
-                        label: "Overdue",
-                        value: "Overdue",
-                        count: overdueCount,
-                    },
-                    {
-                        label: "Completed",
-                        value: "Completed",
-                        count: tickets.filter((ticket) =>
-                            ["Resolved", "Closed"].includes(ticket.status)
-                        ).length,
-                    },
-                ].map((item) => (
+
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-wrap items-center gap-2">
+                    {[
+                        { label: "All", value: "All", count: tickets.length },
+                        { label: "Pending", value: "Pending", count: openCount },
+                        { label: "Today", value: "Today", count: tickets.filter(isTicketDueToday).length },
+                        { label: "Overdue", value: "Overdue", count: overdueCount },
+                        { label: "Critical", value: "Critical", count: criticalCount },
+                        { label: "Completed", value: "Completed", count: resolvedCount },
+                    ].map((item) => (
+                        <button
+                            key={item.value}
+                            type="button"
+                            onClick={() => {
+                                if (item.value === "Today") {
+                                    setDueFilter("Today");
+                                    setStatusFilter("All");
+                                    setPriorityFilter("All");
+                                } else if (item.value === "Overdue") {
+                                    setDueFilter("Overdue");
+                                    setStatusFilter("All");
+                                    setPriorityFilter("All");
+                                } else if (item.value === "Critical") {
+                                    setDueFilter("All");
+                                    setStatusFilter("All");
+                                    setPriorityFilter("Critical");
+                                } else if (item.value === "Completed") {
+                                    setDueFilter("All");
+                                    setStatusFilter("Resolved");
+                                    setPriorityFilter("All");
+                                } else if (item.value === "Pending") {
+                                    setDueFilter("All");
+                                    setStatusFilter("All");
+                                    setPriorityFilter("All");
+                                } else {
+                                    setDueFilter("All");
+                                    setStatusFilter("All");
+                                    setPriorityFilter("All");
+                                }
+                            }}
+                            className={`inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-[10px] font-semibold transition ${
+                                (item.value === "Today" && dueFilter === "Today") ||
+                                (item.value === "Overdue" && dueFilter === "Overdue") ||
+                                (item.value === "Critical" && priorityFilter === "Critical") ||
+                                (item.value === "Completed" && statusFilter === "Resolved") ||
+                                (item.value === "All" && dueFilter === "All" && statusFilter === "All" && priorityFilter === "All")
+                                    ? "border-violet-300 bg-violet-50 text-violet-700 shadow-2xs"
+                                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                            }`}
+                        >
+                            {item.label}
+                            <span className="flex min-w-5 items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[8px] font-bold text-slate-500">
+                                {item.count}
+                            </span>
+                        </button>
+                    ))}
+                </div>
+
+                {/* View Switcher */}
+                <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-100/80 p-1">
                     <button
-                        key={item.value}
+                        type="button"
+                        onClick={() => setViewMode("list")}
+                        className={`flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[10px] font-semibold transition ${
+                            viewMode === "list"
+                                ? "bg-white text-slate-900 shadow-xs"
+                                : "text-slate-500 hover:text-slate-800"
+                        }`}
+                        title="List View"
+                    >
+                        <LayoutList size={13} />
+                        <span>List</span>
+                    </button>
+
+                    <button
                         type="button"
                         onClick={() => {
-                            if (item.value === "Today") {
-                                setDueFilter("Today");
-                                setStatusFilter("All");
-                            } else if (item.value === "Overdue") {
-                                setDueFilter("Overdue");
-                                setStatusFilter("All");
-                            } else if (item.value === "Completed") {
-                                setDueFilter("All");
-                                setStatusFilter("Resolved");
-                            } else if (item.value === "Pending") {
-                                setDueFilter("All");
-                                setStatusFilter("All");
-                            } else {
-                                setDueFilter("All");
-                                setStatusFilter("All");
+                            setViewMode("split");
+                            if (!selectedTicketId && filteredTickets.length > 0) {
+                                setSelectedTicketId(filteredTickets[0]._id);
                             }
                         }}
-                        className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-[10px] font-semibold text-slate-600 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+                        className={`flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[10px] font-semibold transition ${
+                            viewMode === "split"
+                                ? "bg-white text-slate-900 shadow-xs"
+                                : "text-slate-500 hover:text-slate-800"
+                        }`}
+                        title="Split Master-Detail View"
                     >
-                        {item.label}
-
-                        <span className="flex min-w-5 items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[8px] font-bold text-slate-500">
-                            {item.count}
-                        </span>
+                        <Columns2 size={13} />
+                        <span>Split</span>
                     </button>
-                ))}
+
+                    <button
+                        type="button"
+                        onClick={() => setViewMode("kanban")}
+                        className={`flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[10px] font-semibold transition ${
+                            viewMode === "kanban"
+                                ? "bg-white text-slate-900 shadow-xs"
+                                : "text-slate-500 hover:text-slate-800"
+                        }`}
+                        title="Kanban Board View"
+                    >
+                        <Kanban size={13} />
+                        <span>Board</span>
+                    </button>
+                </div>
             </div>
            <div className="mt-5 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3.5 xl:flex-row xl:items-center xl:justify-between">
@@ -2122,32 +2472,188 @@ const [openTicketSections, setOpenTicketSections] = useState({
                     </div>
                 )}
                 {loadingTickets ? (
-    <div className="flex min-h-[260px] items-center justify-center">
-        <div className="text-center">
-            <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-violet-600" />
+                    <div className="flex min-h-[260px] items-center justify-center">
+                        <div className="text-center">
+                            <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-violet-600" />
+                            <p className="mt-3 text-xs font-medium text-slate-500">
+                                Loading your support queue...
+                            </p>
+                        </div>
+                    </div>
+                ) : viewMode === "kanban" ? (
+                    <div className="p-4 bg-slate-50/50">
+                        <KanbanBoard
+                            filteredTickets={filteredTickets}
+                            onOpenTicket={openTicket}
+                            onQuickStatusChange={handleQuickStatusChange}
+                            onQuickCall={handleQuickCall}
+                            onStartTask={handleStartTask}
+                        />
+                    </div>
+                ) : viewMode === "split" ? (
+                    <div className="grid grid-cols-1 lg:grid-cols-12 min-h-[600px] divide-y lg:divide-y-0 lg:divide-x divide-slate-200">
+                        <div className="lg:col-span-5 xl:col-span-5 p-3 space-y-2.5 overflow-y-auto max-h-[750px] bg-slate-50/40">
+                            {ticketSections.map((section) => (
+                                <TicketDaySection
+                                    key={section.id}
+                                    section={section}
+                                    expanded={openTicketSections[section.id] ?? false}
+                                    onToggle={() => toggleTicketSection(section.id)}
+                                    onOpenTicket={openTicket}
+                                    onQuickCall={handleQuickCall}
+                                    onStartTask={handleStartTask}
+                                    onStatusChange={handleQuickStatusChange}
+                                />
+                            ))}
+                        </div>
+                        <div className="lg:col-span-7 xl:col-span-7 p-5 bg-white overflow-y-auto max-h-[750px]">
+                            {selectedTicket ? (
+                                <div className="space-y-4">
+                                    <div className="flex items-start justify-between border-b border-slate-200 pb-3.5">
+                                        <div>
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className="text-xs font-bold text-violet-600">
+                                                    {selectedTicket.ticketNo}
+                                                </span>
+                                                <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold ring-1 ring-inset ${getPriorityClasses(selectedTicket.priority)}`}>
+                                                    {selectedTicket.priority}
+                                                </span>
+                                                <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold ring-1 ring-inset ${getStatusClasses(selectedTicket.status)}`}>
+                                                    {selectedTicket.status}
+                                                </span>
+                                                {selectedTicket.amcStatus && (
+                                                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold ring-1 ring-inset ${getAmcStatusClasses(selectedTicket.amcStatus)}`}>
+                                                        <ShieldCheck size={10} />
+                                                        {selectedTicket.amcStatus}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <h3 className="mt-2 text-base font-bold text-slate-950">
+                                                {selectedTicket.title}
+                                            </h3>
+                                            <p className="mt-1 text-xs text-slate-500">
+                                                Client: <span className="font-semibold text-slate-800">{selectedTicket.client}</span> · Reported by {selectedTicket.reportedBy} · {selectedTicket.source}
+                                            </p>
+                                        </div>
 
-            <p className="mt-3 text-xs font-medium text-slate-500">
-                Loading your support queue...
-            </p>
-        </div>
-    </div>
-) : (
-    <div className="space-y-2.5 bg-slate-50/40 p-3.5 sm:p-4">
-        {ticketSections.map((section) => (
-            <TicketDaySection
-                key={section.id}
-                section={section}
-                expanded={
-                    openTicketSections[section.id] ?? false
-                }
-                onToggle={() =>
-                    toggleTicketSection(section.id)
-                }
-                onOpenTicket={openTicket}
-            />
-        ))}
-    </div>
-)}
+                                        <button
+                                            type="button"
+                                            onClick={() => setDetailsTab("overview")}
+                                            className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                        >
+                                            <ExternalLink size={12} />
+                                            <span>Full Drawer</span>
+                                        </button>
+                                    </div>
+
+                                    {/* Quick Actions Bar */}
+                                    <div className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 p-3 border border-slate-200">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                                Status:
+                                            </span>
+                                            <select
+                                                value={selectedTicket.status}
+                                                onChange={handleStatusChange}
+                                                className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-800 outline-none"
+                                            >
+                                                {statusOptions.map((status) => (
+                                                    <option key={status} value={status}>{status}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        {selectedTicket.contactMobile && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleQuickCall(selectedTicket)}
+                                                className="flex h-8 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                                            >
+                                                <Phone size={12} />
+                                                <span>Call {selectedTicket.contactPerson || selectedTicket.client}</span>
+                                            </button>
+                                        )}
+
+                                        <button
+                                            type="button"
+                                            onClick={openCreateTask}
+                                            className="flex h-8 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-xs font-semibold text-white hover:bg-violet-700"
+                                        >
+                                            <Play size={10} className="fill-white" />
+                                            <span>Start Task</span>
+                                        </button>
+                                    </div>
+
+                                    {/* Description */}
+                                    <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+                                        <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                            Issue Description
+                                        </h4>
+                                        <p className="mt-2 text-xs text-slate-700 whitespace-pre-wrap leading-5">
+                                            {selectedTicket.description || "No description provided."}
+                                        </p>
+                                    </div>
+
+                                    {/* Quick Reply Box */}
+                                    <form onSubmit={addReply} className="rounded-xl border border-slate-200 p-3.5 space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                                                <MessageSquare size={14} className="text-violet-600" />
+                                                Quick Reply to Client
+                                            </span>
+                                            <span className="text-[10px] text-slate-400">
+                                                Visible to client
+                                            </span>
+                                        </div>
+                                        <textarea
+                                            value={replyText}
+                                            onChange={(e) => setReplyText(e.target.value)}
+                                            rows={3}
+                                            placeholder="Type your response to the client..."
+                                            className="w-full resize-none rounded-lg border border-slate-200 p-2.5 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+                                        />
+                                        <div className="flex justify-end">
+                                            <button
+                                                type="submit"
+                                                className="flex h-8 items-center gap-1.5 rounded-lg bg-violet-600 px-3.5 text-xs font-semibold text-white hover:bg-violet-700"
+                                            >
+                                                <Send size={12} />
+                                                <span>Send Reply</span>
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                            ) : (
+                                <div className="flex h-full min-h-[420px] flex-col items-center justify-center text-center p-8">
+                                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-50 text-violet-600 ring-8 ring-violet-50/50">
+                                        <Layers size={24} />
+                                    </div>
+                                    <h3 className="mt-4 text-sm font-bold text-slate-900">
+                                        Split View Queue Active
+                                    </h3>
+                                    <p className="mt-1.5 max-w-sm text-xs text-slate-500">
+                                        Select any ticket from the list on the left to inspect conversation, call notes, and SLA deadlines side-by-side.
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                ) : (
+                    <div className="space-y-2.5 bg-slate-50/40 p-3.5 sm:p-4">
+                        {ticketSections.map((section) => (
+                            <TicketDaySection
+                                key={section.id}
+                                section={section}
+                                expanded={openTicketSections[section.id] ?? false}
+                                onToggle={() => toggleTicketSection(section.id)}
+                                onOpenTicket={openTicket}
+                                onQuickCall={handleQuickCall}
+                                onStartTask={handleStartTask}
+                                onStatusChange={handleQuickStatusChange}
+                            />
+                        ))}
+                    </div>
+                )}
 
 
             </div>
@@ -3380,6 +3886,240 @@ const [openTicketSections, setOpenTicketSections] = useState({
                         </div>
                     </div>
                 </>
+            )}
+
+            {isCreateModalOpen && (
+                <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-xs">
+                    <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl border border-slate-200">
+                        {/* Header */}
+                        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 bg-slate-50/50">
+                            <div className="flex items-center gap-2.5">
+                                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
+                                    <Plus size={18} />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-bold text-slate-900">
+                                        Log New Ticket / Support Call
+                                    </h3>
+                                    <p className="text-xs text-slate-500">
+                                        Capture incoming client calls, issues or tasks directly into your queue.
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsCreateModalOpen(false)}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        {/* Form */}
+                        <form onSubmit={handleCreateQuickTicket} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+                            {/* Client Select with Auto-fill */}
+                            <div>
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <label className="text-xs font-semibold text-slate-700">
+                                        Select Client <span className="text-rose-500">*</span>
+                                    </label>
+                                    {quickTicketForm.amcStatus && (
+                                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold ring-1 ring-inset ${getAmcStatusClasses(quickTicketForm.amcStatus)}`}>
+                                            <ShieldCheck size={10} />
+                                            {quickTicketForm.amcStatus}
+                                        </span>
+                                    )}
+                                </div>
+                                <select
+                                    value={quickTicketForm.clientId}
+                                    onChange={(e) => {
+                                        const selectedId = e.target.value;
+                                        const found = clientsList.find((c) => c._id === selectedId);
+                                        if (found) {
+                                            setQuickTicketForm((prev) => ({
+                                                ...prev,
+                                                clientId: found._id,
+                                                clientName: found.clientName || found.name || "",
+                                                contactPerson: found.primaryContactPerson || found.contactPerson || "",
+                                                contactMobile: found.primaryPhone || found.phone || found.mobile || "",
+                                                contactEmail: found.primaryEmail || found.email || "",
+                                                productName: found.product || found.project || "",
+                                                amcStatus: found.amcStatus || "Active",
+                                            }));
+                                        } else {
+                                            setQuickTicketForm((prev) => ({
+                                                ...prev,
+                                                clientId: "",
+                                                clientName: "",
+                                                contactPerson: "",
+                                                contactMobile: "",
+                                                contactEmail: "",
+                                                productName: "",
+                                                amcStatus: "",
+                                            }));
+                                        }
+                                    }}
+                                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                    required
+                                >
+                                    <option value="">-- Choose Client --</option>
+                                    {clientsList.map((client) => (
+                                        <option key={client._id} value={client._id}>
+                                            {client.clientName || client.name} {client.amcStatus ? `(${client.amcStatus})` : ""}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Contact Info (Auto-filled but editable) */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                                        Contact Person
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={quickTicketForm.contactPerson}
+                                        onChange={(e) => setQuickTicketForm((prev) => ({ ...prev, contactPerson: e.target.value }))}
+                                        placeholder="e.g. John Doe"
+                                        className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                                        Phone / Mobile Number
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={quickTicketForm.contactMobile}
+                                        onChange={(e) => setQuickTicketForm((prev) => ({ ...prev, contactMobile: e.target.value }))}
+                                        placeholder="e.g. +91 9876543210"
+                                        className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Ticket Title */}
+                            <div>
+                                <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                                    Ticket Title / Subject <span className="text-rose-500">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    value={quickTicketForm.title}
+                                    onChange={(e) => setQuickTicketForm((prev) => ({ ...prev, title: e.target.value }))}
+                                    placeholder="e.g. SQL Server connection timeout in SSMS / UltraViewer remote support"
+                                    className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                    required
+                                />
+                            </div>
+
+                            {/* Priority, Source, Module & Due Date */}
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                <div>
+                                    <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                                        Priority
+                                    </label>
+                                    <select
+                                        value={quickTicketForm.priority}
+                                        onChange={(e) => setQuickTicketForm((prev) => ({ ...prev, priority: e.target.value }))}
+                                        className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400"
+                                    >
+                                        <option value="Low">Low</option>
+                                        <option value="Medium">Medium</option>
+                                        <option value="High">High</option>
+                                        <option value="Critical">Critical</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                                        Channel / Source
+                                    </label>
+                                    <select
+                                        value={quickTicketForm.source}
+                                        onChange={(e) => setQuickTicketForm((prev) => ({ ...prev, source: e.target.value }))}
+                                        className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none focus:border-violet-400"
+                                    >
+                                        <option value="Phone Call">Phone Call</option>
+                                        <option value="WhatsApp">WhatsApp</option>
+                                        <option value="Email">Email</option>
+                                        <option value="UltraViewer">UltraViewer</option>
+                                        <option value="Portal">Client Portal</option>
+                                        <option value="Walk-in">Walk-in</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                                        Category / Module
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={quickTicketForm.module}
+                                        onChange={(e) => setQuickTicketForm((prev) => ({ ...prev, module: e.target.value }))}
+                                        placeholder="e.g. SQL / SSMS"
+                                        className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs text-slate-700 outline-none focus:border-violet-400"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                                        Due Date
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={quickTicketForm.dueDate}
+                                        onChange={(e) => setQuickTicketForm((prev) => ({ ...prev, dueDate: e.target.value }))}
+                                        className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs text-slate-700 outline-none focus:border-violet-400"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Description / Notes */}
+                            <div>
+                                <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                                    Description / Call Notes
+                                </label>
+                                <textarea
+                                    value={quickTicketForm.description}
+                                    onChange={(e) => setQuickTicketForm((prev) => ({ ...prev, description: e.target.value }))}
+                                    rows={3}
+                                    placeholder="Details of the issue discussed, steps to replicate, or error messages..."
+                                    className="w-full resize-none rounded-xl border border-slate-200 p-3 text-xs leading-5 text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                />
+                            </div>
+
+                            {/* Footer Buttons */}
+                            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsCreateModalOpen(false)}
+                                    className="h-10 rounded-xl border border-slate-200 px-4 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isSubmittingTicket}
+                                    className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-5 text-xs font-semibold text-white shadow-xs transition hover:bg-violet-700 disabled:opacity-50"
+                                >
+                                    {isSubmittingTicket ? (
+                                        <>
+                                            <Loader2 size={15} className="animate-spin" />
+                                            <span>Creating Ticket...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Check size={15} />
+                                            <span>Create & Assign to Me</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
             )}
         </div>
     );

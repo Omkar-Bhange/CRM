@@ -1315,6 +1315,164 @@ router.get("/my-tickets", async (req, res, next) => {
     next(error);
   }
 });
+
+/* =========================================================
+   EMPLOYEE CLIENTS BRIEF (FOR QUICK TICKET CREATION)
+   GET /api/employee/clients-brief
+========================================================= */
+router.get("/clients-brief", async (req, res, next) => {
+  try {
+    if (req.user.role !== "employee") {
+      return res.status(403).json({ success: false, message: "Employee account is required." });
+    }
+    const Client = mongoose.models.Client;
+    if (!Client) {
+      return res.json({ success: true, clients: [] });
+    }
+    const clients = await Client.find({ isDeleted: { $ne: true } }, {
+      _id: 1,
+      companyName: 1,
+      clientCode: 1,
+      contactPerson: 1,
+      mobile: 1,
+      email: 1,
+      products: 1,
+      amcStatus: 1,
+      amcValidUntil: 1,
+    }).sort({ companyName: 1 }).lean();
+
+    return res.json({
+      success: true,
+      clients: clients.map((c) => ({
+        id: c._id,
+        _id: c._id,
+        companyName: c.companyName || "Unknown Client",
+        clientCode: c.clientCode || "",
+        contactPerson: c.contactPerson || "",
+        mobile: c.mobile || "",
+        email: c.email || "",
+        products: (c.products || []).map((p) => ({
+          id: p._id,
+          productName: p.productName,
+          status: p.status,
+        })),
+        amcStatus: c.amcStatus || "Active",
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/* =========================================================
+   CREATE QUICK TICKET BY EMPLOYEE
+   POST /api/employee/my-tickets
+========================================================= */
+router.post("/my-tickets", async (req, res, next) => {
+  try {
+    if (req.user.role !== "employee") {
+      return res.status(403).json({ success: false, message: "Employee account is required." });
+    }
+    const employee = await Employee.findOne({ userId: req.user._id });
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee profile not found." });
+    }
+
+    const {
+      title,
+      description,
+      clientId,
+      clientName,
+      contactPerson,
+      contactMobile,
+      contactEmail,
+      productName,
+      module,
+      priority = "Medium",
+      source = "Phone Call",
+      dueDate,
+    } = req.body;
+
+    if (!title || !String(title).trim()) {
+      return res.status(400).json({ success: false, message: "Ticket title is required." });
+    }
+
+    const SupportTicket = mongoose.models.SupportTicket;
+    const Client = mongoose.models.Client;
+
+    let resolvedClientName = clientName || "General Client";
+    let resolvedClientId = clientId;
+
+    if (clientId && mongoose.Types.ObjectId.isValid(clientId)) {
+      const clientDoc = await Client.findById(clientId).lean();
+      if (clientDoc) {
+        resolvedClientName = clientDoc.companyName || resolvedClientName;
+      }
+    }
+
+    const count = await SupportTicket.countDocuments();
+    const ticketNo = `TKT-${1000 + count + 1}`;
+    const ticketCode = ticketNo;
+
+    const now = new Date();
+    const createdTicket = await SupportTicket.create({
+      ticketNo,
+      ticketCode,
+      title: String(title).trim(),
+      description: String(description || title).trim(),
+      clientId: resolvedClientId || null,
+      client: resolvedClientName,
+      companyName: resolvedClientName,
+      contactPerson: contactPerson || "",
+      contactMobile: contactMobile || "",
+      contactEmail: contactEmail || "",
+      product: productName || "General Support",
+      productName: productName || "General Support",
+      module: module || "General",
+      priority,
+      status: "Assigned",
+      source: source || "Phone Call",
+      assignedEmployeeId: employee._id,
+      assignedEmployeeName: employee.name,
+      reportedBy: contactPerson || employee.name,
+      dueDate: dueDate || null,
+      createdAt: now,
+      updatedAt: now,
+      timeline: [
+        {
+          type: "created",
+          title: "Ticket logged by employee",
+          description: `Ticket created via ${source || "Employee Workspace"}.`,
+          createdAt: now,
+        },
+      ],
+      replies: [],
+      internalNotes: [],
+      attachments: [],
+      callLogs: [],
+    });
+
+    if (resolvedClientId && mongoose.Types.ObjectId.isValid(resolvedClientId)) {
+      const openCount = await SupportTicket.countDocuments({
+        clientId: resolvedClientId,
+        isDeleted: false,
+        status: { $nin: ["Resolved", "Closed"] },
+      });
+      await Client.updateOne({ _id: resolvedClientId }, { $set: { openTickets: openCount } });
+    }
+
+    const ticketObj = createdTicket.toObject();
+    ticketObj.sla = calculateTicketSla(ticketObj);
+
+    return res.status(201).json({
+      success: true,
+      message: "Ticket created successfully.",
+      ticket: ticketObj,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 /* =========================================================
    UPDATE TICKET STATUS
    PATCH /api/employee/my-tickets/:id/status
