@@ -153,7 +153,112 @@ require("./agentSession"); // register models
 const AgentDailySummary =
   mongoose.models.AgentDailySummary ||
   mongoose.model("AgentDailySummary");
-// console.log("AgentDailySummary model:", !!AgentDailySummary);
+
+/* =========================================================
+   EMPLOYEE NOTIFICATION SCHEMA & MODEL
+========================================================= */
+let EmployeeNotification = mongoose.models.EmployeeNotification;
+if (!EmployeeNotification) {
+  const employeeNotificationSchema = new mongoose.Schema(
+    {
+      employeeId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Employee",
+        required: true,
+        index: true,
+      },
+      userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+        index: true,
+      },
+      type: {
+        type: String,
+        enum: [
+          "TASK_ASSIGNED",
+          "TASK_OVERDUE",
+          "TASK_DUE_SOON",
+          "TASK_UPDATED",
+          "TICKET_ASSIGNED",
+          "TICKET_SLA_WARNING",
+          "TICKET_REPLY",
+          "TICKET_RESOLVED",
+          "ATTENDANCE_PUNCH",
+          "ATTENDANCE_REGULARIZATION",
+          "LEAVE_APPROVED",
+          "LEAVE_REJECTED",
+          "SYSTEM_ANNOUNCEMENT",
+          "SHIFT_REMINDER",
+        ],
+        required: true,
+        index: true,
+      },
+      title: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      message: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      priority: {
+        type: String,
+        enum: ["low", "normal", "high", "urgent"],
+        default: "normal",
+      },
+      entityType: {
+        type: String,
+        enum: ["task", "ticket", "attendance", "timelog", "system", "other"],
+        default: "other",
+      },
+      entityId: {
+        type: mongoose.Schema.Types.ObjectId,
+        default: null,
+      },
+      entityCode: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+      navigationTarget: {
+        type: String,
+        enum: ["dashboard", "tasks", "tickets", "attendance", "time-log"],
+        default: "dashboard",
+      },
+      isRead: {
+        type: Boolean,
+        default: false,
+        index: true,
+      },
+      readAt: {
+        type: Date,
+        default: null,
+      },
+      dedupKey: {
+        type: String,
+        default: "",
+        index: true,
+      },
+      metadata: {
+        type: mongoose.Schema.Types.Mixed,
+        default: {},
+      },
+    },
+    {
+      timestamps: true,
+      collection: "employeenotifications",
+    }
+  );
+
+  employeeNotificationSchema.index({ employeeId: 1, createdAt: -1 });
+  employeeNotificationSchema.index({ employeeId: 1, isRead: 1 });
+  employeeNotificationSchema.index({ employeeId: 1, dedupKey: 1 }, { unique: true });
+
+  EmployeeNotification = mongoose.model("EmployeeNotification", employeeNotificationSchema);
+}
 /* =========================================================
    EMPLOYEE SCHEMA
 ========================================================= */
@@ -3763,4 +3868,383 @@ router.get("/tasks/current", authenticateUser, async (req, res, next) => {
     next(error);
   }
 });
+
+/* =========================================================
+   EMPLOYEE NOTIFICATIONS SYNC & HELPERS
+========================================================= */
+
+async function syncEmployeeNotifications(employeeId, userId) {
+  try {
+    if (!employeeId || !mongoose.Types.ObjectId.isValid(employeeId)) return;
+
+    const todayStr = getISTDateString ? getISTDateString(new Date()) : new Date().toISOString().slice(0, 10);
+    const existing = await EmployeeNotification.find({ employeeId }).select("dedupKey").lean();
+    const existingKeys = new Set(existing.map((n) => n.dedupKey).filter(Boolean));
+
+    const toInsert = [];
+
+    // 1. Sync Assigned Tasks
+    const TaskModel = mongoose.models.Task;
+    if (TaskModel) {
+      const activeTasks = await TaskModel.find({
+        assignedEmployeeId: employeeId,
+        isDeleted: false,
+      }).sort({ createdAt: -1 }).limit(30).lean();
+
+      for (const t of activeTasks) {
+        // Task Assigned
+        const assignKey = `task-assigned-${t._id}`;
+        if (!existingKeys.has(assignKey)) {
+          toInsert.push({
+            employeeId,
+            userId,
+            type: "TASK_ASSIGNED",
+            title: `Task Assigned: ${t.taskCode || "New Task"}`,
+            message: `You were assigned "${t.title || "Untitled"}" (${t.priority || "Medium"} priority).`,
+            priority: t.priority === "Critical" || t.priority === "High" ? "high" : "normal",
+            entityType: "task",
+            entityId: t._id,
+            entityCode: t.taskCode || "",
+            navigationTarget: "tasks",
+            isRead: false,
+            dedupKey: assignKey,
+            createdAt: t.createdAt || new Date(),
+          });
+          existingKeys.add(assignKey);
+        }
+
+        // Overdue check
+        if (t.dueDate && !["Completed", "Closed", "Cancelled"].includes(t.status)) {
+          const dueStr = typeof t.dueDate === "string" ? t.dueDate.slice(0, 10) : new Date(t.dueDate).toISOString().slice(0, 10);
+          if (dueStr < todayStr) {
+            const overdueKey = `task-overdue-${t._id}-${dueStr}`;
+            if (!existingKeys.has(overdueKey)) {
+              toInsert.push({
+                employeeId,
+                userId,
+                type: "TASK_OVERDUE",
+                title: `Task Overdue: ${t.taskCode || "Task"}`,
+                message: `Task "${t.title}" was due on ${dueStr} and requires urgent action.`,
+                priority: "urgent",
+                entityType: "task",
+                entityId: t._id,
+                entityCode: t.taskCode || "",
+                navigationTarget: "tasks",
+                isRead: false,
+                dedupKey: overdueKey,
+                createdAt: new Date(),
+              });
+              existingKeys.add(overdueKey);
+            }
+          } else if (dueStr === todayStr) {
+            const dueTodayKey = `task-due-today-${t._id}-${dueStr}`;
+            if (!existingKeys.has(dueTodayKey)) {
+              toInsert.push({
+                employeeId,
+                userId,
+                type: "TASK_DUE_SOON",
+                title: `Task Due Today: ${t.taskCode || "Task"}`,
+                message: `Task "${t.title}" is due today.`,
+                priority: "high",
+                entityType: "task",
+                entityId: t._id,
+                entityCode: t.taskCode || "",
+                navigationTarget: "tasks",
+                isRead: false,
+                dedupKey: dueTodayKey,
+                createdAt: new Date(),
+              });
+              existingKeys.add(dueTodayKey);
+            }
+          }
+        }
+      }
+    }
+
+    // 2. Sync Assigned Support Tickets
+    const SupportTicketModel = mongoose.models.SupportTicket;
+    if (SupportTicketModel) {
+      const tickets = await SupportTicketModel.find({
+        assignedEmployeeId: employeeId,
+        isDeleted: false,
+      }).sort({ createdAt: -1 }).limit(30).lean();
+
+      for (const tkt of tickets) {
+        // Ticket assigned
+        const tktAssignKey = `ticket-assigned-${tkt._id}`;
+        if (!existingKeys.has(tktAssignKey)) {
+          toInsert.push({
+            employeeId,
+            userId,
+            type: "TICKET_ASSIGNED",
+            title: `Ticket Assigned: ${tkt.ticketNo || "Support Ticket"}`,
+            message: `New support ticket for "${tkt.client || "Client"}": ${tkt.title}`,
+            priority: tkt.priority === "Critical" ? "urgent" : "normal",
+            entityType: "ticket",
+            entityId: tkt._id,
+            entityCode: tkt.ticketNo || "",
+            navigationTarget: "tickets",
+            isRead: false,
+            dedupKey: tktAssignKey,
+            createdAt: tkt.createdAt || new Date(),
+          });
+          existingKeys.add(tktAssignKey);
+        }
+
+        // SLA Check
+        if (typeof calculateTicketSla === "function") {
+          const sla = calculateTicketSla(tkt);
+          if (sla && !["Resolved", "Verified", "Closed"].includes(tkt.status)) {
+            if (sla.firstResponseStatus === "Overdue") {
+              const slaKey = `ticket-sla-resp-${tkt._id}-overdue`;
+              if (!existingKeys.has(slaKey)) {
+                toInsert.push({
+                  employeeId,
+                  userId,
+                  type: "TICKET_SLA_WARNING",
+                  title: `SLA Alert: ${tkt.ticketNo}`,
+                  message: `First Response SLA has breached for "${tkt.title}". Please reply immediately.`,
+                  priority: "urgent",
+                  entityType: "ticket",
+                  entityId: tkt._id,
+                  entityCode: tkt.ticketNo || "",
+                  navigationTarget: "tickets",
+                  isRead: false,
+                  dedupKey: slaKey,
+                  createdAt: new Date(),
+                });
+                existingKeys.add(slaKey);
+              }
+            } else if (sla.resolutionStatus === "Overdue") {
+              const slaResKey = `ticket-sla-res-${tkt._id}-overdue`;
+              if (!existingKeys.has(slaResKey)) {
+                toInsert.push({
+                  employeeId,
+                  userId,
+                  type: "TICKET_SLA_WARNING",
+                  title: `SLA Alert: ${tkt.ticketNo}`,
+                  message: `Resolution SLA has breached for "${tkt.title}".`,
+                  priority: "urgent",
+                  entityType: "ticket",
+                  entityId: tkt._id,
+                  entityCode: tkt.ticketNo || "",
+                  navigationTarget: "tickets",
+                  isRead: false,
+                  dedupKey: slaResKey,
+                  createdAt: new Date(),
+                });
+                existingKeys.add(slaResKey);
+              }
+            }
+          }
+        }
+
+        // Replies from client
+        if (Array.isArray(tkt.replies) && tkt.replies.length > 0) {
+          const clientReplies = tkt.replies.filter((r) => r.authorRole === "client");
+          if (clientReplies.length > 0) {
+            const lastReply = clientReplies[clientReplies.length - 1];
+            const replyKey = `ticket-reply-${tkt._id}-${lastReply._id || new Date(lastReply.createdAt).getTime()}`;
+            if (!existingKeys.has(replyKey)) {
+              toInsert.push({
+                employeeId,
+                userId,
+                type: "TICKET_REPLY",
+                title: `Client Reply: ${tkt.ticketNo}`,
+                message: `Client ${lastReply.authorName || "Customer"} replied: "${tkt.title}"`,
+                priority: "high",
+                entityType: "ticket",
+                entityId: tkt._id,
+                entityCode: tkt.ticketNo || "",
+                navigationTarget: "tickets",
+                isRead: false,
+                dedupKey: replyKey,
+                createdAt: lastReply.createdAt || new Date(),
+              });
+              existingKeys.add(replyKey);
+            }
+          }
+        }
+      }
+    }
+
+    if (toInsert.length > 0) {
+      await EmployeeNotification.insertMany(toInsert, { ordered: false }).catch(() => {});
+    }
+  } catch (err) {
+    console.error("Error in syncEmployeeNotifications:", err.message);
+  }
+}
+
+function formatEmployeeNotification(n) {
+  return {
+    _id: n._id,
+    id: n._id,
+    type: n.type,
+    title: n.title,
+    message: n.message,
+    priority: n.priority || "normal",
+    entityType: n.entityType || "other",
+    entityId: n.entityId,
+    entityCode: n.entityCode || "",
+    navigationTarget: n.navigationTarget || "dashboard",
+    isRead: Boolean(n.isRead),
+    readAt: n.readAt,
+    createdAt: n.createdAt,
+    metadata: n.metadata || {},
+  };
+}
+
+/* =========================================================
+   EMPLOYEE NOTIFICATIONS ENDPOINTS
+   GET /api/employee/notifications
+   PATCH /api/employee/notifications/:id/read
+   PATCH /api/employee/notifications/read-all
+   DELETE /api/employee/notifications/:id
+   DELETE /api/employee/notifications/clear-all
+========================================================= */
+
+router.get("/notifications", authenticateUser, async (req, res, next) => {
+  try {
+    const employee = await Employee.findOne({ userId: req.user._id });
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee not found." });
+    }
+
+    await syncEmployeeNotifications(employee._id, req.user._id);
+
+    const filter = String(req.query.filter || "all").toLowerCase();
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const skip = (page - 1) * limit;
+
+    const query = { employeeId: employee._id };
+    if (filter === "unread") {
+      query.isRead = false;
+    } else if (filter === "tasks") {
+      query.entityType = "task";
+    } else if (filter === "tickets") {
+      query.entityType = "ticket";
+    } else if (filter === "attendance") {
+      query.entityType = "attendance";
+    }
+
+    const [total, unreadCount, notifs] = await Promise.all([
+      EmployeeNotification.countDocuments(query),
+      EmployeeNotification.countDocuments({ employeeId: employee._id, isRead: false }),
+      EmployeeNotification.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+    ]);
+
+    res.json({
+      success: true,
+      notifications: notifs.map(formatEmployeeNotification),
+      unreadCount,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit) || 1,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch("/notifications/:id/read", authenticateUser, async (req, res, next) => {
+  try {
+    const employee = await Employee.findOne({ userId: req.user._id });
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee not found." });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ success: false, message: "Invalid notification ID." });
+    }
+
+    const notif = await EmployeeNotification.findOneAndUpdate(
+      { _id: req.params.id, employeeId: employee._id },
+      { $set: { isRead: true, readAt: new Date() } },
+      { new: true }
+    );
+
+    if (!notif) {
+      return res.status(404).json({ success: false, message: "Notification not found." });
+    }
+
+    const unreadCount = await EmployeeNotification.countDocuments({ employeeId: employee._id, isRead: false });
+
+    res.json({
+      success: true,
+      notification: formatEmployeeNotification(notif),
+      unreadCount,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch("/notifications/read-all", authenticateUser, async (req, res, next) => {
+  try {
+    const employee = await Employee.findOne({ userId: req.user._id });
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee not found." });
+    }
+
+    await EmployeeNotification.updateMany(
+      { employeeId: employee._id, isRead: false },
+      { $set: { isRead: true, readAt: new Date() } }
+    );
+
+    res.json({
+      success: true,
+      message: "All notifications marked as read.",
+      unreadCount: 0,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete("/notifications/:id", authenticateUser, async (req, res, next) => {
+  try {
+    const employee = await Employee.findOne({ userId: req.user._id });
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee not found." });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ success: false, message: "Invalid notification ID." });
+    }
+
+    await EmployeeNotification.findOneAndDelete({ _id: req.params.id, employeeId: employee._id });
+    const unreadCount = await EmployeeNotification.countDocuments({ employeeId: employee._id, isRead: false });
+
+    res.json({
+      success: true,
+      message: "Notification deleted.",
+      unreadCount,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete("/notifications/clear-all", authenticateUser, async (req, res, next) => {
+  try {
+    const employee = await Employee.findOne({ userId: req.user._id });
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee not found." });
+    }
+
+    await EmployeeNotification.deleteMany({ employeeId: employee._id, isRead: true });
+    const unreadCount = await EmployeeNotification.countDocuments({ employeeId: employee._id, isRead: false });
+
+    res.json({
+      success: true,
+      message: "Read notifications cleared.",
+      unreadCount,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
