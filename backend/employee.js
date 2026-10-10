@@ -1926,6 +1926,36 @@ router.get("/tasks/dashboard", async (req, res, next) => {
     };
     const currentTask = withCurrentElapsed(activeTimer);
 
+    const statusPriority = {
+      "In Progress": 1,
+      "Paused": 2,
+      "Assigned": 3,
+      "Open": 4,
+      "Testing": 5,
+      "Under Review": 6,
+      "Pending": 7,
+      "Completed": 8,
+      "Cancelled": 9,
+      "Closed": 10,
+    };
+
+    const sortedTasks = (tasks || []).slice().sort((a, b) => {
+      const pA = statusPriority[a.status] || 5;
+      const pB = statusPriority[b.status] || 5;
+      if (pA !== pB) return pA - pB;
+      if (pA < 8) {
+        if (a.dueDate && b.dueDate) {
+          const diff = new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+          if (diff !== 0) return diff;
+        } else if (a.dueDate) return -1;
+        else if (b.dueDate) return 1;
+        return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+      }
+      const timeA = new Date(a.completedAt || a.updatedAt || a.createdAt || 0).getTime();
+      const timeB = new Date(b.completedAt || b.updatedAt || b.createdAt || 0).getTime();
+      return timeB - timeA;
+    });
+
     return res.json({
       success: true,
       data: {
@@ -1948,7 +1978,7 @@ router.get("/tasks/dashboard", async (req, res, next) => {
 
         activeTask: currentTask,
         activeTimer: currentTask,
-        tasks: tasks.map(withCurrentElapsed),
+        tasks: sortedTasks.map(withCurrentElapsed),
       },
     });
   } catch (error) { next(error); }

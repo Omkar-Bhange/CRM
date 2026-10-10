@@ -485,6 +485,8 @@ export default function TimeLog() {
 
     const [selectedTaskId, setSelectedTaskId] = useState("TSK-2084");
     const [manualTaskId, setManualTaskId] = useState("");
+    const [isStartingSession, setIsStartingSession] = useState(false);
+    const [isEndingSession, setIsEndingSession] = useState(false);
     const [timerRunning, setTimerRunning] = useState(true);
     const [currentSessionSeconds, setCurrentSessionSeconds] = useState(0);
     const [agentEvents, setAgentEvents] = useState([]);
@@ -768,10 +770,30 @@ export default function TimeLog() {
         return () => window.clearInterval(refreshId);
     }, []);
 
-    const activeTask =
-        dashboardData?.activeTask ||
-        dashboardData?.tasks?.[0] ||
-        null;
+    const allTasks = useMemo(() => dashboardData?.tasks || [], [dashboardData?.tasks]);
+
+    const activeTasks = useMemo(
+        () => allTasks.filter((t) => !["Completed", "Cancelled", "Closed"].includes(t.status)),
+        [allTasks]
+    );
+
+    const completedTasks = useMemo(
+        () => allTasks.filter((t) => ["Completed", "Cancelled", "Closed"].includes(t.status)),
+        [allTasks]
+    );
+
+    const activeTask = dashboardData?.activeTimer || null;
+
+    const currentSelectedTask = useMemo(() => {
+        if (dashboardData?.activeTimer) {
+            return dashboardData.activeTimer;
+        }
+        if (manualTaskId) {
+            const found = allTasks.find((t) => String(t._id) === String(manualTaskId));
+            if (found) return found;
+        }
+        return activeTasks[0] || null;
+    }, [dashboardData?.activeTimer, manualTaskId, allTasks, activeTasks]);
 
     const totalTrackedSeconds =
         apiSummary?.totalTrackedSeconds || 0;
@@ -922,14 +944,17 @@ useEffect(() => {
     dashboardData?.activeTimer?.elapsedSeconds,
 ]);
     const endCurrentSession = async () => {
-        if (!dashboardData?.activeTimer) return;
+        if (!dashboardData?.activeTimer || isEndingSession) return;
 
+        const taskIdentifier =
+            dashboardData.activeTimer.taskCode || dashboardData.activeTimer.title || "active task";
         const confirmed = window.confirm(
-            `End the active session for ${dashboardData.activeTimer.taskCode}?`
+            `End the active work session for ${taskIdentifier}?`
         );
 
         if (!confirmed) return;
 
+        setIsEndingSession(true);
         const token =
             localStorage.getItem("client-connect-token") ||
             sessionStorage.getItem("client-connect-token");
@@ -948,20 +973,37 @@ useEffect(() => {
             const result = await response.json();
 
             if (result.success) {
+                setManualTaskId("");
                 await fetchTimeLog();
+            } else {
+                alert(result.message || "Failed to end session");
             }
         } catch (error) {
             console.error("Failed to end session:", error);
+            alert("Failed to end session");
+        } finally {
+            setIsEndingSession(false);
         }
     };
 
-    const startSession = async (taskId) => {
-        const idToStart = taskId || manualTaskId || (dashboardData?.tasks?.[0]?._id);
+    const startSession = async (taskIdToRun) => {
+        if (isStartingSession) return;
+
+        const idToStart = taskIdToRun || manualTaskId || activeTasks[0]?._id;
         if (!idToStart) {
             alert("Please select a task to start tracking.");
             return;
         }
 
+        const taskObj = allTasks.find((t) => String(t._id) === String(idToStart));
+        if (taskObj && ["Completed", "Cancelled", "Closed"].includes(taskObj.status)) {
+            const confirmReopen = window.confirm(
+                `Task "${taskObj.taskCode || ""} ${taskObj.title}" is currently marked as ${taskObj.status}. Do you want to reopen it and start work?`
+            );
+            if (!confirmReopen) return;
+        }
+
+        setIsStartingSession(true);
         const token =
             localStorage.getItem("client-connect-token") ||
             sessionStorage.getItem("client-connect-token");
@@ -981,6 +1023,7 @@ useEffect(() => {
             const result = await response.json();
 
             if (result.success) {
+                setManualTaskId("");
                 await fetchTimeLog();
             } else {
                 alert(result.message || "Unable to start session");
@@ -988,6 +1031,8 @@ useEffect(() => {
         } catch (error) {
             console.error("Failed to start session:", error);
             alert("Failed to start session");
+        } finally {
+            setIsStartingSession(false);
         }
     };
 
@@ -997,6 +1042,17 @@ useEffect(() => {
         if (!nextTaskId) return;
 
         if (dashboardData?.activeTimer) {
+            const taskObj = allTasks.find((t) => String(t._id) === String(nextTaskId));
+            if (taskObj && ["Completed", "Cancelled", "Closed"].includes(taskObj.status)) {
+                const confirmReopen = window.confirm(
+                    `Task "${taskObj.taskCode || ""} ${taskObj.title}" is currently marked as ${taskObj.status}. Do you want to reopen it and switch your timer?`
+                );
+                if (!confirmReopen) {
+                    setManualTaskId(dashboardData.activeTimer._id);
+                    return;
+                }
+            }
+
             const token =
                 localStorage.getItem("client-connect-token") ||
                 sessionStorage.getItem("client-connect-token");
@@ -1016,6 +1072,7 @@ useEffect(() => {
                 const result = await response.json();
 
                 if (result.success) {
+                    setManualTaskId("");
                     await fetchTimeLog();
                 } else {
                     alert(result.message || "Unable to switch task");
@@ -1380,18 +1437,35 @@ useEffect(() => {
 
                                         <div className="relative">
                                             <select
-                                                value={dashboardData?.activeTimer?._id || manualTaskId || (dashboardData?.tasks?.[0]?._id || "")}
+                                                value={dashboardData?.activeTimer?._id || manualTaskId || (activeTasks[0]?._id || "")}
                                                 onChange={changeTask}
-                                                className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 pr-10 text-xs font-medium text-slate-800 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/10"
+                                                disabled={isStartingSession || isEndingSession}
+                                                className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 pr-10 text-xs font-medium text-slate-800 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/10 disabled:bg-slate-50 disabled:cursor-not-allowed"
                                             >
-                                                {(dashboardData?.tasks || []).length > 0 ? (
-                                                    (dashboardData.tasks || []).map((task) => (
-                                                        <option key={task._id} value={task._id}>
-                                                            {task.taskCode || "TSK"} — {task.title} {task.status ? `(${task.status})` : ""}
-                                                        </option>
-                                                    ))
-                                                ) : (
+                                                {allTasks.length === 0 ? (
                                                     <option value="">No tasks assigned</option>
+                                                ) : (
+                                                    <>
+                                                        <option value="">— Select an Active Task to Start —</option>
+                                                        {activeTasks.length > 0 && (
+                                                            <optgroup label="Active Tasks">
+                                                                {activeTasks.map((task) => (
+                                                                    <option key={task._id} value={task._id}>
+                                                                        {task.taskCode || "TSK"} — {task.title} {task.status ? `(${task.status})` : ""}
+                                                                    </option>
+                                                                ))}
+                                                            </optgroup>
+                                                        )}
+                                                        {completedTasks.length > 0 && (
+                                                            <optgroup label="Completed Tasks (Will Reopen on Start)">
+                                                                {completedTasks.map((task) => (
+                                                                    <option key={task._id} value={task._id}>
+                                                                        {task.taskCode || "TSK"} — {task.title} ({task.status})
+                                                                    </option>
+                                                                ))}
+                                                            </optgroup>
+                                                        )}
+                                                    </>
                                                 )}
                                             </select>
 
@@ -1403,27 +1477,43 @@ useEffect(() => {
                                     </div>
 
                                     <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50/80 p-3.5">
-                                        <p className="text-xs font-semibold text-slate-900 line-clamp-1">
-                                            {dashboardData?.activeTimer?.title ||
-                                                (dashboardData?.tasks?.find((t) => t._id === (manualTaskId || dashboardData?.tasks?.[0]?._id))?.title) ||
-                                                "No active task"}
-                                        </p>
+                                        <div className="flex items-center justify-between gap-2">
+                                            <p className="text-xs font-semibold text-slate-900 line-clamp-1">
+                                                {currentSelectedTask ? (
+                                                    <>
+                                                        {currentSelectedTask.taskCode ? `${currentSelectedTask.taskCode} — ` : ""}
+                                                        {currentSelectedTask.title}
+                                                    </>
+                                                ) : (
+                                                    "No active task selected"
+                                                )}
+                                            </p>
+                                            {currentSelectedTask?.status && (
+                                                <span
+                                                    className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold ring-1 ring-inset ${
+                                                        currentSelectedTask.status === "In Progress"
+                                                            ? "bg-violet-50 text-violet-700 ring-violet-600/20"
+                                                            : currentSelectedTask.status === "Paused"
+                                                            ? "bg-amber-50 text-amber-700 ring-amber-600/20"
+                                                            : currentSelectedTask.status === "Completed"
+                                                            ? "bg-emerald-50 text-emerald-700 ring-emerald-600/20"
+                                                            : "bg-slate-100 text-slate-600 ring-slate-400/20"
+                                                    }`}
+                                                >
+                                                    {currentSelectedTask.status}
+                                                </span>
+                                            )}
+                                        </div>
 
                                         <p className="mt-1 text-[11px] text-slate-500">
-                                            {dashboardData?.activeTimer?.clientName ||
-                                                (dashboardData?.tasks?.find((t) => t._id === (manualTaskId || dashboardData?.tasks?.[0]?._id))?.clientName) ||
-                                                "Internal"}
+                                            {currentSelectedTask?.clientName || "Internal"}
                                             {" · "}
-                                            {dashboardData?.activeTimer?.project ||
-                                                (dashboardData?.tasks?.find((t) => t._id === (manualTaskId || dashboardData?.tasks?.[0]?._id))?.project) ||
-                                                "General"}
+                                            {currentSelectedTask?.project || "General"}
                                         </p>
 
-                                        {(dashboardData?.activeTimer?.ticketCode ||
-                                            dashboardData?.tasks?.find((t) => t._id === (manualTaskId || dashboardData?.tasks?.[0]?._id))?.ticketCode) && (
+                                        {currentSelectedTask?.ticketCode && (
                                             <p className="mt-2 text-[10px] font-semibold text-violet-600">
-                                                Related ticket: {dashboardData?.activeTimer?.ticketCode ||
-                                                    dashboardData?.tasks?.find((t) => t._id === (manualTaskId || dashboardData?.tasks?.[0]?._id))?.ticketCode}
+                                                Related ticket: {currentSelectedTask.ticketCode}
                                             </p>
                                         )}
                                     </div>
@@ -1432,7 +1522,7 @@ useEffect(() => {
                                         <p className="font-mono text-3xl font-semibold tracking-tight text-slate-950">
                                             {dashboardData?.activeTimer
                                                 ? formatTimer(activeTaskSeconds)
-                                                : "00:00:00"}
+                                                : formatTimer(currentSelectedTask?.elapsedSeconds || 0)}
                                         </p>
 
                                         <div className="mt-1.5 flex items-center gap-2">
@@ -1448,6 +1538,8 @@ useEffect(() => {
                                             <span className="text-[11px] font-medium text-slate-500">
                                                 {dashboardData?.activeTimer
                                                     ? `Session is ${dashboardData.activeTimer.status === "Paused" ? "paused" : "running"}`
+                                                    : currentSelectedTask
+                                                    ? `Ready to track · ${currentSelectedTask.status || "Idle"}`
                                                     : "No active session"}
                                             </span>
                                         </div>
@@ -1458,11 +1550,12 @@ useEffect(() => {
                                             <button
                                                 type="button"
                                                 onClick={toggleTimer}
+                                                disabled={isEndingSession}
                                                 className={`flex h-10 items-center justify-center gap-2 rounded-lg text-xs font-semibold transition ${
                                                     dashboardData.activeTimer.status === "Paused"
                                                         ? "bg-violet-600 text-white hover:bg-violet-700"
                                                         : "bg-amber-500 text-white hover:bg-amber-600"
-                                                }`}
+                                                } disabled:opacity-50`}
                                             >
                                                 {dashboardData.activeTimer.status === "Paused" ? (
                                                     <>
@@ -1480,10 +1573,20 @@ useEffect(() => {
                                             <button
                                                 type="button"
                                                 onClick={endCurrentSession}
-                                                className="flex h-10 items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
+                                                disabled={isEndingSession}
+                                                className="flex h-10 items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
                                             >
-                                                <Square size={13} />
-                                                End Session
+                                                {isEndingSession ? (
+                                                    <>
+                                                        <Loader2 size={13} className="animate-spin" />
+                                                        Ending...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Square size={13} />
+                                                        End Session
+                                                    </>
+                                                )}
                                             </button>
                                         </div>
                                     ) : (
@@ -1491,11 +1594,22 @@ useEffect(() => {
                                             <button
                                                 type="button"
                                                 onClick={() => startSession()}
-                                                disabled={!dashboardData?.tasks?.length}
-                                                className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-violet-600 text-xs font-semibold text-white shadow-xs transition hover:bg-violet-700 disabled:opacity-50"
+                                                disabled={isStartingSession || !currentSelectedTask}
+                                                className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-violet-600 text-xs font-semibold text-white shadow-xs transition hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed"
                                             >
-                                                <Play size={14} />
-                                                Start Session
+                                                {isStartingSession ? (
+                                                    <>
+                                                        <Loader2 size={14} className="animate-spin" />
+                                                        Starting Session...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Play size={14} />
+                                                        {currentSelectedTask && ["Completed", "Cancelled", "Closed"].includes(currentSelectedTask.status)
+                                                            ? "Reopen & Start Task"
+                                                            : "Start Session"}
+                                                    </>
+                                                )}
                                             </button>
                                         </div>
                                     )}
