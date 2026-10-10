@@ -4350,8 +4350,8 @@ export default function Admin({ user: propUser = null, onLogout }) {
                 onLogout={onLogout}
                 badgeCounts={{
                     tickets: (recentTickets || []).filter(
-                        (t) => t.status === "Open" || t.status === "In Progress" || t.priority === "Critical" || t.priority === "High"
-                    ).length || 3,
+                        (t) => !["Resolved", "Verified", "Closed"].includes(t.status)
+                    ).length,
                     attendance: (attendanceApprovalRequests || []).filter(
                         (r) => r.status === "Pending"
                     ).length,
@@ -4359,7 +4359,7 @@ export default function Admin({ user: propUser = null, onLogout }) {
                         (r) => r.status === "Overdue" || r.status === "Pending"
                     ).length,
                     tasks: (activeTasks || []).filter(
-                        (t) => t.status !== "Done" && t.status !== "Completed"
+                        (t) => !["Completed", "Resolved", "Closed", "Done"].includes(t.status)
                     ).length,
                 }}
                 notifications={[
@@ -4421,7 +4421,7 @@ export default function Admin({ user: propUser = null, onLogout }) {
                         target: "billing",
                     })),
                     ...(recentTickets || [])
-                        .filter((t) => t.status === "Open" || t.status === "In Progress" || t.priority === "Critical" || t.priority === "High")
+                        .filter((t) => !["Resolved", "Verified", "Closed"].includes(t.status))
                         .map((ticket) => ({
                             id: `ticket-${ticket.id}`,
                             category: "tickets",
@@ -4436,7 +4436,7 @@ export default function Admin({ user: propUser = null, onLogout }) {
                             target: "tickets",
                         })),
                     ...(activeTasks || [])
-                        .filter((tsk) => tsk.status !== "Done" && tsk.status !== "Completed")
+                        .filter((tsk) => !["Completed", "Resolved", "Closed", "Done"].includes(tsk.status))
                         .slice(0, 5)
                         .map((tsk) => ({
                             id: `task-${tsk.id}`,

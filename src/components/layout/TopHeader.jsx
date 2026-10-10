@@ -435,15 +435,15 @@ export default function TopHeader({
             ).length;
 
             const pendingBillingCount = notifications.filter(
-              (n) => n.category === "billing"
+              (n) => n.category === "billing" && (n.status ? n.status !== "Completed" && n.status !== "Paid" : true)
             ).length;
 
             const pendingTicketsCount = notifications.filter(
-              (n) => n.category === "tickets"
+              (n) => n.category === "tickets" && !["Resolved", "Verified", "Closed"].includes(n.status)
             ).length;
 
             const pendingTasksCount = notifications.filter(
-              (n) => n.category === "tasks"
+              (n) => n.category === "tasks" && !["Completed", "Resolved", "Closed", "Done"].includes(n.status)
             ).length;
 
             const totalActiveCount =
@@ -452,10 +452,16 @@ export default function TopHeader({
               pendingTicketsCount +
               pendingTasksCount;
 
-            const filteredNotifs = notifications.filter((n) => {
-              if (notifCategory === "all") return true;
-              return n.category === notifCategory;
-            });
+            const filteredNotifs = notifications
+              .filter((n) => {
+                if (n.category === "tickets" && ["Resolved", "Verified", "Closed"].includes(n.status)) return false;
+                if (n.category === "tasks" && ["Completed", "Resolved", "Closed", "Done"].includes(n.status)) return false;
+                return true;
+              })
+              .filter((n) => {
+                if (notifCategory === "all") return true;
+                return n.category === notifCategory;
+              });
 
             const handleApprove = async (notif) => {
               if (!onApproveAttendance || !notif.id) return;
@@ -522,7 +528,7 @@ export default function TopHeader({
                             : "text-slate-600 hover:bg-slate-200/60"
                         }`}
                       >
-                        All ({notifications.length})
+                        All ({totalActiveCount})
                       </button>
 
                       <button

@@ -956,12 +956,12 @@ export default function TimeLog() {
     const allTasks = useMemo(() => dashboardData?.tasks || [], [dashboardData?.tasks]);
 
     const activeTasks = useMemo(
-        () => allTasks.filter((t) => !["Completed", "Cancelled", "Closed"].includes(t.status)),
+        () => allTasks.filter((t) => !["Completed", "Cancelled", "Closed", "Resolved", "Done"].includes(t.status)),
         [allTasks]
     );
 
     const completedTasks = useMemo(
-        () => allTasks.filter((t) => ["Completed", "Cancelled", "Closed"].includes(t.status)),
+        () => allTasks.filter((t) => ["Completed", "Cancelled", "Closed", "Resolved", "Done"].includes(t.status)),
         [allTasks]
     );
 

@@ -87,7 +87,7 @@ function parseAdminTaskDate(value) {
 }
 
 function isAdminTaskCompleted(task) {
-    return ["Completed", "Resolved", "Closed"].includes(task?.status);
+    return ["Completed", "Resolved", "Closed", "Done"].includes(task?.status);
 }
 
 function isAdminTaskOverdue(task) {
