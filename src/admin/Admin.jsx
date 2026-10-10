@@ -4608,6 +4608,11 @@ export default function Admin({ user: propUser = null, onLogout }) {
 
                                                         <button
                                                             type="button"
+                                                            onClick={() => {
+                                                                if (selectedClient.mobile) {
+                                                                    window.location.href = `tel:${selectedClient.mobile}`;
+                                                                }
+                                                            }}
                                                             className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
                                                         >
                                                             <Phone size={15} />
@@ -4616,6 +4621,11 @@ export default function Admin({ user: propUser = null, onLogout }) {
 
                                                         <button
                                                             type="button"
+                                                            onClick={() => {
+                                                                if (selectedClient.email) {
+                                                                    window.location.href = `mailto:${selectedClient.email}`;
+                                                                }
+                                                            }}
                                                             className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
                                                         >
                                                             <Mail size={15} />
@@ -4624,10 +4634,11 @@ export default function Admin({ user: propUser = null, onLogout }) {
 
                                                         <button
                                                             type="button"
-                                                            className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700"
+                                                            onClick={() => setClientDetailsTab("overview")}
+                                                            className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700 shadow-xs"
                                                         >
                                                             <ExternalLink size={15} />
-                                                            Open Workspace
+                                                            Client 360
                                                         </button>
                                                     </div>
                                                 </div>
@@ -4834,6 +4845,7 @@ export default function Admin({ user: propUser = null, onLogout }) {
 
                                                             <button
                                                                 type="button"
+                                                                onClick={() => setClientDetailsTab("products")}
                                                                 className="text-xs font-semibold text-violet-600 transition hover:text-violet-700"
                                                             >
                                                                 Manage Products
@@ -5209,7 +5221,8 @@ export default function Admin({ user: propUser = null, onLogout }) {
 
                                                                     <button
                                                                         type="button"
-                                                                        className="flex h-9 items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700"
+                                                                        onClick={() => setActiveMenu("tickets")}
+                                                                        className="flex h-9 items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700 shadow-xs"
                                                                     >
                                                                         <Plus size={15} />
                                                                         Raise Ticket
