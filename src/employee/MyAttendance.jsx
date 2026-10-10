@@ -1011,7 +1011,7 @@ const loadSystemSettings = async () => {
         try {
             setIsRefreshing(true);
             if (activeTab === "today" || activeTab === "history") {
-                await loadTodayAndHistory();
+                await loadData();
             } else if (activeTab === "calendar") {
                 await loadMonthlyAttendance();
             } else if (activeTab === "leave") {
@@ -1040,7 +1040,7 @@ const loadSystemSettings = async () => {
 
     useEffect(() => {
         if (activeTab === "today" || activeTab === "history") {
-            loadTodayAndHistory().catch(console.error);
+            loadData().catch(console.error);
         } else if (activeTab === "calendar") {
             loadMonthlyAttendance().catch(console.error);
         } else if (activeTab === "leave") {
