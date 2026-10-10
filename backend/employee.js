@@ -332,6 +332,62 @@ const Employee =
   mongoose.models.Employee ||
   mongoose.model("Employee", employeeSchema);
 
+/* =========================================================
+   EMPLOYEE DAILY NOTE SCHEMA
+========================================================= */
+const employeeDailyNoteSchema = new mongoose.Schema(
+  {
+    employeeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Employee",
+      required: true,
+      index: true,
+    },
+    employeeCode: {
+      type: String,
+      required: true,
+      trim: true,
+      uppercase: true,
+      index: true,
+    },
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
+    date: {
+      type: String, // "YYYY-MM-DD" in IST
+      required: true,
+      index: true,
+    },
+    text: {
+      type: String,
+      required: [true, "Note text is required."],
+      trim: true,
+    },
+    completed: {
+      type: Boolean,
+      default: false,
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now,
+    },
+    updatedAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  { timestamps: true }
+);
+
+employeeDailyNoteSchema.index({ employeeId: 1, date: 1, createdAt: 1 });
+
+const EmployeeDailyNote =
+  mongoose.models.EmployeeDailyNote ||
+  mongoose.model("EmployeeDailyNote", employeeDailyNoteSchema);
+
 const SupportTicket =
   mongoose.models.SupportTicket;
 
@@ -2958,6 +3014,7 @@ router.get("/time-log/today", authenticateUser, async (req, res, next) => {
   try {
     const user = req.user;
     const todayBucket = getISTDateBucket(new Date());
+    const todayDateString = getISTDateString(new Date());
 
     // Load employee profile linked to the logged-in user
     const employeeProfile = await Employee.findOne({ userId: user._id });
@@ -2971,10 +3028,16 @@ router.get("/time-log/today", authenticateUser, async (req, res, next) => {
 
     const employeeCode = employeeProfile.employeeCode;
 
-    const records = await AgentDailySummary.find({
-      employeeCode,
-      date: todayBucket,
-    }).sort({ totalSeconds: -1 });
+    const [records, dailyNotes] = await Promise.all([
+      AgentDailySummary.find({
+        employeeCode,
+        date: todayBucket,
+      }).sort({ totalSeconds: -1 }),
+      EmployeeDailyNote.find({
+        employeeId: employeeProfile._id,
+        date: todayDateString,
+      }).sort({ createdAt: 1 }),
+    ]);
 
     const totalTrackedSeconds = records.reduce(
       (sum, r) => sum + Number(r.totalSeconds || 0),
@@ -3026,7 +3089,259 @@ router.get("/time-log/today", authenticateUser, async (req, res, next) => {
           lastSyncAt: latest?.lastSeen || null,
         },
         applications,
+        notes: dailyNotes.map((n) => ({
+          id: n._id,
+          _id: n._id,
+          text: n.text,
+          completed: !!n.completed,
+          date: n.date,
+          createdAt: n.createdAt,
+          updatedAt: n.updatedAt,
+        })),
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/* =========================================================
+   EMPLOYEE TIME LOG DAILY NOTES CRUD API
+   GET    /api/employee/time-log/notes
+   POST   /api/employee/time-log/notes
+   PATCH  /api/employee/time-log/notes/:id
+   PUT    /api/employee/time-log/notes/:id
+   DELETE /api/employee/time-log/notes/:id
+   ========================================================= */
+
+router.get("/time-log/notes", authenticateUser, async (req, res, next) => {
+  try {
+    const employee = await Employee.findOne({ userId: req.user._id });
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee profile not found",
+      });
+    }
+
+    const queryDate = String(req.query.date || "").trim() || getISTDateString(new Date());
+    const notes = await EmployeeDailyNote.find({
+      employeeId: employee._id,
+      date: queryDate,
+    }).sort({ createdAt: 1 });
+
+    res.json({
+      success: true,
+      data: notes.map((n) => ({
+        id: n._id,
+        _id: n._id,
+        text: n.text,
+        completed: !!n.completed,
+        date: n.date,
+        createdAt: n.createdAt,
+        updatedAt: n.updatedAt,
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/time-log/notes", authenticateUser, async (req, res, next) => {
+  try {
+    const employee = await Employee.findOne({ userId: req.user._id });
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee profile not found",
+      });
+    }
+
+    const text = String(req.body?.text || "").trim();
+    if (!text) {
+      return res.status(400).json({
+        success: false,
+        message: "Note text is required.",
+      });
+    }
+
+    const date = String(req.body?.date || "").trim() || getISTDateString(new Date());
+
+    const newNote = new EmployeeDailyNote({
+      employeeId: employee._id,
+      employeeCode: employee.employeeCode,
+      userId: req.user._id,
+      date,
+      text,
+      completed: false,
+    });
+
+    await newNote.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Note added successfully",
+      data: {
+        id: newNote._id,
+        _id: newNote._id,
+        text: newNote.text,
+        completed: newNote.completed,
+        date: newNote.date,
+        createdAt: newNote.createdAt,
+        updatedAt: newNote.updatedAt,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.patch("/time-log/notes/:id", authenticateUser, async (req, res, next) => {
+  try {
+    const employee = await Employee.findOne({ userId: req.user._id });
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee profile not found",
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid note ID format.",
+      });
+    }
+
+    const note = await EmployeeDailyNote.findOne({
+      _id: req.params.id,
+      employeeId: employee._id,
+    });
+
+    if (!note) {
+      return res.status(404).json({
+        success: false,
+        message: "Note not found.",
+      });
+    }
+
+    if (typeof req.body?.completed === "boolean") {
+      note.completed = req.body.completed;
+    }
+    if (typeof req.body?.text === "string" && req.body.text.trim()) {
+      note.text = req.body.text.trim();
+    }
+    note.updatedAt = new Date();
+
+    await note.save();
+
+    res.json({
+      success: true,
+      message: "Note updated successfully",
+      data: {
+        id: note._id,
+        _id: note._id,
+        text: note.text,
+        completed: note.completed,
+        date: note.date,
+        createdAt: note.createdAt,
+        updatedAt: note.updatedAt,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put("/time-log/notes/:id", authenticateUser, async (req, res, next) => {
+  try {
+    const employee = await Employee.findOne({ userId: req.user._id });
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee profile not found",
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid note ID format.",
+      });
+    }
+
+    const note = await EmployeeDailyNote.findOne({
+      _id: req.params.id,
+      employeeId: employee._id,
+    });
+
+    if (!note) {
+      return res.status(404).json({
+        success: false,
+        message: "Note not found.",
+      });
+    }
+
+    if (typeof req.body?.completed === "boolean") {
+      note.completed = req.body.completed;
+    }
+    if (typeof req.body?.text === "string" && req.body.text.trim()) {
+      note.text = req.body.text.trim();
+    }
+    note.updatedAt = new Date();
+
+    await note.save();
+
+    res.json({
+      success: true,
+      message: "Note updated successfully",
+      data: {
+        id: note._id,
+        _id: note._id,
+        text: note.text,
+        completed: note.completed,
+        date: note.date,
+        createdAt: note.createdAt,
+        updatedAt: note.updatedAt,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete("/time-log/notes/:id", authenticateUser, async (req, res, next) => {
+  try {
+    const employee = await Employee.findOne({ userId: req.user._id });
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee profile not found",
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid note ID format.",
+      });
+    }
+
+    const note = await EmployeeDailyNote.findOneAndDelete({
+      _id: req.params.id,
+      employeeId: employee._id,
+    });
+
+    if (!note) {
+      return res.status(404).json({
+        success: false,
+        message: "Note not found.",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Note deleted successfully",
     });
   } catch (error) {
     next(error);

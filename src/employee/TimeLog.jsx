@@ -15,6 +15,7 @@ import {
     Keyboard,
     Laptop,
     ListTodo,
+    Loader2,
     Monitor,
     MousePointer2,
     Pause,
@@ -384,24 +385,6 @@ const initialIdleSessions = [
     },
 ];
 
-const initialDailyNotes = [
-    {
-        id: 1,
-        text: "GST report taxable-value issue identified.",
-        completed: true,
-    },
-    {
-        id: 2,
-        text: "Corrected query tested with three sample invoices.",
-        completed: true,
-    },
-    {
-        id: 3,
-        text: "Waiting for client confirmation before closing ticket.",
-        completed: false,
-    },
-];
-
 function formatSeconds(totalSeconds) {
     const seconds = Math.max(Number(totalSeconds || 0), 0);
     const hours = Math.floor(seconds / 3600);
@@ -633,7 +616,8 @@ export default function TimeLog() {
             .sort((a, b) => b.seconds - a.seconds);
     }, [apiApplications]);
     const [idleSessions] = useState(initialIdleSessions);
-    const [dailyNotes, setDailyNotes] = useState(initialDailyNotes);
+    const [dailyNotes, setDailyNotes] = useState([]);
+    const [isSubmittingNote, setIsSubmittingNote] = useState(false);
 
     const [noteText, setNoteText] = useState("");
     const [searchValue, setSearchValue] = useState("");
@@ -648,7 +632,7 @@ export default function TimeLog() {
 
             if (!token) return;
 
-            const [timeRes, dashboardRes, sessionsRes, activityRes] =
+            const [timeRes, dashboardRes, sessionsRes, activityRes, notesRes] =
                 await Promise.all([
                     fetch(`${API_BASE_URL}/api/employee/time-log/today`, {
                         headers: { Authorization: `Bearer ${token}` },
@@ -662,12 +646,27 @@ export default function TimeLog() {
                     fetch(`${API_BASE_URL}/api/employee/time-log/activity`, {
                         headers: { Authorization: `Bearer ${token}` },
                     }),
+                    fetch(`${API_BASE_URL}/api/employee/time-log/notes`, {
+                        headers: { Authorization: `Bearer ${token}` },
+                    }),
                 ]);
 
             const timeResult = await timeRes.json();
             const dashboardResult = await dashboardRes.json();
             const sessionsResult = await sessionsRes.json();
             const activityResult = await activityRes.json();
+            let notesResult = null;
+            try {
+                notesResult = await notesRes.json();
+            } catch {
+                notesResult = null;
+            }
+
+            if (notesResult && notesResult.success && Array.isArray(notesResult.data)) {
+                setDailyNotes(notesResult.data);
+            } else if (timeResult?.data?.notes && Array.isArray(timeResult.data.notes)) {
+                setDailyNotes(timeResult.data.notes);
+            }
 
 
             if (sessionsResult.success) {
@@ -1028,40 +1027,143 @@ useEffect(() => {
         }
     };
 
-    const addDailyNote = (event) => {
+    const addDailyNote = async (event) => {
         event.preventDefault();
 
-        if (!noteText.trim()) return;
+        const trimmedText = noteText.trim();
+        if (!trimmedText || isSubmittingNote) return;
 
-        setDailyNotes((current) => [
-            ...current,
-            {
-                id: Date.now(),
-                text: noteText.trim(),
-                completed: false,
-            },
-        ]);
+        try {
+            setIsSubmittingNote(true);
+            const token =
+                localStorage.getItem("client-connect-token") ||
+                sessionStorage.getItem("client-connect-token");
 
-        setNoteText("");
+            if (!token) {
+                alert("Authentication session expired. Please log in again.");
+                return;
+            }
+
+            const response = await fetch(`${API_BASE_URL}/api/employee/time-log/notes`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ text: trimmedText }),
+            });
+
+            const result = await response.json();
+            if (result.success && result.data) {
+                setDailyNotes((current) => [...current, result.data]);
+                setNoteText("");
+            } else {
+                alert(result.message || "Unable to save work note.");
+            }
+        } catch (error) {
+            console.error("Failed to add daily note:", error);
+            alert("Failed to save note to server.");
+        } finally {
+            setIsSubmittingNote(false);
+        }
     };
 
-    const toggleNote = (noteId) => {
+    const toggleNote = async (noteId) => {
+        const targetNote = dailyNotes.find(
+            (note) => String(note.id || note._id) === String(noteId)
+        );
+        if (!targetNote) return;
+
+        const nextCompletedState = !targetNote.completed;
+
+        // Optimistic UI Update
         setDailyNotes((current) =>
             current.map((note) =>
-                note.id === noteId
-                    ? {
-                        ...note,
-                        completed: !note.completed,
-                    }
+                String(note.id || note._id) === String(noteId)
+                    ? { ...note, completed: nextCompletedState }
                     : note
             )
         );
+
+        try {
+            const token =
+                localStorage.getItem("client-connect-token") ||
+                sessionStorage.getItem("client-connect-token");
+
+            if (!token) return;
+
+            const response = await fetch(
+                `${API_BASE_URL}/api/employee/time-log/notes/${noteId}`,
+                {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({ completed: nextCompletedState }),
+                }
+            );
+
+            const result = await response.json();
+            if (!result.success) {
+                // Rollback on failure
+                setDailyNotes((current) =>
+                    current.map((note) =>
+                        String(note.id || note._id) === String(noteId)
+                            ? { ...note, completed: !nextCompletedState }
+                            : note
+                    )
+                );
+                alert(result.message || "Failed to update note status.");
+            }
+        } catch (error) {
+            console.error("Failed to toggle note status:", error);
+            // Rollback on error
+            setDailyNotes((current) =>
+                current.map((note) =>
+                    String(note.id || note._id) === String(noteId)
+                        ? { ...note, completed: !nextCompletedState }
+                        : note
+                )
+            );
+        }
     };
 
-    const removeNote = (noteId) => {
+    const removeNote = async (noteId) => {
+        const previousNotes = [...dailyNotes];
+
+        // Optimistic UI removal
         setDailyNotes((current) =>
-            current.filter((note) => note.id !== noteId)
+            current.filter((note) => String(note.id || note._id) !== String(noteId))
         );
+
+        try {
+            const token =
+                localStorage.getItem("client-connect-token") ||
+                sessionStorage.getItem("client-connect-token");
+
+            if (!token) return;
+
+            const response = await fetch(
+                `${API_BASE_URL}/api/employee/time-log/notes/${noteId}`,
+                {
+                    method: "DELETE",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+
+            const result = await response.json();
+            if (!result.success) {
+                setDailyNotes(previousNotes);
+                alert(result.message || "Failed to delete note.");
+            }
+        } catch (error) {
+            console.error("Failed to delete daily note:", error);
+            setDailyNotes(previousNotes);
+            alert("Failed to delete note from server.");
+        }
     };
 
     const simulateAgentSync = () => {
@@ -1519,58 +1621,76 @@ useEffect(() => {
                                                     event.target.value
                                                 )
                                             }
+                                            disabled={isSubmittingNote}
                                             placeholder="Add work note..."
-                                            className="h-10 flex-1 rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                            className="h-10 flex-1 rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100 disabled:bg-slate-50"
                                         />
 
                                         <button
                                             type="submit"
-                                            className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white"
+                                            disabled={isSubmittingNote || !noteText.trim()}
+                                            className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
-                                            <Save size={14} />
-                                            Add
+                                            {isSubmittingNote ? (
+                                                <Loader2 size={14} className="animate-spin" />
+                                            ) : (
+                                                <Save size={14} />
+                                            )}
+                                            <span>{isSubmittingNote ? "Saving..." : "Add"}</span>
                                         </button>
                                     </form>
 
                                     <div className="mt-4 space-y-2">
-                                        {dailyNotes.map((note) => (
-                                            <div
-                                                key={note.id}
-                                                className="group flex items-center gap-3 rounded-xl border border-slate-200 px-4 py-3"
-                                            >
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        toggleNote(note.id)
-                                                    }
-                                                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${note.completed
-                                                        ? "border-emerald-500 bg-emerald-500 text-white"
-                                                        : "border-slate-300 text-transparent"
-                                                        }`}
-                                                >
-                                                    <Check size={12} />
-                                                </button>
-
-                                                <p
-                                                    className={`flex-1 text-xs ${note.completed
-                                                        ? "text-slate-400 line-through"
-                                                        : "text-slate-700"
-                                                        }`}
-                                                >
-                                                    {note.text}
-                                                </p>
-
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        removeNote(note.id)
-                                                    }
-                                                    className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 opacity-0 transition hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100"
-                                                >
-                                                    <X size={14} />
-                                                </button>
+                                        {dailyNotes.length === 0 ? (
+                                            <div className="rounded-xl border border-dashed border-slate-200 py-6 text-center">
+                                                <FileText className="mx-auto h-5 w-5 text-slate-300" />
+                                                <p className="mt-1.5 text-xs font-medium text-slate-600">No notes added for today yet</p>
+                                                <p className="text-[10px] text-slate-400">Add work notes or reminders above</p>
                                             </div>
-                                        ))}
+                                        ) : (
+                                            dailyNotes.map((note) => {
+                                                const noteIdentifier = note._id || note.id;
+                                                return (
+                                                    <div
+                                                        key={noteIdentifier}
+                                                        className="group flex items-center gap-3 rounded-xl border border-slate-200 px-4 py-3 transition hover:border-slate-300 hover:shadow-xs"
+                                                    >
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                toggleNote(noteIdentifier)
+                                                            }
+                                                            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition ${note.completed
+                                                                ? "border-emerald-500 bg-emerald-500 text-white"
+                                                                : "border-slate-300 text-transparent hover:border-violet-400"
+                                                                }`}
+                                                        >
+                                                            <Check size={12} />
+                                                        </button>
+
+                                                        <p
+                                                            className={`flex-1 text-xs transition ${note.completed
+                                                                ? "text-slate-400 line-through"
+                                                                : "text-slate-700"
+                                                                }`}
+                                                        >
+                                                            {note.text}
+                                                        </p>
+
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                removeNote(noteIdentifier)
+                                                            }
+                                                            title="Delete note"
+                                                            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 opacity-0 transition hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100"
+                                                        >
+                                                            <X size={14} />
+                                                        </button>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
                                     </div>
                                 </div>
                             </section>
