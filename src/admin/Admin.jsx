@@ -4349,52 +4349,111 @@ export default function Admin({ user: propUser = null, onLogout }) {
                 user={user}
                 onLogout={onLogout}
                 badgeCounts={{
-                    tickets: 3,
-                    attendance: attendanceApprovalRequests.filter(
+                    tickets: (recentTickets || []).filter(
+                        (t) => t.status === "Open" || t.status === "In Progress" || t.priority === "Critical" || t.priority === "High"
+                    ).length || 3,
+                    attendance: (attendanceApprovalRequests || []).filter(
                         (r) => r.status === "Pending"
                     ).length,
+                    billing: (amcRenewals || []).filter(
+                        (r) => r.status === "Overdue" || r.status === "Pending"
+                    ).length,
+                    tasks: (activeTasks || []).filter(
+                        (t) => t.status !== "Done" && t.status !== "Completed"
+                    ).length,
                 }}
-                notifications={attendanceApprovalRequests.map((req) => ({
-                    id: req._id,
-                    type: "attendance_approval",
-                    title: req.employeeName,
-                    employeeName: req.employeeName,
-                    employeeCode: req.employeeCode,
-                    date: req.date,
-                    pcName: req.pcName || "",
-                    networkType: req.networkType || "",
-                    requestType: req.requestType || "Remote Login",
-                    reason: req.reason || "Login requires admin approval.",
-                    status: req.status || "Pending",
-                    message:
-                        req.status === "Pending"
-                            ? `Login detected at ${
-                                  req.requestedAt
-                                      ? new Date(
-                                            req.requestedAt
-                                        ).toLocaleTimeString([], {
-                                            hour: "2-digit",
-                                            minute: "2-digit",
-                                        })
-                                      : "today"
-                              }`
-                            : req.status === "Approved"
-                            ? `Approved by ${req.reviewedByName || "Admin"}`
-                            : `Rejected by ${req.reviewedByName || "Admin"}`,
-                    time: req.requestedAt
-                        ? new Date(req.requestedAt).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                          })
-                        : "Pending",
-                    requestedAt: req.requestedAt,
-                    reviewedAt: req.reviewedAt,
-                    reviewedBy: req.reviewedBy,
-                    reviewedByName:
-                        req.reviewedByName ||
-                        (req.reviewedBy?.name ? req.reviewedBy.name : (req.reviewedBy ? "Admin" : "")),
-                    reviewNote: req.reviewNote || "",
-                }))}
+                notifications={[
+                    ...(attendanceApprovalRequests || []).map((req) => ({
+                        id: req._id,
+                        category: "attendance",
+                        type: "attendance_approval",
+                        title: req.employeeName,
+                        employeeName: req.employeeName,
+                        employeeCode: req.employeeCode,
+                        date: req.date,
+                        pcName: req.pcName || "",
+                        networkType: req.networkType || "",
+                        requestType: req.requestType || "Remote Login",
+                        reason: req.reason || "Login requires admin approval.",
+                        status: req.status || "Pending",
+                        message:
+                            req.status === "Pending"
+                                ? `Punch detected at ${
+                                      req.requestedAt
+                                          ? new Date(
+                                                req.requestedAt
+                                            ).toLocaleTimeString([], {
+                                                hour: "2-digit",
+                                                minute: "2-digit",
+                                            })
+                                          : "today"
+                                  }`
+                                : req.status === "Approved"
+                                ? `Approved by ${req.reviewedByName || "Admin"}`
+                                : `Rejected by ${req.reviewedByName || "Admin"}`,
+                        time: req.requestedAt
+                            ? new Date(req.requestedAt).toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                              })
+                            : "Pending",
+                        requestedAt: req.requestedAt,
+                        reviewedAt: req.reviewedAt,
+                        reviewedBy: req.reviewedBy,
+                        reviewedByName:
+                            req.reviewedByName ||
+                            (req.reviewedBy?.name ? req.reviewedBy.name : (req.reviewedBy ? "Admin" : "")),
+                        reviewNote: req.reviewNote || "",
+                        target: "attendance",
+                    })),
+                    ...(amcRenewals || []).map((amc) => ({
+                        id: `amc-${amc.id || Math.random()}`,
+                        category: "billing",
+                        type: "amc_renewal",
+                        title: amc.client || "Client AMC",
+                        client: amc.client,
+                        product: amc.product || "Software AMC",
+                        amount: amc.amount,
+                        dueDate: amc.dueDate,
+                        status: amc.status || "Pending",
+                        message: `${amc.product || "Software"} AMC renewal (${amc.amount}) is ${amc.status?.toLowerCase() || "pending"} - Due: ${amc.dueDate}`,
+                        time: amc.dueDate || "Expiring Soon",
+                        target: "billing",
+                    })),
+                    ...(recentTickets || [])
+                        .filter((t) => t.status === "Open" || t.status === "In Progress" || t.priority === "Critical" || t.priority === "High")
+                        .map((ticket) => ({
+                            id: `ticket-${ticket.id}`,
+                            category: "tickets",
+                            type: "ticket_alert",
+                            title: ticket.title,
+                            ticketCode: ticket.id,
+                            client: ticket.client,
+                            priority: ticket.priority || "Medium",
+                            status: ticket.status || "Open",
+                            message: `Ticket #${ticket.id} (${ticket.priority}): ${ticket.title}`,
+                            time: ticket.createdAt || "Recent",
+                            target: "tickets",
+                        })),
+                    ...(activeTasks || [])
+                        .filter((tsk) => tsk.status !== "Done" && tsk.status !== "Completed")
+                        .slice(0, 5)
+                        .map((tsk) => ({
+                            id: `task-${tsk.id}`,
+                            category: "tasks",
+                            type: "task_alert",
+                            title: tsk.title,
+                            taskCode: tsk.id,
+                            client: tsk.client,
+                            assignedTo: tsk.assignedTo,
+                            priority: tsk.priority || "Normal",
+                            dueDate: tsk.dueDate,
+                            status: tsk.status || "In Progress",
+                            message: `Task #${tsk.id} (${tsk.status}) assigned to ${tsk.assignedTo || "Team"} - Due ${tsk.dueDate}`,
+                            time: tsk.dueDate || "Upcoming",
+                            target: "tasks",
+                        })),
+                ]}
                 onApproveAttendance={approveAttendanceRequest}
                 onRejectAttendance={rejectAttendanceRequest}
                 attendanceApprovalActionId={attendanceApprovalActionId}
