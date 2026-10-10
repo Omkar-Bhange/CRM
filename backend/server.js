@@ -1015,6 +1015,177 @@ if (
     }
 
     // =====================================================
+    // PRODUCTIVITY CLASSIFICATION HELPER
+    // =====================================================
+    const PRODUCTIVE_CATEGORIES = [
+      "Development",
+      "Database",
+      "Remote Support",
+      "Design",
+      "Documentation",
+      "Office",
+      "File Management",
+      "Communication",
+      "Utility",
+    ];
+
+    const UNPRODUCTIVE_CATEGORIES = [
+      "Entertainment",
+      "Social Media",
+      "Games",
+    ];
+
+    const resolveApplicationCategoryAndProductivity = (appInput, windowTitleInput, explicitCategory) => {
+      const app = String(appInput || "").trim().toLowerCase();
+      const title = String(windowTitleInput || "").trim().toLowerCase();
+      const cat = String(explicitCategory || "").trim();
+
+      // 1. Remote Support tools (UltraViewer, AnyDesk, TeamViewer, RustDesk, RDP, etc.)
+      if (
+        app.includes("ultraviewer") ||
+        app.includes("anydesk") ||
+        app.includes("teamviewer") ||
+        app.includes("rustdesk") ||
+        app.includes("mstsc") ||
+        app.includes("remote desktop") ||
+        app.includes("zoho assist") ||
+        app.includes("supremo") ||
+        app.includes("ammyy") ||
+        app.includes("vnc") ||
+        title.includes("ultraviewer") ||
+        title.includes("anydesk") ||
+        title.includes("teamviewer") ||
+        title.includes("rustdesk")
+      ) {
+        return { category: "Remote Support", productivity: "Productive" };
+      }
+
+      // 2. Database tools (SSMS, SQL Server Management Studio, DBeaver, pgAdmin, MySQL Workbench, etc.)
+      if (
+        app.includes("ssms") ||
+        app.includes("sql server management studio") ||
+        app.includes("dbeaver") ||
+        app.includes("pgadmin") ||
+        app.includes("mysql") ||
+        app.includes("navicat") ||
+        app.includes("datagrip") ||
+        app.includes("heidisql") ||
+        app.includes("tableplus") ||
+        app.includes("compass") ||
+        app.includes("studio 3t") ||
+        app.includes("robo 3t") ||
+        app.includes("redis") ||
+        app.includes("sql") ||
+        title.includes("management studio") ||
+        title.includes("ssms") ||
+        title.includes(".sql") ||
+        title.includes("database")
+      ) {
+        return { category: "Database", productivity: "Productive" };
+      }
+
+      // 3. File Explorer / Windows Explorer / File Managers
+      if (
+        app === "explorer" ||
+        app === "explorer.exe" ||
+        app.includes("file explorer") ||
+        app.includes("windows explorer") ||
+        app.includes("total commander") ||
+        app.includes("7-zip") ||
+        app.includes("winrar") ||
+        app.includes("everything") ||
+        title.includes("file explorer")
+      ) {
+        return { category: "File Management", productivity: "Productive" };
+      }
+
+      // 4. Code Editors, IDEs & Developer Terminals
+      if (
+        app.includes("code") ||
+        app.includes("visual studio") ||
+        app.includes("devenv") ||
+        app.includes("cursor") ||
+        app.includes("sublime") ||
+        app.includes("notepad++") ||
+        app.includes("idea") ||
+        app.includes("webstorm") ||
+        app.includes("pycharm") ||
+        app.includes("phpstorm") ||
+        app.includes("android studio") ||
+        app.includes("eclipse") ||
+        app.includes("terminal") ||
+        app.includes("powershell") ||
+        app.includes("cmd") ||
+        app.includes("git") ||
+        app.includes("postman") ||
+        app.includes("insomnia") ||
+        app.includes("docker") ||
+        title.includes("visual studio code") ||
+        title.includes("cursor")
+      ) {
+        return { category: "Development", productivity: "Productive" };
+      }
+
+      // 5. Office, Documents & Design
+      if (
+        app.includes("winword") ||
+        app.includes("word") ||
+        app.includes("excel") ||
+        app.includes("powerpnt") ||
+        app.includes("powerpoint") ||
+        app.includes("onenote") ||
+        app.includes("acrobat") ||
+        app.includes("pdf") ||
+        app.includes("figma") ||
+        app.includes("photoshop") ||
+        app.includes("illustrator") ||
+        app.includes("canva")
+      ) {
+        return { category: "Office", productivity: "Productive" };
+      }
+
+      // 6. Collaboration & Communication
+      if (
+        app.includes("teams") ||
+        app.includes("slack") ||
+        app.includes("zoom") ||
+        app.includes("skype") ||
+        app.includes("meet")
+      ) {
+        return { category: "Communication", productivity: "Productive" };
+      }
+
+      // 7. Entertainment, Social Media & Games (Unproductive)
+      if (
+        app.includes("netflix") ||
+        app.includes("spotify") ||
+        app.includes("steam") ||
+        app.includes("game") ||
+        title.includes("youtube") ||
+        title.includes("facebook") ||
+        title.includes("instagram") ||
+        title.includes("twitter") ||
+        title.includes("tiktok") ||
+        title.includes("netflix")
+      ) {
+        return { category: "Entertainment", productivity: "Unproductive" };
+      }
+
+      // 8. Explicit category fallback
+      if (cat && cat !== "Other" && cat !== "General") {
+        const isProd = PRODUCTIVE_CATEGORIES.includes(cat);
+        const isUnprod = UNPRODUCTIVE_CATEGORIES.includes(cat);
+        return {
+          category: cat,
+          productivity: isProd ? "Productive" : isUnprod ? "Unproductive" : "Neutral",
+        };
+      }
+
+      // Default fallback
+      return { category: "Office", productivity: "Productive" };
+    };
+
+    // =====================================================
     // PROCESS NEW SESSIONS
     // =====================================================
 
@@ -1098,6 +1269,12 @@ try {
           activeTask?.status ||
           "";
 
+        const resolvedApp = resolveApplicationCategoryAndProductivity(
+          session.application,
+          session.windowTitle,
+          session.category
+        );
+
         // -----------------------------------------------
         // DAILY SUMMARY
         // -----------------------------------------------
@@ -1141,12 +1318,11 @@ try {
                 "",
 
               category:
-                session.category ||
-                "Other",
+                resolvedApp.category,
 
               activity:
                 session.activity ||
-                "",
+                (resolvedApp.productivity === "Unproductive" ? "Idle" : "Active"),
 
               taskId:
                 summaryTaskId,

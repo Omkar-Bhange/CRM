@@ -420,6 +420,201 @@ function formatAgentTime(value) {
     });
 }
 
+const PRODUCTIVE_CATEGORIES = [
+    "Development",
+    "Database",
+    "Remote Support",
+    "Design",
+    "Documentation",
+    "Office",
+    "File Management",
+    "Communication",
+    "Utility",
+];
+
+const UNPRODUCTIVE_CATEGORIES = [
+    "Entertainment",
+    "Social Media",
+    "Games",
+];
+
+export function resolveApplicationCategoryAndProductivity(appInput, windowTitleInput, explicitCategory) {
+    const app = String(appInput || "").trim().toLowerCase();
+    const title = String(windowTitleInput || "").trim().toLowerCase();
+    const cat = String(explicitCategory || "").trim();
+
+    // 1. Remote Support tools (UltraViewer, AnyDesk, TeamViewer, RustDesk, RDP, etc.)
+    if (
+        app.includes("ultraviewer") ||
+        app.includes("anydesk") ||
+        app.includes("teamviewer") ||
+        app.includes("rustdesk") ||
+        app.includes("mstsc") ||
+        app.includes("remote desktop") ||
+        app.includes("zoho assist") ||
+        app.includes("supremo") ||
+        app.includes("ammyy") ||
+        app.includes("vnc") ||
+        title.includes("ultraviewer") ||
+        title.includes("anydesk") ||
+        title.includes("teamviewer") ||
+        title.includes("rustdesk")
+    ) {
+        return { category: "Remote Support", productivity: "Productive" };
+    }
+
+    // 2. Database tools (SSMS, SQL Server Management Studio, DBeaver, pgAdmin, MySQL Workbench, etc.)
+    if (
+        app.includes("ssms") ||
+        app.includes("sql server management studio") ||
+        app.includes("dbeaver") ||
+        app.includes("pgadmin") ||
+        app.includes("mysql") ||
+        app.includes("navicat") ||
+        app.includes("datagrip") ||
+        app.includes("heidisql") ||
+        app.includes("tableplus") ||
+        app.includes("compass") ||
+        app.includes("studio 3t") ||
+        app.includes("robo 3t") ||
+        app.includes("redis") ||
+        app.includes("sql") ||
+        title.includes("management studio") ||
+        title.includes("ssms") ||
+        title.includes(".sql") ||
+        title.includes("database")
+    ) {
+        return { category: "Database", productivity: "Productive" };
+    }
+
+    // 3. File Explorer / Windows Explorer / File Managers
+    if (
+        app === "explorer" ||
+        app === "explorer.exe" ||
+        app.includes("file explorer") ||
+        app.includes("windows explorer") ||
+        app.includes("total commander") ||
+        app.includes("7-zip") ||
+        app.includes("winrar") ||
+        app.includes("everything") ||
+        title.includes("file explorer")
+    ) {
+        return { category: "File Management", productivity: "Productive" };
+    }
+
+    // 4. Code Editors, IDEs & Developer Terminals
+    if (
+        app.includes("code") ||
+        app.includes("visual studio") ||
+        app.includes("devenv") ||
+        app.includes("cursor") ||
+        app.includes("sublime") ||
+        app.includes("notepad++") ||
+        app.includes("idea") ||
+        app.includes("webstorm") ||
+        app.includes("pycharm") ||
+        app.includes("phpstorm") ||
+        app.includes("android studio") ||
+        app.includes("eclipse") ||
+        app.includes("terminal") ||
+        app.includes("powershell") ||
+        app.includes("cmd") ||
+        app.includes("git") ||
+        app.includes("postman") ||
+        app.includes("insomnia") ||
+        app.includes("docker") ||
+        title.includes("visual studio code") ||
+        title.includes("cursor")
+    ) {
+        return { category: "Development", productivity: "Productive" };
+    }
+
+    // 5. Office, Documents & Design
+    if (
+        app.includes("winword") ||
+        app.includes("word") ||
+        app.includes("excel") ||
+        app.includes("powerpnt") ||
+        app.includes("powerpoint") ||
+        app.includes("onenote") ||
+        app.includes("acrobat") ||
+        app.includes("pdf") ||
+        app.includes("figma") ||
+        app.includes("photoshop") ||
+        app.includes("illustrator") ||
+        app.includes("canva")
+    ) {
+        return { category: "Office", productivity: "Productive" };
+    }
+
+    // 6. Collaboration & Communication
+    if (
+        app.includes("teams") ||
+        app.includes("slack") ||
+        app.includes("zoom") ||
+        app.includes("skype") ||
+        app.includes("meet")
+    ) {
+        return { category: "Communication", productivity: "Productive" };
+    }
+
+    // 7. Entertainment, Social Media & Games (Unproductive)
+    if (
+        app.includes("netflix") ||
+        app.includes("spotify") ||
+        app.includes("steam") ||
+        app.includes("game") ||
+        title.includes("youtube") ||
+        title.includes("facebook") ||
+        title.includes("instagram") ||
+        title.includes("twitter") ||
+        title.includes("tiktok") ||
+        title.includes("netflix")
+    ) {
+        return { category: "Entertainment", productivity: "Unproductive" };
+    }
+
+    // 8. Explicit category fallback
+    if (cat && cat !== "Other" && cat !== "General") {
+        const isProd = PRODUCTIVE_CATEGORIES.includes(cat);
+        const isUnprod = UNPRODUCTIVE_CATEGORIES.includes(cat);
+        return {
+            category: cat,
+            productivity: isProd ? "Productive" : isUnprod ? "Unproductive" : "Neutral",
+        };
+    }
+
+    // Default fallback
+    return { category: "Office", productivity: "Productive" };
+}
+
+function getCategoryColor(category) {
+    switch (category) {
+        case "Development":
+            return "bg-emerald-500";
+        case "Database":
+            return "bg-cyan-500";
+        case "Remote Support":
+            return "bg-violet-600";
+        case "File Management":
+            return "bg-blue-500";
+        case "Office":
+            return "bg-amber-500";
+        case "Design":
+            return "bg-pink-500";
+        case "Communication":
+            return "bg-indigo-500";
+        case "Documentation":
+            return "bg-teal-500";
+        case "Entertainment":
+        case "Social Media":
+        case "Games":
+            return "bg-rose-500";
+        default:
+            return "bg-slate-400";
+    }
+}
+
 function getProductivityClasses(productivity) {
     const styles = {
         Productive:
@@ -505,103 +700,100 @@ export default function TimeLog() {
     const [taskSessions, setTaskSessions] = useState([]);
 
     const applicationUsage = useMemo(() => {
-    const applicationMap = new Map();
+        const applicationMap = new Map();
 
-    for (const app of apiApplications) {
-        const applicationName =
-            app.applicationName ||
-            app.application ||
-            "Unknown Application";
+        for (const app of apiApplications) {
+            const applicationName =
+                app.applicationName ||
+                app.application ||
+                "Unknown Application";
 
-        // Normalize name so "Google Chrome" and "google chrome"
-        // are treated as the same application.
-        const key = applicationName.trim().toLowerCase();
+            const key = applicationName.trim().toLowerCase();
 
-        if (!applicationMap.has(key)) {
-            applicationMap.set(key, {
-                ...app,
+            const resolved = resolveApplicationCategoryAndProductivity(
                 applicationName,
-                totalSeconds: 0,
-                sessionCount: 0,
-            });
+                app.lastWindowTitle,
+                app.category
+            );
+
+            if (!applicationMap.has(key)) {
+                applicationMap.set(key, {
+                    ...app,
+                    applicationName,
+                    category: resolved.category,
+                    productivity: resolved.productivity,
+                    totalSeconds: 0,
+                    sessionCount: 0,
+                });
+            }
+
+            const merged = applicationMap.get(key);
+
+            merged.totalSeconds += Number(app.totalSeconds || 0);
+            merged.sessionCount += Number(app.sessionCount || 0);
+
+            // Keep most recent application/window information.
+            const oldTime = merged.lastSeen
+                ? new Date(merged.lastSeen).getTime()
+                : 0;
+
+            const newTime = app.lastSeen
+                ? new Date(app.lastSeen).getTime()
+                : 0;
+
+            if (newTime >= oldTime) {
+                merged.lastSeen = app.lastSeen || merged.lastSeen;
+
+                merged.lastWindowTitle =
+                    app.lastWindowTitle ||
+                    merged.lastWindowTitle;
+
+                merged.category = resolved.category;
+                merged.productivity = resolved.productivity;
+            }
         }
 
-        const merged = applicationMap.get(key);
-
-        merged.totalSeconds += Number(app.totalSeconds || 0);
-        merged.sessionCount += Number(app.sessionCount || 0);
-
-        // Keep most recent application/window information.
-        const oldTime = merged.lastSeen
-            ? new Date(merged.lastSeen).getTime()
-            : 0;
-
-        const newTime = app.lastSeen
-            ? new Date(app.lastSeen).getTime()
-            : 0;
-
-        if (newTime >= oldTime) {
-            merged.lastSeen = app.lastSeen || merged.lastSeen;
-
-            merged.lastWindowTitle =
-                app.lastWindowTitle ||
-                merged.lastWindowTitle;
-
-            merged.category =
-                app.category ||
-                merged.category;
-        }
-
-        // Productive takes priority if application has mixed task records.
-        if (app.productivity === "Productive") {
-            merged.productivity = "Productive";
-        } else if (
-            app.productivity === "Unproductive" &&
-            merged.productivity !== "Productive"
-        ) {
-            merged.productivity = "Unproductive";
-        } else if (!merged.productivity) {
-            merged.productivity = "Neutral";
-        }
-    }
-
-    const mergedApplications = Array.from(
-        applicationMap.values()
-    );
-
-    const totalSeconds = mergedApplications.reduce(
-        (sum, app) =>
-            sum + Number(app.totalSeconds || 0),
-        0
-    );
-
-    return mergedApplications
-        .map((app) => ({
-            ...app,
-
-            percentage:
-                totalSeconds > 0
-                    ? Math.round(
-                          (Number(app.totalSeconds || 0) /
-                              totalSeconds) *
-                              100
-                      )
-                    : 0,
-        }))
-        .sort(
-            (a, b) =>
-                Number(b.totalSeconds || 0) -
-                Number(a.totalSeconds || 0)
+        const mergedApplications = Array.from(
+            applicationMap.values()
         );
-}, [apiApplications]);
+
+        const totalSeconds = mergedApplications.reduce(
+            (sum, app) =>
+                sum + Number(app.totalSeconds || 0),
+            0
+        );
+
+        return mergedApplications
+            .map((app) => ({
+                ...app,
+
+                percentage:
+                    totalSeconds > 0
+                        ? Math.round(
+                              (Number(app.totalSeconds || 0) /
+                                  totalSeconds) *
+                                  100
+                          )
+                        : 0,
+            }))
+            .sort(
+                (a, b) =>
+                    Number(b.totalSeconds || 0) -
+                    Number(a.totalSeconds || 0)
+            );
+    }, [apiApplications]);
 
     const timeDistribution = useMemo(() => {
         const categoryMap = new Map();
         let total = 0;
 
         for (const app of apiApplications) {
-            const rawCategory = (app.category || "Other").trim();
-            const category = rawCategory || "Other";
+            const resolved = resolveApplicationCategoryAndProductivity(
+                app.applicationName || app.application,
+                app.lastWindowTitle,
+                app.category
+            );
+            const category = resolved.category || "Office";
             const seconds = Number(app.totalSeconds || 0);
             total += seconds;
 
@@ -676,20 +868,11 @@ export default function TimeLog() {
             }
             if (activityResult.success) {
                 const mappedEvents = (activityResult.data || []).map((log) => {
-                    const category = log.category || "Other";
-                    const productivity =
-                        log.productivity ||
-                        (category === "Development" ||
-                        category === "Database" ||
-                        category === "Design" ||
-                        category === "Documentation" ||
-                        category === "Office"
-                            ? "Productive"
-                            : category === "Entertainment" ||
-                              category === "Social Media" ||
-                              category === "Games"
-                            ? "Unproductive"
-                            : "Neutral");
+                    const resolved = resolveApplicationCategoryAndProductivity(
+                        log.applicationName || log.application,
+                        log.windowTitle || log.lastWindowTitle,
+                        log.category
+                    );
 
                     return {
                         id: log.id || log._id,
@@ -701,9 +884,9 @@ export default function TimeLog() {
                             "Unknown Application",
                         windowTitle:
                             log.windowTitle || log.lastWindowTitle || "",
-                        category,
-                        productivity,
-                        activityStatus: log.activity || "Active",
+                        category: resolved.category,
+                        productivity: resolved.productivity,
+                        activityStatus: log.activity || (resolved.productivity === "Unproductive" ? "Idle" : "Active"),
                         durationSeconds: Number(
                             log.durationSeconds ?? log.totalSeconds ?? 0
                         ),
@@ -798,9 +981,19 @@ export default function TimeLog() {
     const totalTrackedSeconds =
         apiSummary?.totalTrackedSeconds || 0;
 
-    const productiveSeconds = apiApplications
-        .filter((app) => app.productivity === "Productive")
-        .reduce((total, app) => total + (app.totalSeconds || 0), 0);
+    const productiveSeconds = useMemo(() => {
+        return apiApplications.reduce((sum, app) => {
+            const resolved = resolveApplicationCategoryAndProductivity(
+                app.applicationName || app.application,
+                app.lastWindowTitle,
+                app.category
+            );
+            return resolved.productivity === "Productive"
+                ? sum + Number(app.totalSeconds || 0)
+                : sum;
+        }, 0);
+    }, [apiApplications]);
+
     const selectedTask =
         tasks.find((task) => task.id === selectedTaskId) || tasks[0] || {
             id: "",
@@ -810,22 +1003,33 @@ export default function TimeLog() {
             description: "",
         };
 
-    const unproductiveSeconds = apiApplications
-        .filter((app) => app.productivity === "Unproductive")
-        .reduce((total, app) => total + (app.totalSeconds || 0), 0);
+    const unproductiveSeconds = useMemo(() => {
+        return apiApplications.reduce((sum, app) => {
+            const resolved = resolveApplicationCategoryAndProductivity(
+                app.applicationName || app.application,
+                app.lastWindowTitle,
+                app.category
+            );
+            return resolved.productivity === "Unproductive"
+                ? sum + Number(app.totalSeconds || 0)
+                : sum;
+        }, 0);
+    }, [apiApplications]);
 
     // Real idle time from agent data
-    const idleSeconds = Math.max(
-        totalTrackedSeconds - productiveSeconds - unproductiveSeconds,
-        0
-    );
+    const idleSeconds = useMemo(() => {
+        return Math.max(
+            totalTrackedSeconds - productiveSeconds - unproductiveSeconds,
+            0
+        );
+    }, [totalTrackedSeconds, productiveSeconds, unproductiveSeconds]);
 
     // Real productivity score
-
-    const productivityScore =
-        totalTrackedSeconds > 0
+    const productivityScore = useMemo(() => {
+        return totalTrackedSeconds > 0
             ? Math.round((productiveSeconds / totalTrackedSeconds) * 100)
             : 0;
+    }, [totalTrackedSeconds, productiveSeconds]);
 
     const filteredEvents = useMemo(() => {
         return agentEvents.filter((event) => {
@@ -1356,15 +1560,7 @@ useEffect(() => {
 
                 <MetricCard
                     label="Productivity"
-                    value={`${(apiSummary?.totalTrackedSeconds || 0) > 0
-                        ? Math.round(
-                            (apiApplications
-                                .filter((a) => a.productivity === "Productive")
-                                .reduce((sum, a) => sum + (a.totalSeconds || 0), 0) /
-                                apiSummary.totalTrackedSeconds) * 100
-                        )
-                        : 0
-                        }%`}
+                    value={`${productivityScore}%`}
                     description="Calculated from agent activity"
                     icon={BarChart3}
                     iconClass="bg-cyan-100 text-cyan-700"
@@ -1636,9 +1832,12 @@ useEffect(() => {
                                         timeDistribution.map((item) => (
                                             <div key={item.id} className="group">
                                                 <div className="flex items-center justify-between text-xs">
-                                                    <span className="font-medium text-slate-800">
-                                                        {item.category}
-                                                    </span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`h-2 w-2 rounded-full ${getCategoryColor(item.category)}`} />
+                                                        <span className="font-medium text-slate-800">
+                                                            {item.category}
+                                                        </span>
+                                                    </div>
 
                                                     <div className="flex items-center gap-2.5">
                                                         <span className="text-[11px] text-slate-400">
@@ -1652,7 +1851,7 @@ useEffect(() => {
 
                                                 <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
                                                     <div
-                                                        className="h-full rounded-full bg-violet-600 transition-all duration-300"
+                                                        className={`h-full rounded-full ${getCategoryColor(item.category)} transition-all duration-300`}
                                                         style={{
                                                             width: `${item.percentage}%`,
                                                         }}
@@ -1999,317 +2198,295 @@ useEffect(() => {
                                 </div>
 
                             <div className="divide-y divide-slate-100">
-    {applicationUsage.map((application, index) => (
-        <div
-            key={application.applicationName || index}
-            className="px-5 py-4"
-        >
-                                            <div className="flex items-center gap-3">
-                                                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
-                                                    <AppWindow size={17} />
-                                                </div>
-
-                                                <div className="min-w-0 flex-1">
-                                                    <div className="flex flex-wrap items-center justify-between gap-2">
-                                                        <div>
-                                                            <p className="text-xs font-semibold text-slate-900">
-                                                                {
-                                                                    application.applicationName
-                                                                }
-                                                            </p>
-
-                                                            <p className="mt-1 text-[10px] text-slate-500">
-                                                                {
-                                                                    application.category
-                                                                }
-                                                            </p>
-                                                        </div>
-
-                                                        <div className="text-right">
-                                                            <p className="text-xs font-semibold text-slate-900">
-                                                                {formatSeconds(
-                                                                    application.totalSeconds
-                                                                )}
-                                                            </p>
-
-                                                            <p className="mt-1 text-[10px] text-slate-400">
-                                                                {
-                                                                    application.percentage
-                                                                }
-                                                                %
-                                                            </p>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
-                                                        <div
-                                                            className="h-full rounded-full bg-blue-500"
-                                                            style={{
-                                                                width: `${application.percentage}%`,
-                                                            }}
-                                                        />
-                                                    </div>
-                                                </div>
-
-                                                <span
-                                                    className={`rounded-full px-2.5 py-1 text-[9px] font-semibold ring-1 ring-inset ${getProductivityClasses(
-                                                        application.productivity
-                                                    )}`}
-                                                >
-                                                    {
-                                                        application.productivity
-                                                    }
-                                                </span>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </section>
-
-                            <section className="rounded-2xl border border-slate-200 p-5">
-                                <div className="flex h-52 items-center justify-center">
-                                    <div className="relative flex h-44 w-44 items-center justify-center rounded-full bg-[conic-gradient(#7c3aed_var(--score),#e2e8f0_0)]"
-                                        style={{
-                                            "--score": `${productivityScore}%`,
-                                        }}
+                                {applicationUsage.map((application, index) => (
+                                    <div
+                                        key={application.applicationName || index}
+                                        className="px-5 py-4"
                                     >
-                                        <div className="flex h-32 w-32 flex-col items-center justify-center rounded-full bg-white">
-                                            <p className="text-3xl font-semibold text-slate-950">
-                                                {productivityScore}%
-                                            </p>
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
+                                                <AppWindow size={17} />
+                                            </div>
 
-                                            <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                Productivity
-                                            </p>
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                    <div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`h-2 w-2 rounded-full ${getCategoryColor(application.category)}`} />
+                                                            <p className="text-xs font-semibold text-slate-900">
+                                                                {application.applicationName}
+                                                            </p>
+                                                        </div>
+
+                                                        <p className="mt-1 text-[10px] text-slate-500">
+                                                            {application.category}
+                                                            {application.lastWindowTitle ? ` · ${application.lastWindowTitle}` : ""}
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="text-right">
+                                                        <p className="text-xs font-semibold text-slate-900">
+                                                            {formatSeconds(application.totalSeconds)}
+                                                        </p>
+
+                                                        <p className="mt-1 text-[10px] text-slate-400">
+                                                            {application.percentage}%
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                                                    <div
+                                                        className={`h-full rounded-full ${getCategoryColor(application.category)} transition-all duration-300`}
+                                                        style={{
+                                                            width: `${application.percentage}%`,
+                                                        }}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <span
+                                                className={`rounded-full px-2.5 py-1 text-[9px] font-semibold ring-1 ring-inset ${getProductivityClasses(
+                                                    application.productivity
+                                                )}`}
+                                            >
+                                                {application.productivity}
+                                            </span>
                                         </div>
                                     </div>
-                                </div>
+                                ))}
+                            </div>
+                        </section>
 
-                                <div className="mt-5 rounded-xl bg-emerald-50 p-4 text-center">
-                                    <p className="text-sm font-semibold text-emerald-800">
-                                        Excellent
-                                    </p>
+                        <section className="rounded-2xl border border-slate-200 p-5">
+                            <div className="flex h-52 items-center justify-center">
+                                <div
+                                    className="relative flex h-44 w-44 items-center justify-center rounded-full bg-[conic-gradient(#7c3aed_var(--score),#e2e8f0_0)]"
+                                    style={{
+                                        "--score": `${productivityScore}%`,
+                                    }}
+                                >
+                                    <div className="flex h-32 w-32 flex-col items-center justify-center rounded-full bg-white">
+                                        <p className="text-3xl font-semibold text-slate-950">
+                                            {productivityScore}%
+                                        </p>
 
-                                    <p className="mt-1 text-[10px] text-emerald-600">
-                                        +6% compared with yesterday
-                                    </p>
+                                        <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                            Productivity
+                                        </p>
+                                    </div>
                                 </div>
-                            </section>
-                        </div>
+                            </div>
+
+                            <div className="mt-5 rounded-xl bg-emerald-50 p-4 text-center">
+                                <p className="text-sm font-semibold text-emerald-800">
+                                    {productivityScore >= 75 ? "Excellent" : productivityScore >= 50 ? "Good" : "Needs Attention"}
+                                </p>
+
+                                <p className="mt-1 text-[10px] text-emerald-600">
+                                    {productivityScore}% productive time recorded today
+                                </p>
+                            </div>
+                        </section>
                     </div>
-                )}
+                </div>
+            )}
 
-                {activeTab === "sessions" && (
-                    <div className="overflow-x-auto">
-                        <table className="w-full min-w-[1050px]">
-                            <thead>
-                                <tr className="border-b border-slate-200 bg-slate-50/80">
-                                    <th className="px-5 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        Session
-                                    </th>
+            {activeTab === "sessions" && (
+                <div className="overflow-x-auto">
+                    <table className="w-full min-w-[1050px]">
+                        <thead>
+                            <tr className="border-b border-slate-200 bg-slate-50/80">
+                                <th className="px-5 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                    Session
+                                </th>
 
-                                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        Task
-                                    </th>
+                                <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                    Task
+                                </th>
 
-                                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        Application
-                                    </th>
+                                <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                    Application
+                                </th>
 
-                                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                      First Seen
-                                    </th>
+                                <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                  First Seen
+                                </th>
 
-                                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        Last Seen
-                                    </th>
+                                <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                    Last Seen
+                                </th>
 
-                                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        Duration
-                                    </th>
+                                <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                    Duration
+                                </th>
 
-                                    <th className="px-5 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        Status
-                                    </th>
+                                <th className="px-5 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                    Status
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {taskSessions.length === 0 ? (
+                                <tr>
+                                    <td colSpan={7} className="px-6 py-10 text-center text-sm text-slate-500">
+                                        No task sessions recorded today.
+                                    </td>
                                 </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {taskSessions.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={7} className="px-6 py-10 text-center text-sm text-slate-500">
-                                            No task sessions recorded today.
+                            ) : (
+                                taskSessions.map((session) => (
+                                    <tr key={session.id} className="transition hover:bg-slate-50/70">
+                                        <td className="px-5 py-4">
+                                            <p className="text-xs font-semibold text-slate-900">
+                                                {session.applicationName || "Unknown"}
+                                            </p>
+                                            <p className="mt-1 text-[10px] text-slate-500 truncate max-w-[280px]">
+                                                {session.lastWindowTitle || "No active window"}
+                                            </p>
+                                        </td>
+
+                                        {/* Task */}
+                                        <td className="px-4 py-4">
+                                            {session.taskTitle ? (
+                                                <div className="inline-flex flex-col rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
+                                                    <span className="text-xs font-semibold text-violet-800">
+                                                        {session.taskTitle}
+                                                    </span>
+                                                    {session.taskCode && (
+                                                        <span className="text-[10px] text-violet-600 mt-0.5">
+                                                            {session.taskCode}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <span className="text-xs text-slate-400">No task assigned</span>
+                                            )}
+                                        </td>
+
+                                        {/* Application */}
+                                        <td className="px-4 py-4 text-xs text-slate-600">
+                                            {session.applicationName || "—"}
+                                        </td>
+
+                                        {/* Start */}
+                                        <td className="px-4 py-4 text-xs text-slate-700">
+                                            {session.startedAt ? formatAgentTime(session.startedAt) : "--"}
+                                        </td>
+
+                                        {/* End */}
+                                        <td className="px-4 py-4 text-xs text-slate-700">
+                                            {session.endedAt ? formatAgentTime(session.endedAt) : "Running"}
+                                        </td>
+
+                                        {/* Duration */}
+                                        <td className="px-4 py-4 text-xs font-semibold text-slate-900">
+                                            {formatSeconds(session.durationSeconds || 0)}
+                                        </td>
+
+                                        {/* Status */}
+                                        <td className="px-5 py-4">
+                                            <span
+                                                className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ring-1 ring-inset ${session.status === "Running"
+                                                        ? "bg-violet-50 text-violet-700 ring-violet-600/10"
+                                                        : "bg-emerald-50 text-emerald-700 ring-emerald-600/10"
+                                                    }`}
+                                            >
+                                                {session.status}
+                                            </span>
                                         </td>
                                     </tr>
-                                ) : (
-                                    taskSessions.map((session) => (
-                                        <tr key={session.id} className="transition hover:bg-slate-50/70">
-                                      
-<td className="px-5 py-4">
-    <p className="text-xs font-semibold text-slate-900">
-        {session.applicationName || "Unknown"}
-    </p>
-    <p className="mt-1 text-[10px] text-slate-500 truncate max-w-[280px]">
-        {session.lastWindowTitle || "No active window"}
-    </p>
-</td>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            )}
 
-                                            {/* Task */}
-                                      
-<td className="px-4 py-4">
-  {session.taskTitle ? (
-    <div className="inline-flex flex-col rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
-      <span className="text-xs font-semibold text-violet-800">
-        {session.taskTitle}
-      </span>
-      {session.taskCode && (
-        <span className="text-[10px] text-violet-600 mt-0.5">
-          {session.taskCode}
-        </span>
-      )}
-    </div>
-  ) : (
-    <span className="text-xs text-slate-400">No task assigned</span>
-  )}
-</td>
+            {activeTab === "summary" && (
+                <div className="p-5">
+                    <div className="grid gap-5 lg:grid-cols-3">
+                        <div className="rounded-2xl border border-slate-200 p-5">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                Tasks completed
+                            </p>
+                            <p className="mt-3 text-3xl font-semibold text-slate-950">
+                                {dashboardMetrics?.tasksCompleted ?? 0}
+                            </p>
+                        </div>
 
-                                            {/* Application */}
-                                            <td className="px-4 py-4 text-xs text-slate-600">
-                                                {session.applicationName || "—"}
-                                            </td>
+                        <div className="rounded-2xl border border-slate-200 p-5">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                Tickets solved
+                            </p>
+                            <p className="mt-3 text-3xl font-semibold text-slate-950">
+                                {dashboardMetrics?.ticketsSolved ?? 0}
+                            </p>
+                        </div>
 
-                                            {/* Start */}
-                                            <td className="px-4 py-4 text-xs text-slate-700">
-                                                {session.startedAt ? formatAgentTime(session.startedAt) : "--"}
-                                            </td>
-
-                                            {/* End */}
-                                            <td className="px-4 py-4 text-xs text-slate-700">
-                                                {session.endedAt ? formatAgentTime(session.endedAt) : "Running"}
-                                            </td>
-
-                                            {/* Duration */}
-                                            <td className="px-4 py-4 text-xs font-semibold text-slate-900">
-                                                {formatSeconds(session.durationSeconds || 0)}
-                                            </td>
-
-                                            {/* Status */}
-                                            <td className="px-5 py-4">
-                                                <span
-                                                    className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ring-1 ring-inset ${session.status === "Running"
-                                                            ? "bg-violet-50 text-violet-700 ring-violet-600/10"
-                                                            : "bg-emerald-50 text-emerald-700 ring-emerald-600/10"
-                                                        }`}
-                                                >
-                                                    {session.status}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
-                            </tbody>
-
-                        </table>
+                        <div className="rounded-2xl border border-slate-200 p-5">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                Support calls
+                            </p>
+                            <p className="mt-3 text-3xl font-semibold text-slate-950">
+                                {dashboardMetrics?.supportCalls ?? 0}
+                            </p>
+                        </div>
                     </div>
-                )}
 
-                {activeTab === "summary" && (
-                    <div className="p-5">
-                        <div className="grid gap-5 lg:grid-cols-3">
-                            <div className="rounded-2xl border border-slate-200 p-5">
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                    Tasks completed
-                                </p>
-                                <p className="mt-3 text-3xl font-semibold text-slate-950">
-                                    {dashboardMetrics?.tasksCompleted ?? 0}
-                                </p>
+                    <div className="mt-5 rounded-2xl border border-slate-200 p-6">
+                        <div className="flex items-center gap-3">
+                            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
+                                <FileText size={18} />
                             </div>
 
-                            <div className="rounded-2xl border border-slate-200 p-5">
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                    Tickets solved
-                                </p>
-                                <p className="mt-3 text-3xl font-semibold text-slate-950">
-                                    {dashboardMetrics?.ticketsSolved ?? 0}
-                                </p>
-                            </div>
+                            <div>
+                                <h3 className="text-sm font-semibold text-slate-950">
+                                    End-of-Day Report
+                                </h3>
 
-                            <div className="rounded-2xl border border-slate-200 p-5">
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                    Support calls
-                                </p>
-                                <p className="mt-3 text-3xl font-semibold text-slate-950">
-                                    {dashboardMetrics?.supportCalls ?? 0}
+                                <p className="mt-1 text-[10px] text-slate-500">
+                                    Generated from tasks, tickets,
+                                    attendance and agent activity.
                                 </p>
                             </div>
                         </div>
 
-                        <div className="mt-5 rounded-2xl border border-slate-200 p-6">
-                            <div className="flex items-center gap-3">
-                                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
-                                    <FileText size={18} />
-                                </div>
-
-                                <div>
-                                    <h3 className="text-sm font-semibold text-slate-950">
-                                        End-of-Day Report
-                                    </h3>
-
-                                    <p className="mt-1 text-[10px] text-slate-500">
-                                        Generated from tasks, tickets,
-                                        attendance and agent activity.
-                                    </p>
-                                </div>
-                            </div>
-
                             <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-                                `{[
-  {
-    label: "Worked",
-    value: formatSeconds(apiSummary?.totalTrackedSeconds || 0),
-  },
-  {
-    label: "Productive",
-    value: formatSeconds(
-      apiApplications
-        .filter((a) => a.productivity === "Productive")
-        .reduce((sum, a) => sum + (a.totalSeconds || 0), 0)
-    ),
-  },
-  {
-    label: "Idle",
-    value: formatSeconds(idleSeconds),
-  },
-  {
-    label: "Productivity",
-    value: `${
-      (apiSummary?.totalTrackedSeconds || 0) > 0
-        ? Math.round(
-            (apiApplications
-              .filter((a) => a.productivity === "Productive")
-              .reduce((sum, a) => sum + (a.totalSeconds || 0), 0) /
-              apiSummary.totalTrackedSeconds) * 100
-          )
-        : 0
-    }%`,
-  },
-  {
-    label: "Attendance",
-    value: attendanceStatus,
-  },
-].map((item) => (
-  <div
-    key={item.label}
-    className="rounded-xl bg-slate-50 p-4"
-  >
-    <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-      {item.label}
-    </p>
+                                {[
+                                    {
+                                        label: "Worked",
+                                        value: formatSeconds(totalTrackedSeconds),
+                                    },
+                                    {
+                                        label: "Productive",
+                                        value: formatSeconds(productiveSeconds),
+                                    },
+                                    {
+                                        label: "Idle",
+                                        value: formatSeconds(idleSeconds),
+                                    },
+                                    {
+                                        label: "Productivity",
+                                        value: `${productivityScore}%`,
+                                    },
+                                    {
+                                        label: "Attendance",
+                                        value: attendanceStatus,
+                                    },
+                                ].map((item) => (
+                                    <div
+                                        key={item.label}
+                                        className="rounded-xl bg-slate-50 p-4"
+                                    >
+                                        <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                            {item.label}
+                                        </p>
 
-    <p className="mt-2 text-sm font-semibold text-slate-900">
-      {item.value}
-    </p>
-  </div>
-))}`
+                                        <p className="mt-2 text-sm font-semibold text-slate-900">
+                                            {item.value}
+                                        </p>
+                                    </div>
+                                ))}
                             </div>
                         </div>
 
