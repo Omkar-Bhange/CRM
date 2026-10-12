@@ -3646,6 +3646,14 @@ const productSaleSchema =
           true,
       },
 
+      paymentVersion: {
+        type:
+          Number,
+
+        default:
+          0,
+      },
+
       /* =================================================
          AUDIT
       ================================================= */
@@ -3826,6 +3834,23 @@ const productSalePaymentSchema =
 
         min:
           1,
+      },
+
+      idempotencyKey: {
+        type:
+          String,
+
+        default:
+          null,
+
+        trim:
+          true,
+
+        index:
+          true,
+
+        sparse:
+          true,
       },
 
       productSaleId: {
@@ -6638,6 +6663,11 @@ const amcInvoiceSchema =
         sparse: true,
       },
 
+      paymentVersion: {
+        type: Number,
+        default: 0,
+      },
+
       /*
        * Financial records should normally be cancelled,
        * not physically removed.
@@ -6740,7 +6770,12 @@ const idempotencyLogSchema = new mongoose.Schema(
     },
     contractId: {
       type: mongoose.Schema.Types.ObjectId,
-      required: true,
+      required: false,
+      index: true,
+    },
+    entityId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: false,
       index: true,
     },
     payloadHash: {
@@ -6830,6 +6865,14 @@ const amcPaymentSchema =
         trim: true,
         uppercase: true,
         index: true,
+      },
+
+      idempotencyKey: {
+        type: String,
+        default: null,
+        trim: true,
+        index: true,
+        sparse: true,
       },
 
       amcContractId: {
@@ -25100,279 +25143,304 @@ router.post(
 ... [truncated for diff preview]
        * stored inside AmcInvoice.
        */
-      createdContract =
-        await AmcContract.create({
-          contractCode,
+      /*
+       * Create contract, initial invoice, and update client master
+       * atomically inside a MongoDB transaction session.
+       */
+      const session = await mongoose.startSession();
+      try {
+        await session.withTransaction(async () => {
+          const createdContracts =
+            await AmcContract.create(
+              [
+                {
+                  contractCode,
 
-          currentInvoiceCode:
-            invoiceCode,
+                  currentInvoiceCode:
+                    invoiceCode,
 
-          invoiceCode,
+                  invoiceCode,
 
-          invoiceDate:
-            now,
+                  invoiceDate:
+                    now,
 
-          clientId:
-            client._id,
+                  clientId:
+                    client._id,
 
-          clientCode:
-            client.clientCode,
+                  clientCode:
+                    client.clientCode,
 
-          clientName:
-            client.companyName,
+                  clientName:
+                    client.companyName,
 
-          contactPerson:
-            client.contactPerson ||
-            "",
+                  contactPerson:
+                    client.contactPerson ||
+                    "",
 
-          contactMobile:
-            client.mobile ||
-            "",
+                  contactMobile:
+                    client.mobile ||
+                    "",
 
-          contactEmail:
-            client.email ||
-            "",
+                  contactEmail:
+                    client.email ||
+                    "",
 
-          clientProductId:
-            clientProduct._id,
+                  clientProductId:
+                    clientProduct._id,
 
-          productId:
-            clientProduct.productId,
+                  productId:
+                    clientProduct.productId,
 
-          productCode:
-            clientProduct.productCode,
+                  productCode:
+                    clientProduct.productCode,
 
-          productName:
-            clientProduct.productName,
+                  productName:
+                    clientProduct.productName,
 
-          productVersion:
-            clientProduct.version ||
-            "",
+                  productVersion:
+                    clientProduct.version ||
+                    "",
 
-          plan:
-            normalizedPlan,
+                  plan:
+                    normalizedPlan,
 
-          licensedUsers:
-            normalizedUsers,
+                  licensedUsers:
+                    normalizedUsers,
 
-          startDate:
-            parsedStartDate,
+                  startDate:
+                    parsedStartDate,
 
-          expiryDate:
-            parsedExpiryDate,
+                  expiryDate:
+                    parsedExpiryDate,
 
-          dueDate:
-            parsedDueDate,
+                  dueDate:
+                    parsedDueDate,
 
-          ...calculatedAmounts,
+                  ...calculatedAmounts,
 
-          paidAmount:
-            0,
+                  paidAmount:
+                    0,
 
-          pendingAmount:
-            calculatedAmounts
-              .totalAmount,
+                  pendingAmount:
+                    calculatedAmounts
+                      .totalAmount,
 
-          status:
-            contractStatus,
+                  status:
+                    contractStatus,
 
-          assignedEmployeeId:
-            resolvedEmployee
-              .assignedEmployeeId,
+                  assignedEmployeeId:
+                    resolvedEmployee
+                      .assignedEmployeeId,
 
-          assignedEmployeeCode:
-            resolvedEmployee
-              .assignedEmployeeCode,
+                  assignedEmployeeCode:
+                    resolvedEmployee
+                      .assignedEmployeeCode,
 
-          assignedEmployeeName:
-            resolvedEmployee
-              .assignedEmployeeName,
+                  assignedEmployeeName:
+                    resolvedEmployee
+                      .assignedEmployeeName,
 
-          reminderStatus:
+                  reminderStatus:
+                    contractStatus ===
+                    "Paid"
+                      ? "Not Required"
+                      : "Not Sent",
+
+                  notes:
+                    normalizedNotes,
+
+                  timeline,
+
+                  createdBy:
+                    req.user._id,
+
+                  createdByName:
+                    req.user.name ||
+                    "Admin",
+
+                  updatedBy:
+                    req.user._id,
+
+                  updatedByName:
+                    req.user.name ||
+                    "Admin",
+                },
+              ],
+              { session }
+            );
+
+          createdContract = createdContracts[0];
+
+          /*
+           * Create the first permanent invoice using snapshots.
+           */
+          const createdInvoices =
+            await AmcInvoice.create(
+              [
+                {
+                  invoiceCode,
+
+                  invoiceDate:
+                    now,
+
+                  invoiceType:
+                    "Initial",
+
+                  amcContractId:
+                    createdContract._id,
+
+                  contractCode:
+                    createdContract
+                      .contractCode,
+
+                  contractStartDate:
+                    parsedStartDate,
+
+                  contractExpiryDate:
+                    parsedExpiryDate,
+
+                  dueDate:
+                    parsedDueDate,
+
+                  clientId:
+                    client._id,
+
+                  clientCode:
+                    client.clientCode,
+
+                  clientName:
+                    client.companyName,
+
+                  contactPerson:
+                    client.contactPerson ||
+                    "",
+
+                  contactMobile:
+                    client.mobile ||
+                    "",
+
+                  contactEmail:
+                    client.email ||
+                    "",
+
+                  clientProductId:
+                    clientProduct._id,
+
+                  productId:
+                    clientProduct.productId,
+
+                  productCode:
+                    clientProduct.productCode,
+
+                  productName:
+                    clientProduct.productName,
+
+                  productVersion:
+                    clientProduct.version ||
+                    "",
+
+                  plan:
+                    normalizedPlan,
+
+                  licensedUsers:
+                    normalizedUsers,
+
+                  description:
+                    `${normalizedPlan} Annual Maintenance Contract for ${clientProduct.productName}.`,
+
+                  ...calculatedAmounts,
+
+                  paidAmount:
+                    0,
+
+                  pendingAmount:
+                    calculatedAmounts
+                      .totalAmount,
+
+                  paymentStatus:
+                    invoicePaymentStatus,
+
+                  status:
+                    "Issued",
+
+                  notes:
+                    normalizedNotes,
+
+                  createdBy:
+                    req.user._id,
+
+                  createdByName:
+                    req.user.name ||
+                    "Admin",
+
+                  updatedBy:
+                    req.user._id,
+
+                  updatedByName:
+                    req.user.name ||
+                    "Admin",
+                },
+              ],
+              { session }
+            );
+
+          createdInvoice = createdInvoices[0];
+
+          /*
+           * Link contract to the permanent current invoice.
+           */
+          createdContract.currentInvoiceId =
+            createdInvoice._id;
+
+          createdContract.currentInvoiceCode =
+            createdInvoice.invoiceCode;
+
+          await createdContract.save({ session });
+
+          /*
+           * Client Master receives only current status values.
+           * No invoice or payment history is saved in Client.
+           */
+          clientProduct.supportType =
+            normalizedPlan ===
+            "Custom"
+              ? clientProduct
+                  .supportType
+              : normalizedPlan;
+
+          clientProduct.amcStatus =
             contractStatus ===
-            "Paid"
-              ? "Not Required"
-              : "Not Sent",
+            "Upcoming"
+              ? "Not Started"
+              : contractStatus;
 
-          notes:
-            normalizedNotes,
+          clientProduct.expiryDate =
+            parsedExpiryDate
+              .toISOString()
+              .slice(
+                0,
+                10
+              );
 
-          timeline,
+          client.amcStatus =
+            contractStatus ===
+            "Upcoming"
+              ? "Not Started"
+              : contractStatus;
 
-          createdBy:
-            req.user._id,
+          client.nextRenewal =
+            parsedExpiryDate
+              .toISOString()
+              .slice(
+                0,
+                10
+              );
 
-          createdByName:
-            req.user.name ||
-            "Admin",
-
-          updatedBy:
-            req.user._id,
-
-          updatedByName:
-            req.user.name ||
-            "Admin",
+          await client.save({ session });
         });
-
-      /*
-       * Create the first permanent invoice using snapshots.
-       */
-      createdInvoice =
-        await AmcInvoice.create({
-          invoiceCode,
-
-          invoiceDate:
-            now,
-
-          invoiceType:
-            "Initial",
-
-          amcContractId:
-            createdContract._id,
-
-          contractCode:
-            createdContract
-              .contractCode,
-
-          contractStartDate:
-            parsedStartDate,
-
-          contractExpiryDate:
-            parsedExpiryDate,
-
-          dueDate:
-            parsedDueDate,
-
-          clientId:
-            client._id,
-
-          clientCode:
-            client.clientCode,
-
-          clientName:
-            client.companyName,
-
-          contactPerson:
-            client.contactPerson ||
-            "",
-
-          contactMobile:
-            client.mobile ||
-            "",
-
-          contactEmail:
-            client.email ||
-            "",
-
-          clientProductId:
-            clientProduct._id,
-
-          productId:
-            clientProduct.productId,
-
-          productCode:
-            clientProduct.productCode,
-
-          productName:
-            clientProduct.productName,
-
-          productVersion:
-            clientProduct.version ||
-            "",
-
-          plan:
-            normalizedPlan,
-
-          licensedUsers:
-            normalizedUsers,
-
-          description:
-            `${normalizedPlan} Annual Maintenance Contract for ${clientProduct.productName}.`,
-
-          ...calculatedAmounts,
-
-          paidAmount:
-            0,
-
-          pendingAmount:
-            calculatedAmounts
-              .totalAmount,
-
-          paymentStatus:
-            invoicePaymentStatus,
-
-          status:
-            "Issued",
-
-          notes:
-            normalizedNotes,
-
-          createdBy:
-            req.user._id,
-
-          createdByName:
-            req.user.name ||
-            "Admin",
-
-          updatedBy:
-            req.user._id,
-
-          updatedByName:
-            req.user.name ||
-            "Admin",
-        });
-
-      /*
-       * Link contract to the permanent current invoice.
-       */
-      createdContract.currentInvoiceId =
-        createdInvoice._id;
-
-      createdContract.currentInvoiceCode =
-        createdInvoice.invoiceCode;
-
-      await createdContract.save();
-
-      /*
-       * Client Master receives only current status values.
-       * No invoice or payment history is saved in Client.
-       */
-      clientProduct.supportType =
-        normalizedPlan ===
-        "Custom"
-          ? clientProduct
-              .supportType
-          : normalizedPlan;
-
-      clientProduct.amcStatus =
-        contractStatus ===
-        "Upcoming"
-          ? "Not Started"
-          : contractStatus;
-
-      clientProduct.expiryDate =
-        parsedExpiryDate
-          .toISOString()
-          .slice(
-            0,
-            10
-          );
-
-      client.amcStatus =
-        contractStatus ===
-        "Upcoming"
-          ? "Not Started"
-          : contractStatus;
-
-      client.nextRenewal =
-        parsedExpiryDate
-          .toISOString()
-          .slice(
-            0,
-            10
-          );
-
-      await client.save();
+      } finally {
+        await session.endSession();
+      }
 
       await createActivityLog({
         action:
@@ -26780,6 +26848,12 @@ router.put(
       contract.pendingAmount = Math.max(0, calculatedAmounts.totalAmount - currentPaid);
 
       if (status && ["Active", "Pending", "Upcoming", "Overdue", "Paid", "Cancelled"].includes(status)) {
+        if (status === "Cancelled" && currentPaid > 0) {
+          return res.status(400).json({
+            success: false,
+            message: "Cannot cancel an AMC contract that already has recorded payments. Reverse or adjust the payments first.",
+          });
+        }
         contract.status = status;
       } else {
         if (currentPaid >= calculatedAmounts.totalAmount) {
@@ -26952,6 +27026,19 @@ router.delete(
         return res.status(404).json({
           success: false,
           message: "AMC contract was not found.",
+        });
+      }
+
+      const paymentCount = await AmcPayment.countDocuments({
+        amcContractId: contract._id,
+        isDeleted: false,
+      });
+
+      if (paymentCount > 0) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Cannot delete an AMC contract that already has recorded payments. Retain historical financial records for audit integrity.",
         });
       }
 
@@ -27681,82 +27768,39 @@ router.post(
   "/amc/payment",
   validate(amcPaymentZodSchema),
   async (req, res) => {
-    const session =
-      await mongoose.startSession();
-
-    let savedPayment =
-      null;
-
-    let savedInvoice =
-      null;
-
-    let savedContract =
-      null;
-
     try {
       const {
         amcInvoiceId,
         amcContractId,
-
         amount,
         paymentDate,
+        mode = "Bank Transfer",
+        referenceNo = "",
+        notes = "",
+      } = req.body || {};
 
-        mode =
-          "Bank Transfer",
+      const normalizedAmount = roundAmcAmount(amount);
 
-        referenceNo =
-          "",
-
-        notes =
-          "",
-      } = req.body;
-
-      const normalizedAmount =
-        roundAmcAmount(
-          amount
-        );
-
-      if (
-        !Number.isFinite(
-          normalizedAmount
-        ) ||
-        normalizedAmount <= 0
-      ) {
+      if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
         return res.status(400).json({
-          success:
-            false,
-
-          message:
-            "Enter a valid payment amount.",
+          success: false,
+          message: "Enter a valid payment amount.",
         });
       }
 
       if (!paymentDate) {
         return res.status(400).json({
-          success:
-            false,
-
-          message:
-            "Payment date is required.",
+          success: false,
+          message: "Payment date is required.",
         });
       }
 
-      const parsedPaymentDate =
-        new Date(
-          `${paymentDate}T00:00:00`
-        );
+      const parsedPaymentDate = new Date(`${paymentDate}T00:00:00`);
 
-      if (
-        Number.isNaN(
-          parsedPaymentDate.getTime()
-        )
-      ) {
+      if (Number.isNaN(parsedPaymentDate.getTime())) {
         return res.status(400).json({
-          success:
-            false,
-
-          message:
-            "Invalid payment date.",
+          success: false,
+          message: "Invalid payment date.",
         });
       }
 
@@ -27769,382 +27813,296 @@ router.post(
         "Other",
       ];
 
-      const normalizedMode =
-        allowedModes.includes(
-          mode
-        )
-          ? mode
-          : "Other";
+      const normalizedMode = allowedModes.includes(mode) ? mode : "Other";
 
-      /*
-       * Bank/UPI/Cheque/Card payments should preferably
-       * contain a reference number.
-       */
-      const normalizedReferenceNo =
-        String(
-          referenceNo ||
-          ""
-        ).trim();
-
-      const normalizedNotes =
-        String(
-          notes ||
-          ""
-        ).trim();
+      const normalizedReferenceNo = String(referenceNo || "").trim();
+      const normalizedNotes = String(notes || "").trim();
 
       if (
-        [
-          "Bank Transfer",
-          "UPI",
-          "Cheque",
-          "Card",
-        ].includes(
-          normalizedMode
-        ) &&
+        ["Bank Transfer", "UPI", "Cheque", "Card"].includes(normalizedMode) &&
         !normalizedReferenceNo
       ) {
         return res.status(400).json({
-          success:
-            false,
-
-          message:
-            `Reference number is required for ${normalizedMode}.`,
+          success: false,
+          message: `Reference number is required for ${normalizedMode}.`,
         });
       }
 
-      /*
-       * At least invoice ID or contract ID is required.
-       */
       const validInvoiceId =
-        amcInvoiceId &&
-        mongoose.Types.ObjectId.isValid(
-          amcInvoiceId
-        );
-
+        amcInvoiceId && mongoose.Types.ObjectId.isValid(amcInvoiceId);
       const validContractId =
-        amcContractId &&
-        mongoose.Types.ObjectId.isValid(
-          amcContractId
-        );
+        amcContractId && mongoose.Types.ObjectId.isValid(amcContractId);
 
-      if (
-        !validInvoiceId &&
-        !validContractId
-      ) {
+      if (!validInvoiceId && !validContractId) {
         return res.status(400).json({
-          success:
-            false,
-
-          message:
-            "A valid AMC invoice ID is required.",
+          success: false,
+          message: "A valid AMC invoice ID is required.",
         });
       }
 
-      await session.withTransaction(
-        async () => {
-          let invoice =
-            null;
+      /* =================================================
+         IDEMPOTENCY HANDLING (Tier 1 & Tier 2)
+      ================================================= */
+      const idempotencyKey =
+        req.headers["idempotency-key"] ||
+        req.headers["x-idempotency-key"] ||
+        req.body?.idempotencyKey ||
+        null;
+      const normalizedIdempotencyKey = idempotencyKey
+        ? String(idempotencyKey).trim()
+        : null;
 
-          /*
-           * Preferred method:
-           * direct permanent invoice selection.
-           */
-          if (validInvoiceId) {
-            invoice =
-              await AmcInvoice.findOne({
-                _id:
-                  amcInvoiceId,
+      const payloadHash = crypto
+        .createHash("sha256")
+        .update(
+          JSON.stringify({
+            amcInvoiceId: amcInvoiceId || "",
+            amcContractId: amcContractId || "",
+            amount: normalizedAmount,
+            paymentDate,
+            mode: normalizedMode,
+            referenceNo: normalizedReferenceNo,
+          })
+        )
+        .digest("hex");
 
-                isDeleted:
-                  false,
-              }).session(
-                session
-              );
+      if (normalizedIdempotencyKey) {
+        // Tier 1: In-Flight / Fast Cache Check
+        const existingLog = await IdempotencyLog.findOne({
+          idempotencyKey: normalizedIdempotencyKey,
+        });
+
+        if (existingLog) {
+          if (existingLog.payloadHash === payloadHash) {
+            return res.status(200).json({
+              ...(existingLog.responseBody || {}),
+              isReplay: true,
+            });
+          } else {
+            return res.status(422).json({
+              success: false,
+              message:
+                "Idempotency key conflict: Request parameters do not match original transaction.",
+            });
           }
+        }
 
-          /*
-           * Compatibility fallback:
-           * resolve current invoice through contract.
-           */
-          if (
-            !invoice &&
-            validContractId
-          ) {
-            const fallbackContract =
-              await AmcContract.findOne({
-                _id:
-                  amcContractId,
+        // Tier 2: Durable Ledger Check by Idempotency Key
+        const existingPaymentByKey = await AmcPayment.findOne({
+          idempotencyKey: normalizedIdempotencyKey,
+          isDeleted: false,
+        });
 
-                isDeleted:
-                  false,
-              }).session(
-                session
-              );
+        if (existingPaymentByKey) {
+          const inv = await AmcInvoice.findOne({
+            _id: existingPaymentByKey.amcInvoiceId,
+            isDeleted: false,
+          });
+          const cont = await AmcContract.findOne({
+            _id: existingPaymentByKey.amcContractId,
+            isDeleted: false,
+          });
+          const contractData = cont && inv ? mergeAmcContractWithInvoice(cont, inv) : null;
+          return res.status(200).json({
+            success: true,
+            isReplay: true,
+            message: "AMC payment already recorded.",
+            data: {
+              payment: amcPaymentResponse(existingPaymentByKey),
+              invoice: inv ? amcInvoiceResponse(inv) : null,
+              contract: contractData,
+            },
+            payment: amcPaymentResponse(existingPaymentByKey),
+            invoice: inv ? amcInvoiceResponse(inv) : null,
+            contract: contractData,
+          });
+        }
+      }
 
-            if (
-              fallbackContract
-                ?.currentInvoiceId
-            ) {
-              invoice =
-                await AmcInvoice.findOne({
-                  _id:
-                    fallbackContract
-                      .currentInvoiceId,
+      /* =================================================
+         TRANSACTION EXECUTION WITH RETRY HANDLING
+      ================================================= */
+      let savedPayment = null;
+      let savedInvoice = null;
+      let savedContract = null;
 
-                  isDeleted:
-                    false,
-                }).session(
-                  session
-                );
+      const maxRetries = 3;
+      let attempt = 0;
+      let transactionSuccess = false;
+
+      while (attempt < maxRetries && !transactionSuccess) {
+        attempt++;
+
+        // Fast-path recovery on retry
+        if (normalizedIdempotencyKey && attempt > 1) {
+          const replayLog = await IdempotencyLog.findOne({
+            idempotencyKey: normalizedIdempotencyKey,
+            status: "COMPLETED",
+          });
+          if (replayLog && replayLog.responseBody) {
+            return res.status(200).json({
+              ...(replayLog.responseBody || {}),
+              isReplay: true,
+            });
+          }
+        }
+
+        const session = await mongoose.startSession();
+
+        try {
+          await session.withTransaction(async () => {
+            let invoice = null;
+
+            if (validInvoiceId) {
+              invoice = await AmcInvoice.findOne({
+                _id: amcInvoiceId,
+                isDeleted: false,
+              }).session(session);
             }
 
-            if (
-              !invoice &&
-              (
-                fallbackContract
-                  ?.currentInvoiceCode ||
-                fallbackContract
-                  ?.invoiceCode
-              )
-            ) {
-              invoice =
-                await AmcInvoice.findOne({
+            if (!invoice && validContractId) {
+              const fallbackContract = await AmcContract.findOne({
+                _id: amcContractId,
+                isDeleted: false,
+              }).session(session);
+
+              if (fallbackContract?.currentInvoiceId) {
+                invoice = await AmcInvoice.findOne({
+                  _id: fallbackContract.currentInvoiceId,
+                  isDeleted: false,
+                }).session(session);
+              }
+
+              if (
+                !invoice &&
+                (fallbackContract?.currentInvoiceCode ||
+                  fallbackContract?.invoiceCode)
+              ) {
+                invoice = await AmcInvoice.findOne({
                   invoiceCode:
-                    fallbackContract
-                      .currentInvoiceCode ||
-                    fallbackContract
-                      .invoiceCode,
-
-                  isDeleted:
-                    false,
-                }).session(
-                  session
-                );
+                    fallbackContract.currentInvoiceCode ||
+                    fallbackContract.invoiceCode,
+                  isDeleted: false,
+                }).session(session);
+              }
             }
-          }
 
-          if (!invoice) {
-            const error =
-              new Error(
-                "AMC invoice was not found."
-              );
+            if (!invoice) {
+              const error = new Error("AMC invoice was not found.");
+              error.statusCode = 404;
+              throw error;
+            }
 
-            error.statusCode =
-              404;
-
-            throw error;
-          }
-
-          if (
-            invoice.status ===
-            "Cancelled"
-          ) {
-            const error =
-              new Error(
+            if (invoice.status === "Cancelled") {
+              const error = new Error(
                 "Payment cannot be recorded against a cancelled invoice."
               );
+              error.statusCode = 400;
+              throw error;
+            }
 
-            error.statusCode =
-              400;
+            const contract = await AmcContract.findOne({
+              _id: invoice.amcContractId,
+              isDeleted: false,
+            }).session(session);
 
-            throw error;
-          }
-
-          const contract =
-            await AmcContract.findOne({
-              _id:
-                invoice.amcContractId,
-
-              isDeleted:
-                false,
-            }).session(
-              session
-            );
-
-          if (!contract) {
-            const error =
-              new Error(
+            if (!contract) {
+              const error = new Error(
                 "The AMC contract linked to this invoice was not found."
               );
+              error.statusCode = 404;
+              throw error;
+            }
 
-            error.statusCode =
-              404;
-
-            throw error;
-          }
-
-          if (
-            contract.status ===
-            "Cancelled"
-          ) {
-            const error =
-              new Error(
+            if (contract.status === "Cancelled") {
+              const error = new Error(
                 "Payment cannot be recorded against a cancelled AMC contract."
               );
+              error.statusCode = 400;
+              throw error;
+            }
 
-            error.statusCode =
-              400;
-
-            throw error;
-          }
-
-          const invoiceTotal =
-            roundAmcAmount(
-              invoice.totalAmount
+            // ATOMIC WRITE LOCK on AmcInvoice document
+            const lockedInvoice = await AmcInvoice.findOneAndUpdate(
+              { _id: invoice._id, isDeleted: false },
+              { $inc: { paymentVersion: 1 } },
+              { session, new: true }
             );
 
-          /*
-           * Recalculate paid amount from permanent payment
-           * records instead of trusting copied totals.
-           */
-          const existingPaymentTotals =
-            await AmcPayment.aggregate([
+            const invoiceTotal = roundAmcAmount(lockedInvoice.totalAmount);
+
+            // Recalculate paid amount from permanent payment records within this session
+            const existingPaymentTotals = await AmcPayment.aggregate([
               {
                 $match: {
-                  amcInvoiceId:
-                    invoice._id,
-
-                  isDeleted:
-                    false,
+                  amcInvoiceId: lockedInvoice._id,
+                  isDeleted: false,
                 },
               },
-
               {
                 $group: {
-                  _id:
-                    null,
-
+                  _id: null,
                   paidAmount: {
-                    $sum:
-                      "$amount",
+                    $sum: "$amount",
                   },
                 },
               },
-            ]).session(
-              session
+            ]).session(session);
+
+            const existingPaidAmount = roundAmcAmount(
+              existingPaymentTotals[0]?.paidAmount || 0
             );
 
-          const existingPaidAmount =
-            roundAmcAmount(
-              existingPaymentTotals[0]
-                ?.paidAmount ||
+            const actualPendingAmount = Math.max(
+              roundAmcAmount(invoiceTotal - existingPaidAmount),
               0
             );
 
-          const actualPendingAmount =
-            Math.max(
-              roundAmcAmount(
-                invoiceTotal -
-                existingPaidAmount
-              ),
-              0
-            );
+            if (actualPendingAmount <= 0) {
+              const error = new Error("This invoice is already fully paid.");
+              error.statusCode = 400;
+              throw error;
+            }
 
-          if (
-            actualPendingAmount <= 0
-          ) {
-            const error =
-              new Error(
-                "This invoice is already fully paid."
-              );
-
-            error.statusCode =
-              400;
-
-            throw error;
-          }
-
-          if (
-            normalizedAmount >
-            actualPendingAmount
-          ) {
-            const error =
-              new Error(
+            if (normalizedAmount > actualPendingAmount) {
+              const error = new Error(
                 `Payment cannot exceed the pending amount of ₹${actualPendingAmount.toLocaleString(
                   "en-IN",
                   {
-                    minimumFractionDigits:
-                      2,
-
-                    maximumFractionDigits:
-                      2,
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
                   }
                 )}.`
               );
+              error.statusCode = 400;
+              throw error;
+            }
 
-            error.statusCode =
-              400;
+            const paymentCode = generateAmcPaymentCode();
 
-            throw error;
-          }
-
-          const paymentCode =
-            generateAmcPaymentCode();
-
-          const createdPayments =
-            await AmcPayment.create(
+            const createdPayments = await AmcPayment.create(
               [
                 {
                   paymentCode,
-
-                  amcContractId:
-                    contract._id,
-
-                  amcInvoiceId:
-                    invoice._id,
-
-                  contractCode:
-                    contract.contractCode,
-
-                  invoiceCode:
-                    invoice.invoiceCode,
-
-                  /*
-                   * Snapshot fields make payment history
-                   * independent of Client Master.
-                   */
-                  clientId:
-                    invoice.clientId,
-
-                  clientCode:
-                    invoice.clientCode,
-
-                  clientName:
-                    invoice.clientName,
-
-                  productId:
-                    invoice.productId,
-
-                  productCode:
-                    invoice.productCode,
-
-                  productName:
-                    invoice.productName,
-
-                  amount:
-                    normalizedAmount,
-
-                  paymentDate:
-                    parsedPaymentDate,
-
-                  mode:
-                    normalizedMode,
-
-                  referenceNo:
-                    normalizedReferenceNo,
-
-                  notes:
-                    normalizedNotes,
-
-                  receivedBy:
-                    req.user._id,
-
-                  receivedByName:
-                    req.user.name ||
-                    "Admin",
-
-                  isDeleted:
-                    false,
+                  idempotencyKey: normalizedIdempotencyKey,
+                  amcContractId: contract._id,
+                  amcInvoiceId: lockedInvoice._id,
+                  contractCode: contract.contractCode,
+                  invoiceCode: lockedInvoice.invoiceCode,
+                  clientId: lockedInvoice.clientId,
+                  clientCode: lockedInvoice.clientCode,
+                  clientName: lockedInvoice.clientName,
+                  productId: lockedInvoice.productId,
+                  productCode: lockedInvoice.productCode,
+                  productName: lockedInvoice.productName,
+                  amount: normalizedAmount,
+                  paymentDate: parsedPaymentDate,
+                  mode: normalizedMode,
+                  referenceNo: normalizedReferenceNo,
+                  notes: normalizedNotes,
+                  receivedBy: req.user._id,
+                  receivedByName: req.user.name || "Admin",
+                  isDeleted: false,
                 },
               ],
               {
@@ -28152,404 +28110,251 @@ router.post(
               }
             );
 
-          const payment =
-            createdPayments[0];
+            const payment = createdPayments[0];
 
-          const updatedPaidAmount =
-            roundAmcAmount(
-              existingPaidAmount +
-              normalizedAmount
+            const updatedPaidAmount = roundAmcAmount(
+              existingPaidAmount + normalizedAmount
             );
 
-          const updatedPendingAmount =
-            Math.max(
-              roundAmcAmount(
-                invoiceTotal -
-                updatedPaidAmount
-              ),
+            const updatedPendingAmount = Math.max(
+              roundAmcAmount(invoiceTotal - updatedPaidAmount),
               0
             );
 
-          const paymentStatus =
-            updatedPendingAmount <= 0
-              ? "Paid"
-              : "Partially Paid";
+            const paymentStatus =
+              updatedPendingAmount <= 0 ? "Paid" : "Partially Paid";
 
-          /*
-           * Update permanent invoice balance.
-           */
-          invoice.paidAmount =
-            updatedPaidAmount;
+            lockedInvoice.paidAmount = updatedPaidAmount;
+            lockedInvoice.pendingAmount = updatedPendingAmount;
+            lockedInvoice.paymentStatus = paymentStatus;
+            lockedInvoice.updatedBy = req.user._id;
+            lockedInvoice.updatedByName = req.user.name || "Admin";
 
-          invoice.pendingAmount =
-            updatedPendingAmount;
+            await lockedInvoice.save({
+              session,
+            });
 
-          invoice.paymentStatus =
-            paymentStatus;
+            contract.currentInvoiceId = lockedInvoice._id;
+            contract.currentInvoiceCode = lockedInvoice.invoiceCode;
+            contract.invoiceCode = lockedInvoice.invoiceCode;
+            contract.invoiceDate = lockedInvoice.invoiceDate;
+            contract.taxableAmount = lockedInvoice.taxableAmount;
+            contract.cgstRate = lockedInvoice.cgstRate;
+            contract.cgstAmount = lockedInvoice.cgstAmount;
+            contract.sgstRate = lockedInvoice.sgstRate;
+            contract.sgstAmount = lockedInvoice.sgstAmount;
+            contract.igstRate = lockedInvoice.igstRate;
+            contract.igstAmount = lockedInvoice.igstAmount;
+            contract.totalTaxAmount = lockedInvoice.totalTaxAmount;
+            contract.totalAmount = lockedInvoice.totalAmount;
+            contract.paidAmount = updatedPaidAmount;
+            contract.pendingAmount = updatedPendingAmount;
+            contract.status = paymentStatus;
+            contract.reminderStatus =
+              paymentStatus === "Paid"
+                ? "Not Required"
+                : contract.reminderStatus;
 
-          invoice.updatedBy =
-            req.user._id;
+            if (paymentStatus === "Paid") {
+              contract.nextFollowUpDate = null;
+            }
 
-          invoice.updatedByName =
-            req.user.name ||
-            "Admin";
-
-          await invoice.save({
-            session,
-          });
-
-          /*
-           * Keep compatibility values in the contract.
-           * Invoice remains the source of truth.
-           */
-          contract.currentInvoiceId =
-            invoice._id;
-
-          contract.currentInvoiceCode =
-            invoice.invoiceCode;
-
-          contract.invoiceCode =
-            invoice.invoiceCode;
-
-          contract.invoiceDate =
-            invoice.invoiceDate;
-
-          contract.taxableAmount =
-            invoice.taxableAmount;
-
-          contract.cgstRate =
-            invoice.cgstRate;
-
-          contract.cgstAmount =
-            invoice.cgstAmount;
-
-          contract.sgstRate =
-            invoice.sgstRate;
-
-          contract.sgstAmount =
-            invoice.sgstAmount;
-
-          contract.igstRate =
-            invoice.igstRate;
-
-          contract.igstAmount =
-            invoice.igstAmount;
-
-          contract.totalTaxAmount =
-            invoice.totalTaxAmount;
-
-          contract.totalAmount =
-            invoice.totalAmount;
-
-          contract.paidAmount =
-            updatedPaidAmount;
-
-          contract.pendingAmount =
-            updatedPendingAmount;
-
-          contract.status =
-            paymentStatus;
-
-          contract.reminderStatus =
-            paymentStatus ===
-            "Paid"
-              ? "Not Required"
-              : contract.reminderStatus;
-
-          if (
-            paymentStatus ===
-            "Paid"
-          ) {
-            contract.nextFollowUpDate =
-              null;
-          }
-
-          contract.timeline.push({
-            type:
-              "payment",
-
-            title:
-              paymentStatus ===
-              "Paid"
-                ? "AMC invoice fully paid"
-                : "AMC payment received",
-
-            description:
-              `₹${normalizedAmount.toLocaleString(
-                "en-IN",
-                {
-                  minimumFractionDigits:
-                    2,
-
-                  maximumFractionDigits:
-                    2,
-                }
-              )} received through ${normalizedMode} against invoice ${invoice.invoiceCode}${
-                normalizedReferenceNo
-                  ? ` · Reference ${normalizedReferenceNo}`
-                  : ""
+            contract.timeline.push({
+              type: "payment",
+              title:
+                paymentStatus === "Paid"
+                  ? "AMC invoice fully paid"
+                  : "AMC payment received",
+              description: `₹${normalizedAmount.toLocaleString("en-IN", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })} received through ${normalizedMode} against invoice ${lockedInvoice.invoiceCode}${
+                normalizedReferenceNo ? ` · Reference ${normalizedReferenceNo}` : ""
               }. Pending amount: ₹${updatedPendingAmount.toLocaleString(
                 "en-IN",
                 {
-                  minimumFractionDigits:
-                    2,
-
-                  maximumFractionDigits:
-                    2,
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
                 }
               )}.`,
+              performedBy: req.user._id,
+              performedByName: req.user.name || "Admin",
+              performedByRole: req.user.role || "admin",
+            });
 
-            performedBy:
-              req.user._id,
+            contract.updatedBy = req.user._id;
+            contract.updatedByName = req.user.name || "Admin";
 
-            performedByName:
-              req.user.name ||
-              "Admin",
+            await contract.save({
+              session,
+            });
 
-            performedByRole:
-              req.user.role ||
-              "admin",
+            // Update Client Master INSIDE the transaction session
+            if (lockedInvoice.clientId) {
+              const client = await Client.findOne({
+                _id: lockedInvoice.clientId,
+                isDeleted: { $ne: true },
+              }).session(session);
+
+              if (client) {
+                if (Array.isArray(client.products)) {
+                  const clientProduct = client.products.id
+                    ? client.products.id(lockedInvoice.clientProductId)
+                    : client.products.find(
+                        (p) =>
+                          String(p._id) ===
+                          String(lockedInvoice.clientProductId)
+                      );
+                  if (clientProduct) {
+                    clientProduct.amcStatus = paymentStatus;
+                  }
+                }
+
+                client.amcStatus = paymentStatus;
+                client.updatedBy = req.user._id;
+                client.updatedByName = req.user.name || "Admin";
+
+                await client.save({ session });
+              }
+            }
+
+            savedPayment = payment;
+            savedInvoice = lockedInvoice;
+            savedContract = contract;
+
+            if (normalizedIdempotencyKey) {
+              const contractData = mergeAmcContractWithInvoice(
+                savedContract,
+                savedInvoice
+              );
+              await IdempotencyLog.create(
+                [
+                  {
+                    idempotencyKey: normalizedIdempotencyKey,
+                    endpoint: "/api/admin/amc/payment",
+                    contractId: contract._id,
+                    entityId: lockedInvoice._id,
+                    payloadHash,
+                    status: "COMPLETED",
+                    responseStatus: 201,
+                    responseBody: {
+                      success: true,
+                      message:
+                        savedInvoice.paymentStatus === "Paid"
+                          ? "Payment recorded successfully. The invoice is now fully paid."
+                          : "Payment recorded successfully.",
+                      data: {
+                        payment: amcPaymentResponse(savedPayment),
+                        invoice: amcInvoiceResponse(savedInvoice),
+                        contract: contractData,
+                      },
+                      payment: amcPaymentResponse(savedPayment),
+                      invoice: amcInvoiceResponse(savedInvoice),
+                      contract: contractData,
+                    },
+                  },
+                ],
+                { session }
+              );
+            }
           });
 
-          contract.updatedBy =
-            req.user._id;
+          transactionSuccess = true;
+        } catch (error) {
+          const isTransient =
+            error.hasErrorLabel &&
+            (error.hasErrorLabel("TransientTransactionError") ||
+              error.hasErrorLabel("UnknownTransactionCommitResult"));
 
-          contract.updatedByName =
-            req.user.name ||
-            "Admin";
-
-          await contract.save({
-            session,
-          });
-
-          savedPayment =
-            payment;
-
-          savedInvoice =
-            invoice;
-
-          savedContract =
-            contract;
-        }
-      );
-
-      /*
-       * Update Client Master only when it still exists.
-       *
-       * Payment records remain safe even when the Client
-       * Master was archived or deleted.
-       */
-      if (
-        savedInvoice?.clientId
-      ) {
-        const client =
-          await Client.findOne({
-            _id:
-              savedInvoice.clientId,
-
-            isDeleted:
-              false,
-          });
-
-        if (client) {
-          const clientProduct =
-            client.products.id(
-              savedInvoice.clientProductId
+          if (isTransient && attempt < maxRetries) {
+            console.warn(
+              `Transient error during AMC payment (attempt ${attempt}):`,
+              error.message
             );
-
-          const masterAmcStatus =
-            savedInvoice.paymentStatus ===
-            "Paid"
-              ? "Paid"
-              : "Partially Paid";
-
-          if (clientProduct) {
-            clientProduct.amcStatus =
-              masterAmcStatus;
+            continue;
           }
 
-          client.amcStatus =
-            masterAmcStatus;
+          if (error.statusCode) {
+            return res.status(error.statusCode).json({
+              success: false,
+              message: error.message,
+            });
+          }
 
-          client.updatedBy =
-            req.user._id;
-
-          client.updatedByName =
-            req.user.name ||
-            "Admin";
-
-          await client.save();
+          throw error;
+        } finally {
+          await session.endSession();
         }
       }
 
-      await createActivityLog({
-        action:
-          "AMC Payment Received",
-
-        category:
-          "Payment",
-
-        description:
-          `Payment ${savedPayment.paymentCode} of ₹${savedPayment.amount.toLocaleString(
+      // Activity log outside transaction
+      try {
+        await createActivityLog({
+          action: "AMC Payment Received",
+          category: "Payment",
+          description: `Payment ${savedPayment.paymentCode} of ₹${savedPayment.amount.toLocaleString(
             "en-IN",
             {
-              minimumFractionDigits:
-                2,
-
-              maximumFractionDigits:
-                2,
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
             }
           )} was received against invoice ${savedInvoice.invoiceCode}.`,
+          entityType: "payment",
+          entityId: savedPayment._id,
+          entityCode: savedPayment.paymentCode,
+          entityName: savedInvoice.invoiceCode,
+          clientId: savedInvoice.clientId,
+          clientName: savedInvoice.clientName,
+          employeeId: savedContract.assignedEmployeeId,
+          employeeName: savedContract.assignedEmployeeName,
+          performedBy: req.user._id,
+          performedByName: req.user.name || "Admin",
+          performedByRole: req.user.role || "admin",
+          metadata: {
+            amcContractId: savedContract._id,
+            contractCode: savedContract.contractCode,
+            amcInvoiceId: savedInvoice._id,
+            invoiceCode: savedInvoice.invoiceCode,
+            paymentCode: savedPayment.paymentCode,
+            paymentDate: savedPayment.paymentDate,
+            amount: savedPayment.amount,
+            mode: savedPayment.mode,
+            referenceNo: savedPayment.referenceNo,
+            paidAmount: savedInvoice.paidAmount,
+            pendingAmount: savedInvoice.pendingAmount,
+            paymentStatus: savedInvoice.paymentStatus,
+          },
+        });
+      } catch (logErr) {
+        console.error("AMC Payment ActivityLog error:", logErr.message);
+      }
 
-        entityType:
-          "payment",
-
-        entityId:
-          savedPayment._id,
-
-        entityCode:
-          savedPayment.paymentCode,
-
-        entityName:
-          savedInvoice.invoiceCode,
-
-        clientId:
-          savedInvoice.clientId,
-
-        clientName:
-          savedInvoice.clientName,
-
-        employeeId:
-          savedContract
-            .assignedEmployeeId,
-
-        employeeName:
-          savedContract
-            .assignedEmployeeName,
-
-        performedBy:
-          req.user._id,
-
-        performedByName:
-          req.user.name ||
-          "Admin",
-
-        performedByRole:
-          req.user.role ||
-          "admin",
-
-        metadata: {
-          amcContractId:
-            savedContract._id,
-
-          contractCode:
-            savedContract
-              .contractCode,
-
-          amcInvoiceId:
-            savedInvoice._id,
-
-          invoiceCode:
-            savedInvoice
-              .invoiceCode,
-
-          paymentCode:
-            savedPayment
-              .paymentCode,
-
-          paymentDate:
-            savedPayment
-              .paymentDate,
-
-          amount:
-            savedPayment.amount,
-
-          mode:
-            savedPayment.mode,
-
-          referenceNo:
-            savedPayment
-              .referenceNo,
-
-          paidAmount:
-            savedInvoice
-              .paidAmount,
-
-          pendingAmount:
-            savedInvoice
-              .pendingAmount,
-
-          paymentStatus:
-            savedInvoice
-              .paymentStatus,
-        },
-      });
-
-      const contractData =
-        mergeAmcContractWithInvoice(
-          savedContract,
-          savedInvoice
-        );
-
-      return res.status(201).json({
-        success:
-          true,
-
-        message:
-          savedInvoice.paymentStatus ===
-          "Paid"
-            ? "Payment recorded successfully. The invoice is now fully paid."
-            : "Payment recorded successfully.",
-
-        data: {
-          payment:
-            amcPaymentResponse(
-              savedPayment
-            ),
-
-          invoice:
-            amcInvoiceResponse(
-              savedInvoice
-            ),
-
-          contract:
-            contractData,
-        },
-
-        payment:
-          amcPaymentResponse(
-            savedPayment
-          ),
-
-        invoice:
-          amcInvoiceResponse(
-            savedInvoice
-          ),
-
-        contract:
-          contractData,
-      });
-    } catch (error) {
-      console.error(
-        "Record AMC invoice payment error:",
-        error
+      const contractData = mergeAmcContractWithInvoice(
+        savedContract,
+        savedInvoice
       );
 
-      return res
-        .status(
-          error.statusCode ||
-          500
-        )
-        .json({
-          success:
-            false,
-
-          message:
-            error.message ||
-            "Unable to record AMC payment.",
-        });
-    } finally {
-      await session.endSession();
+      return res.status(201).json({
+        success: true,
+        message:
+          savedInvoice.paymentStatus === "Paid"
+            ? "Payment recorded successfully. The invoice is now fully paid."
+            : "Payment recorded successfully.",
+        data: {
+          payment: amcPaymentResponse(savedPayment),
+          invoice: amcInvoiceResponse(savedInvoice),
+          contract: contractData,
+        },
+        payment: amcPaymentResponse(savedPayment),
+        invoice: amcInvoiceResponse(savedInvoice),
+        contract: contractData,
+      });
+    } catch (error) {
+      console.error("Record AMC invoice payment error:", error);
+      return res.status(error.statusCode || 500).json({
+        success: false,
+        message: error.message || "Unable to record AMC payment.",
+      });
     }
   }
 );
@@ -31043,287 +30848,301 @@ router.post(
         await generateProductSaleCode();
 
       /* ============================================
-         CREATE SALE
+         CREATE SALE & ATOMIC CLIENT PRODUCT SYNC
       ============================================ */
 
-      const sale =
-        await ProductSale.create({
-          saleCode,
-          saleNumber,
-
-          invoiceNo:
-            String(
-              invoiceNo || saleCode
-            )
-              .trim()
-              .toUpperCase(),
-
-          saleDate:
-            saleDate ||
-            new Date(),
-
-          invoiceDate:
-            invoiceDate ||
-            saleDate ||
-            new Date(),
-
-          dueDate:
-            dueDate ||
-            null,
-
-          clientId:
-            client._id,
-
-          clientCode:
-            client.clientCode,
-
-          clientName:
-            client.companyName,
-
-          contactPerson:
-            client.contactPerson ||
-            "",
-
-          mobile:
-            client.mobile ||
-            "",
-
-          email:
-            client.email ||
-            "",
-
-          gstNo:
-            client.gstNo ||
-            "",
-
-          state:
-            client.state ||
-            "",
-
-          billingAddress:
+      let sale = null;
+      const session = await mongoose.startSession();
+      try {
+        await session.withTransaction(async () => {
+          const createdSales = await ProductSale.create(
             [
-              client.addressLine1,
-              client.addressLine2,
-              client.city,
-              client.state,
-              client.pinCode,
-            ]
-              .filter(Boolean)
-              .join(", "),
+              {
+                saleCode,
+                saleNumber,
 
-          items:
-            normalizedItems,
+                invoiceNo:
+                  String(
+                    invoiceNo || saleCode
+                  )
+                    .trim()
+                    .toUpperCase(),
 
-          grossAmount:
-            Number(
-              grossTotal.toFixed(2)
-            ),
+                saleDate:
+                  saleDate ||
+                  new Date(),
 
-          discountAmount:
-            Number(
-              (
-                itemDiscountTotal +
-                headerDiscount
-              ).toFixed(2)
-            ),
+                invoiceDate:
+                  invoiceDate ||
+                  saleDate ||
+                  new Date(),
 
-          taxableAmount:
-            Number(
-              taxableTotal.toFixed(2)
-            ),
+                dueDate:
+                  dueDate ||
+                  null,
 
-          cgstAmount:
-            Number(
-              cgstTotal.toFixed(2)
-            ),
+                clientId:
+                  client._id,
 
-          sgstAmount:
-            Number(
-              sgstTotal.toFixed(2)
-            ),
+                clientCode:
+                  client.clientCode,
 
-          igstAmount:
-            Number(
-              igstTotal.toFixed(2)
-            ),
+                clientName:
+                  client.companyName,
 
-          roundOff:
-            normalizedRoundOff,
+                contactPerson:
+                  client.contactPerson ||
+                  "",
 
-          totalAmount:
-            Number(
-              invoiceTotal.toFixed(2)
-            ),
+                mobile:
+                  client.mobile ||
+                  "",
 
-          paidAmount:
-            0,
+                email:
+                  client.email ||
+                  "",
 
-          pendingAmount:
-            Number(
-              invoiceTotal.toFixed(2)
-            ),
+                gstNo:
+                  client.gstNo ||
+                  "",
 
-          paymentStatus:
-            "Unpaid",
+                state:
+                  client.state ||
+                  "",
 
-          status:
-            "Confirmed",
+                billingAddress:
+                  [
+                    client.addressLine1,
+                    client.addressLine2,
+                    client.city,
+                    client.state,
+                    client.pinCode,
+                  ]
+                    .filter(Boolean)
+                    .join(", "),
 
-          notes:
-            String(
-              notes || ""
-            ).trim(),
+                items:
+                  normalizedItems,
 
-          createdBy:
-            req.user?._id ||
-            null,
+                grossAmount:
+                  Number(
+                    grossTotal.toFixed(2)
+                  ),
 
-          createdByName:
-            req.user?.name ||
-            "Admin",
+                discountAmount:
+                  Number(
+                    (
+                      itemDiscountTotal +
+                      headerDiscount
+                    ).toFixed(2)
+                  ),
 
-          updatedBy:
-            req.user?._id ||
-            null,
+                taxableAmount:
+                  Number(
+                    taxableTotal.toFixed(2)
+                  ),
 
-          updatedByName:
-            req.user?.name ||
-            "Admin",
-        });
+                cgstAmount:
+                  Number(
+                    cgstTotal.toFixed(2)
+                  ),
 
-      /* ============================================
-         AUTO-ASSIGN PRODUCTS TO CLIENT
-      ============================================ */
+                sgstAmount:
+                  Number(
+                    sgstTotal.toFixed(2)
+                  ),
 
-      for (
-        const saleItem of
-        sale.items
-      ) {
-        const alreadyAssigned =
-          client.products.find(
-            (clientProduct) =>
-              String(
-                clientProduct.productId
-              ) ===
-              String(
-                saleItem.productId
-              )
+                igstAmount:
+                  Number(
+                    igstTotal.toFixed(2)
+                  ),
+
+                roundOff:
+                  normalizedRoundOff,
+
+                totalAmount:
+                  Number(
+                    invoiceTotal.toFixed(2)
+                  ),
+
+                paidAmount:
+                  0,
+
+                pendingAmount:
+                  Number(
+                    invoiceTotal.toFixed(2)
+                  ),
+
+                paymentStatus:
+                  "Unpaid",
+
+                status:
+                  "Confirmed",
+
+                notes:
+                  String(
+                    notes || ""
+                  ).trim(),
+
+                createdBy:
+                  req.user?._id ||
+                  null,
+
+                createdByName:
+                  req.user?.name ||
+                  "Admin",
+
+                updatedBy:
+                  req.user?._id ||
+                  null,
+
+                updatedByName:
+                  req.user?.name ||
+                  "Admin",
+              },
+            ],
+            { session }
           );
 
-        let clientProduct;
+          sale = createdSales[0];
 
-        if (alreadyAssigned) {
-          clientProduct =
-            alreadyAssigned;
-        } else {
-          client.products.push({
-  productId:
-    saleItem.productId,
+          /* ============================================
+             AUTO-ASSIGN PRODUCTS TO CLIENT
+          ============================================ */
 
-  productCode:
-    saleItem.productCode,
+          for (
+            const saleItem of
+            sale.items
+          ) {
+            const alreadyAssigned =
+              client.products.find(
+                (clientProduct) =>
+                  String(
+                    clientProduct.productId
+                  ) ===
+                  String(
+                    saleItem.productId
+                  )
+              );
 
-  productName:
-    saleItem.productName,
+            let clientProduct;
 
-  version:
-    saleItem.version,
+            if (alreadyAssigned) {
+              clientProduct =
+                alreadyAssigned;
+            } else {
+              client.products.push({
+                productId:
+                  saleItem.productId,
 
-  /* =========================================
-     PRODUCT ORIGIN
-  ========================================= */
+                productCode:
+                  saleItem.productCode,
 
-  acquisitionType:
-    "Product Sale",
+                productName:
+                  saleItem.productName,
 
-  productSaleId:
-    sale._id,
+                version:
+                  saleItem.version,
 
-  productSaleCode:
-    sale.saleCode,
+                /* =========================================
+                   PRODUCT ORIGIN
+                ========================================= */
 
-  originalInvoiceNo:
-    sale.invoiceNo ||
-    sale.saleCode,
+                acquisitionType:
+                  "Product Sale",
 
-  originalPurchaseAmount:
-    Number(
-      saleItem.totalAmount ||
-      0
-    ),
+                productSaleId:
+                  sale._id,
 
-  historicalDataComplete:
-    true,
+                productSaleCode:
+                  sale.saleCode,
 
-  /* =========================================
-     PRODUCT / INSTALLATION DETAILS
-  ========================================= */
+                originalInvoiceNo:
+                  sale.invoiceNo ||
+                  sale.saleCode,
 
-  purchaseDate:
-    saleItem.purchaseDate
-      ? new Date(
-          saleItem.purchaseDate
-        )
-          .toISOString()
-          .slice(0, 10)
-      : "",
+                originalPurchaseAmount:
+                  Number(
+                    saleItem.totalAmount ||
+                    0
+                  ),
 
-  installationDate:
-    saleItem.installationDate
-      ? new Date(
-          saleItem.installationDate
-        )
-          .toISOString()
-          .slice(0, 10)
-      : "",
+                historicalDataComplete:
+                  true,
 
-  licensedUsers:
-    saleItem.licensedUsers,
+                /* =========================================
+                   PRODUCT / INSTALLATION DETAILS
+                ========================================= */
 
-  supportType:
-    saleItem.supportType,
+                purchaseDate:
+                  saleItem.purchaseDate
+                    ? new Date(
+                        saleItem.purchaseDate
+                      )
+                        .toISOString()
+                        .slice(0, 10)
+                    : "",
 
-  amcStatus:
-    "Not Started",
+                installationDate:
+                  saleItem.installationDate
+                    ? new Date(
+                        saleItem.installationDate
+                      )
+                        .toISOString()
+                        .slice(0, 10)
+                    : "",
 
-  expiryDate:
-    saleItem.warrantyEndDate
-      ? new Date(
-          saleItem.warrantyEndDate
-        )
-          .toISOString()
-          .slice(0, 10)
-      : "",
+                licensedUsers:
+                  saleItem.licensedUsers,
 
-  installationStatus:
-    saleItem.installationStatus,
+                supportType:
+                  saleItem.supportType,
 
-  licenceType:
-    saleItem.licenceType,
+                amcStatus:
+                  "Not Started",
 
-  notes:
-    saleItem.notes ||
-    "",
-});
+                expiryDate:
+                  saleItem.warrantyEndDate
+                    ? new Date(
+                        saleItem.warrantyEndDate
+                      )
+                        .toISOString()
+                        .slice(0, 10)
+                    : "",
 
-          clientProduct =
-            client.products[
-              client.products.length -
-                1
-            ];
-        }
+                installationStatus:
+                  saleItem.installationStatus,
 
-        saleItem.clientProductId =
-          clientProduct._id;
+                licenceType:
+                  saleItem.licenceType,
+
+                notes:
+                  saleItem.notes ||
+                  "",
+              });
+
+              clientProduct =
+                client.products[
+                  client.products.length -
+                    1
+                ];
+            }
+
+            saleItem.clientProductId =
+              clientProduct._id;
+          }
+
+          await client.save({ session });
+
+          /*
+           * Save generated clientProductId values
+           * back into the permanent ProductSale.
+           */
+          await sale.save({ session });
+        });
+      } finally {
+        await session.endSession();
       }
-
-      await client.save();
-
-      /*
-       * Save generated clientProductId values
-       * back into the permanent ProductSale.
-       */
-      await sale.save();
 
       /* ============================================
          ACTIVITY LOG
@@ -31936,10 +31755,7 @@ router.post(
   validate(productSalePaymentZodSchema),
   async (req, res) => {
     try {
-      const {
-        id,
-      } = req.params;
-
+      const { id } = req.params;
       const {
         amount,
         paymentDate,
@@ -31951,452 +31767,401 @@ router.post(
       /* ============================================
          VALIDATE SALE ID
       ============================================ */
-
-      if (
-        !mongoose.Types.ObjectId.isValid(
-          id
-        )
-      ) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message:
-              "Invalid product sale ID.",
-          });
-      }
-
-      /* ============================================
-         LOAD PRODUCT SALE
-      ============================================ */
-
-      const sale =
-        await ProductSale.findOne({
-          _id: id,
-
-          isDeleted: {
-            $ne: true,
-          },
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid product sale ID.",
         });
-
-      if (!sale) {
-        return res
-          .status(404)
-          .json({
-            success: false,
-            message:
-              "Product sale not found.",
-          });
-      }
-
-      /* ============================================
-         CANCELLED SALES CANNOT RECEIVE PAYMENT
-      ============================================ */
-
-      if (
-        sale.status ===
-        "Cancelled"
-      ) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message:
-              "Payment cannot be received against a cancelled product sale.",
-          });
       }
 
       /* ============================================
          VALIDATE PAYMENT AMOUNT
       ============================================ */
+      const paymentAmount = Number(amount);
 
-      const paymentAmount =
-        Number(amount);
-
-      if (
-        !Number.isFinite(
-          paymentAmount
-        ) ||
-        paymentAmount <= 0
-      ) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message:
-              "Enter a valid payment amount greater than zero.",
-          });
+      if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Enter a valid payment amount greater than zero.",
+        });
       }
 
-      const totalAmount =
-        Number(
-          sale.totalAmount ||
-          0
-        );
-
-      /*
-       * Calculate existing payments from permanent
-       * payment records instead of trusting only
-       * ProductSale.paidAmount.
-       */
-      const existingPayments =
-        await ProductSalePayment.aggregate([
-          {
-            $match: {
-              productSaleId:
-                sale._id,
-
-              isDeleted: {
-                $ne: true,
-              },
-            },
-          },
-
-          {
-            $group: {
-              _id: null,
-
-              totalPaid: {
-                $sum:
-                  "$amount",
-              },
-            },
-          },
-        ]);
-
-      const alreadyPaid =
-        Number(
-          existingPayments?.[0]
-            ?.totalPaid ||
-          0
-        );
-
-      const currentPending =
-        Math.max(
-          totalAmount -
-            alreadyPaid,
-          0
-        );
+      const normalizedMode = mode || "Bank Transfer";
+      const normalizedReferenceNo = String(referenceNo || "").trim();
+      const normalizedNotes = String(notes || "").trim();
 
       /* ============================================
-         PREVENT OVERPAYMENT
+         IDEMPOTENCY HANDLING (Tier 1 & Tier 2)
       ============================================ */
+      const idempotencyKey =
+        req.headers["idempotency-key"] ||
+        req.headers["x-idempotency-key"] ||
+        req.body?.idempotencyKey ||
+        null;
+      const normalizedIdempotencyKey = idempotencyKey
+        ? String(idempotencyKey).trim()
+        : null;
 
-      if (
-        paymentAmount >
-        currentPending +
-          0.01
-      ) {
-        return res
-          .status(400)
-          .json({
-            success: false,
+      const payloadHash = crypto
+        .createHash("sha256")
+        .update(
+          JSON.stringify({
+            saleId: id,
+            amount: Number(paymentAmount.toFixed(2)),
+            paymentDate: paymentDate || "",
+            mode: normalizedMode,
+            referenceNo: normalizedReferenceNo,
+          })
+        )
+        .digest("hex");
 
-            message:
-              `Payment cannot exceed pending amount ₹${currentPending.toFixed(
-                2
-              )}.`,
-          });
-      }
-
-      /* ============================================
-         GENERATE PAYMENT CODE
-      ============================================ */
-
-      const {
-        paymentNumber,
-        paymentCode,
-      } =
-        await generateProductSalePaymentCode();
-
-      /* ============================================
-         CREATE PERMANENT PAYMENT RECORD
-      ============================================ */
-
-      const payment =
-        await ProductSalePayment.create({
-          paymentCode,
-
-          paymentNumber,
-
-          productSaleId:
-            sale._id,
-
-          saleCode:
-            sale.saleCode,
-
-          clientId:
-            sale.clientId,
-
-          clientCode:
-            sale.clientCode,
-
-          clientName:
-            sale.clientName,
-
-          amount:
-            Number(
-              paymentAmount.toFixed(
-                2
-              )
-            ),
-
-          paymentDate:
-            paymentDate ||
-            new Date(),
-
-          mode:
-            mode ||
-            "Bank Transfer",
-
-          referenceNo:
-            String(
-              referenceNo ||
-              ""
-            ).trim(),
-
-          notes:
-            String(
-              notes ||
-              ""
-            ).trim(),
-
-          createdBy:
-            req.user?._id ||
-            null,
-
-          createdByName:
-            req.user?.name ||
-            "Admin",
+      if (normalizedIdempotencyKey) {
+        // Tier 1: In-Flight / Fast Cache Check
+        const existingLog = await IdempotencyLog.findOne({
+          idempotencyKey: normalizedIdempotencyKey,
         });
 
-      /* ============================================
-         RECALCULATE SALE BALANCE
-      ============================================ */
+        if (existingLog) {
+          if (existingLog.payloadHash === payloadHash) {
+            return res.status(200).json({
+              ...(existingLog.responseBody || {}),
+              isReplay: true,
+            });
+          } else {
+            return res.status(422).json({
+              success: false,
+              message:
+                "Idempotency key conflict: Request parameters do not match original transaction.",
+            });
+          }
+        }
 
-      const newPaidAmount =
-        Number(
-          (
-            alreadyPaid +
-            paymentAmount
-          ).toFixed(2)
-        );
+        // Tier 2: Durable Ledger Check
+        const existingPaymentByKey = await ProductSalePayment.findOne({
+          idempotencyKey: normalizedIdempotencyKey,
+          isDeleted: { $ne: true },
+        });
 
-      const newPendingAmount =
-        Number(
-          Math.max(
-            totalAmount -
-              newPaidAmount,
-            0
-          ).toFixed(2)
-        );
+        if (existingPaymentByKey) {
+          const replaySale = await ProductSale.findOne({
+            _id: existingPaymentByKey.productSaleId,
+            isDeleted: { $ne: true },
+          });
 
-      let paymentStatus =
-        "Unpaid";
-
-      if (
-        newPendingAmount <=
-        0.01
-      ) {
-        paymentStatus =
-          "Paid";
-      } else if (
-        newPaidAmount > 0
-      ) {
-        paymentStatus =
-          "Partially Paid";
+          return res.status(200).json({
+            success: true,
+            isReplay: true,
+            message: "Product sale payment already recorded.",
+            data: {
+              payment: existingPaymentByKey,
+              sale: replaySale
+                ? {
+                    id: replaySale._id,
+                    saleCode: replaySale.saleCode,
+                    totalAmount: replaySale.totalAmount,
+                    paidAmount: replaySale.paidAmount,
+                    pendingAmount: replaySale.pendingAmount,
+                    paymentStatus: replaySale.paymentStatus,
+                  }
+                : null,
+            },
+          });
+        }
       }
 
-      sale.paidAmount =
-        newPaidAmount;
+      /* ============================================
+         TRANSACTION EXECUTION WITH RETRY HANDLING
+      ============================================ */
+      let savedPayment = null;
+      let savedSale = null;
 
-      sale.pendingAmount =
-        newPendingAmount;
+      const maxRetries = 3;
+      let attempt = 0;
+      let transactionSuccess = false;
 
-      sale.paymentStatus =
-        paymentStatus;
+      while (attempt < maxRetries && !transactionSuccess) {
+        attempt++;
 
-      sale.updatedBy =
-        req.user?._id ||
-        null;
+        // Fast-path recovery on retry
+        if (normalizedIdempotencyKey && attempt > 1) {
+          const replayLog = await IdempotencyLog.findOne({
+            idempotencyKey: normalizedIdempotencyKey,
+            status: "COMPLETED",
+          });
+          if (replayLog && replayLog.responseBody) {
+            return res.status(200).json({
+              ...(replayLog.responseBody || {}),
+              isReplay: true,
+            });
+          }
+        }
 
-      sale.updatedByName =
-        req.user?.name ||
-        "Admin";
+        const session = await mongoose.startSession();
 
-      await sale.save();
+        try {
+          await session.withTransaction(async () => {
+            const sale = await ProductSale.findOne({
+              _id: id,
+              isDeleted: { $ne: true },
+            }).session(session);
+
+            if (!sale) {
+              const err = new Error("Product sale not found.");
+              err.statusCode = 404;
+              throw err;
+            }
+
+            if (sale.status === "Cancelled") {
+              const err = new Error(
+                "Payment cannot be received against a cancelled product sale."
+              );
+              err.statusCode = 400;
+              throw err;
+            }
+
+            // ATOMIC WRITE LOCK on ProductSale document
+            const lockedSale = await ProductSale.findOneAndUpdate(
+              { _id: sale._id, isDeleted: { $ne: true } },
+              { $inc: { paymentVersion: 1 } },
+              { session, new: true }
+            );
+
+            const totalAmount = Number(lockedSale.totalAmount || 0);
+
+            // Recalculate existing payments within transaction session
+            const existingPayments = await ProductSalePayment.aggregate([
+              {
+                $match: {
+                  productSaleId: lockedSale._id,
+                  isDeleted: { $ne: true },
+                },
+              },
+              {
+                $group: {
+                  _id: null,
+                  totalPaid: {
+                    $sum: "$amount",
+                  },
+                },
+              },
+            ]).session(session);
+
+            const alreadyPaid = Number(
+              existingPayments?.[0]?.totalPaid || 0
+            );
+
+            const currentPending = Math.max(
+              Number((totalAmount - alreadyPaid).toFixed(2)),
+              0
+            );
+
+            if (currentPending <= 0) {
+              const err = new Error("This product sale is already fully paid.");
+              err.statusCode = 400;
+              throw err;
+            }
+
+            if (paymentAmount > currentPending + 0.01) {
+              const err = new Error(
+                `Payment cannot exceed pending amount ₹${currentPending.toFixed(2)}.`
+              );
+              err.statusCode = 400;
+              throw err;
+            }
+
+            const { paymentNumber, paymentCode } =
+              await generateProductSalePaymentCode();
+
+            const createdPayments = await ProductSalePayment.create(
+              [
+                {
+                  paymentCode,
+                  paymentNumber,
+                  idempotencyKey: normalizedIdempotencyKey,
+                  productSaleId: lockedSale._id,
+                  saleCode: lockedSale.saleCode,
+                  clientId: lockedSale.clientId,
+                  clientCode: lockedSale.clientCode,
+                  clientName: lockedSale.clientName,
+                  amount: Number(paymentAmount.toFixed(2)),
+                  paymentDate: paymentDate || new Date(),
+                  mode: normalizedMode,
+                  referenceNo: normalizedReferenceNo,
+                  notes: normalizedNotes,
+                  createdBy: req.user?._id || null,
+                  createdByName: req.user?.name || "Admin",
+                },
+              ],
+              { session }
+            );
+
+            const payment = createdPayments[0];
+
+            const newPaidAmount = Number(
+              (alreadyPaid + paymentAmount).toFixed(2)
+            );
+
+            const newPendingAmount = Number(
+              Math.max(totalAmount - newPaidAmount, 0).toFixed(2)
+            );
+
+            let paymentStatus = "Unpaid";
+
+            if (newPendingAmount <= 0.01) {
+              paymentStatus = "Paid";
+            } else if (newPaidAmount > 0) {
+              paymentStatus = "Partially Paid";
+            }
+
+            lockedSale.paidAmount = newPaidAmount;
+            lockedSale.pendingAmount = newPendingAmount;
+            lockedSale.paymentStatus = paymentStatus;
+            lockedSale.updatedBy = req.user?._id || null;
+            lockedSale.updatedByName = req.user?.name || "Admin";
+
+            await lockedSale.save({ session });
+
+            savedPayment = payment;
+            savedSale = lockedSale;
+
+            if (normalizedIdempotencyKey) {
+              await IdempotencyLog.create(
+                [
+                  {
+                    idempotencyKey: normalizedIdempotencyKey,
+                    endpoint: "/api/admin/product-sales/:id/payment",
+                    entityId: lockedSale._id,
+                    payloadHash,
+                    status: "COMPLETED",
+                    responseStatus: 201,
+                    responseBody: {
+                      success: true,
+                      message: "Product sale payment recorded successfully.",
+                      data: {
+                        payment,
+                        sale: {
+                          id: lockedSale._id,
+                          saleCode: lockedSale.saleCode,
+                          totalAmount: lockedSale.totalAmount,
+                          paidAmount: lockedSale.paidAmount,
+                          pendingAmount: lockedSale.pendingAmount,
+                          paymentStatus: lockedSale.paymentStatus,
+                        },
+                      },
+                    },
+                  },
+                ],
+                { session }
+              );
+            }
+          });
+
+          transactionSuccess = true;
+        } catch (error) {
+          const isTransient =
+            error.hasErrorLabel &&
+            (error.hasErrorLabel("TransientTransactionError") ||
+              error.hasErrorLabel("UnknownTransactionCommitResult"));
+
+          if (isTransient && attempt < maxRetries) {
+            console.warn(
+              `Transient error during product sale payment (attempt ${attempt}):`,
+              error.message
+            );
+            continue;
+          }
+
+          if (error.statusCode) {
+            return res.status(error.statusCode).json({
+              success: false,
+              message: error.message,
+            });
+          }
+
+          throw error;
+        } finally {
+          await session.endSession();
+        }
+      }
 
       /* ============================================
          ACTIVITY LOG
       ============================================ */
-
       try {
         await ActivityLog.create({
-          action:
-            "Product Sale Payment Received",
-
-          category:
-            "Payment",
-
-          description:
-            `${payment.paymentCode} - ₹${payment.amount.toFixed(
-              2
-            )} received against ${sale.saleCode}.`,
-
-          entityType:
-            "product",
-
-          entityId:
-            sale._id,
-
-          entityCode:
-            sale.saleCode,
-
-          entityName:
-            sale.clientName,
-
-          clientId:
-            sale.clientId,
-
-          clientName:
-            sale.clientName,
-
-          performedBy:
-            req.user?._id ||
-            null,
-
-          performedByName:
-            req.user?.name ||
-            "Admin",
-
-          performedByRole:
-            "admin",
-
+          action: "Product Sale Payment Received",
+          category: "Payment",
+          description: `${savedPayment.paymentCode} - ₹${savedPayment.amount.toFixed(
+            2
+          )} received against ${savedSale.saleCode}.`,
+          entityType: "product",
+          entityId: savedSale._id,
+          entityCode: savedSale.saleCode,
+          entityName: savedSale.clientName,
+          clientId: savedSale.clientId,
+          clientName: savedSale.clientName,
+          performedBy: req.user?._id || null,
+          performedByName: req.user?.name || "Admin",
+          performedByRole: "admin",
           metadata: {
-            paymentId:
-              payment._id,
-
-            paymentCode:
-              payment.paymentCode,
-
-            paymentAmount:
-              payment.amount,
-
-            totalAmount:
-              sale.totalAmount,
-
-            paidAmount:
-              sale.paidAmount,
-
-            pendingAmount:
-              sale.pendingAmount,
-
-            paymentStatus:
-              sale.paymentStatus,
-
-            paymentMode:
-              payment.mode,
-
-            referenceNo:
-              payment.referenceNo,
+            paymentId: savedPayment._id,
+            paymentCode: savedPayment.paymentCode,
+            paymentAmount: savedPayment.amount,
+            totalAmount: savedSale.totalAmount,
+            paidAmount: savedSale.paidAmount,
+            pendingAmount: savedSale.pendingAmount,
+            paymentStatus: savedSale.paymentStatus,
+            paymentMode: savedPayment.mode,
+            referenceNo: savedPayment.referenceNo,
           },
         });
-      } catch (
-        activityError
-      ) {
+      } catch (activityError) {
         console.error(
           "Product Sale Payment Activity Error:",
-          activityError
+          activityError.message
         );
       }
 
       /* ============================================
          RESPONSE
       ============================================ */
-
-      return res
-        .status(201)
-        .json({
-          success: true,
-
-          message:
-            "Product sale payment recorded successfully.",
-
-          data: {
-            payment,
-
-            sale: {
-              id:
-                sale._id,
-
-              saleCode:
-                sale.saleCode,
-
-              totalAmount:
-                sale.totalAmount,
-
-              paidAmount:
-                sale.paidAmount,
-
-              pendingAmount:
-                sale.pendingAmount,
-
-              paymentStatus:
-                sale.paymentStatus,
-            },
+      return res.status(201).json({
+        success: true,
+        message: "Product sale payment recorded successfully.",
+        data: {
+          payment: savedPayment,
+          sale: {
+            id: savedSale._id,
+            saleCode: savedSale.saleCode,
+            totalAmount: savedSale.totalAmount,
+            paidAmount: savedSale.paidAmount,
+            pendingAmount: savedSale.pendingAmount,
+            paymentStatus: savedSale.paymentStatus,
           },
-        });
+        },
+      });
     } catch (error) {
-      console.error(
-        "Product Sale Payment Error:",
-        error
-      );
+      console.error("Product Sale Payment Error:", error);
 
-      if (
-        error instanceof
-        mongoose.Error
-          .ValidationError
-      ) {
-        const firstError =
-          Object.values(
-            error.errors
-          )[0];
-
-        return res
-          .status(400)
-          .json({
-            success: false,
-
-            message:
-              firstError
-                ?.message ||
-              "Payment validation failed.",
-          });
-      }
-
-      if (
-        error?.code ===
-        11000
-      ) {
-        return res
-          .status(409)
-          .json({
-            success: false,
-
-            message:
-              "Payment number conflict. Please try again.",
-          });
-      }
-
-      return res
-        .status(500)
-        .json({
+      if (error instanceof mongoose.Error.ValidationError) {
+        const firstError = Object.values(error.errors)[0];
+        return res.status(400).json({
           success: false,
-
-          message:
-            error.message ||
-            "Unable to record product sale payment.",
+          message: firstError?.message || "Payment validation failed.",
         });
+      }
+
+      if (error?.code === 11000) {
+        return res.status(409).json({
+          success: false,
+          message: "Payment number conflict. Please try again.",
+        });
+      }
+
+      return res.status(error.statusCode || 500).json({
+        success: false,
+        message: error.message || "Unable to record product sale payment.",
+      });
     }
   }
 );
