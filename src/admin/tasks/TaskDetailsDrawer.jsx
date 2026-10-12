@@ -862,7 +862,14 @@ export default function TaskDetailsDrawer({
                           </div>
                         </div>
                         <a
-                          href={`${API_URL}${file.fileUrl}`}
+                          href={(() => {
+                            const token = localStorage.getItem("client-connect-token") || sessionStorage.getItem("client-connect-token") || "";
+                            let url = `${API_URL}${file.fileUrl}`;
+                            if (token && !url.includes("token=")) {
+                              url += (url.includes("?") ? "&" : "?") + `token=${encodeURIComponent(token)}`;
+                            }
+                            return url;
+                          })()}
                           target="_blank"
                           rel="noreferrer"
                           download={file.fileName}

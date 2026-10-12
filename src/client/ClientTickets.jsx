@@ -1263,17 +1263,26 @@ export default function ClientTickets({ client, navParams = {}, onNavigate }) {
                               {att.originalName || att.filename || "Attachment"}
                             </span>
                           </div>
-                          {(att.url || att.fileUrl) && (
-                            <a
-                              href={att.url || att.fileUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 text-[11px] font-bold text-[#1B59F8] hover:underline shrink-0"
-                            >
-                              <Download size={12} />
-                              Download
-                            </a>
-                          )}
+                          {(() => {
+                            let rawUrl = att.url || att.fileUrl;
+                            if (!rawUrl) return null;
+                            const token = getAuthToken();
+                            let fullUrl = rawUrl.startsWith("http") ? rawUrl : `${API_URL}${rawUrl}`;
+                            if (token && !fullUrl.includes("token=")) {
+                              fullUrl += (fullUrl.includes("?") ? "&" : "?") + `token=${encodeURIComponent(token)}`;
+                            }
+                            return (
+                              <a
+                                href={fullUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 text-[11px] font-bold text-[#1B59F8] hover:underline shrink-0"
+                              >
+                                <Download size={12} />
+                                Download
+                              </a>
+                            );
+                          })()}
                         </div>
                       ))}
                     </div>

@@ -2984,7 +2984,14 @@ const [openTicketSections, setOpenTicketSections] = useState({
                                         {selectedTicket.attachments?.length > 0 && (
                                             <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-3">
                                                 <img
-                                                    src={`${API_URL}${selectedTicket.attachments[0].fileUrl}`}
+                                                    src={(() => {
+                                                        const token = localStorage.getItem("client-connect-token") || sessionStorage.getItem("client-connect-token") || "";
+                                                        let url = `${API_URL}${selectedTicket.attachments[0].fileUrl}`;
+                                                        if (token && !url.includes("token=")) {
+                                                            url += (url.includes("?") ? "&" : "?") + `token=${encodeURIComponent(token)}`;
+                                                        }
+                                                        return url;
+                                                    })()}
                                                     alt={selectedTicket.attachments[0].fileName}
                                                     className="rounded-xl border border-slate-200 max-w-full"
                                                 />

@@ -503,7 +503,19 @@ router.get("/:id/download", async (req, res, next) => {
       return res.redirect(fileUrl);
     }
 
-    return res.redirect(`${req.protocol}://${req.get("host")}${fileUrl}`);
+    const uploadsRoot = path.resolve(__dirname, "uploads");
+    const relativePart = fileUrl.replace(/^\/uploads\//, "");
+    const absolutePath = path.resolve(uploadsRoot, relativePart);
+
+    if (!absolutePath.startsWith(uploadsRoot) || !fs.existsSync(absolutePath)) {
+      return res.status(404).json({ success: false, message: "Document file not found on disk." });
+    }
+
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Type", document.mimeType || "application/octet-stream");
+    const safeName = String(document.fileName || document.name || "document").replace(/["\r\n]/g, "_");
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(safeName)}"`);
+    return res.sendFile(absolutePath);
   } catch (error) {
     next(error);
   }

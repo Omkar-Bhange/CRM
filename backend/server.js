@@ -122,18 +122,11 @@ app.use(
 );
 
 /* =========================================================
-   STATIC FILES
+   SECURE AUTHENTICATED UPLOADS SERVING
 ========================================================= */
 
-app.use(
-  "/uploads",
-  express.static(
-    path.join(
-      __dirname,
-      "uploads"
-    )
-  )
-);
+const secureUploadsRoutes = require("./secureUploads");
+app.use("/uploads", secureUploadsRoutes);
 
 /* =========================================================
    API ROUTES

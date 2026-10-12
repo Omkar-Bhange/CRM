@@ -22,20 +22,12 @@ async function authenticateUser(req, res, next) {
     const authHeader =
       req.headers.authorization || "";
 
-    if (
-      !authHeader ||
-      !authHeader.startsWith("Bearer ")
-    ) {
-      return res.status(401).json({
-        success: false,
-        code: "AUTH_REQUIRED",
-        message: "Authentication required.",
-      });
+    let token = "";
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      token = authHeader.slice(7).trim();
+    } else if (req.query && (req.query.token || req.query.auth_token)) {
+      token = String(req.query.token || req.query.auth_token).trim();
     }
-
-    const token = authHeader
-      .slice(7)
-      .trim();
 
     if (!token) {
       return res.status(401).json({
