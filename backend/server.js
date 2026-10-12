@@ -7,6 +7,7 @@ const crypto = require("crypto");
 const helmet = require("helmet");
 const AgentDevice = require("./models/AgentDevice");
 const { agentRegisterLimiter } = require("./rateLimiter");
+const { mongoSanitizeMiddleware } = require("./validation");
 async function authenticateAgent(req, res, next) {
   try {
     const auth = req.headers.authorization || "";
@@ -173,6 +174,8 @@ app.use(
     limit: "10mb",
   })
 );
+
+app.use(mongoSanitizeMiddleware);
 
 /* =========================================================
    SECURE AUTHENTICATED UPLOADS SERVING

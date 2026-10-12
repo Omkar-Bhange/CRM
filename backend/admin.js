@@ -20,6 +20,16 @@ const {
   calculateTicketSla,
   SLA_POLICY_VERSION,
 } = require("./slaConfig");
+const {
+  validate,
+  clientCreateSchema,
+  taskCreateSchema,
+  ticketCreateSchema,
+  amcPaymentZodSchema,
+  productSalePaymentZodSchema,
+  amcContractCreateZodSchema,
+  amcRenewZodSchema,
+} = require("./validation");
 
 const SETTINGS_KEY =
   "system";
@@ -14610,6 +14620,7 @@ router.delete(
 
 router.post(
   "/client",
+  validate(clientCreateSchema),
   async (req, res) => {
     let createdClient = null;
     let createdUser = null;
@@ -20201,7 +20212,7 @@ message: "Server error.",
    POST /api/admin/task
 ===================================================== */
 
-router.post("/task", async (req, res) => {
+router.post("/task", validate(taskCreateSchema), async (req, res) => {
   try {
     const {
       title,
@@ -22425,7 +22436,7 @@ router.get(
    POST /api/admin/ticket
 ===================================================== */
 
-router.post("/ticket", async (req, res) => {
+router.post("/ticket", validate(ticketCreateSchema), async (req, res) => {
   try {
     const {
       title,
@@ -24700,6 +24711,7 @@ router.use(
 
 router.post(
   "/amc/contract",
+  validate(amcContractCreateZodSchema),
   async (req, res) => {
     let createdContract =
       null;
@@ -27660,6 +27672,7 @@ router.get(
 );
 router.post(
   "/amc/payment",
+  validate(amcPaymentZodSchema),
   async (req, res) => {
     const session =
       await mongoose.startSession();
@@ -31913,6 +31926,7 @@ router.get(
 
 router.post(
   "/product-sales/:id/payment",
+  validate(productSalePaymentZodSchema),
   async (req, res) => {
     try {
       const {
@@ -32805,6 +32819,7 @@ router.get(
 router.post(
   "/amc/contract/:id/renew",
   authenticateUser,
+  validate(amcRenewZodSchema),
   async (req, res) => {
     try {
       const { id } = req.params;

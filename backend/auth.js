@@ -12,6 +12,13 @@ const {
   changePasswordLimiter,
   refreshLimiter,
 } = require("./rateLimiter");
+const {
+  validate,
+  loginSchema,
+  registerAdminSchema,
+  refreshSchema,
+  changePasswordSchema,
+} = require("./validation");
 
 const router = express.Router();
 
@@ -335,7 +342,7 @@ async function createAuthSession(
    POST /api/auth/register-admin
    ========================================================= */
 
-router.post("/register-admin", registerLimiter, async (req, res, next) => {
+router.post("/register-admin", registerLimiter, validate(registerAdminSchema), async (req, res, next) => {
   try {
     const { name, email, password } = req.body;
 
@@ -425,7 +432,7 @@ router.post("/register-admin", registerLimiter, async (req, res, next) => {
    POST /api/auth/login
    ========================================================= */
 
-router.post("/login", loginIpLimiter, loginAccountLimiter, async (req, res, next) => {
+router.post("/login", loginIpLimiter, loginAccountLimiter, validate(loginSchema), async (req, res, next) => {
   try {
     const { email, password, role } = req.body;
 
@@ -994,6 +1001,7 @@ router.post(
   "/change-password",
   authenticateUser,
   changePasswordLimiter,
+  validate(changePasswordSchema),
   async (req, res, next) => {
     try {
       const {
