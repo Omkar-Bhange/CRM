@@ -4,6 +4,7 @@ const cors = require("cors");
 const dotenv = require("dotenv");
 const path = require("path");
 const crypto = require("crypto");
+const helmet = require("helmet");
 const AgentDevice = require("./models/AgentDevice");
 const { agentRegisterLimiter } = require("./rateLimiter");
 async function authenticateAgent(req, res, next) {
@@ -91,6 +92,46 @@ if (process.env.NODE_ENV === "production" || process.env.TRUST_PROXY) {
 
 const PORT =
   process.env.PORT || 5000;
+
+/* =========================================================
+   SECURITY HEADERS (HELMET)
+========================================================= */
+
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        baseUri: ["'self'"],
+        fontSrc: ["'self'", "https:", "data:"],
+        formAction: ["'self'"],
+        frameAncestors: ["'none'"],
+        imgSrc: ["'self'", "data:", "blob:", "*"],
+        objectSrc: ["'none'"],
+        scriptSrc: ["'self'"],
+        scriptSrcAttr: ["'none'"],
+        styleSrc: ["'self'", "https:", "'unsafe-inline'"],
+        upgradeInsecureRequests:
+          process.env.NODE_ENV === "production" ? [] : null,
+      },
+    },
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+    crossOriginEmbedderPolicy: false,
+    xFrameOptions: { action: "deny" },
+    xContentTypeOptions: true,
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+    strictTransportSecurity:
+      process.env.NODE_ENV === "production"
+        ? {
+            maxAge: 31536000,
+            includeSubDomains: true,
+            preload: false,
+          }
+        : false,
+    hidePoweredBy: true,
+  })
+);
 
 /* =========================================================
    MIDDLEWARE
