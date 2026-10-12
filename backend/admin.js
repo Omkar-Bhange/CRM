@@ -8584,9 +8584,9 @@ async function createActivityLog({
   performedByName = "",
   performedByRole = "system",
   metadata = {},
-}) {
+}, options = {}) {
   try {
-    return await ActivityLog.create({
+    const logData = {
       action: String(action || "").trim(),
 
       category,
@@ -8628,7 +8628,14 @@ async function createActivityLog({
           typeof metadata === "object"
           ? metadata
           : {},
-    });
+    };
+
+    if (options?.session) {
+      const logDoc = new ActivityLog(logData);
+      return await logDoc.save({ session: options.session });
+    }
+
+    return await ActivityLog.create(logData);
   } catch (error) {
     /*
      * Activity logging must never break the main API.
@@ -33124,6 +33131,21 @@ router.post(
 
       while (attempt < maxRetries && !transactionSuccess) {
         attempt++;
+
+        // Fast-path recovery on retry: If a concurrent identical transaction committed while we were waiting on lock
+        if (normalizedIdempotencyKey && attempt > 1) {
+          const replayLog = await IdempotencyLog.findOne({
+            idempotencyKey: normalizedIdempotencyKey,
+            status: "COMPLETED",
+          });
+          if (replayLog && replayLog.responseBody) {
+            return res.status(replayLog.responseStatus || 200).json({
+              ...(replayLog.responseBody || {}),
+              isReplay: true,
+            });
+          }
+        }
+
         const session = await mongoose.startSession();
 
         try {
@@ -33363,7 +33385,9 @@ router.post(
               // Synchronize Client Document
               const clientDoc = await Client.findById(contract.clientId).session(session);
               if (clientDoc) {
-                const clientProduct = clientDoc.products.id(contract.clientProductId);
+                const clientProduct = clientDoc.products?.id
+                  ? clientDoc.products.id(contract.clientProductId)
+                  : (clientDoc.products || []).find((p) => String(p._id) === String(contract.clientProductId));
                 if (clientProduct) {
                   clientProduct.amcStatus = "Pending";
                   clientProduct.expiryDate = newExpiryDate.toISOString().slice(0, 10);
@@ -33391,33 +33415,36 @@ router.post(
             await lockedContract.save({ session });
             finalContract = lockedContract;
 
-            // 7. Activity Log
-            await createActivityLog({
-              action: isEarlyRenewal ? "AMC Future Renewal Scheduled" : "AMC Renewed",
-              category: "AMC",
-              description: `${contract.contractCode} renewal invoice ${createdInvoice.invoiceCode} was generated.`,
-              entityType: "amc",
-              entityId: contract._id,
-              entityCode: contract.contractCode,
-              entityName: `${contract.clientName} - ${contract.productName}`,
-              clientId: contract.clientId,
-              clientName: contract.clientName,
-              employeeId: contract.assignedEmployeeId,
-              employeeName: contract.assignedEmployeeName,
-              performedBy: req.user?._id || null,
-              performedByName: req.user?.name || "Admin",
-              performedByRole: req.user?.role || "admin",
-              metadata: {
-                isEarlyRenewal,
-                newInvoiceId: createdInvoice._id,
-                newInvoiceCode: createdInvoice.invoiceCode,
-                startDate: newStartDate,
-                expiryDate: newExpiryDate,
-                taxableAmount: authoritativeAmounts.taxableAmount,
-                totalAmount: authoritativeAmounts.totalAmount,
-                gstApplicable: normalizedGstApplicable,
+            // 7. Activity Log (Session-bound for atomic rollback safety)
+            await createActivityLog(
+              {
+                action: isEarlyRenewal ? "AMC Future Renewal Scheduled" : "AMC Renewed",
+                category: "AMC",
+                description: `${contract.contractCode} renewal invoice ${createdInvoice.invoiceCode} was generated.`,
+                entityType: "amc",
+                entityId: contract._id,
+                entityCode: contract.contractCode,
+                entityName: `${contract.clientName} - ${contract.productName}`,
+                clientId: contract.clientId,
+                clientName: contract.clientName,
+                employeeId: contract.assignedEmployeeId,
+                employeeName: contract.assignedEmployeeName,
+                performedBy: req.user?._id || null,
+                performedByName: req.user?.name || "Admin",
+                performedByRole: req.user?.role || "admin",
+                metadata: {
+                  isEarlyRenewal,
+                  newInvoiceId: createdInvoice._id,
+                  newInvoiceCode: createdInvoice.invoiceCode,
+                  startDate: newStartDate,
+                  expiryDate: newExpiryDate,
+                  taxableAmount: authoritativeAmounts.taxableAmount,
+                  totalAmount: authoritativeAmounts.totalAmount,
+                  gstApplicable: normalizedGstApplicable,
+                },
               },
-            });
+              { session }
+            );
 
             // 8. Record Idempotency Log
             if (normalizedIdempotencyKey) {
@@ -33463,6 +33490,20 @@ router.post(
           }
 
           if (error.statusCode) {
+            // If overlapping invoice was detected but was committed concurrently by our own idempotency key
+            if (error.statusCode === 409 && normalizedIdempotencyKey) {
+              const replayLog = await IdempotencyLog.findOne({
+                idempotencyKey: normalizedIdempotencyKey,
+                status: "COMPLETED",
+              });
+              if (replayLog && replayLog.responseBody) {
+                return res.status(replayLog.responseStatus || 200).json({
+                  ...(replayLog.responseBody || {}),
+                  isReplay: true,
+                });
+              }
+            }
+
             return res.status(error.statusCode).json({
               success: false,
               message: error.message,
@@ -33470,6 +33511,31 @@ router.post(
           }
 
           if (error.code === 11000) {
+            if (normalizedIdempotencyKey) {
+              const replayLog = await IdempotencyLog.findOne({
+                idempotencyKey: normalizedIdempotencyKey,
+                status: "COMPLETED",
+              });
+              if (replayLog && replayLog.responseBody) {
+                return res.status(replayLog.responseStatus || 200).json({
+                  ...(replayLog.responseBody || {}),
+                  isReplay: true,
+                });
+              }
+            }
+
+            // If collision occurred on invoice code/number during concurrent generation, retry with next sequence
+            const isInvoiceCollision =
+              (error.message && (error.message.includes("invoiceCode") || error.message.includes("invoiceNumber"))) ||
+              (error.keyPattern && (error.keyPattern.invoiceCode || error.keyPattern.invoiceNumber));
+
+            if (isInvoiceCollision && attempt < maxRetries) {
+              console.warn(
+                `Invoice identity sequence collision during renewal (attempt ${attempt}), retrying with next sequence...`
+              );
+              continue;
+            }
+
             return res.status(409).json({
               success: false,
               message: "AMC renewal invoice or unique constraint collision. Please try again.",
@@ -33638,7 +33704,9 @@ async function syncUpcomingAmcRenewals() {
         // 4. Update Client Product Status
         const client = await Client.findById(freshContract.clientId).session(session);
         if (client) {
-          const clientProd = client.products.id(freshContract.clientProductId);
+          const clientProd = client.products?.id
+            ? client.products.id(freshContract.clientProductId)
+            : (client.products || []).find((p) => String(p._id) === String(freshContract.clientProductId));
           if (clientProd) {
             clientProd.expiryDate = freshContract.expiryDate.toISOString().slice(0, 10);
             clientProd.amcStatus = freshContract.status;
