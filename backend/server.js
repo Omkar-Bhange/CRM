@@ -5,6 +5,7 @@ const dotenv = require("dotenv");
 const path = require("path");
 const crypto = require("crypto");
 const AgentDevice = require("./models/AgentDevice");
+const { agentRegisterLimiter } = require("./rateLimiter");
 async function authenticateAgent(req, res, next) {
   try {
     const auth = req.headers.authorization || "";
@@ -76,6 +77,17 @@ console.log("========================================");
 ========================================================= */
 
 const app = express();
+
+if (process.env.NODE_ENV === "production" || process.env.TRUST_PROXY) {
+  app.set(
+    "trust proxy",
+    process.env.TRUST_PROXY
+      ? (isNaN(process.env.TRUST_PROXY)
+          ? process.env.TRUST_PROXY
+          : Number(process.env.TRUST_PROXY))
+      : 1
+  );
+}
 
 const PORT =
   process.env.PORT || 5000;
@@ -1452,7 +1464,7 @@ try {
     });
   }
 });
-app.post("/api/agent/register", async (req, res) => {
+app.post("/api/agent/register", agentRegisterLimiter, async (req, res) => {
   try {
     const {
       employeeCode,

@@ -5,6 +5,13 @@ const jwt = require("jsonwebtoken");
 const authenticateUser = require("./authMiddleware");
 const crypto = require("crypto");
 const AuthSession = require("./models/AuthSession");
+const {
+  loginAccountLimiter,
+  loginIpLimiter,
+  registerLimiter,
+  changePasswordLimiter,
+  refreshLimiter,
+} = require("./rateLimiter");
 
 const router = express.Router();
 
@@ -328,7 +335,7 @@ async function createAuthSession(
    POST /api/auth/register-admin
    ========================================================= */
 
-router.post("/register-admin", async (req, res, next) => {
+router.post("/register-admin", registerLimiter, async (req, res, next) => {
   try {
     const { name, email, password } = req.body;
 
@@ -418,7 +425,7 @@ router.post("/register-admin", async (req, res, next) => {
    POST /api/auth/login
    ========================================================= */
 
-router.post("/login", async (req, res, next) => {
+router.post("/login", loginIpLimiter, loginAccountLimiter, async (req, res, next) => {
   try {
     const { email, password, role } = req.body;
 
@@ -617,6 +624,7 @@ session: {
 
 router.post(
   "/refresh",
+  refreshLimiter,
   async (req, res, next) => {
     try {
       const {
@@ -985,6 +993,7 @@ router.get(
 router.post(
   "/change-password",
   authenticateUser,
+  changePasswordLimiter,
   async (req, res, next) => {
     try {
       const {
