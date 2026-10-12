@@ -11,6 +11,7 @@ import NotificationHistoryDrawer, {
   formatRelativeTime,
   getNotificationMeta,
 } from "./NotificationHistoryDrawer";
+import ErrorBoundary from "../components/ui/ErrorBoundary";
 import API_URL from "../config/api";
 import {
   Bell,
@@ -299,24 +300,52 @@ export default function ClientLayout({ onLogout }) {
 
   const renderPage = () => {
     if (activeMenu === "overview") {
-      return <ClientDashboard onNavigate={handleNavigation} />;
+      return (
+        <ErrorBoundary level="module" moduleName="Client Dashboard" onNavigateToDashboard={() => handleNavigation("overview")}>
+          <ClientDashboard onNavigate={handleNavigation} />
+        </ErrorBoundary>
+      );
     }
     if (activeMenu === "products") {
-      return <MyProducts onNavigate={handleNavigation} />;
+      return (
+        <ErrorBoundary level="module" moduleName="My Products" onNavigateToDashboard={() => handleNavigation("overview")}>
+          <MyProducts onNavigate={handleNavigation} />
+        </ErrorBoundary>
+      );
     }
     if (activeMenu === "billing") {
-      return <ClientBilling />;
+      return (
+        <ErrorBoundary level="module" moduleName="AMC & Billing" onNavigateToDashboard={() => handleNavigation("overview")}>
+          <ClientBilling />
+        </ErrorBoundary>
+      );
     }
     if (activeMenu === "tickets") {
-      return <ClientTickets client={client} navParams={navParams} onNavigate={handleNavigation} />;
+      return (
+        <ErrorBoundary level="module" moduleName="Support Tickets" onNavigateToDashboard={() => handleNavigation("overview")}>
+          <ClientTickets client={client} navParams={navParams} onNavigate={handleNavigation} />
+        </ErrorBoundary>
+      );
     }
     if (activeMenu === "documents") {
-      return <ClientDocuments onNavigate={handleNavigation} />;
+      return (
+        <ErrorBoundary level="module" moduleName="Documents" onNavigateToDashboard={() => handleNavigation("overview")}>
+          <ClientDocuments onNavigate={handleNavigation} />
+        </ErrorBoundary>
+      );
     }
     if (activeMenu === "profile") {
-      return <ClientProfile client={client} />;
+      return (
+        <ErrorBoundary level="module" moduleName="Client Profile" onNavigateToDashboard={() => handleNavigation("overview")}>
+          <ClientProfile client={client} />
+        </ErrorBoundary>
+      );
     }
-    return <ClientDashboard onNavigate={handleNavigation} />;
+    return (
+      <ErrorBoundary level="module" moduleName="Client Dashboard" onNavigateToDashboard={() => handleNavigation("overview")}>
+        <ClientDashboard onNavigate={handleNavigation} />
+      </ErrorBoundary>
+    );
   };
 
   return (
@@ -853,28 +882,32 @@ export default function ClientLayout({ onLogout }) {
         </main>
 
         {/* Real Zia AI Assistant Drawer */}
-        <ZiaAssistantDrawer
-          isOpen={ziaOpen}
-          onClose={() => setZiaOpen(false)}
-          client={client}
-          onNavigate={handleNavigation}
-        />
+        <ErrorBoundary level="drawer" moduleName="AI Assistant Drawer" onClose={() => setZiaOpen(false)}>
+          <ZiaAssistantDrawer
+            isOpen={ziaOpen}
+            onClose={() => setZiaOpen(false)}
+            client={client}
+            onNavigate={handleNavigation}
+          />
+        </ErrorBoundary>
 
         {/* Real Client Notification History Drawer */}
-        <NotificationHistoryDrawer
-          isOpen={notificationHistoryOpen}
-          onClose={() => setNotificationHistoryOpen(false)}
-          notifications={notifications}
-          unreadCount={unreadCount}
-          filter={notifFilter}
-          onFilterChange={handleFilterChange}
-          onMarkAsRead={handleMarkAsRead}
-          onMarkAllAsRead={handleMarkAllAsRead}
-          onNavigate={handleNavigation}
-          onLoadMore={handleLoadMoreNotifications}
-          hasMore={notifHasMore}
-          loading={notifLoading}
-        />
+        <ErrorBoundary level="drawer" moduleName="Notifications Drawer" onClose={() => setNotificationHistoryOpen(false)}>
+          <NotificationHistoryDrawer
+            isOpen={notificationHistoryOpen}
+            onClose={() => setNotificationHistoryOpen(false)}
+            notifications={notifications}
+            unreadCount={unreadCount}
+            filter={notifFilter}
+            onFilterChange={handleFilterChange}
+            onMarkAsRead={handleMarkAsRead}
+            onMarkAllAsRead={handleMarkAllAsRead}
+            onNavigate={handleNavigation}
+            onLoadMore={handleLoadMoreNotifications}
+            hasMore={notifHasMore}
+            loading={notifLoading}
+          />
+        </ErrorBoundary>
       </div>
     </div>
   );

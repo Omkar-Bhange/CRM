@@ -8,6 +8,7 @@ import AmcInvoice from "./AmcInvoice";
 import AmcRenewalRequestsTab from "./AmcRenewalRequestsTab";
 import RenewAmcModal from "./RenewAmcModal";
 import DataTable from "../../components/data/DataTable";
+import ErrorBoundary from "../../components/ui/ErrorBoundary";
 import {
     AlertCircle,
     ArrowLeft,
@@ -7641,25 +7642,27 @@ AMC INVOICE / CYCLE DETAIL
                 </div>
             )}
 
-            <RenewAmcModal
-                isOpen={Boolean(renewalRecord)}
-                contract={renewalRecord}
-                client={clients.find((c) => String(c._id || c.id) === String(renewalRecord?.clientId || renewalRecord?.client?._id || renewalRecord?.client?.id))}
-                onClose={() => setRenewalRecord(null)}
-                onSuccess={(data) => {
-                    loadAmcContracts();
-                    loadAmcMasters();
-                    loadAdminAmcRequests();
-                }}
-                onViewInvoice={(invoice) => {
-                    if (invoice) {
-                        setSelectedInvoiceDetail(invoice);
-                    }
-                }}
-                onRecordPayment={(targetContract, invoice) => {
-                    openPaymentModal(targetContract || renewalRecord);
-                }}
-            />
+            <ErrorBoundary level="modal" moduleName="AMC Renewal Modal" onClose={() => setRenewalRecord(null)}>
+                <RenewAmcModal
+                    isOpen={Boolean(renewalRecord)}
+                    contract={renewalRecord}
+                    client={clients.find((c) => String(c._id || c.id) === String(renewalRecord?.clientId || renewalRecord?.client?._id || renewalRecord?.client?.id))}
+                    onClose={() => setRenewalRecord(null)}
+                    onSuccess={(data) => {
+                        loadAmcContracts();
+                        loadAmcMasters();
+                        loadAdminAmcRequests();
+                    }}
+                    onViewInvoice={(invoice) => {
+                        if (invoice) {
+                            setSelectedInvoiceDetail(invoice);
+                        }
+                    }}
+                    onRecordPayment={(targetContract, invoice) => {
+                        openPaymentModal(targetContract || renewalRecord);
+                    }}
+                />
+            </ErrorBoundary>
 
             {newAmcOpen && (
                 <div className="fixed inset-0 z-[110] flex items-center justify-end p-3 sm:p-5 lg:p-7">

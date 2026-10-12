@@ -7,6 +7,7 @@ import MyTasks from "./MyTasks";
 import MyTickets from "./MyTickets";
 import EmployeeDashboard from "./EmployeeDashboard";
 import BottomDock from "../components/layout/BottomDock";
+import ErrorBoundary from "../components/ui/ErrorBoundary";
 import {
   Bell,
   BriefcaseBusiness,
@@ -426,21 +427,45 @@ export default function EmployeeLayout({ onLogout }) {
 
   const renderPage = () => {
     if (activeMenu === "dashboard") {
-      return <EmployeeDashboard onNavigate={openMenu} />;
+      return (
+        <ErrorBoundary level="module" moduleName="Employee Dashboard" onNavigateToDashboard={() => openMenu("dashboard")}>
+          <EmployeeDashboard onNavigate={openMenu} />
+        </ErrorBoundary>
+      );
     }
     if (activeMenu === "tasks") {
-      return <MyTasks />;
+      return (
+        <ErrorBoundary level="module" moduleName="My Tasks" onNavigateToDashboard={() => openMenu("dashboard")}>
+          <MyTasks />
+        </ErrorBoundary>
+      );
     }
     if (activeMenu === "tickets") {
-      return <MyTickets />;
+      return (
+        <ErrorBoundary level="module" moduleName="My Tickets" onNavigateToDashboard={() => openMenu("dashboard")}>
+          <MyTickets />
+        </ErrorBoundary>
+      );
     }
     if (activeMenu === "attendance") {
-      return <MyAttendance />;
+      return (
+        <ErrorBoundary level="module" moduleName="My Attendance" onNavigateToDashboard={() => openMenu("dashboard")}>
+          <MyAttendance />
+        </ErrorBoundary>
+      );
     }
     if (activeMenu === "time-log") {
-      return <TimeLog />;
+      return (
+        <ErrorBoundary level="module" moduleName="Time Log" onNavigateToDashboard={() => openMenu("dashboard")}>
+          <TimeLog />
+        </ErrorBoundary>
+      );
     }
-    return <EmployeeDashboard onNavigate={openMenu} />;
+    return (
+      <ErrorBoundary level="module" moduleName="Employee Dashboard" onNavigateToDashboard={() => openMenu("dashboard")}>
+        <EmployeeDashboard onNavigate={openMenu} />
+      </ErrorBoundary>
+    );
   };
 
   return (

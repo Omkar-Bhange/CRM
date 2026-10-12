@@ -16,6 +16,7 @@ import ReportsDashboard from "./reports/ReportsDashboard";
 import AppShell from "../components/layout/AppShell";
 import OverviewDashboard from "./overview/OverviewDashboard";
 import DataTable from "../components/data/DataTable";
+import ErrorBoundary from "../components/ui/ErrorBoundary";
 import {
     ArrowUpRight,
     Bell,
@@ -4469,25 +4470,36 @@ export default function Admin({ user: propUser = null, onLogout }) {
             >
                 <div className="mx-auto max-w-[1600px]">
                     {activeMenu === "overview" ? (
-                            <div className="enterprise-page">
-                                <OverviewDashboard
-                                    user={user}
-                                    dashboardStats={dashboardStats}
-                                    dashboardLoading={dashboardLoading}
-                                    dashboardError={dashboardError}
-                                    onRetryDashboard={loadDashboard}
-                                    amcRenewals={amcRenewals}
-                                    teamMembers={teamMembers}
-                                    recentTickets={recentTickets}
-                                    activeTasks={activeTasks}
-                                    clientActivities={clientActivities}
-                                    onOpenAddClient={openClientDrawer}
-                                    onNavigate={(module) => setActiveMenu(module)}
-                                />
-                            </div>
+                            <ErrorBoundary
+                                level="module"
+                                moduleName="Overview Dashboard"
+                                onNavigateToDashboard={() => setActiveMenu("overview")}
+                            >
+                                <div className="enterprise-page">
+                                    <OverviewDashboard
+                                        user={user}
+                                        dashboardStats={dashboardStats}
+                                        dashboardLoading={dashboardLoading}
+                                        dashboardError={dashboardError}
+                                        onRetryDashboard={loadDashboard}
+                                        amcRenewals={amcRenewals}
+                                        teamMembers={teamMembers}
+                                        recentTickets={recentTickets}
+                                        activeTasks={activeTasks}
+                                        clientActivities={clientActivities}
+                                        onOpenAddClient={openClientDrawer}
+                                        onNavigate={(module) => setActiveMenu(module)}
+                                    />
+                                </div>
+                            </ErrorBoundary>
 
                         ) : activeMenu === "clients" ? (
-                            selectedClient ? (
+                            <ErrorBoundary
+                                level="module"
+                                moduleName="Client Management"
+                                onNavigateToDashboard={() => setActiveMenu("overview")}
+                            >
+                                selectedClient ? (
                                 <div className="enterprise-page">
                                     <div>
                                         {/* Client Details Header */}
@@ -7228,68 +7240,135 @@ export default function Admin({ user: propUser = null, onLogout }) {
                                     </div>
                                 </div>
                             )
+                            </ErrorBoundary>
 
                         ) : activeMenu === "requirements" ? (
-                            <div className="enterprise-page">
-                                <Requirements
-                                    clients={clients}
-                                    employees={employees}
-                                />
-                            </div>
+                            <ErrorBoundary
+                                level="module"
+                                moduleName="Requirements"
+                                onNavigateToDashboard={() => setActiveMenu("overview")}
+                            >
+                                <div className="enterprise-page">
+                                    <Requirements
+                                        clients={clients}
+                                        employees={employees}
+                                    />
+                                </div>
+                            </ErrorBoundary>
                         ) : activeMenu === "projects" ? (
-                            <div className="enterprise-page">
-                                <Projects
-                                    clients={clients}
-                                    products={productMasters}
-                                    employees={employees}
-                                    onCreateProjectTask={(project) => {
-                                        setProjectForNewTask(
-                                            project
-                                        );
+                            <ErrorBoundary
+                                level="module"
+                                moduleName="Projects"
+                                onNavigateToDashboard={() => setActiveMenu("overview")}
+                            >
+                                <div className="enterprise-page">
+                                    <Projects
+                                        clients={clients}
+                                        products={productMasters}
+                                        employees={employees}
+                                        onCreateProjectTask={(project) => {
+                                            setProjectForNewTask(
+                                                project
+                                            );
 
-                                        setActiveMenu(
-                                            "tasks"
-                                        );
-                                    }}
-                                />
-                            </div>
+                                            setActiveMenu(
+                                                "tasks"
+                                            );
+                                        }}
+                                    />
+                                </div>
+                            </ErrorBoundary>
                         ) : activeMenu === "tickets" ? (
-                            <div className="enterprise-page"><SupportTickets /></div>
+                            <ErrorBoundary
+                                level="module"
+                                moduleName="Support Tickets"
+                                onNavigateToDashboard={() => setActiveMenu("overview")}
+                            >
+                                <div className="enterprise-page"><SupportTickets /></div>
+                            </ErrorBoundary>
                         ) : activeMenu === "product-sales" ? (
-                            <div className="enterprise-page">
-                                <ProductSales />
-                            </div>
+                            <ErrorBoundary
+                                level="module"
+                                moduleName="Product Sales"
+                                onNavigateToDashboard={() => setActiveMenu("overview")}
+                            >
+                                <div className="enterprise-page">
+                                    <ProductSales />
+                                </div>
+                            </ErrorBoundary>
                         ) : activeMenu === "billing" ? (
-                            <div className="enterprise-page"><AmcBilling /></div>
+                            <ErrorBoundary
+                                level="module"
+                                moduleName="AMC Billing"
+                                onNavigateToDashboard={() => setActiveMenu("overview")}
+                            >
+                                <div className="enterprise-page"><AmcBilling /></div>
+                            </ErrorBoundary>
                         ) : activeMenu === "payments-collections" ? (
-                            <div className="enterprise-page">
-                                <PaymentsCollections />
-                            </div>
+                            <ErrorBoundary
+                                level="module"
+                                moduleName="Payments & Collections"
+                                onNavigateToDashboard={() => setActiveMenu("overview")}
+                            >
+                                <div className="enterprise-page">
+                                    <PaymentsCollections />
+                                </div>
+                            </ErrorBoundary>
                         ) : activeMenu === "team" ? (
-                            <div className="enterprise-page"><Team /></div>
+                            <ErrorBoundary
+                                level="module"
+                                moduleName="Team Management"
+                                onNavigateToDashboard={() => setActiveMenu("overview")}
+                            >
+                                <div className="enterprise-page"><Team /></div>
+                            </ErrorBoundary>
                         ) : activeMenu === "tasks" ? (
-                            <div className="enterprise-page">
-                                <Tasks
-                                    initialProject={
-                                        projectForNewTask
-                                    }
-                                    onInitialProjectHandled={() => {
-                                        setProjectForNewTask(
-                                            null
-                                        );
-                                    }}
-                                />
-                            </div>
+                            <ErrorBoundary
+                                level="module"
+                                moduleName="Tasks"
+                                onNavigateToDashboard={() => setActiveMenu("overview")}
+                            >
+                                <div className="enterprise-page">
+                                    <Tasks
+                                        initialProject={
+                                            projectForNewTask
+                                        }
+                                        onInitialProjectHandled={() => {
+                                            setProjectForNewTask(
+                                                null
+                                            );
+                                        }}
+                                    />
+                                </div>
+                            </ErrorBoundary>
                         ) : activeMenu === "attendance" ? (
-                            <div className="enterprise-page">
-                                <Attendance />
-                            </div>
+                            <ErrorBoundary
+                                level="module"
+                                moduleName="Attendance"
+                                onNavigateToDashboard={() => setActiveMenu("overview")}
+                            >
+                                <div className="enterprise-page">
+                                    <Attendance />
+                                </div>
+                            </ErrorBoundary>
                         ) : activeMenu === "reports" ? (
-                            <div className="enterprise-page">
-                                <ReportsDashboard />
-                            </div>
+                            <ErrorBoundary
+                                level="module"
+                                moduleName="Reports Dashboard"
+                                onNavigateToDashboard={() => setActiveMenu("overview")}
+                            >
+                                <div className="enterprise-page">
+                                    <ReportsDashboard />
+                                </div>
+                            </ErrorBoundary>
                         ) : activeMenu === "settings" ? (
-                            <div className="enterprise-page"><SystemSettings /></div>
+                            <ErrorBoundary
+                                level="module"
+                                moduleName="System Settings"
+                                onNavigateToDashboard={() => setActiveMenu("overview")}
+                            >
+                                <div className="enterprise-page"><SystemSettings /></div>
+                            </ErrorBoundary>
                         ) : (
                             <div className="flex min-h-[calc(100vh-140px)] items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white/60 p-8">
                                 <div className="text-center">
@@ -7317,6 +7396,7 @@ export default function Admin({ user: propUser = null, onLogout }) {
                     />
 
                     <aside className="enterprise-drawer fixed inset-y-0 right-0 z-[80] flex w-full max-w-[620px] flex-col bg-white shadow-[-24px_0_70px_rgba(15,23,42,0.18)]">
+                        <ErrorBoundary level="drawer" moduleName="Client Drawer" onClose={closeClientDrawer}>
                         {/* Drawer Header */}
                         <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-5 sm:px-6">
                             <div>
@@ -8248,7 +8328,7 @@ export default function Admin({ user: propUser = null, onLogout }) {
                             </div>
 
                         </form>
-
+                        </ErrorBoundary>
                     </aside>
 
                 </>
