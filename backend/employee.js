@@ -337,60 +337,9 @@ const Employee =
   mongoose.model("Employee", employeeSchema);
 
 /* =========================================================
-   EMPLOYEE DAILY NOTE SCHEMA
+   EMPLOYEE DAILY NOTE MODEL
 ========================================================= */
-const employeeDailyNoteSchema = new mongoose.Schema(
-  {
-    employeeId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Employee",
-      required: true,
-      index: true,
-    },
-    employeeCode: {
-      type: String,
-      required: true,
-      trim: true,
-      uppercase: true,
-      index: true,
-    },
-    userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-      index: true,
-    },
-    date: {
-      type: String, // "YYYY-MM-DD" in IST
-      required: true,
-      index: true,
-    },
-    text: {
-      type: String,
-      required: [true, "Note text is required."],
-      trim: true,
-    },
-    completed: {
-      type: Boolean,
-      default: false,
-    },
-    createdAt: {
-      type: Date,
-      default: Date.now,
-    },
-    updatedAt: {
-      type: Date,
-      default: Date.now,
-    },
-  },
-  { timestamps: true }
-);
-
-employeeDailyNoteSchema.index({ employeeId: 1, date: 1, createdAt: 1 });
-
-const EmployeeDailyNote =
-  mongoose.models.EmployeeDailyNote ||
-  mongoose.model("EmployeeDailyNote", employeeDailyNoteSchema);
+const EmployeeDailyNote = require("./models/EmployeeDailyNote");
 
 const SupportTicket =
   mongoose.models.SupportTicket;
