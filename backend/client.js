@@ -56,7 +56,7 @@ const {
 const authenticateUser = require("./authMiddleware");
 
 const Client = mongoose.model("Client");
-const SupportTicket = mongoose.models.SupportTicket;
+const SupportTicket = require("./models/SupportTicket");
 const ActivityLog = require("./models/ActivityLog");
 const AmcContract = mongoose.models.AmcContract;
 const AmcInvoice = mongoose.models.AmcInvoice;

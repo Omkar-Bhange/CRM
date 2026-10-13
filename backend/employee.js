@@ -339,8 +339,7 @@ const Employee =
 ========================================================= */
 const EmployeeDailyNote = require("./models/EmployeeDailyNote");
 
-const SupportTicket =
-  mongoose.models.SupportTicket;
+const SupportTicket = require("./models/SupportTicket");
 
 /* =========================================================
    HELPERS
