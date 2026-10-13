@@ -4930,16 +4930,9 @@ const AmcReminder =
   );
 
 /* =====================================================
-   APP COUNTER SCHEMA (Atomic Sequence Generator)
+   APP COUNTER MODEL (Atomic Sequence Generator)
 ===================================================== */
-const appCounterSchema = new mongoose.Schema({
-  _id: { type: String, required: true },
-  seq: { type: Number, default: 0 },
-});
-
-const AppCounter =
-  mongoose.models.AppCounter ||
-  mongoose.model("AppCounter", appCounterSchema);
+const AppCounter = require("./models/AppCounter");
 
 /* =====================================================
    CLIENT AMC REQUEST SCHEMA (Renewal & Quotation Requests)
