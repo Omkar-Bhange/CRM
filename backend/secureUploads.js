@@ -28,13 +28,42 @@ router.use(async (req, res) => {
     /* =====================================================
        1. PATH NORMALIZATION & TRAVERSAL PREVENTION
     ===================================================== */
-    const decodedPath = decodeURIComponent(req.path);
+    let decodedPath = req.path;
+    try {
+      // Decode iteratively (up to 3 passes) to prevent nested/double URL encoding bypasses
+      for (let i = 0; i < 3; i++) {
+        const next = decodeURIComponent(decodedPath);
+        if (next === decodedPath) break;
+        decodedPath = next;
+      }
+    } catch (e) {
+      return res.status(400).json({
+        success: false,
+        code: "BAD_REQUEST",
+        message: "Malformed URL encoding.",
+      });
+    }
+
+    // Reject null bytes or other dangerous control characters
+    if (decodedPath.includes("\0")) {
+      return res.status(403).json({
+        success: false,
+        code: "ACCESS_DENIED",
+        message: "Null byte detected.",
+      });
+    }
+
     const safePath = path.normalize(decodedPath).replace(/^(\.\.[\/\\])+/, "");
     const absolutePath = path.resolve(uploadsRoot, "." + safePath);
 
+    const relativeFromUploads = path.relative(uploadsRoot, absolutePath);
+
+    // Verify absolutePath is strictly contained inside uploadsRoot and not uploadsRoot itself
     if (
       !absolutePath.startsWith(uploadsRoot) ||
-      path.relative(uploadsRoot, absolutePath).startsWith("..")
+      relativeFromUploads.startsWith("..") ||
+      path.isAbsolute(relativeFromUploads) ||
+      absolutePath === uploadsRoot
     ) {
       return res.status(403).json({
         success: false,
@@ -52,13 +81,35 @@ router.use(async (req, res) => {
     }
 
     /* =====================================================
-       2. ROLE & OWNERSHIP AUTHORIZATION
+       2. CANONICAL PATH MAPPING & STRUCTURE VALIDATION
     ===================================================== */
-    const relativeFromUploads = path.relative(uploadsRoot, absolutePath);
-    const segments = relativeFromUploads.split(path.sep);
-    const folder = segments[0]; // e.g. 'tickets', 'tasks', 'amc', 'documents', 'quotations'
-    const filename = path.basename(absolutePath);
+    const segments = relativeFromUploads.split(path.sep).filter(Boolean);
+    if (segments.length !== 2) {
+      return res.status(403).json({
+        success: false,
+        code: "ACCESS_DENIED",
+        message: "Direct file access outside upload categories is not permitted.",
+      });
+    }
 
+    const [folder, filename] = segments;
+    const canonicalRelative = `${folder}/${filename}`;
+
+    // Exact candidate relative path variants that represent this physical file
+    const candidatePaths = [
+      `/uploads/${canonicalRelative}`,
+      `uploads/${canonicalRelative}`,
+      `/${canonicalRelative}`,
+      canonicalRelative,
+      `uploads\\${folder}\\${filename}`,
+      `${folder}\\${filename}`,
+      `\\uploads\\${folder}\\${filename}`,
+      filename,
+    ];
+
+    /* =====================================================
+       3. ROLE & OWNERSHIP AUTHORIZATION (EXACT MATCHING)
+    ===================================================== */
     const user = req.user;
     let isAuthorized = false;
 
@@ -74,18 +125,22 @@ router.use(async (req, res) => {
         isAuthorized = true;
       }
     } else if (user.role === "client") {
-      // Clients may ONLY access documents and attachments belonging to their client ID
+      // Clients may ONLY access files belonging to their clientId or clientCode
       const clientId = user.clientId || user._id;
+      const clientFilter = {
+        $or: [
+          { clientId: clientId },
+          ...(user.clientCode ? [{ clientCode: user.clientCode }] : []),
+        ],
+      };
 
       if (folder === "tickets") {
         const SupportTicket = mongoose.models.SupportTicket;
         if (SupportTicket) {
           const ticket = await SupportTicket.findOne({
-            $or: [
-              { clientId: clientId },
-              { clientCode: user.clientCode },
-            ],
-            "attachments.fileUrl": { $regex: filename },
+            ...clientFilter,
+            isDeleted: { $ne: true },
+            "attachments.fileUrl": { $in: candidatePaths },
           }).lean();
           if (ticket) isAuthorized = true;
         }
@@ -93,11 +148,9 @@ router.use(async (req, res) => {
         const ClientDocument = mongoose.models.ClientDocument;
         if (ClientDocument) {
           const doc = await ClientDocument.findOne({
-            clientId: clientId,
-            $or: [
-              { fileUrl: { $regex: filename } },
-              { fileName: filename },
-            ],
+            ...clientFilter,
+            isDeleted: { $ne: true },
+            fileUrl: { $in: candidatePaths },
           }).lean();
           if (doc) isAuthorized = true;
         }
@@ -106,7 +159,11 @@ router.use(async (req, res) => {
         if (AmcContract) {
           const contract = await AmcContract.findOne({
             clientId: clientId,
-            "documents.relativePath": { $regex: filename },
+            isDeleted: { $ne: true },
+            $or: [
+              { "documents.relativePath": { $in: candidatePaths } },
+              { "documents.storedFileName": filename },
+            ],
           }).lean();
           if (contract) isAuthorized = true;
         }
@@ -115,7 +172,8 @@ router.use(async (req, res) => {
         if (ClientAmcRequest) {
           const reqDoc = await ClientAmcRequest.findOne({
             clientId: clientId,
-            "quotationDocument.fileUrl": { $regex: filename },
+            isDeleted: { $ne: true },
+            "quotationDocument.fileUrl": { $in: candidatePaths },
           }).lean();
           if (reqDoc) isAuthorized = true;
         }
@@ -124,7 +182,8 @@ router.use(async (req, res) => {
         if (Task) {
           const task = await Task.findOne({
             clientId: clientId,
-            "attachments.fileUrl": { $regex: filename },
+            isDeleted: { $ne: true },
+            "attachments.fileUrl": { $in: candidatePaths },
           }).lean();
           if (task) isAuthorized = true;
         }
@@ -140,7 +199,7 @@ router.use(async (req, res) => {
     }
 
     /* =====================================================
-       3. SECURITY HEADERS & FILE TRANSMISSION
+       4. SECURITY HEADERS & FILE TRANSMISSION
     ===================================================== */
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cache-Control", "private, no-transform, max-age=3600");
