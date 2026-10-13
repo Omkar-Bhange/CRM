@@ -242,8 +242,7 @@ const AttendanceEvent =
 const Employee = mongoose.models.Employee;
 const Task = mongoose.models.Task;
 
-const AgentDailySummary =
-  mongoose.models.AgentDailySummary;
+const AgentDailySummary = require("./models/AgentDailySummary");
 
 /* =========================================================
    ADVANCED LEAVE REQUEST MODEL

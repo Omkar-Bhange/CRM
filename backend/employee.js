@@ -146,11 +146,7 @@ async function syncProjectTaskProgress(projectId) {
   };
 }
 const router = express.Router();
-require("./agentSession"); // register models
-
-const AgentDailySummary =
-  mongoose.models.AgentDailySummary ||
-  mongoose.model("AgentDailySummary");
+const AgentDailySummary = require("./models/AgentDailySummary");
 
 /* =========================================================
    EMPLOYEE NOTIFICATION MODEL

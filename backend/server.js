@@ -294,7 +294,7 @@ app.post("/api/agent/upload", async (req, res) => {
     message: "Deprecated. Agent must use /api/agent/events",
   });
 });
-const AgentDailySummary = mongoose.models.AgentDailySummary;
+const AgentDailySummary = require("./models/AgentDailySummary");
 /* =========================================================
    PROCESSED AGENT SESSION DAILY BUCKET MODEL
 ========================================================= */

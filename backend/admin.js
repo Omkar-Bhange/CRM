@@ -12,7 +12,7 @@ const { User } = require("./auth");
 const {
   SystemSettings,
 } = require("./settings");
-const AgentDailySummary = require("./agentSession");
+const AgentDailySummary = require("./models/AgentDailySummary");
 const AgentDevice = require("./models/AgentDevice");
 const {
   getTicketSlaPolicy,
