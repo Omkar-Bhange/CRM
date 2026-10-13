@@ -12,9 +12,7 @@ const User =
   mongoose.models.User ||
   mongoose.model("User");
 
-const Task =
-  mongoose.models.Task ||
-  mongoose.model("Task");
+const Task = require("./models/Task");
 const { getISTDateBucket, getISTDateString } = require("./utils/dateUtils");
 const Project =
   mongoose.models.Project ||
