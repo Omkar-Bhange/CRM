@@ -6318,95 +6318,10 @@ const ClientAmcRequest =
   mongoose.model("ClientAmcRequest", clientAmcRequestSchema);
 
 /* =====================================================
-   CLIENT DOCUMENT SCHEMA (metadata only, no file storage)
+   CLIENT DOCUMENT MODEL
 ===================================================== */
 
-const clientDocumentSchema = new mongoose.Schema(
-  {
-    clientId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Client",
-      required: true,
-      index: true,
-    },
-
-    clientCode: {
-      type: String,
-      default: "",
-      trim: true,
-      uppercase: true,
-    },
-
-    clientName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    name: {
-      type: String,
-      required: [true, "Document name is required."],
-      trim: true,
-    },
-
-    type: {
-      type: String,
-      enum: ["PDF", "Excel", "Word", "Image", "ZIP", "Other"],
-      default: "Other",
-    },
-
-    category: {
-      type: String,
-      enum: [
-        "Agreement",
-        "Legal",
-        "Quotation",
-        "Invoice",
-        "Installation",
-        "Other",
-      ],
-      default: "Other",
-    },
-
-    size: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    uploadedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
-
-    uploadedByName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    notes: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    isDeleted: {
-      type: Boolean,
-      default: false,
-      index: true,
-    },
-  },
-  {
-    timestamps: true,
-    collection: "clientdocuments",
-  }
-);
-
-const ClientDocument =
-  mongoose.models.ClientDocument ||
-  mongoose.model("ClientDocument", clientDocumentSchema);
+const ClientDocument = require("./models/ClientDocument");
 
 
 
