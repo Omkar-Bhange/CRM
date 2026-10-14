@@ -8,7 +8,7 @@ const authenticateUser = require("./authMiddleware");
 require("./admin");
 require("./employee");
 
-const Client = mongoose.model("Client");
+const Client = mongoose.models.Client || require("./models/Client");
 const Employee = mongoose.model("Employee");
 const User = mongoose.model("User");
 

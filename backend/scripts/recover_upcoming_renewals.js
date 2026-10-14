@@ -27,7 +27,7 @@ async function runUpcomingRenewalRecovery() {
 
   const AmcContract = mongoose.models.AmcContract || mongoose.model("AmcContract", new mongoose.Schema({}, { strict: false }));
   const AmcInvoice = mongoose.models.AmcInvoice || mongoose.model("AmcInvoice", new mongoose.Schema({}, { strict: false }));
-  const Client = mongoose.models.Client || mongoose.model("Client", new mongoose.Schema({}, { strict: false }));
+  const Client = mongoose.models.Client || require("../models/Client");
 
   const now = new Date();
   const dueContracts = await AmcContract.find({
