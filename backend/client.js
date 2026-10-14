@@ -60,7 +60,7 @@ const SupportTicket = require("./models/SupportTicket");
 const ActivityLog = require("./models/ActivityLog");
 const AmcContract = require("./models/AmcContract");
 const AmcInvoice = require("./models/AmcInvoice");
-const AmcPayment = mongoose.models.AmcPayment;
+const AmcPayment = require("./models/AmcPayment");
 const ClientAmcRequest = require("./models/ClientAmcRequest");
 const AppCounter = require("./models/AppCounter");
 
