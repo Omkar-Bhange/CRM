@@ -14,6 +14,7 @@ const {
 } = require("./settings");
 const AgentDailySummary = require("./models/AgentDailySummary");
 const AgentDevice = require("./models/AgentDevice");
+const AttendanceApprovalRequest = require("./models/AttendanceApprovalRequest");
 const {
   getTicketSlaPolicy,
   calculateDueAt,
