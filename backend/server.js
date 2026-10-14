@@ -1745,7 +1745,8 @@ app.get("/api/agent/online", async (req, res) => {
 // =========================================================
 const Employee = mongoose.models.Employee;
 const AttendanceV2 =
-  mongoose.models.AttendanceV2;
+  mongoose.models.AttendanceV2 ||
+  require("./models/AttendanceV2");
 
 app.post(
   "/api/agent/heartbeat",

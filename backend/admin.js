@@ -993,7 +993,8 @@ router.patch(
         mongoose.models.AttendanceApprovalRequest;
 
       const Attendance =
-        mongoose.models.AttendanceV2;
+        mongoose.models.AttendanceV2 ||
+        require("./models/AttendanceV2");
 
       const Employee =
         mongoose.models.Employee;
