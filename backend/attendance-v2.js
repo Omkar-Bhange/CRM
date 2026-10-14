@@ -6742,6 +6742,9 @@ router.post(
         });
       }
 
+      const policy =
+        await getAttendancePolicy();
+
       if (isWeeklyOff(
   date,
   policy.weeklyOff
