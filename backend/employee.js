@@ -1064,7 +1064,7 @@ router.get("/dashboard", async (req, res, next) => {
 
     //const Task = mongoose.models.Task;
     const SupportTicket = mongoose.models.SupportTicket;
-    const Attendance = mongoose.models.Attendance;
+    const Attendance = mongoose.models.Attendance || require("./models/Attendance");
     //  const ActivityLog =
     // mongoose.models.ActivityLog || mongoose.model("ActivityLog");
     // ----- IST day bucket (matches agent_daily_summary) -----
@@ -1922,7 +1922,7 @@ router.post(
 router.get("/tasks/dashboard", async (req, res, next) => {
   try {
     const SupportTicket = mongoose.models.SupportTicket;
-    const Attendance = mongoose.models.Attendance;
+    const Attendance = mongoose.models.Attendance || require("./models/Attendance");
     if (req.user.role !== "employee") return res.status(403).json({ success: false, message: "Employee account is required." });
     const employee = await Employee.findOne({ userId: req.user._id });
     const Task = mongoose.models.Task;

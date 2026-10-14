@@ -27636,7 +27636,7 @@ router.get("/team/:employeeCode/overview", async (req, res) => {
 
     const Employee = mongoose.models.Employee;
     const Task = mongoose.models.Task;
-    const Attendance = mongoose.models.Attendance;
+    const Attendance = mongoose.models.Attendance || require("./models/Attendance");
     const SupportTicket = mongoose.models.SupportTicket;
 
     const employee = await Employee.findOne({
@@ -27741,7 +27741,7 @@ router.get("/team/:employeeCode/attendance", async (req, res) => {
     const { employeeCode } = req.params;
 
     const Employee = mongoose.models.Employee;
-    const Attendance = mongoose.models.Attendance;
+    const Attendance = mongoose.models.Attendance || require("./models/Attendance");
 
     const employee = await Employee.findOne({
       employeeCode: employeeCode.toUpperCase(),
