@@ -61,7 +61,7 @@ const ActivityLog = require("./models/ActivityLog");
 const AmcContract = mongoose.models.AmcContract;
 const AmcInvoice = mongoose.models.AmcInvoice;
 const AmcPayment = mongoose.models.AmcPayment;
-const ClientAmcRequest = mongoose.models.ClientAmcRequest;
+const ClientAmcRequest = require("./models/ClientAmcRequest");
 const AppCounter = require("./models/AppCounter");
 
 const ClientNotification = require("./models/ClientNotification");
