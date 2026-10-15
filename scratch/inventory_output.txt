@@ -1,0 +1,36 @@
+Total files in backend/models/: 33
+
+=== 33 CENTRALIZED MODELS IN backend/models/ ===
+01. Model: "null" | File: backend/models/ActivityLog.js | Collection: "activitylogs" | Line: null
+02. Model: "AgentDailySummary" | File: backend/models/AgentDailySummary.js | Collection: "agent_daily_summary" | Line: 147
+03. Model: "AgentDevice" | File: backend/models/AgentDevice.js | Collection: "agent_devices" | Line: 80
+04. Model: "null" | File: backend/models/AmcContract.js | Collection: "amccontracts" | Line: null
+05. Model: "null" | File: backend/models/AmcInvoice.js | Collection: "amcinvoices" | Line: null
+06. Model: "null" | File: backend/models/AmcPayment.js | Collection: "amcpayments" | Line: null
+07. Model: "AmcReminder" | File: backend/models/AmcReminder.js | Collection: "amcreminders" | Line: 140
+08. Model: "AppCounter" | File: backend/models/AppCounter.js | Collection: "appcounters" | Line: 25
+09. Model: "Attendance" | File: backend/models/Attendance.js | Collection: "attendance" | Line: 130
+10. Model: "AttendanceApprovalRequest" | File: backend/models/AttendanceApprovalRequest.js | Collection: "attendanceApprovalRequests" | Line: 160
+11. Model: "AttendanceEvent" | File: backend/models/AttendanceEvent.js | Collection: "attendanceevents" | Line: 52
+12. Model: "AttendanceRegularization" | File: backend/models/AttendanceRegularization.js | Collection: "attendanceRegularizations" | Line: 106
+13. Model: "AttendanceV2" | File: backend/models/AttendanceV2.js | Collection: "attendance" | Line: 189
+14. Model: "null" | File: backend/models/AuthSession.js | Collection: "auth_sessions" | Line: null
+15. Model: "Client" | File: backend/models/Client.js | Collection: "clients" | Line: 450
+16. Model: "ClientAmcRequest" | File: backend/models/ClientAmcRequest.js | Collection: "clientamcrequests" | Line: 194
+17. Model: "ClientDocument" | File: backend/models/ClientDocument.js | Collection: "clientdocuments" | Line: 266
+18. Model: "ClientNotification" | File: backend/models/ClientNotification.js | Collection: "clientnotifications" | Line: 91
+19. Model: "EmployeeDailyNote" | File: backend/models/EmployeeDailyNote.js | Collection: "employeedailynotes" | Line: 63
+20. Model: "EmployeeNotification" | File: backend/models/EmployeeNotification.js | Collection: "employeenotifications" | Line: 109
+21. Model: "Holiday" | File: backend/models/Holiday.js | Collection: "holidays" | Line: 66
+22. Model: "IdempotencyLog" | File: backend/models/IdempotencyLog.js | Collection: "idempotencylogs" | Line: 65
+23. Model: "LeaveBalance" | File: backend/models/LeaveBalance.js | Collection: "leaveBalances" | Line: 66
+24. Model: "LeaveRequest" | File: backend/models/LeaveRequest.js | Collection: "leaveRequests" | Line: 128
+25. Model: "ProcessedSessionBucket" | File: backend/models/ProcessedSessionBucket.js | Collection: "agent_processed_session_buckets" | Line: 93
+26. Model: "null" | File: backend/models/Product.js | Collection: "products" | Line: null
+27. Model: "ProductSale" | File: backend/models/ProductSale.js | Collection: "productsales" | Line: 535
+28. Model: "ProductSalePayment" | File: backend/models/ProductSalePayment.js | Collection: "productsalepayments" | Line: 154
+29. Model: "null" | File: backend/models/Project.js | Collection: "projects" | Line: null
+30. Model: "null" | File: backend/models/Requirement.js | Collection: "requirements" | Line: null
+31. Model: "null" | File: backend/models/SupportTicket.js | Collection: "supporttickets" | Line: null
+32. Model: "null" | File: backend/models/SystemSettings.js | Collection: "systemsettings" | Line: null
+33. Model: "Task" | File: backend/models/Task.js | Collection: "tasks" | Line: 423

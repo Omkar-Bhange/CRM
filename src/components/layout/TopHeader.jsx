@@ -425,12 +425,43 @@ export default function TopHeader({
           )}
         </div>
 
-        {/* 5. Notification Bell Dropdown */}
+        {/* 5. Executive Notification Bell Dropdown */}
         <div className="relative" ref={notifRef}>
           {(() => {
-            const pendingCount = notifications.filter((n) =>
-              n.status ? n.status === "Pending" : true
+            const [notifCategory, setNotifCategory] = useState("all");
+
+            const pendingAttendanceCount = notifications.filter(
+              (n) => n.category === "attendance" && (n.status ? n.status === "Pending" : true)
             ).length;
+
+            const pendingBillingCount = notifications.filter(
+              (n) => n.category === "billing" && (n.status ? n.status !== "Completed" && n.status !== "Paid" : true)
+            ).length;
+
+            const pendingTicketsCount = notifications.filter(
+              (n) => n.category === "tickets" && !["Resolved", "Verified", "Closed"].includes(n.status)
+            ).length;
+
+            const pendingTasksCount = notifications.filter(
+              (n) => n.category === "tasks" && !["Completed", "Resolved", "Closed", "Done"].includes(n.status)
+            ).length;
+
+            const totalActiveCount =
+              pendingAttendanceCount +
+              pendingBillingCount +
+              pendingTicketsCount +
+              pendingTasksCount;
+
+            const filteredNotifs = notifications
+              .filter((n) => {
+                if (n.category === "tickets" && ["Resolved", "Verified", "Closed"].includes(n.status)) return false;
+                if (n.category === "tasks" && ["Completed", "Resolved", "Closed", "Done"].includes(n.status)) return false;
+                return true;
+              })
+              .filter((n) => {
+                if (notifCategory === "all") return true;
+                return n.category === notifCategory;
+              });
 
             const handleApprove = async (notif) => {
               if (!onApproveAttendance || !notif.id) return;
@@ -455,166 +486,257 @@ export default function TopHeader({
                 <button
                   type="button"
                   onClick={() => setNotificationsOpen((prev) => !prev)}
-                  title="Notifications"
+                  title="Notifications & Action Alerts"
                   aria-label="Notifications"
                   className="relative flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition"
                 >
                   <Bell size={15} />
-                  {pendingCount > 0 && (
-                    <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold text-white ring-2 ring-white">
-                      {pendingCount}
+                  {totalActiveCount > 0 && (
+                    <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold text-white ring-2 ring-white animate-in zoom-in">
+                      {totalActiveCount}
                     </span>
                   )}
                 </button>
 
                 {notificationsOpen && (
-                  <div className="absolute right-0 mt-2 w-84 sm:w-[400px] rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/10 z-50 animate-in fade-in zoom-in-95 duration-100 overflow-hidden">
-                    <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 bg-slate-50/70">
-                      <span className="text-xs font-bold text-slate-900 uppercase tracking-wide">
-                        Notifications
-                      </span>
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-                        {pendingCount} {pendingCount === 1 ? "Pending" : "Pending"}
+                  <div className="absolute right-0 mt-2 w-88 sm:w-[460px] rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/15 z-50 animate-in fade-in zoom-in-95 duration-100 overflow-hidden">
+                    {/* Header with Title & Active Total Badge */}
+                    <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 bg-slate-50/80">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                          Executive Live Feed
+                        </span>
+                        {totalActiveCount > 0 && (
+                          <span className="rounded-full bg-rose-100 text-rose-700 px-2 py-0.5 text-[10px] font-bold">
+                            {totalActiveCount} Alert{totalActiveCount === 1 ? "" : "s"}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] font-medium text-slate-400">
+                        Real-time CRM Stream
                       </span>
                     </div>
 
-                    <div className="max-h-84 overflow-y-auto p-2 space-y-2">
-                      {notifications.length === 0 ? (
-                        <div className="py-8 text-center text-xs text-slate-400">
-                          <CheckCircle2 size={24} className="mx-auto mb-2 text-emerald-500" />
-                          No notifications
+                    {/* Category Filter Pills */}
+                    <div className="flex items-center gap-1 overflow-x-auto border-b border-slate-100 bg-slate-50/40 px-3 py-2 text-xs no-scrollbar">
+                      <button
+                        type="button"
+                        onClick={() => setNotifCategory("all")}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition whitespace-nowrap ${
+                          notifCategory === "all"
+                            ? "bg-[#1B59F8] text-white shadow-xs"
+                            : "text-slate-600 hover:bg-slate-200/60"
+                        }`}
+                      >
+                        All ({totalActiveCount})
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setNotifCategory("attendance")}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition flex items-center gap-1.5 whitespace-nowrap ${
+                          notifCategory === "attendance"
+                            ? "bg-violet-600 text-white shadow-xs"
+                            : "text-slate-600 hover:bg-slate-200/60"
+                        }`}
+                      >
+                        <span>Attendance</span>
+                        {pendingAttendanceCount > 0 && (
+                          <span
+                            className={`rounded-full px-1.5 py-0.2 text-[9px] font-bold ${
+                              notifCategory === "attendance"
+                                ? "bg-white/25 text-white"
+                                : "bg-violet-100 text-violet-700"
+                            }`}
+                          >
+                            {pendingAttendanceCount}
+                          </span>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setNotifCategory("billing")}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition flex items-center gap-1.5 whitespace-nowrap ${
+                          notifCategory === "billing"
+                            ? "bg-amber-600 text-white shadow-xs"
+                            : "text-slate-600 hover:bg-slate-200/60"
+                        }`}
+                      >
+                        <span>AMC Due</span>
+                        {pendingBillingCount > 0 && (
+                          <span
+                            className={`rounded-full px-1.5 py-0.2 text-[9px] font-bold ${
+                              notifCategory === "billing"
+                                ? "bg-white/25 text-white"
+                                : "bg-amber-100 text-amber-700"
+                            }`}
+                          >
+                            {pendingBillingCount}
+                          </span>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setNotifCategory("tickets")}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition flex items-center gap-1.5 whitespace-nowrap ${
+                          notifCategory === "tickets"
+                            ? "bg-rose-600 text-white shadow-xs"
+                            : "text-slate-600 hover:bg-slate-200/60"
+                        }`}
+                      >
+                        <span>Tickets</span>
+                        {pendingTicketsCount > 0 && (
+                          <span
+                            className={`rounded-full px-1.5 py-0.2 text-[9px] font-bold ${
+                              notifCategory === "tickets"
+                                ? "bg-white/25 text-white"
+                                : "bg-rose-100 text-rose-700"
+                            }`}
+                          >
+                            {pendingTicketsCount}
+                          </span>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setNotifCategory("tasks")}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition flex items-center gap-1.5 whitespace-nowrap ${
+                          notifCategory === "tasks"
+                            ? "bg-indigo-600 text-white shadow-xs"
+                            : "text-slate-600 hover:bg-slate-200/60"
+                        }`}
+                      >
+                        <span>Tasks</span>
+                        {pendingTasksCount > 0 && (
+                          <span
+                            className={`rounded-full px-1.5 py-0.2 text-[9px] font-bold ${
+                              notifCategory === "tasks"
+                                ? "bg-white/25 text-white"
+                                : "bg-indigo-100 text-indigo-700"
+                            }`}
+                          >
+                            {pendingTasksCount}
+                          </span>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Notification Feed List */}
+                    <div className="max-h-96 overflow-y-auto p-2.5 space-y-2">
+                      {filteredNotifs.length === 0 ? (
+                        <div className="py-10 text-center text-xs text-slate-400">
+                          <CheckCircle2 size={28} className="mx-auto mb-2 text-emerald-500" />
+                          <p className="font-semibold text-slate-700">No active alerts</p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            All pending actions are cleared for this category.
+                          </p>
                         </div>
                       ) : (
-                        notifications.map((notif, i) => {
-                          const isApproval = notif.type === "attendance_approval";
+                        filteredNotifs.map((notif, i) => {
+                          const isAttendance = notif.type === "attendance_approval" || notif.category === "attendance";
+                          const isAmc = notif.type === "amc_renewal" || notif.category === "billing";
+                          const isTicket = notif.type === "ticket_alert" || notif.category === "tickets";
+                          const isTask = notif.type === "task_alert" || notif.category === "tasks";
+
                           const isItemProcessing =
                             attendanceApprovalActionId === notif.id ||
                             localActionLoadingId === notif.id;
 
-                          if (!isApproval) {
+                          // 1. ATTENDANCE APPROVAL CARD
+                          if (isAttendance) {
                             return (
                               <div
                                 key={notif.id || i}
-                                className="p-2.5 text-xs hover:bg-slate-50 rounded-xl border border-slate-100"
+                                className="rounded-xl border border-slate-200/90 bg-white p-3 shadow-2xs hover:border-slate-300 transition text-xs space-y-2"
                               >
-                                <p className="font-semibold text-slate-800">{notif.title}</p>
-                                <p className="text-slate-500 text-[11px] mt-0.5">{notif.message}</p>
-                                <span className="text-[10px] text-slate-400 mt-1 block">
-                                  {notif.time || "Just now"}
-                                </span>
-                              </div>
-                            );
-                          }
+                                <div className="flex items-start justify-between gap-2">
+                                  <div>
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-violet-600 block">
+                                      Attendance / Remote Login
+                                    </span>
+                                    <p className="font-bold text-slate-900 mt-0.5">
+                                      {notif.employeeName || notif.title}
+                                      {notif.employeeCode && (
+                                        <span className="ml-1 text-slate-400 font-normal font-mono text-[11px]">
+                                          ({notif.employeeCode})
+                                        </span>
+                                      )}
+                                    </p>
+                                  </div>
 
-                          return (
-                            <div
-                              key={notif.id || i}
-                              className="rounded-xl border border-slate-200/90 bg-white p-3 shadow-2xs hover:border-slate-300 transition text-xs space-y-2"
-                            >
-                              {/* Header: Type and Status */}
-                              <div className="flex items-start justify-between gap-2">
-                                <div>
-                                  <span className="text-[10px] font-bold uppercase tracking-wider text-violet-600 block">
-                                    Attendance / Device Approval
-                                  </span>
-                                  <p className="font-bold text-slate-900 mt-0.5">
-                                    {notif.employeeName || notif.title}
-                                    {notif.employeeCode && (
-                                      <span className="ml-1 text-slate-400 font-normal font-mono text-[11px]">
-                                        ({notif.employeeCode})
+                                  {notif.status === "Approved" ? (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
+                                      <Check size={10} strokeWidth={3} />
+                                      Approved
+                                    </span>
+                                  ) : notif.status === "Rejected" ? (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700 border border-rose-200">
+                                      <X size={10} strokeWidth={3} />
+                                      Rejected
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 border border-amber-200">
+                                      <Clock size={10} />
+                                      Pending
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="rounded-lg bg-slate-50 p-2 text-[11px] text-slate-600 space-y-1 border border-slate-100">
+                                  <div className="flex items-center justify-between text-[10px] text-slate-500">
+                                    <span>Punch detected at {notif.time || "Today"}</span>
+                                    {notif.networkType && (
+                                      <span className="font-medium text-slate-700">
+                                        {notif.networkType}
                                       </span>
                                     )}
-                                  </p>
-                                </div>
+                                  </div>
 
-                                {notif.status === "Approved" ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
-                                    <Check size={10} strokeWidth={3} />
-                                    Approved
-                                  </span>
-                                ) : notif.status === "Rejected" ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700 border border-rose-200">
-                                    <X size={10} strokeWidth={3} />
-                                    Rejected
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 border border-amber-200">
-                                    <Clock size={10} />
-                                    Pending
-                                  </span>
-                                )}
-                              </div>
-
-                              {/* Details context box */}
-                              <div className="rounded-lg bg-slate-50 p-2 text-[11px] text-slate-600 space-y-1 border border-slate-100">
-                                <div className="flex items-center justify-between text-[10px] text-slate-500">
-                                  <span>Login detected at {notif.time || "Today"}</span>
-                                  {notif.networkType && (
-                                    <span className="font-medium text-slate-700">
-                                      {notif.networkType}
-                                    </span>
+                                  {notif.pcName && (
+                                    <p className="text-[10px] text-slate-500 font-mono">
+                                      Workstation: {notif.pcName}
+                                    </p>
                                   )}
+
+                                  <p className="text-slate-700">
+                                    <span className="text-slate-400">Reason:</span>{" "}
+                                    {notif.reason || "Login requires admin approval."}
+                                  </p>
                                 </div>
 
-                                {notif.pcName && (
-                                  <p className="text-[10px] text-slate-500 font-mono">
-                                    Workstation: {notif.pcName}
-                                  </p>
-                                )}
+                                {notif.status === "Pending" ? (
+                                  <div className="flex items-center justify-end gap-2 pt-0.5">
+                                    <button
+                                      type="button"
+                                      disabled={isItemProcessing}
+                                      onClick={() => openRejectModal(notif)}
+                                      className="h-7 px-3 rounded-lg border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 text-[11px] font-semibold transition disabled:opacity-50"
+                                    >
+                                      Reject
+                                    </button>
 
-                                <p className="text-slate-700">
-                                  <span className="text-slate-400">Reason:</span>{" "}
-                                  {notif.reason || "Login requires admin approval."}
-                                </p>
-                              </div>
-
-                              {/* State: Pending Actions vs Processed Audit */}
-                              {notif.status === "Pending" ? (
-                                <div className="flex items-center justify-end gap-2 pt-0.5">
-                                  <button
-                                    type="button"
-                                    disabled={isItemProcessing}
-                                    onClick={() => openRejectModal(notif)}
-                                    className="h-7 px-3 rounded-lg border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 text-[11px] font-semibold transition disabled:opacity-50"
-                                  >
-                                    Reject
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    disabled={isItemProcessing}
-                                    onClick={() => handleApprove(notif)}
-                                    className="inline-flex items-center gap-1 h-7 px-3.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 text-[11px] font-semibold transition disabled:opacity-50 shadow-xs"
-                                  >
-                                    {isItemProcessing ? (
-                                      <Clock size={11} className="animate-spin" />
-                                    ) : (
+                                    <button
+                                      type="button"
+                                      disabled={isItemProcessing}
+                                      onClick={() => handleApprove(notif)}
+                                      className="inline-flex items-center gap-1 h-7 px-3.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 text-[11px] font-semibold transition disabled:opacity-50 shadow-xs"
+                                    >
+                                      {isItemProcessing ? (
+                                        <Clock size={11} className="animate-spin" />
+                                      ) : (
+                                        <Check size={11} strokeWidth={3} />
+                                      )}
+                                      <span>Approve</span>
+                                    </button>
+                                  </div>
+                                ) : notif.status === "Approved" ? (
+                                  <div className="flex items-center justify-between text-[10px] text-slate-500 pt-0.5">
+                                    <span className="text-emerald-700 font-semibold flex items-center gap-1">
                                       <Check size={11} strokeWidth={3} />
-                                    )}
-                                    <span>Approve</span>
-                                  </button>
-                                </div>
-                              ) : notif.status === "Approved" ? (
-                                <div className="flex items-center justify-between text-[10px] text-slate-500 pt-0.5">
-                                  <span className="text-emerald-700 font-semibold flex items-center gap-1">
-                                    <Check size={11} strokeWidth={3} />
-                                    Approved by {notif.reviewedByName || "Admin"}
-                                  </span>
-                                  {notif.reviewedAt && (
-                                    <span className="font-mono text-slate-400">
-                                      {new Date(notif.reviewedAt).toLocaleTimeString([], {
-                                        hour: "2-digit",
-                                        minute: "2-digit",
-                                      })}
-                                    </span>
-                                  )}
-                                </div>
-                              ) : (
-                                <div className="text-[10px] text-slate-500 pt-0.5 space-y-0.5">
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-rose-700 font-semibold flex items-center gap-1">
-                                      <X size={11} strokeWidth={3} />
-                                      Rejected by {notif.reviewedByName || "Admin"}
+                                      Approved by {notif.reviewedByName || "Admin"}
                                     </span>
                                     {notif.reviewedAt && (
                                       <span className="font-mono text-slate-400">
@@ -625,13 +747,214 @@ export default function TopHeader({
                                       </span>
                                     )}
                                   </div>
-                                  {notif.reviewNote && (
-                                    <p className="text-slate-500 text-[10px] italic">
-                                      Note: "{notif.reviewNote}"
+                                ) : (
+                                  <div className="text-[10px] text-slate-500 pt-0.5 space-y-0.5">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-rose-700 font-semibold flex items-center gap-1">
+                                        <X size={11} strokeWidth={3} />
+                                        Rejected by {notif.reviewedByName || "Admin"}
+                                      </span>
+                                      {notif.reviewedAt && (
+                                        <span className="font-mono text-slate-400">
+                                          {new Date(notif.reviewedAt).toLocaleTimeString([], {
+                                            hour: "2-digit",
+                                            minute: "2-digit",
+                                          })}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {notif.reviewNote && (
+                                      <p className="text-slate-500 text-[10px] italic">
+                                        Note: "{notif.reviewNote}"
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
+
+                          // 2. AMC RENEWAL CARD
+                          if (isAmc) {
+                            const isOverdue = notif.status === "Overdue";
+                            return (
+                              <div
+                                key={notif.id || i}
+                                className="rounded-xl border border-slate-200/90 bg-white p-3 shadow-2xs hover:border-amber-300 transition text-xs space-y-2"
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div>
+                                    <span
+                                      className={`text-[10px] font-bold uppercase tracking-wider block ${
+                                        isOverdue ? "text-rose-600" : "text-amber-600"
+                                      }`}
+                                    >
+                                      {isOverdue ? "AMC Overdue" : "AMC Renewal Expiring"}
+                                    </span>
+                                    <p className="font-bold text-slate-900 mt-0.5">
+                                      {notif.title || notif.client}
                                     </p>
-                                  )}
+                                  </div>
+                                  <span
+                                    className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                      isOverdue
+                                        ? "bg-rose-50 text-rose-700 border border-rose-200"
+                                        : "bg-amber-50 text-amber-700 border border-amber-200"
+                                    }`}
+                                  >
+                                    {notif.status || "Pending"}
+                                  </span>
                                 </div>
-                              )}
+
+                                <div className="rounded-lg bg-slate-50 p-2 text-[11px] text-slate-600 space-y-1 border border-slate-100">
+                                  <div className="flex items-center justify-between text-[11px]">
+                                    <span className="font-semibold text-slate-800">{notif.product || "Software AMC"}</span>
+                                    <span className="font-bold text-emerald-700">{notif.amount || ""}</span>
+                                  </div>
+                                  <p className="text-[10px] text-slate-500">
+                                    Due Date: <span className="font-semibold text-slate-700">{notif.dueDate || notif.time}</span>
+                                  </p>
+                                </div>
+
+                                <div className="flex items-center justify-end pt-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setNotificationsOpen(false);
+                                      if (onNavigate) onNavigate("billing");
+                                    }}
+                                    className="inline-flex items-center gap-1 h-7 px-3 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-semibold transition shadow-2xs"
+                                  >
+                                    <span>Open Billing & Invoices</span>
+                                    <ArrowRight size={11} />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          // 3. SUPPORT TICKET CARD
+                          if (isTicket) {
+                            const isCritical = notif.priority === "Critical" || notif.priority === "High";
+                            return (
+                              <div
+                                key={notif.id || i}
+                                className="rounded-xl border border-slate-200/90 bg-white p-3 shadow-2xs hover:border-rose-300 transition text-xs space-y-2"
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div>
+                                    <span
+                                      className={`text-[10px] font-bold uppercase tracking-wider block ${
+                                        isCritical ? "text-rose-600" : "text-blue-600"
+                                      }`}
+                                    >
+                                      Support Ticket {notif.ticketCode ? `#${notif.ticketCode}` : ""}
+                                    </span>
+                                    <p className="font-bold text-slate-900 mt-0.5 truncate max-w-[280px]">
+                                      {notif.title}
+                                    </p>
+                                  </div>
+                                  <span
+                                    className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                      isCritical
+                                        ? "bg-rose-50 text-rose-700 border border-rose-200"
+                                        : "bg-blue-50 text-blue-700 border border-blue-200"
+                                    }`}
+                                  >
+                                    {notif.priority || "Normal"}
+                                  </span>
+                                </div>
+
+                                <div className="rounded-lg bg-slate-50 p-2 text-[11px] text-slate-600 space-y-0.5 border border-slate-100">
+                                  <p className="text-slate-800 font-medium">
+                                    Client: {notif.client || "Client"}
+                                  </p>
+                                  <p className="text-[10px] text-slate-500">
+                                    Raised: {notif.time || "Recent"} &bull; Status: {notif.status || "Open"}
+                                  </p>
+                                </div>
+
+                                <div className="flex items-center justify-end pt-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setNotificationsOpen(false);
+                                      if (onNavigate) onNavigate("tickets");
+                                    }}
+                                    className="inline-flex items-center gap-1 h-7 px-3 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-semibold transition shadow-2xs"
+                                  >
+                                    <span>View Ticket Desk</span>
+                                    <ArrowRight size={11} />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          // 4. TASK ALERT CARD
+                          if (isTask) {
+                            return (
+                              <div
+                                key={notif.id || i}
+                                className="rounded-xl border border-slate-200/90 bg-white p-3 shadow-2xs hover:border-indigo-300 transition text-xs space-y-2"
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div>
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 block">
+                                      Milestone Task {notif.taskCode ? `#${notif.taskCode}` : ""}
+                                    </span>
+                                    <p className="font-bold text-slate-900 mt-0.5 truncate max-w-[280px]">
+                                      {notif.title}
+                                    </p>
+                                  </div>
+                                  <span className="inline-flex rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700 border border-indigo-200">
+                                    {notif.status || "Active"}
+                                  </span>
+                                </div>
+
+                                <div className="rounded-lg bg-slate-50 p-2 text-[11px] text-slate-600 space-y-0.5 border border-slate-100">
+                                  <p className="text-slate-800">
+                                    Assignee: <span className="font-medium">{notif.assignedTo || "Team"}</span>
+                                  </p>
+                                  <p className="text-[10px] text-slate-500">
+                                    Due Date: {notif.dueDate || notif.time}
+                                  </p>
+                                </div>
+
+                                <div className="flex items-center justify-end pt-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setNotificationsOpen(false);
+                                      if (onNavigate) onNavigate("tasks");
+                                    }}
+                                    className="inline-flex items-center gap-1 h-7 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold transition shadow-2xs"
+                                  >
+                                    <span>Open Task Board</span>
+                                    <ArrowRight size={11} />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          // 5. DEFAULT GENERIC CARD
+                          return (
+                            <div
+                              key={notif.id || i}
+                              onClick={() => {
+                                if (notif.target && onNavigate) {
+                                  setNotificationsOpen(false);
+                                  onNavigate(notif.target);
+                                }
+                              }}
+                              className="p-2.5 text-xs hover:bg-slate-50 rounded-xl border border-slate-100 cursor-pointer transition"
+                            >
+                              <p className="font-semibold text-slate-800">{notif.title}</p>
+                              <p className="text-slate-500 text-[11px] mt-0.5">{notif.message}</p>
+                              <span className="text-[10px] text-slate-400 mt-1 block">
+                                {notif.time || "Just now"}
+                              </span>
                             </div>
                           );
                         })

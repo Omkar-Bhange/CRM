@@ -8,13 +8,9 @@ require("./admin");
 const { calculateTicketSla } = require("./slaConfig");
 const authenticateUser = require("./authMiddleware");
 
-const User =
-  mongoose.models.User ||
-  mongoose.model("User");
+const User = require("./models/User");
 
-const Task =
-  mongoose.models.Task ||
-  mongoose.model("Task");
+const Task = require("./models/Task");
 const { getISTDateBucket, getISTDateString } = require("./utils/dateUtils");
 const Project =
   mongoose.models.Project ||
@@ -148,192 +144,23 @@ async function syncProjectTaskProgress(projectId) {
   };
 }
 const router = express.Router();
-require("./agentSession"); // register models
+const AgentDailySummary = require("./models/AgentDailySummary");
 
-const AgentDailySummary =
-  mongoose.models.AgentDailySummary ||
-  mongoose.model("AgentDailySummary");
-// console.log("AgentDailySummary model:", !!AgentDailySummary);
 /* =========================================================
-   EMPLOYEE SCHEMA
+   EMPLOYEE NOTIFICATION MODEL
 ========================================================= */
+const EmployeeNotification = require("./models/EmployeeNotification");
+/* =========================================================
+   EMPLOYEE MODEL
+========================================================= */
+const Employee = require("./models/Employee");
 
-const employeeSchema = new mongoose.Schema(
-  {
-    userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
+/* =========================================================
+   EMPLOYEE DAILY NOTE MODEL
+========================================================= */
+const EmployeeDailyNote = require("./models/EmployeeDailyNote");
 
-    employeeCode: {
-      type: String,
-      required: [true, "Employee code is required."],
-      unique: true,
-      trim: true,
-      uppercase: true,
-    },
-
-    name: {
-      type: String,
-      required: [true, "Employee name is required."],
-      trim: true,
-    },
-
-    email: {
-      type: String,
-      required: [true, "Employee email is required."],
-      unique: true,
-      lowercase: true,
-      trim: true,
-    },
-
-    mobile: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    role: {
-      type: String,
-      required: [true, "Employee role is required."],
-      trim: true,
-    },
-
-    department: {
-      type: String,
-      enum: [
-        "Support",
-        "Development",
-        "Operations",
-        "Accounts",
-        "Management",
-        "Sales",
-        "Other",
-      ],
-      default: "Support",
-    },
-
-    joiningDate: {
-      type: String,
-      default: "",
-    },
-
-    status: {
-      type: String,
-      enum: [
-        "Free",
-        "Working",
-        "Break",
-        "Leave",
-        "Offline",
-        "Inactive",
-      ],
-      default: "Free",
-    },
-
-
-
-
-    currentTask: {
-      type: String,
-      default: "Available for assignment",
-      trim: true,
-    },
-
-    // NEW: Active task reference
-    currentTaskId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Task",
-      default: null,
-    },
-    currentTicketId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "SupportTicket",
-      default: null,
-    },
-
-    currentTaskCode: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    currentTaskTitle: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    currentClient: {
-      type: String,
-      default: "—",
-      trim: true,
-    },
-
-    currentProject: {
-      type: String,
-      default: "—",
-      trim: true,
-    },
-
-    // NEW: When the employee started the active task
-    currentTaskStartedAt: {
-      type: Date,
-      default: null,
-    },
-
-
-    loginTime: {
-      type: Date,
-      default: null,
-    },
-
-    logoutTime: {
-      type: Date,
-      default: null,
-    },
-
-    activeMinutes: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-
-    openTasks: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-
-    completedToday: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-
-    lastActivityAt: {
-      type: Date,
-      default: null,
-    },
-
-    isActive: {
-      type: Boolean,
-      default: true,
-    },
-  },
-  {
-    timestamps: true,
-    collection: "employees",
-  }
-);
-
-const Employee =
-  mongoose.models.Employee ||
-  mongoose.model("Employee", employeeSchema);
-
-const SupportTicket =
-  mongoose.models.SupportTicket;
+const SupportTicket = require("./models/SupportTicket");
 
 /* =========================================================
    HELPERS
@@ -1062,7 +889,7 @@ router.get("/dashboard", async (req, res, next) => {
 
     //const Task = mongoose.models.Task;
     const SupportTicket = mongoose.models.SupportTicket;
-    const Attendance = mongoose.models.Attendance;
+    const Attendance = mongoose.models.Attendance || require("./models/Attendance");
     //  const ActivityLog =
     // mongoose.models.ActivityLog || mongoose.model("ActivityLog");
     // ----- IST day bucket (matches agent_daily_summary) -----
@@ -1254,6 +1081,164 @@ router.get("/my-tickets", async (req, res, next) => {
     return res.json({
       success: true,
       tickets,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/* =========================================================
+   EMPLOYEE CLIENTS BRIEF (FOR QUICK TICKET CREATION)
+   GET /api/employee/clients-brief
+========================================================= */
+router.get("/clients-brief", async (req, res, next) => {
+  try {
+    if (req.user.role !== "employee") {
+      return res.status(403).json({ success: false, message: "Employee account is required." });
+    }
+    const Client = mongoose.models.Client;
+    if (!Client) {
+      return res.json({ success: true, clients: [] });
+    }
+    const clients = await Client.find({ isDeleted: { $ne: true } }, {
+      _id: 1,
+      companyName: 1,
+      clientCode: 1,
+      contactPerson: 1,
+      mobile: 1,
+      email: 1,
+      products: 1,
+      amcStatus: 1,
+      amcValidUntil: 1,
+    }).sort({ companyName: 1 }).lean();
+
+    return res.json({
+      success: true,
+      clients: clients.map((c) => ({
+        id: c._id,
+        _id: c._id,
+        companyName: c.companyName || "Unknown Client",
+        clientCode: c.clientCode || "",
+        contactPerson: c.contactPerson || "",
+        mobile: c.mobile || "",
+        email: c.email || "",
+        products: (c.products || []).map((p) => ({
+          id: p._id,
+          productName: p.productName,
+          status: p.status,
+        })),
+        amcStatus: c.amcStatus || "Active",
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/* =========================================================
+   CREATE QUICK TICKET BY EMPLOYEE
+   POST /api/employee/my-tickets
+========================================================= */
+router.post("/my-tickets", async (req, res, next) => {
+  try {
+    if (req.user.role !== "employee") {
+      return res.status(403).json({ success: false, message: "Employee account is required." });
+    }
+    const employee = await Employee.findOne({ userId: req.user._id });
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee profile not found." });
+    }
+
+    const {
+      title,
+      description,
+      clientId,
+      clientName,
+      contactPerson,
+      contactMobile,
+      contactEmail,
+      productName,
+      module,
+      priority = "Medium",
+      source = "Phone Call",
+      dueDate,
+    } = req.body;
+
+    if (!title || !String(title).trim()) {
+      return res.status(400).json({ success: false, message: "Ticket title is required." });
+    }
+
+    const SupportTicket = mongoose.models.SupportTicket;
+    const Client = mongoose.models.Client;
+
+    let resolvedClientName = clientName || "General Client";
+    let resolvedClientId = clientId;
+
+    if (clientId && mongoose.Types.ObjectId.isValid(clientId)) {
+      const clientDoc = await Client.findById(clientId).lean();
+      if (clientDoc) {
+        resolvedClientName = clientDoc.companyName || resolvedClientName;
+      }
+    }
+
+    const count = await SupportTicket.countDocuments();
+    const ticketNo = `TKT-${1000 + count + 1}`;
+    const ticketCode = ticketNo;
+
+    const now = new Date();
+    const createdTicket = await SupportTicket.create({
+      ticketNo,
+      ticketCode,
+      title: String(title).trim(),
+      description: String(description || title).trim(),
+      clientId: resolvedClientId || null,
+      client: resolvedClientName,
+      companyName: resolvedClientName,
+      contactPerson: contactPerson || "",
+      contactMobile: contactMobile || "",
+      contactEmail: contactEmail || "",
+      product: productName || "General Support",
+      productName: productName || "General Support",
+      module: module || "General",
+      priority,
+      status: "Assigned",
+      source: source || "Phone Call",
+      assignedEmployeeId: employee._id,
+      assignedEmployeeName: employee.name,
+      reportedBy: contactPerson || employee.name,
+      dueDate: dueDate || null,
+      createdAt: now,
+      updatedAt: now,
+      timeline: [
+        {
+          type: "created",
+          title: "Ticket logged by employee",
+          description: `Ticket created via ${source || "Employee Workspace"}.`,
+          createdAt: now,
+        },
+      ],
+      replies: [],
+      internalNotes: [],
+      attachments: [],
+      callLogs: [],
+    });
+
+    if (resolvedClientId && mongoose.Types.ObjectId.isValid(resolvedClientId)) {
+      const openCount = await SupportTicket.countDocuments({
+        clientId: resolvedClientId,
+        isDeleted: false,
+        status: { $nin: ["Resolved", "Closed"] },
+      });
+      await Client.updateOne({ _id: resolvedClientId }, { $set: { openTickets: openCount } });
+    }
+
+    const ticketObj = createdTicket.toObject();
+    ticketObj.sla = calculateTicketSla(ticketObj);
+
+    return res.status(201).json({
+      success: true,
+      message: "Ticket created successfully.",
+      ticket: ticketObj,
     });
   } catch (error) {
     next(error);
@@ -1762,7 +1747,7 @@ router.post(
 router.get("/tasks/dashboard", async (req, res, next) => {
   try {
     const SupportTicket = mongoose.models.SupportTicket;
-    const Attendance = mongoose.models.Attendance;
+    const Attendance = mongoose.models.Attendance || require("./models/Attendance");
     if (req.user.role !== "employee") return res.status(403).json({ success: false, message: "Employee account is required." });
     const employee = await Employee.findOne({ userId: req.user._id });
     const Task = mongoose.models.Task;
@@ -1870,6 +1855,36 @@ router.get("/tasks/dashboard", async (req, res, next) => {
     };
     const currentTask = withCurrentElapsed(activeTimer);
 
+    const statusPriority = {
+      "In Progress": 1,
+      "Paused": 2,
+      "Assigned": 3,
+      "Open": 4,
+      "Testing": 5,
+      "Under Review": 6,
+      "Pending": 7,
+      "Completed": 8,
+      "Cancelled": 9,
+      "Closed": 10,
+    };
+
+    const sortedTasks = (tasks || []).slice().sort((a, b) => {
+      const pA = statusPriority[a.status] || 5;
+      const pB = statusPriority[b.status] || 5;
+      if (pA !== pB) return pA - pB;
+      if (pA < 8) {
+        if (a.dueDate && b.dueDate) {
+          const diff = new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+          if (diff !== 0) return diff;
+        } else if (a.dueDate) return -1;
+        else if (b.dueDate) return 1;
+        return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+      }
+      const timeA = new Date(a.completedAt || a.updatedAt || a.createdAt || 0).getTime();
+      const timeB = new Date(b.completedAt || b.updatedAt || b.createdAt || 0).getTime();
+      return timeB - timeA;
+    });
+
     return res.json({
       success: true,
       data: {
@@ -1892,7 +1907,7 @@ router.get("/tasks/dashboard", async (req, res, next) => {
 
         activeTask: currentTask,
         activeTimer: currentTask,
-        tasks: tasks.map(withCurrentElapsed),
+        tasks: sortedTasks.map(withCurrentElapsed),
       },
     });
   } catch (error) { next(error); }
@@ -2844,9 +2859,174 @@ router.get("/agent/current-task/:employeeCode", async (req, res) => {
     });
   }
 });
-// ADD this helper
-const PRODUCTIVE_CATEGORIES = ["Development", "Database", "Design", "Documentation", "Office"];
-const UNPRODUCTIVE_CATEGORIES = ["Entertainment", "Social Media", "Games"];
+// ADD productivity classifier helper
+const PRODUCTIVE_CATEGORIES = [
+  "Development",
+  "Database",
+  "Remote Support",
+  "Design",
+  "Documentation",
+  "Office",
+  "File Management",
+  "Communication",
+  "Utility",
+];
+
+const UNPRODUCTIVE_CATEGORIES = [
+  "Entertainment",
+  "Social Media",
+  "Games",
+];
+
+function resolveApplicationCategoryAndProductivity(appInput, windowTitleInput, explicitCategory) {
+  const app = String(appInput || "").trim().toLowerCase();
+  const title = String(windowTitleInput || "").trim().toLowerCase();
+  const cat = String(explicitCategory || "").trim();
+
+  // 1. Remote Support tools (UltraViewer, AnyDesk, TeamViewer, RustDesk, RDP, etc.)
+  if (
+    app.includes("ultraviewer") ||
+    app.includes("anydesk") ||
+    app.includes("teamviewer") ||
+    app.includes("rustdesk") ||
+    app.includes("mstsc") ||
+    app.includes("remote desktop") ||
+    app.includes("zoho assist") ||
+    app.includes("supremo") ||
+    app.includes("ammyy") ||
+    app.includes("vnc") ||
+    title.includes("ultraviewer") ||
+    title.includes("anydesk") ||
+    title.includes("teamviewer") ||
+    title.includes("rustdesk")
+  ) {
+    return { category: "Remote Support", productivity: "Productive" };
+  }
+
+  // 2. Database tools (SSMS, SQL Server Management Studio, DBeaver, pgAdmin, MySQL Workbench, etc.)
+  if (
+    app.includes("ssms") ||
+    app.includes("sql server management studio") ||
+    app.includes("dbeaver") ||
+    app.includes("pgadmin") ||
+    app.includes("mysql") ||
+    app.includes("navicat") ||
+    app.includes("datagrip") ||
+    app.includes("heidisql") ||
+    app.includes("tableplus") ||
+    app.includes("compass") ||
+    app.includes("studio 3t") ||
+    app.includes("robo 3t") ||
+    app.includes("redis") ||
+    app.includes("sql") ||
+    title.includes("management studio") ||
+    title.includes("ssms") ||
+    title.includes(".sql") ||
+    title.includes("database")
+  ) {
+    return { category: "Database", productivity: "Productive" };
+  }
+
+  // 3. File Explorer / Windows Explorer / File Managers
+  if (
+    app === "explorer" ||
+    app === "explorer.exe" ||
+    app.includes("file explorer") ||
+    app.includes("windows explorer") ||
+    app.includes("total commander") ||
+    app.includes("7-zip") ||
+    app.includes("winrar") ||
+    app.includes("everything") ||
+    title.includes("file explorer")
+  ) {
+    return { category: "File Management", productivity: "Productive" };
+  }
+
+  // 4. Code Editors, IDEs & Developer Terminals
+  if (
+    app.includes("code") ||
+    app.includes("visual studio") ||
+    app.includes("devenv") ||
+    app.includes("cursor") ||
+    app.includes("sublime") ||
+    app.includes("notepad++") ||
+    app.includes("idea") ||
+    app.includes("webstorm") ||
+    app.includes("pycharm") ||
+    app.includes("phpstorm") ||
+    app.includes("android studio") ||
+    app.includes("eclipse") ||
+    app.includes("terminal") ||
+    app.includes("powershell") ||
+    app.includes("cmd") ||
+    app.includes("git") ||
+    app.includes("postman") ||
+    app.includes("insomnia") ||
+    app.includes("docker") ||
+    title.includes("visual studio code") ||
+    title.includes("cursor")
+  ) {
+    return { category: "Development", productivity: "Productive" };
+  }
+
+  // 5. Office, Documents & Design
+  if (
+    app.includes("winword") ||
+    app.includes("word") ||
+    app.includes("excel") ||
+    app.includes("powerpnt") ||
+    app.includes("powerpoint") ||
+    app.includes("onenote") ||
+    app.includes("acrobat") ||
+    app.includes("pdf") ||
+    app.includes("figma") ||
+    app.includes("photoshop") ||
+    app.includes("illustrator") ||
+    app.includes("canva")
+  ) {
+    return { category: "Office", productivity: "Productive" };
+  }
+
+  // 6. Collaboration & Communication
+  if (
+    app.includes("teams") ||
+    app.includes("slack") ||
+    app.includes("zoom") ||
+    app.includes("skype") ||
+    app.includes("meet")
+  ) {
+    return { category: "Communication", productivity: "Productive" };
+  }
+
+  // 7. Entertainment, Social Media & Games (Unproductive)
+  if (
+    app.includes("netflix") ||
+    app.includes("spotify") ||
+    app.includes("steam") ||
+    app.includes("game") ||
+    title.includes("youtube") ||
+    title.includes("facebook") ||
+    title.includes("instagram") ||
+    title.includes("twitter") ||
+    title.includes("tiktok") ||
+    title.includes("netflix")
+  ) {
+    return { category: "Entertainment", productivity: "Unproductive" };
+  }
+
+  // 8. Explicit category fallback
+  if (cat && cat !== "Other" && cat !== "General") {
+    const isProd = PRODUCTIVE_CATEGORIES.includes(cat);
+    const isUnprod = UNPRODUCTIVE_CATEGORIES.includes(cat);
+    return {
+      category: cat,
+      productivity: isProd ? "Productive" : isUnprod ? "Unproductive" : "Neutral",
+    };
+  }
+
+  // Default fallback for general work apps
+  return { category: "Office", productivity: "Productive" };
+}
 
 function classifyProductivity(category) {
   if (PRODUCTIVE_CATEGORIES.includes(category)) return "Productive";
@@ -2872,27 +3052,35 @@ router.get("/time-log/activity", authenticateUser, async (req, res, next) => {
 
     res.json({
       success: true,
-      data: logs.map((log) => ({
-        id: log._id,
-        capturedAt: log.lastSeen || log.firstSeen || null,
-        application: log.application,
-        windowTitle: log.lastWindowTitle || "",
-        durationSeconds: Number(log.totalSeconds || 0),
-        sessionCount: Number(log.sessionCount || 0),
-        category: log.category,
-        activity: log.activity,
-        project: log.project,
-        client: log.client,
-        taskId: log.taskId || null,
-        taskCode: log.taskCode || "",
-        taskTitle: log.taskTitle || "",
-        taskStatus: log.taskStatus || "",
-        ticketId: log.ticketId || null,
-        ticketCode: log.ticketCode || "",
-        firstSeen: log.firstSeen || null,
-        lastSeen: log.lastSeen || null,
-        pcName: log.pcName || "",
-      })),
+      data: logs.map((log) => {
+        const resolved = resolveApplicationCategoryAndProductivity(
+          log.application,
+          log.lastWindowTitle,
+          log.category
+        );
+        return {
+          id: log._id,
+          capturedAt: log.lastSeen || log.firstSeen || null,
+          application: log.application,
+          windowTitle: log.lastWindowTitle || "",
+          durationSeconds: Number(log.totalSeconds || 0),
+          sessionCount: Number(log.sessionCount || 0),
+          category: resolved.category,
+          productivity: resolved.productivity,
+          activity: log.activity || (resolved.productivity === "Unproductive" ? "Idle" : "Active"),
+          project: log.project,
+          client: log.client,
+          taskId: log.taskId || null,
+          taskCode: log.taskCode || "",
+          taskTitle: log.taskTitle || "",
+          taskStatus: log.taskStatus || "",
+          ticketId: log.ticketId || null,
+          ticketCode: log.ticketCode || "",
+          firstSeen: log.firstSeen || null,
+          lastSeen: log.lastSeen || null,
+          pcName: log.pcName || "",
+        };
+      }),
     });
   } catch (err) {
     next(err);
@@ -2920,29 +3108,38 @@ router.get("/time-log/sessions", authenticateUser, async (req, res, next) => {
       .lean();
     res.json({
       success: true,
-      data: logs.map((log) => ({
-        id: log._id,
+      data: logs.map((log) => {
+        const resolved = resolveApplicationCategoryAndProductivity(
+          log.application,
+          log.lastWindowTitle,
+          log.category
+        );
+        return {
+          id: log._id,
 
-        // Main session title
-        sessionTitle: log.taskTitle || log.application,
+          // Main session title
+          sessionTitle: log.taskTitle || log.application,
 
-        // Task information
-        taskTitle: log.taskTitle || "No task assigned",
-        taskCode: log.taskCode || "",
+          // Task information
+          taskTitle: log.taskTitle || "No task assigned",
+          taskCode: log.taskCode || "",
 
-        // Additional info
-        project: log.project || "",
-        client: log.client || "",
-        applicationName: log.application,
-        lastWindowTitle: log.lastWindowTitle || "",
-        // Timing
-        startedAt: log.firstSeen,
-        endedAt: log.lastSeen,
-        durationSeconds: log.totalSeconds || 0,
+          // Additional info
+          project: log.project || "",
+          client: log.client || "",
+          applicationName: log.application,
+          category: resolved.category,
+          productivity: resolved.productivity,
+          lastWindowTitle: log.lastWindowTitle || "",
+          // Timing
+          startedAt: log.firstSeen,
+          endedAt: log.lastSeen,
+          durationSeconds: log.totalSeconds || 0,
 
-        // Status
-        status: "Completed",
-      }))
+          // Status
+          status: "Completed",
+        };
+      })
     });
   } catch (error) {
     next(error);
@@ -2958,6 +3155,7 @@ router.get("/time-log/today", authenticateUser, async (req, res, next) => {
   try {
     const user = req.user;
     const todayBucket = getISTDateBucket(new Date());
+    const todayDateString = getISTDateString(new Date());
 
     // Load employee profile linked to the logged-in user
     const employeeProfile = await Employee.findOne({ userId: user._id });
@@ -2971,10 +3169,16 @@ router.get("/time-log/today", authenticateUser, async (req, res, next) => {
 
     const employeeCode = employeeProfile.employeeCode;
 
-    const records = await AgentDailySummary.find({
-      employeeCode,
-      date: todayBucket,
-    }).sort({ totalSeconds: -1 });
+    const [records, dailyNotes] = await Promise.all([
+      AgentDailySummary.find({
+        employeeCode,
+        date: todayBucket,
+      }).sort({ totalSeconds: -1 }),
+      EmployeeDailyNote.find({
+        employeeId: employeeProfile._id,
+        date: todayDateString,
+      }).sort({ createdAt: 1 }),
+    ]);
 
     const totalTrackedSeconds = records.reduce(
       (sum, r) => sum + Number(r.totalSeconds || 0),
@@ -2986,21 +3190,28 @@ router.get("/time-log/today", authenticateUser, async (req, res, next) => {
       0
     );
 
-    const applications = records.map((r) => ({
-      applicationName: r.application,
-      category: r.category || "Other",
-      totalSeconds: r.totalSeconds || 0,
-      productivity: classifyProductivity(r.category),
-      percentage:
-        totalTrackedSeconds > 0
-          ? Math.round((r.totalSeconds / totalTrackedSeconds) * 100)
-          : 0,
-      project: r.project || "",
-      client: r.client || "",
-      sessionCount: r.sessionCount || 0,
-      lastWindowTitle: r.lastWindowTitle || "",
-      lastSeen: r.lastSeen,
-    }));
+    const applications = records.map((r) => {
+      const resolved = resolveApplicationCategoryAndProductivity(
+        r.application,
+        r.lastWindowTitle,
+        r.category
+      );
+      return {
+        applicationName: r.application,
+        category: resolved.category,
+        totalSeconds: r.totalSeconds || 0,
+        productivity: resolved.productivity,
+        percentage:
+          totalTrackedSeconds > 0
+            ? Math.round((r.totalSeconds / totalTrackedSeconds) * 100)
+            : 0,
+        project: r.project || "",
+        client: r.client || "",
+        sessionCount: r.sessionCount || 0,
+        lastWindowTitle: r.lastWindowTitle || "",
+        lastSeen: r.lastSeen,
+      };
+    });
 
     const latest =
       records.length > 0
@@ -3026,7 +3237,259 @@ router.get("/time-log/today", authenticateUser, async (req, res, next) => {
           lastSyncAt: latest?.lastSeen || null,
         },
         applications,
+        notes: dailyNotes.map((n) => ({
+          id: n._id,
+          _id: n._id,
+          text: n.text,
+          completed: !!n.completed,
+          date: n.date,
+          createdAt: n.createdAt,
+          updatedAt: n.updatedAt,
+        })),
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/* =========================================================
+   EMPLOYEE TIME LOG DAILY NOTES CRUD API
+   GET    /api/employee/time-log/notes
+   POST   /api/employee/time-log/notes
+   PATCH  /api/employee/time-log/notes/:id
+   PUT    /api/employee/time-log/notes/:id
+   DELETE /api/employee/time-log/notes/:id
+   ========================================================= */
+
+router.get("/time-log/notes", authenticateUser, async (req, res, next) => {
+  try {
+    const employee = await Employee.findOne({ userId: req.user._id });
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee profile not found",
+      });
+    }
+
+    const queryDate = String(req.query.date || "").trim() || getISTDateString(new Date());
+    const notes = await EmployeeDailyNote.find({
+      employeeId: employee._id,
+      date: queryDate,
+    }).sort({ createdAt: 1 });
+
+    res.json({
+      success: true,
+      data: notes.map((n) => ({
+        id: n._id,
+        _id: n._id,
+        text: n.text,
+        completed: !!n.completed,
+        date: n.date,
+        createdAt: n.createdAt,
+        updatedAt: n.updatedAt,
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/time-log/notes", authenticateUser, async (req, res, next) => {
+  try {
+    const employee = await Employee.findOne({ userId: req.user._id });
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee profile not found",
+      });
+    }
+
+    const text = String(req.body?.text || "").trim();
+    if (!text) {
+      return res.status(400).json({
+        success: false,
+        message: "Note text is required.",
+      });
+    }
+
+    const date = String(req.body?.date || "").trim() || getISTDateString(new Date());
+
+    const newNote = new EmployeeDailyNote({
+      employeeId: employee._id,
+      employeeCode: employee.employeeCode,
+      userId: req.user._id,
+      date,
+      text,
+      completed: false,
+    });
+
+    await newNote.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Note added successfully",
+      data: {
+        id: newNote._id,
+        _id: newNote._id,
+        text: newNote.text,
+        completed: newNote.completed,
+        date: newNote.date,
+        createdAt: newNote.createdAt,
+        updatedAt: newNote.updatedAt,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.patch("/time-log/notes/:id", authenticateUser, async (req, res, next) => {
+  try {
+    const employee = await Employee.findOne({ userId: req.user._id });
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee profile not found",
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid note ID format.",
+      });
+    }
+
+    const note = await EmployeeDailyNote.findOne({
+      _id: req.params.id,
+      employeeId: employee._id,
+    });
+
+    if (!note) {
+      return res.status(404).json({
+        success: false,
+        message: "Note not found.",
+      });
+    }
+
+    if (typeof req.body?.completed === "boolean") {
+      note.completed = req.body.completed;
+    }
+    if (typeof req.body?.text === "string" && req.body.text.trim()) {
+      note.text = req.body.text.trim();
+    }
+    note.updatedAt = new Date();
+
+    await note.save();
+
+    res.json({
+      success: true,
+      message: "Note updated successfully",
+      data: {
+        id: note._id,
+        _id: note._id,
+        text: note.text,
+        completed: note.completed,
+        date: note.date,
+        createdAt: note.createdAt,
+        updatedAt: note.updatedAt,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put("/time-log/notes/:id", authenticateUser, async (req, res, next) => {
+  try {
+    const employee = await Employee.findOne({ userId: req.user._id });
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee profile not found",
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid note ID format.",
+      });
+    }
+
+    const note = await EmployeeDailyNote.findOne({
+      _id: req.params.id,
+      employeeId: employee._id,
+    });
+
+    if (!note) {
+      return res.status(404).json({
+        success: false,
+        message: "Note not found.",
+      });
+    }
+
+    if (typeof req.body?.completed === "boolean") {
+      note.completed = req.body.completed;
+    }
+    if (typeof req.body?.text === "string" && req.body.text.trim()) {
+      note.text = req.body.text.trim();
+    }
+    note.updatedAt = new Date();
+
+    await note.save();
+
+    res.json({
+      success: true,
+      message: "Note updated successfully",
+      data: {
+        id: note._id,
+        _id: note._id,
+        text: note.text,
+        completed: note.completed,
+        date: note.date,
+        createdAt: note.createdAt,
+        updatedAt: note.updatedAt,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete("/time-log/notes/:id", authenticateUser, async (req, res, next) => {
+  try {
+    const employee = await Employee.findOne({ userId: req.user._id });
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee profile not found",
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid note ID format.",
+      });
+    }
+
+    const note = await EmployeeDailyNote.findOneAndDelete({
+      _id: req.params.id,
+      employeeId: employee._id,
+    });
+
+    if (!note) {
+      return res.status(404).json({
+        success: false,
+        message: "Note not found.",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Note deleted successfully",
     });
   } catch (error) {
     next(error);
@@ -3071,4 +3534,383 @@ router.get("/tasks/current", authenticateUser, async (req, res, next) => {
     next(error);
   }
 });
+
+/* =========================================================
+   EMPLOYEE NOTIFICATIONS SYNC & HELPERS
+========================================================= */
+
+async function syncEmployeeNotifications(employeeId, userId) {
+  try {
+    if (!employeeId || !mongoose.Types.ObjectId.isValid(employeeId)) return;
+
+    const todayStr = getISTDateString ? getISTDateString(new Date()) : new Date().toISOString().slice(0, 10);
+    const existing = await EmployeeNotification.find({ employeeId }).select("dedupKey").lean();
+    const existingKeys = new Set(existing.map((n) => n.dedupKey).filter(Boolean));
+
+    const toInsert = [];
+
+    // 1. Sync Assigned Tasks
+    const TaskModel = mongoose.models.Task;
+    if (TaskModel) {
+      const activeTasks = await TaskModel.find({
+        assignedEmployeeId: employeeId,
+        isDeleted: false,
+      }).sort({ createdAt: -1 }).limit(30).lean();
+
+      for (const t of activeTasks) {
+        // Task Assigned
+        const assignKey = `task-assigned-${t._id}`;
+        if (!existingKeys.has(assignKey)) {
+          toInsert.push({
+            employeeId,
+            userId,
+            type: "TASK_ASSIGNED",
+            title: `Task Assigned: ${t.taskCode || "New Task"}`,
+            message: `You were assigned "${t.title || "Untitled"}" (${t.priority || "Medium"} priority).`,
+            priority: t.priority === "Critical" || t.priority === "High" ? "high" : "normal",
+            entityType: "task",
+            entityId: t._id,
+            entityCode: t.taskCode || "",
+            navigationTarget: "tasks",
+            isRead: false,
+            dedupKey: assignKey,
+            createdAt: t.createdAt || new Date(),
+          });
+          existingKeys.add(assignKey);
+        }
+
+        // Overdue check
+        if (t.dueDate && !["Completed", "Closed", "Cancelled"].includes(t.status)) {
+          const dueStr = typeof t.dueDate === "string" ? t.dueDate.slice(0, 10) : new Date(t.dueDate).toISOString().slice(0, 10);
+          if (dueStr < todayStr) {
+            const overdueKey = `task-overdue-${t._id}-${dueStr}`;
+            if (!existingKeys.has(overdueKey)) {
+              toInsert.push({
+                employeeId,
+                userId,
+                type: "TASK_OVERDUE",
+                title: `Task Overdue: ${t.taskCode || "Task"}`,
+                message: `Task "${t.title}" was due on ${dueStr} and requires urgent action.`,
+                priority: "urgent",
+                entityType: "task",
+                entityId: t._id,
+                entityCode: t.taskCode || "",
+                navigationTarget: "tasks",
+                isRead: false,
+                dedupKey: overdueKey,
+                createdAt: new Date(),
+              });
+              existingKeys.add(overdueKey);
+            }
+          } else if (dueStr === todayStr) {
+            const dueTodayKey = `task-due-today-${t._id}-${dueStr}`;
+            if (!existingKeys.has(dueTodayKey)) {
+              toInsert.push({
+                employeeId,
+                userId,
+                type: "TASK_DUE_SOON",
+                title: `Task Due Today: ${t.taskCode || "Task"}`,
+                message: `Task "${t.title}" is due today.`,
+                priority: "high",
+                entityType: "task",
+                entityId: t._id,
+                entityCode: t.taskCode || "",
+                navigationTarget: "tasks",
+                isRead: false,
+                dedupKey: dueTodayKey,
+                createdAt: new Date(),
+              });
+              existingKeys.add(dueTodayKey);
+            }
+          }
+        }
+      }
+    }
+
+    // 2. Sync Assigned Support Tickets
+    const SupportTicketModel = mongoose.models.SupportTicket;
+    if (SupportTicketModel) {
+      const tickets = await SupportTicketModel.find({
+        assignedEmployeeId: employeeId,
+        isDeleted: false,
+      }).sort({ createdAt: -1 }).limit(30).lean();
+
+      for (const tkt of tickets) {
+        // Ticket assigned
+        const tktAssignKey = `ticket-assigned-${tkt._id}`;
+        if (!existingKeys.has(tktAssignKey)) {
+          toInsert.push({
+            employeeId,
+            userId,
+            type: "TICKET_ASSIGNED",
+            title: `Ticket Assigned: ${tkt.ticketNo || "Support Ticket"}`,
+            message: `New support ticket for "${tkt.client || "Client"}": ${tkt.title}`,
+            priority: tkt.priority === "Critical" ? "urgent" : "normal",
+            entityType: "ticket",
+            entityId: tkt._id,
+            entityCode: tkt.ticketNo || "",
+            navigationTarget: "tickets",
+            isRead: false,
+            dedupKey: tktAssignKey,
+            createdAt: tkt.createdAt || new Date(),
+          });
+          existingKeys.add(tktAssignKey);
+        }
+
+        // SLA Check
+        if (typeof calculateTicketSla === "function") {
+          const sla = calculateTicketSla(tkt);
+          if (sla && !["Resolved", "Verified", "Closed"].includes(tkt.status)) {
+            if (sla.firstResponseStatus === "Overdue") {
+              const slaKey = `ticket-sla-resp-${tkt._id}-overdue`;
+              if (!existingKeys.has(slaKey)) {
+                toInsert.push({
+                  employeeId,
+                  userId,
+                  type: "TICKET_SLA_WARNING",
+                  title: `SLA Alert: ${tkt.ticketNo}`,
+                  message: `First Response SLA has breached for "${tkt.title}". Please reply immediately.`,
+                  priority: "urgent",
+                  entityType: "ticket",
+                  entityId: tkt._id,
+                  entityCode: tkt.ticketNo || "",
+                  navigationTarget: "tickets",
+                  isRead: false,
+                  dedupKey: slaKey,
+                  createdAt: new Date(),
+                });
+                existingKeys.add(slaKey);
+              }
+            } else if (sla.resolutionStatus === "Overdue") {
+              const slaResKey = `ticket-sla-res-${tkt._id}-overdue`;
+              if (!existingKeys.has(slaResKey)) {
+                toInsert.push({
+                  employeeId,
+                  userId,
+                  type: "TICKET_SLA_WARNING",
+                  title: `SLA Alert: ${tkt.ticketNo}`,
+                  message: `Resolution SLA has breached for "${tkt.title}".`,
+                  priority: "urgent",
+                  entityType: "ticket",
+                  entityId: tkt._id,
+                  entityCode: tkt.ticketNo || "",
+                  navigationTarget: "tickets",
+                  isRead: false,
+                  dedupKey: slaResKey,
+                  createdAt: new Date(),
+                });
+                existingKeys.add(slaResKey);
+              }
+            }
+          }
+        }
+
+        // Replies from client
+        if (Array.isArray(tkt.replies) && tkt.replies.length > 0) {
+          const clientReplies = tkt.replies.filter((r) => r.authorRole === "client");
+          if (clientReplies.length > 0) {
+            const lastReply = clientReplies[clientReplies.length - 1];
+            const replyKey = `ticket-reply-${tkt._id}-${lastReply._id || new Date(lastReply.createdAt).getTime()}`;
+            if (!existingKeys.has(replyKey)) {
+              toInsert.push({
+                employeeId,
+                userId,
+                type: "TICKET_REPLY",
+                title: `Client Reply: ${tkt.ticketNo}`,
+                message: `Client ${lastReply.authorName || "Customer"} replied: "${tkt.title}"`,
+                priority: "high",
+                entityType: "ticket",
+                entityId: tkt._id,
+                entityCode: tkt.ticketNo || "",
+                navigationTarget: "tickets",
+                isRead: false,
+                dedupKey: replyKey,
+                createdAt: lastReply.createdAt || new Date(),
+              });
+              existingKeys.add(replyKey);
+            }
+          }
+        }
+      }
+    }
+
+    if (toInsert.length > 0) {
+      await EmployeeNotification.insertMany(toInsert, { ordered: false }).catch(() => {});
+    }
+  } catch (err) {
+    console.error("Error in syncEmployeeNotifications:", err.message);
+  }
+}
+
+function formatEmployeeNotification(n) {
+  return {
+    _id: n._id,
+    id: n._id,
+    type: n.type,
+    title: n.title,
+    message: n.message,
+    priority: n.priority || "normal",
+    entityType: n.entityType || "other",
+    entityId: n.entityId,
+    entityCode: n.entityCode || "",
+    navigationTarget: n.navigationTarget || "dashboard",
+    isRead: Boolean(n.isRead),
+    readAt: n.readAt,
+    createdAt: n.createdAt,
+    metadata: n.metadata || {},
+  };
+}
+
+/* =========================================================
+   EMPLOYEE NOTIFICATIONS ENDPOINTS
+   GET /api/employee/notifications
+   PATCH /api/employee/notifications/:id/read
+   PATCH /api/employee/notifications/read-all
+   DELETE /api/employee/notifications/:id
+   DELETE /api/employee/notifications/clear-all
+========================================================= */
+
+router.get("/notifications", authenticateUser, async (req, res, next) => {
+  try {
+    const employee = await Employee.findOne({ userId: req.user._id });
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee not found." });
+    }
+
+    await syncEmployeeNotifications(employee._id, req.user._id);
+
+    const filter = String(req.query.filter || "all").toLowerCase();
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const skip = (page - 1) * limit;
+
+    const query = { employeeId: employee._id };
+    if (filter === "unread") {
+      query.isRead = false;
+    } else if (filter === "tasks") {
+      query.entityType = "task";
+    } else if (filter === "tickets") {
+      query.entityType = "ticket";
+    } else if (filter === "attendance") {
+      query.entityType = "attendance";
+    }
+
+    const [total, unreadCount, notifs] = await Promise.all([
+      EmployeeNotification.countDocuments(query),
+      EmployeeNotification.countDocuments({ employeeId: employee._id, isRead: false }),
+      EmployeeNotification.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+    ]);
+
+    res.json({
+      success: true,
+      notifications: notifs.map(formatEmployeeNotification),
+      unreadCount,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit) || 1,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch("/notifications/:id/read", authenticateUser, async (req, res, next) => {
+  try {
+    const employee = await Employee.findOne({ userId: req.user._id });
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee not found." });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ success: false, message: "Invalid notification ID." });
+    }
+
+    const notif = await EmployeeNotification.findOneAndUpdate(
+      { _id: req.params.id, employeeId: employee._id },
+      { $set: { isRead: true, readAt: new Date() } },
+      { new: true }
+    );
+
+    if (!notif) {
+      return res.status(404).json({ success: false, message: "Notification not found." });
+    }
+
+    const unreadCount = await EmployeeNotification.countDocuments({ employeeId: employee._id, isRead: false });
+
+    res.json({
+      success: true,
+      notification: formatEmployeeNotification(notif),
+      unreadCount,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch("/notifications/read-all", authenticateUser, async (req, res, next) => {
+  try {
+    const employee = await Employee.findOne({ userId: req.user._id });
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee not found." });
+    }
+
+    await EmployeeNotification.updateMany(
+      { employeeId: employee._id, isRead: false },
+      { $set: { isRead: true, readAt: new Date() } }
+    );
+
+    res.json({
+      success: true,
+      message: "All notifications marked as read.",
+      unreadCount: 0,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete("/notifications/:id", authenticateUser, async (req, res, next) => {
+  try {
+    const employee = await Employee.findOne({ userId: req.user._id });
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee not found." });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ success: false, message: "Invalid notification ID." });
+    }
+
+    await EmployeeNotification.findOneAndDelete({ _id: req.params.id, employeeId: employee._id });
+    const unreadCount = await EmployeeNotification.countDocuments({ employeeId: employee._id, isRead: false });
+
+    res.json({
+      success: true,
+      message: "Notification deleted.",
+      unreadCount,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete("/notifications/clear-all", authenticateUser, async (req, res, next) => {
+  try {
+    const employee = await Employee.findOne({ userId: req.user._id });
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "Employee not found." });
+    }
+
+    await EmployeeNotification.deleteMany({ employeeId: employee._id, isRead: true });
+    const unreadCount = await EmployeeNotification.countDocuments({ employeeId: employee._id, isRead: false });
+
+    res.json({
+      success: true,
+      message: "Read notifications cleared.",
+      unreadCount,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

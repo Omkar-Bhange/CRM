@@ -8,9 +8,9 @@ const authenticateUser = require("./authMiddleware");
 require("./admin");
 require("./employee");
 
-const Client = mongoose.model("Client");
-const Employee = mongoose.model("Employee");
-const User = mongoose.model("User");
+const Client = mongoose.models.Client || require("./models/Client");
+const Employee = require("./models/Employee");
+const User = require("./models/User");
 
 const documentUploadDirectory = path.join(__dirname, "uploads", "documents");
 if (!fs.existsSync(documentUploadDirectory)) {
@@ -65,189 +65,7 @@ const uploadDocument = multer({
 const router = express.Router();
 router.use(authenticateUser);
 
-const clientDocumentSchema = new mongoose.Schema(
-  {
-    documentCode: {
-      type: String,
-      default: "",
-      trim: true,
-      uppercase: true,
-      index: true,
-    },
-    clientId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Client",
-      required: true,
-      index: true,
-    },
-    clientCode: {
-      type: String,
-      required: true,
-      trim: true,
-      uppercase: true,
-      index: true,
-    },
-    clientName: {
-      type: String,
-      required: true,
-      trim: true,
-      index: true,
-    },
-    productId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Product",
-      default: null,
-      index: true,
-    },
-    productName: {
-      type: String,
-      default: "",
-      trim: true,
-      index: true,
-    },
-    category: {
-      type: String,
-      default: "General",
-      trim: true,
-      index: true,
-    },
-    documentType: {
-      type: String,
-      default: "Document",
-      trim: true,
-      index: true,
-    },
-    name: {
-      type: String,
-      required: true,
-      trim: true,
-      index: true,
-    },
-    description: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    fileName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    fileUrl: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    mimeType: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    size: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-    status: {
-      type: String,
-      enum: ["Requested", "Pending", "Verified", "Active", "Archived"],
-      default: "Pending",
-      index: true,
-    },
-    isRequest: {
-      type: Boolean,
-      default: false,
-    },
-    requestedAt: {
-      type: Date,
-      default: null,
-    },
-    uploadedById: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-      index: true,
-    },
-    uploadedByName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    uploadedByRole: {
-      type: String,
-      enum: ["admin", "employee", "client", "system"],
-      default: "admin",
-      index: true,
-    },
-    verifiedById: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
-    verifiedByName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    verifiedAt: {
-      type: Date,
-      default: null,
-    },
-    archivedById: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
-    archivedByName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    archivedAt: {
-      type: Date,
-      default: null,
-    },
-    createdBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
-    createdByName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    updatedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
-    updatedByName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    isDeleted: {
-      type: Boolean,
-      default: false,
-      index: true,
-    },
-    deletedAt: {
-      type: Date,
-      default: null,
-    },
-  },
-  {
-    timestamps: true,
-    collection: "clientdocuments",
-  }
-);
-
-clientDocumentSchema.index({ name: "text", category: "text", productName: "text", description: "text", clientName: "text", uploadedByName: "text" });
-
-const ClientDocument =
-  mongoose.models.ClientDocument ||
-  mongoose.model("ClientDocument", clientDocumentSchema);
+const ClientDocument = require("./models/ClientDocument");
 
 function getDocumentTypeLabel(mimeType, fileName) {
   const mime = String(mimeType || "").toLowerCase();
@@ -503,7 +321,19 @@ router.get("/:id/download", async (req, res, next) => {
       return res.redirect(fileUrl);
     }
 
-    return res.redirect(`${req.protocol}://${req.get("host")}${fileUrl}`);
+    const uploadsRoot = path.resolve(__dirname, "uploads");
+    const relativePart = fileUrl.replace(/^\/uploads\//, "");
+    const absolutePath = path.resolve(uploadsRoot, relativePart);
+
+    if (!absolutePath.startsWith(uploadsRoot) || !fs.existsSync(absolutePath)) {
+      return res.status(404).json({ success: false, message: "Document file not found on disk." });
+    }
+
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Type", document.mimeType || "application/octet-stream");
+    const safeName = String(document.fileName || document.name || "document").replace(/["\r\n]/g, "_");
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(safeName)}"`);
+    return res.sendFile(absolutePath);
   } catch (error) {
     next(error);
   }

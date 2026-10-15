@@ -1050,6 +1050,8 @@ export default function MyTasks() {
         const completedStatuses = [
             "Completed",
             "Resolved",
+            "Closed",
+            "Done",
         ];
 
         return tasks
@@ -1176,6 +1178,8 @@ export default function MyTasks() {
         const completedStatuses = [
             "Completed",
             "Resolved",
+            "Closed",
+            "Done",
         ];
 
         const activeTasks = filteredTasks

@@ -822,9 +822,14 @@ function TabButton({ active, onClick, icon: Icon, label, count }) {
 }
 
 function AttachmentFile({ attachment }) {
-  const fileUrl = attachment.fileUrl?.startsWith("http")
+  const token = getAuthToken();
+  let fileUrl = attachment.fileUrl?.startsWith("http")
     ? attachment.fileUrl
     : `${API_URL}${attachment.fileUrl}`;
+
+  if (token && !fileUrl.includes("token=")) {
+    fileUrl += (fileUrl.includes("?") ? "&" : "?") + `token=${encodeURIComponent(token)}`;
+  }
 
   return (
     <div className="group flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 transition hover:border-violet-200 hover:shadow-sm">

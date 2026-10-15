@@ -42,6 +42,7 @@ import TaskDetailsDrawer from "./TaskDetailsDrawer";
 import TaskStatusModal from "./TaskStatusModal";
 import TaskCreateModal from "./TaskCreateModal";
 import TaskEditModal from "./TaskEditModal";
+import ErrorBoundary from "../../components/ui/ErrorBoundary";
 
 function getStatusClasses(status) {
     if (status === "Completed") {
@@ -87,7 +88,7 @@ function parseAdminTaskDate(value) {
 }
 
 function isAdminTaskCompleted(task) {
-    return ["Completed", "Resolved", "Closed"].includes(task?.status);
+    return ["Completed", "Resolved", "Closed", "Done"].includes(task?.status);
 }
 
 function isAdminTaskOverdue(task) {
@@ -1195,68 +1196,85 @@ export default function Tasks({
             )}
 
             {/* TASK DETAILS DRAWER */}
-            <TaskDetailsDrawer
-                task={selectedTask}
-                isOpen={Boolean(selectedTask)}
-                onClose={() => setSelectedTask(null)}
-                onEditTask={(task) => {
-                    setEditingTask(task);
-                    setEditTaskOpen(true);
-                }}
-                onDeleteTask={handleDeleteTask}
-                onDirectStatusChange={handleDirectStatusChange}
-                onPromptStatus={handlePromptStatus}
-                onResumeTask={handleResumeTask}
-                onTaskUpdated={handleTaskUpdated}
-                employees={employees}
-                projects={projects}
-                getAuthToken={getAuthToken}
-            />
+            <ErrorBoundary level="drawer" moduleName="Task Details Drawer" onClose={() => setSelectedTask(null)}>
+                <TaskDetailsDrawer
+                    task={selectedTask}
+                    isOpen={Boolean(selectedTask)}
+                    onClose={() => setSelectedTask(null)}
+                    onEditTask={(task) => {
+                        setEditingTask(task);
+                        setEditTaskOpen(true);
+                    }}
+                    onDeleteTask={handleDeleteTask}
+                    onDirectStatusChange={handleDirectStatusChange}
+                    onPromptStatus={handlePromptStatus}
+                    onResumeTask={handleResumeTask}
+                    onTaskUpdated={handleTaskUpdated}
+                    employees={employees}
+                    projects={projects}
+                    getAuthToken={getAuthToken}
+                />
+            </ErrorBoundary>
 
             {/* STATUS TRANSITION MODAL (BLOCKED / COMPLETED / REOPEN) */}
-            <TaskStatusModal
-                isOpen={statusModalOpen}
-                task={statusModalTask}
-                targetStatus={statusModalTarget}
-                onClose={() => {
-                    setStatusModalOpen(false);
-                    setStatusModalTask(null);
-                }}
-                onSubmit={handleStatusModalSubmit}
-                loading={statusModalLoading}
-            />
+            <ErrorBoundary level="modal" moduleName="Task Status Dialog" onClose={() => {
+                setStatusModalOpen(false);
+                setStatusModalTask(null);
+            }}>
+                <TaskStatusModal
+                    isOpen={statusModalOpen}
+                    task={statusModalTask}
+                    targetStatus={statusModalTarget}
+                    onClose={() => {
+                        setStatusModalOpen(false);
+                        setStatusModalTask(null);
+                    }}
+                    onSubmit={handleStatusModalSubmit}
+                    loading={statusModalLoading}
+                />
+            </ErrorBoundary>
 
             {/* CREATE TASK MODAL */}
-            <TaskCreateModal
-                isOpen={createTaskOpen}
-                onClose={() => {
-                    setCreateTaskOpen(false);
-                    setPreselectedProject(null);
-                }}
-                initialProject={preselectedProject}
-                initialStatus={newTaskInitialStatus}
-                projects={projects}
-                employees={employees}
-                clients={clients}
-                products={products}
-                onTaskCreated={handleTaskCreated}
-                getAuthToken={getAuthToken}
-            />
+            <ErrorBoundary level="modal" moduleName="Create Task Dialog" onClose={() => {
+                setCreateTaskOpen(false);
+                setPreselectedProject(null);
+            }}>
+                <TaskCreateModal
+                    isOpen={createTaskOpen}
+                    onClose={() => {
+                        setCreateTaskOpen(false);
+                        setPreselectedProject(null);
+                    }}
+                    initialProject={preselectedProject}
+                    initialStatus={newTaskInitialStatus}
+                    projects={projects}
+                    employees={employees}
+                    clients={clients}
+                    products={products}
+                    onTaskCreated={handleTaskCreated}
+                    getAuthToken={getAuthToken}
+                />
+            </ErrorBoundary>
 
             {/* EDIT TASK MODAL */}
-            <TaskEditModal
-                isOpen={editTaskOpen}
-                task={editingTask}
-                onClose={() => {
-                    setEditTaskOpen(false);
-                    setEditingTask(null);
-                }}
-                projects={projects}
-                employees={employees}
-                clients={clients}
-                onTaskUpdated={handleTaskUpdated}
-                getAuthToken={getAuthToken}
-            />
+            <ErrorBoundary level="modal" moduleName="Edit Task Dialog" onClose={() => {
+                setEditTaskOpen(false);
+                setEditingTask(null);
+            }}>
+                <TaskEditModal
+                    isOpen={editTaskOpen}
+                    task={editingTask}
+                    onClose={() => {
+                        setEditTaskOpen(false);
+                        setEditingTask(null);
+                    }}
+                    projects={projects}
+                    employees={employees}
+                    clients={clients}
+                    onTaskUpdated={handleTaskUpdated}
+                    getAuthToken={getAuthToken}
+                />
+            </ErrorBoundary>
 
             {/* CONTEXT MENU PORTAL */}
             {taskMenu.task &&

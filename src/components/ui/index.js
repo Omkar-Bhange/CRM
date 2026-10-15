@@ -7,4 +7,5 @@ export { default as Tabs } from "./Tabs";
 export { default as EmptyState } from "./EmptyState";
 export { default as LoadingState } from "./LoadingState";
 export { default as ProgressBar } from "./ProgressBar";
+export { default as ErrorBoundary } from "./ErrorBoundary";
 

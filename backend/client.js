@@ -55,99 +55,16 @@ const {
 
 const authenticateUser = require("./authMiddleware");
 
-const Client = mongoose.model("Client");
-const SupportTicket = mongoose.models.SupportTicket;
-const ActivityLog = mongoose.models.ActivityLog;
-const AmcContract = mongoose.models.AmcContract;
-const AmcInvoice = mongoose.models.AmcInvoice;
-const AmcPayment = mongoose.models.AmcPayment;
-const ClientAmcRequest = mongoose.models.ClientAmcRequest;
-const AppCounter = mongoose.models.AppCounter;
+const Client = require("./models/Client");
+const SupportTicket = require("./models/SupportTicket");
+const ActivityLog = require("./models/ActivityLog");
+const AmcContract = require("./models/AmcContract");
+const AmcInvoice = require("./models/AmcInvoice");
+const AmcPayment = require("./models/AmcPayment");
+const ClientAmcRequest = require("./models/ClientAmcRequest");
+const AppCounter = require("./models/AppCounter");
 
-let ClientNotification = mongoose.models.ClientNotification;
-if (!ClientNotification) {
-  const clientNotificationSchema = new mongoose.Schema(
-    {
-      clientId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Client",
-        required: true,
-        index: true,
-      },
-      type: {
-        type: String,
-        enum: [
-          "INVOICE_GENERATED",
-          "PAYMENT_RECEIVED",
-          "AMC_EXPIRING",
-          "AMC_RENEWED",
-          "AMC_REQUEST_SUBMITTED",
-          "AMC_REQUEST_UPDATED",
-          "AMC_QUOTATION_READY",
-          "TICKET_CREATED",
-          "TICKET_UPDATED",
-          "TICKET_RESOLVED",
-          "DOCUMENT_SHARED",
-        ],
-        required: true,
-        index: true,
-      },
-      title: {
-        type: String,
-        required: true,
-        trim: true,
-      },
-      message: {
-        type: String,
-        required: true,
-        trim: true,
-      },
-      entityType: {
-        type: String,
-        enum: ["invoice", "payment", "amc", "ticket", "document", "other"],
-        default: "other",
-      },
-      entityCode: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-      entityId: {
-        type: mongoose.Schema.Types.ObjectId,
-        default: null,
-      },
-      navigationTarget: {
-        type: String,
-        enum: ["overview", "products", "billing", "tickets", "documents", "profile"],
-        default: "overview",
-      },
-      isRead: {
-        type: Boolean,
-        default: false,
-        index: true,
-      },
-      readAt: {
-        type: Date,
-        default: null,
-      },
-      dedupKey: {
-        type: String,
-        default: "",
-        index: true,
-      },
-    },
-    {
-      timestamps: true,
-      collection: "clientnotifications",
-    }
-  );
-
-  clientNotificationSchema.index({ clientId: 1, createdAt: -1 });
-  clientNotificationSchema.index({ clientId: 1, isRead: 1 });
-  clientNotificationSchema.index({ clientId: 1, dedupKey: 1 }, { unique: true });
-
-  ClientNotification = mongoose.model("ClientNotification", clientNotificationSchema);
-}
+const ClientNotification = require("./models/ClientNotification");
 
 let jsPDF = null;
 try {

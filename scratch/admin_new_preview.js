@@ -1,0 +1,28474 @@
+const express = require("express");
+const mongoose = require("mongoose");
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
+const bcrypt =
+  require("bcryptjs");
+const crypto =
+  require("crypto");
+const authenticateUser = require("./authMiddleware");
+const { User } = require("./auth");
+const {
+  SystemSettings,
+} = require("./settings");
+const AgentDailySummary = require("./models/AgentDailySummary");
+const AgentDevice = require("./models/AgentDevice");
+const AttendanceApprovalRequest = require("./models/AttendanceApprovalRequest");
+const {
+  getTicketSlaPolicy,
+  calculateDueAt,
+  calculateTicketSla,
+  SLA_POLICY_VERSION,
+} = require("./slaConfig");
+const {
+  validate,
+  clientCreateSchema,
+  taskCreateSchema,
+  ticketCreateSchema,
+  amcPaymentZodSchema,
+  productSalePaymentZodSchema,
+  amcContractCreateZodSchema,
+  amcRenewZodSchema,
+} = require("./validation");
+
+const SETTINGS_KEY =
+  "system";
+async function getSystemSettings() {
+  const settings =
+    await SystemSettings.findOne({
+      settingsKey:
+        SETTINGS_KEY,
+    }).lean();
+
+  if (!settings) {
+    throw new Error(
+      "System settings were not initialized."
+    );
+  }
+
+  return settings;
+}
+
+async function getActivePriorities() {
+  const settings =
+    await getSystemSettings();
+
+  return (
+    settings.priorities || []
+  )
+    .filter(
+      (item) =>
+        item.status ===
+        "Active"
+    )
+    .map((item) => ({
+      id:
+        item._id ||
+        item.id,
+
+      name:
+        String(
+          item.name || ""
+        ).trim(),
+
+      responseHours:
+        Number(
+          item.responseHours ||
+          0
+        ),
+
+      color:
+        item.color ||
+        "Slate",
+    }))
+    .filter(
+      (item) =>
+        item.name
+    );
+}
+
+async function getActiveTaskStatuses() {
+  const settings =
+    await getSystemSettings();
+
+  return (
+    settings.taskStatuses ||
+    []
+  )
+    .filter(
+      (item) =>
+        item.status ===
+        "Active"
+    )
+    .sort(
+      (a, b) =>
+        Number(a.order || 0) -
+        Number(b.order || 0)
+    )
+    .map((item) => ({
+      id:
+        item._id ||
+        item.id,
+
+      name:
+        String(
+          item.name || ""
+        ).trim(),
+
+      order:
+        Number(
+          item.order || 0
+        ),
+
+      isFinal:
+        Boolean(
+          item.isFinal
+        ),
+
+      color:
+        item.color ||
+        "Slate",
+    }))
+    .filter(
+      (item) =>
+        item.name
+    );
+}
+
+async function validatePriority(
+  value
+) {
+  const normalizedValue =
+    String(value || "").trim();
+
+  const priorities =
+    await getActivePriorities();
+
+  const matched =
+    priorities.find(
+      (item) =>
+        item.name.toLowerCase() ===
+        normalizedValue.toLowerCase()
+    );
+
+  return matched || null;
+}
+
+async function validateTaskStatus(
+  value
+) {
+  const normalizedValue =
+    String(value || "").trim();
+
+  const statuses =
+    await getActiveTaskStatuses();
+
+  const matched =
+    statuses.find(
+      (item) =>
+        item.name.toLowerCase() ===
+        normalizedValue.toLowerCase()
+    );
+
+  return matched || null;
+}
+const router = express.Router();
+/* =====================================================
+   SUPPORT TICKET FILE UPLOAD CONFIGURATION
+===================================================== */
+
+const ticketUploadDirectory = path.join(
+  __dirname,
+  "uploads",
+  "tickets"
+);
+
+if (!fs.existsSync(ticketUploadDirectory)) {
+  fs.mkdirSync(ticketUploadDirectory, {
+    recursive: true,
+  });
+}
+
+const allowedTicketFileTypes = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "text/plain",
+  "text/csv",
+  "application/zip",
+  "application/x-zip-compressed",
+];
+
+const ticketAttachmentStorage =
+  multer.diskStorage({
+    destination: (
+      req,
+      file,
+      callback
+    ) => {
+      callback(
+        null,
+        ticketUploadDirectory
+      );
+    },
+
+    filename: (
+      req,
+      file,
+      callback
+    ) => {
+      const originalExtension =
+        path.extname(
+          file.originalname
+        );
+
+      const originalBaseName =
+        path
+          .basename(
+            file.originalname,
+            originalExtension
+          )
+          .replace(
+            /[^a-zA-Z0-9-_]/g,
+            "-"
+          )
+          .slice(0, 80);
+
+      const uniqueName =
+        `${Date.now()}-${Math.round(
+          Math.random() * 1e9
+        )}-${originalBaseName}${originalExtension}`;
+
+      callback(null, uniqueName);
+    },
+  });
+
+const uploadTicketAttachment =
+  multer({
+    storage:
+      ticketAttachmentStorage,
+
+    limits: {
+      fileSize:
+        10 * 1024 * 1024,
+    },
+
+    fileFilter: (
+      req,
+      file,
+      callback
+    ) => {
+      if (
+        allowedTicketFileTypes.includes(
+          file.mimetype
+        )
+      ) {
+        callback(null, true);
+        return;
+      }
+
+      callback(
+        new Error(
+          "Unsupported file type. Upload an image, PDF, Word, Excel, text, CSV or ZIP file."
+        )
+      );
+    },
+  });
+
+const taskUploadDirectory = path.join(__dirname, "uploads", "tasks");
+if (!fs.existsSync(taskUploadDirectory)) fs.mkdirSync(taskUploadDirectory, { recursive: true });
+const uploadTaskAttachment = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, callback) => callback(null, taskUploadDirectory),
+    filename: (req, file, callback) => callback(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(file.originalname)}`),
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, callback) => allowedTicketFileTypes.includes(file.mimetype)
+    ? callback(null, true)
+    : callback(new Error("Unsupported file type. Upload an image, PDF, Word, Excel, text, CSV or ZIP file.")),
+});
+
+/* =====================================================
+   AMC DOCUMENT FILE UPLOAD CONFIGURATION
+===================================================== */
+
+const amcUploadDirectory = path.join(
+  __dirname,
+  "uploads",
+  "amc"
+);
+
+if (!fs.existsSync(amcUploadDirectory)) {
+  fs.mkdirSync(amcUploadDirectory, {
+    recursive: true,
+  });
+}
+
+const allowedAmcDocumentTypes = [
+  "AMC Agreement",
+  "Own Invoice / Bill",
+  "Payment Receipt",
+  "Quotation",
+  "Purchase Order",
+  "Other Document",
+];
+
+const allowedAmcFileTypes = [
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+];
+
+const amcDocumentStorage =
+  multer.diskStorage({
+    destination: (
+      req,
+      file,
+      callback
+    ) => {
+      callback(
+        null,
+        amcUploadDirectory
+      );
+    },
+
+    filename: (
+      req,
+      file,
+      callback
+    ) => {
+      const extension =
+        path
+          .extname(
+            file.originalname || ""
+          )
+          .toLowerCase();
+
+      const baseName =
+        path
+          .basename(
+            file.originalname ||
+              "document",
+            extension
+          )
+          .replace(
+            /[^a-zA-Z0-9-_]/g,
+            "-"
+          )
+          .replace(
+            /-+/g,
+            "-"
+          )
+          .replace(
+            /^-|-$/g,
+            ""
+          )
+          .slice(
+            0,
+            80
+          ) ||
+        "document";
+
+      const uniqueName =
+        `${Date.now()}-${crypto
+          .randomBytes(6)
+          .toString(
+            "hex"
+          )}-${baseName}${extension}`;
+
+      callback(
+        null,
+        uniqueName
+      );
+    },
+  });
+
+const uploadAmcDocument =
+  multer({
+    storage:
+      amcDocumentStorage,
+
+    limits: {
+      fileSize:
+        10 *
+        1024 *
+        1024,
+
+      files:
+        10,
+    },
+
+    fileFilter: (
+      req,
+      file,
+      callback
+    ) => {
+      const extension =
+        path
+          .extname(
+            file.originalname ||
+              ""
+          )
+          .toLowerCase();
+
+      const validExtension =
+        [
+          ".pdf",
+          ".jpg",
+          ".jpeg",
+          ".png",
+        ].includes(
+          extension
+        );
+
+      if (
+        allowedAmcFileTypes.includes(
+          file.mimetype
+        ) &&
+        validExtension
+      ) {
+        callback(
+          null,
+          true
+        );
+
+        return;
+      }
+
+      callback(
+        new Error(
+          "Only PDF, JPG, JPEG and PNG files are allowed."
+        )
+      );
+    },
+  });
+
+function deleteAmcFile(
+  filePath
+) {
+  try {
+    if (
+      filePath &&
+      fs.existsSync(
+        filePath
+      )
+    ) {
+      fs.unlinkSync(
+        filePath
+      );
+    }
+  } catch (error) {
+    console.error(
+      "Delete AMC file error:",
+      error
+    );
+  }
+}
+
+async function getEmployeeForUser(user) {
+  if (!user || !user._id) return null;
+  const employeesCol = mongoose.connection.collection("employees");
+  const userObjectId = mongoose.Types.ObjectId.isValid(user._id)
+    ? new mongoose.Types.ObjectId(user._id)
+    : user._id;
+
+  return employeesCol.findOne({
+    $or: [
+      { userId: userObjectId },
+      { userId: String(user._id) },
+      { _id: userObjectId },
+    ],
+    isDeleted: { $ne: true },
+  });
+}
+
+router.use(authenticateUser);
+
+router.use(async (req, res, next) => {
+  if (req.user.role === "admin") return next();
+
+  const taskMatch = req.path.match(/^\/task\/([a-fA-F0-9]{24})(\/(status|comment|checklist(\/[a-fA-F0-9]{24})?|start|attachment))?$/);
+  const ticketAttachMatch = req.path.match(/^\/ticket\/[a-fA-F0-9]{24}\/attachment$/);
+
+  const employeeAllowed =
+    req.user.role === "employee" &&
+    ((taskMatch &&
+      ((req.method === "GET" && !taskMatch[2]) ||
+        (req.method === "PATCH" && taskMatch[2] === "/status") ||
+        (req.method === "POST" && ["/comment", "/start", "/attachment"].includes(taskMatch[2])) ||
+        (req.path.includes("/checklist") && ["POST", "PATCH", "DELETE"].includes(req.method)))) ||
+     (ticketAttachMatch && req.method === "POST"));
+
+  if (!employeeAllowed) {
+    return res.status(403).json({
+      success: false,
+      message: "Admin access is required.",
+    });
+  }
+
+  // Cross-Employee Task Authorization Check:
+  // If an employee accesses a task, they MUST be the assigned employee for that task.
+  if (taskMatch && taskMatch[1]) {
+    try {
+      const taskId = taskMatch[1];
+      const tasksCol = mongoose.connection.collection("tasks");
+
+      const currentEmployee = await getEmployeeForUser(req.user);
+
+      const taskObjectId = mongoose.Types.ObjectId.isValid(taskId)
+        ? new mongoose.Types.ObjectId(taskId)
+        : taskId;
+
+      const targetTask = await tasksCol.findOne({
+        _id: taskObjectId,
+        isDeleted: { $ne: true },
+      });
+
+      if (!targetTask) {
+        return res.status(404).json({
+          success: false,
+          message: "Task not found.",
+        });
+      }
+
+      if (
+        !currentEmployee ||
+        !targetTask.assignedEmployeeId ||
+        String(targetTask.assignedEmployeeId) !== String(currentEmployee._id)
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: "Access denied. You can only view or modify tasks assigned to you.",
+        });
+      }
+    } catch (err) {
+      console.error("Task authorization middleware error:", err);
+      return res.status(500).json({ success: false, message: "Authorization verification failed." });
+    }
+  }
+
+  return next();
+});
+/* =====================================================
+   AGENT DEVICE MANAGEMENT
+   Admin only
+===================================================== */
+
+/*
+ * GET /api/admin/agent-devices
+ *
+ * Returns registered Windows agent devices.
+ *
+ * Optional:
+ * ?status=pending
+ * ?status=approved
+ */
+
+router.get(
+  "/agent-devices",
+  async (req, res) => {
+    try {
+      const status =
+        String(
+          req.query.status || ""
+        )
+          .trim()
+          .toLowerCase();
+
+      const query = {};
+
+      if (status === "pending") {
+        query.isApproved = {
+          $ne: true,
+        };
+      }
+
+      if (status === "approved") {
+        query.isApproved = true;
+      }
+
+      const devices =
+        await AgentDevice.find(
+          query
+        )
+          .sort({
+            isApproved: 1,
+            createdAt: -1,
+          })
+          .lean();
+
+      return res.json({
+        success: true,
+
+        count:
+          devices.length,
+
+        devices:
+          devices.map(
+            (device) => ({
+              id:
+                device._id,
+
+              deviceId:
+                device.deviceId,
+
+              employeeCode:
+                device.employeeCode,
+
+              pcName:
+                device.pcName ||
+                "",
+
+              deviceName:
+                device.deviceName ||
+                "",
+
+              platform:
+                device.platform ||
+                "windows",
+
+              appVersion:
+                device.appVersion ||
+                "",
+
+              isActive:
+                device.isActive !==
+                false,
+
+              isApproved:
+                device.isApproved ===
+                true,
+
+              approvedAt:
+                device.approvedAt ||
+                null,
+
+              approvedBy:
+                device.approvedBy ||
+                null,
+
+              approvalNote:
+                device.approvalNote ||
+                "",
+
+              lastSeen:
+                device.lastSeen ||
+                null,
+
+              createdAt:
+                device.createdAt ||
+                null,
+
+              updatedAt:
+                device.updatedAt ||
+                null,
+            })
+          ),
+      });
+    } catch (error) {
+      console.error(
+        "Agent device list error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Unable to load agent devices.",
+      });
+    }
+  }
+);
+
+
+/*
+ * PATCH /api/admin/agent-devices/:id/approve
+ *
+ * Approves a Windows PC as a trusted device.
+ */
+
+router.patch(
+  "/agent-devices/:id/approve",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid device ID.",
+        });
+      }
+
+      const device =
+        await AgentDevice.findById(
+          id
+        );
+
+      if (!device) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Agent device not found.",
+        });
+      }
+
+      const note =
+        String(
+          req.body?.note || ""
+        ).trim();
+
+      device.isApproved =
+        true;
+
+      device.approvedBy =
+        req.user._id;
+
+      device.approvedAt =
+        new Date();
+
+      device.approvalNote =
+        note;
+
+      device.isActive =
+        true;
+
+      await device.save();
+
+      return res.json({
+        success: true,
+
+        message:
+          "Agent device approved successfully.",
+
+        device: {
+          id:
+            device._id,
+
+          deviceId:
+            device.deviceId,
+
+          employeeCode:
+            device.employeeCode,
+
+          pcName:
+            device.pcName,
+
+          deviceName:
+            device.deviceName,
+
+          isApproved:
+            device.isApproved,
+
+          isActive:
+            device.isActive,
+
+          approvedAt:
+            device.approvedAt,
+
+          approvedBy:
+            device.approvedBy,
+
+          approvalNote:
+            device.approvalNote,
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Agent device approval error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Unable to approve agent device.",
+      });
+    }
+  }
+);
+
+
+/*
+ * PATCH /api/admin/agent-devices/:id/reject
+ *
+ * Rejects / disables a Windows agent device.
+ */
+
+router.patch(
+  "/agent-devices/:id/reject",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid device ID.",
+        });
+      }
+
+      const device =
+        await AgentDevice.findById(
+          id
+        );
+
+      if (!device) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Agent device not found.",
+        });
+      }
+
+      const note =
+        String(
+          req.body?.note ||
+          "Rejected by administrator."
+        ).trim();
+
+      device.isApproved =
+        false;
+
+      /*
+       * Rejecting also disables this token/device.
+       *
+       * authenticateAgent already requires
+       * isActive: true.
+       */
+
+      device.isActive =
+        false;
+
+      device.approvedBy =
+        null;
+
+      device.approvedAt =
+        null;
+
+      device.approvalNote =
+        note;
+
+      await device.save();
+
+      return res.json({
+        success: true,
+
+        message:
+          "Agent device rejected and disabled.",
+
+        device: {
+          id:
+            device._id,
+
+          deviceId:
+            device.deviceId,
+
+          employeeCode:
+            device.employeeCode,
+
+          pcName:
+            device.pcName,
+
+          deviceName:
+            device.deviceName,
+
+          isApproved:
+            false,
+
+          isActive:
+            false,
+
+          approvalNote:
+            device.approvalNote,
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Agent device rejection error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Unable to reject agent device.",
+      });
+    }
+  }
+);
+/* =====================================================
+   ATTENDANCE APPROVAL REQUESTS
+   Admin only
+===================================================== */
+
+router.get(
+  "/attendance-approval-requests",
+  async (req, res) => {
+    try {
+      const AttendanceApprovalRequest =
+        mongoose.models.AttendanceApprovalRequest;
+
+      if (!AttendanceApprovalRequest) {
+        return res.status(500).json({
+          success: false,
+          message:
+            "Attendance approval model is not available.",
+        });
+      }
+
+      const status =
+        String(
+          req.query.status || "Pending"
+        ).trim();
+
+      const query = {};
+
+      if (
+        ["Pending", "Approved", "Rejected"].includes(
+          status
+        )
+      ) {
+        query.status = status;
+      }
+
+      const requests =
+        await AttendanceApprovalRequest.find(
+          query
+        )
+          .sort({
+            requestedAt: -1,
+          })
+          .lean();
+
+      return res.json({
+        success: true,
+        count: requests.length,
+        requests,
+      });
+    } catch (error) {
+      console.error(
+        "Attendance approval list error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Unable to load attendance approval requests.",
+      });
+    }
+  }
+);
+
+
+/* =====================================================
+   APPROVE REMOTE ATTENDANCE REQUEST
+===================================================== */
+
+router.patch(
+  "/attendance-approval-requests/:id/approve",
+  async (req, res) => {
+    try {
+      const AttendanceApprovalRequest =
+        mongoose.models.AttendanceApprovalRequest;
+
+      const Attendance =
+        mongoose.models.AttendanceV2 ||
+        require("./models/AttendanceV2");
+
+      const Employee =
+        mongoose.models.Employee;
+
+      if (
+        !AttendanceApprovalRequest ||
+        !Attendance ||
+        !Employee
+      ) {
+        return res.status(500).json({
+          success: false,
+          message:
+            "Attendance models are not available.",
+        });
+      }
+
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid approval request ID.",
+        });
+      }
+
+      const request =
+        await AttendanceApprovalRequest.findById(
+          id
+        );
+
+      if (!request) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Attendance approval request not found.",
+        });
+      }
+
+      if (
+        request.status !==
+        "Pending"
+      ) {
+        return res.status(409).json({
+          success: false,
+          message:
+            `This request is already ${request.status.toLowerCase()}.`,
+        });
+      }
+
+      const approvalType =
+        String(
+          req.body?.approvalType ||
+          "Work From Home"
+        ).trim();
+
+      const allowedApprovalTypes = [
+        "Work From Home",
+        "Client Site",
+        "Office Exception",
+        "Late Arrival",
+      ];
+
+      if (
+        !allowedApprovalTypes.includes(
+          approvalType
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid approval type.",
+        });
+      }
+
+      const employee =
+        await Employee.findById(
+          request.employeeId
+        );
+
+      if (!employee) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Employee not found.",
+        });
+      }
+
+      /*
+       * Never create duplicate attendance.
+       */
+
+      let attendance =
+        await Attendance.findOne({
+          employeeId:
+            employee._id,
+
+          date:
+            request.date,
+
+          isDeleted: {
+            $ne: true,
+          },
+        });
+
+      if (!attendance) {
+        /*
+         * Use ORIGINAL request time,
+         * not admin approval time.
+         *
+         * Example:
+         * Requested at 10:22
+         * Approved at 11:00
+         *
+         * Attendance should still represent
+         * the 10:22 login request.
+         */
+
+        const loginTime =
+          new Date(
+            request.requestedAt
+          );
+
+        /*
+         * Shift = 10:00
+         * Grace = 15 minutes
+         */
+
+        const shiftStartAt =
+          new Date(
+            `${request.date}T10:00:00+05:30`
+          );
+
+        const difference =
+          Math.floor(
+            (
+              loginTime.getTime() -
+              shiftStartAt.getTime()
+            ) /
+              60000
+          );
+
+        const lateMinutes =
+          difference > 15
+            ? difference
+            : 0;
+
+        attendance =
+          await Attendance.create({
+            employeeId:
+              employee._id,
+
+            employeeCode:
+              employee.employeeCode,
+
+            employeeName:
+              employee.name,
+
+            department:
+              employee.department ||
+              "",
+
+            role:
+              employee.role ||
+              "",
+
+            date:
+              request.date,
+
+            loginTime,
+
+            logoutTime:
+              null,
+
+            breakStartedAt:
+              null,
+
+            breakMinutes:
+              0,
+
+            totalBreakMinutes:
+              0,
+
+            workingMinutes:
+              0,
+
+            totalWorkedMinutes:
+              0,
+
+            shiftStart:
+              "10:00",
+
+            shiftEnd:
+              "18:00",
+
+            lateMinutes,
+
+            earlyLogoutMinutes:
+              0,
+
+            overtimeMinutes:
+              0,
+
+            status:
+              lateMinutes > 0
+                ? "Late"
+                : "Present",
+
+            workStatus:
+              "Working",
+
+            isAutoClosed:
+              false,
+
+            autoClosedReason:
+              "",
+
+            note:
+              `${approvalType} approved by admin.`,
+
+            createdBy:
+              req.user._id,
+
+            updatedBy:
+              req.user._id,
+          });
+      }
+
+      request.status =
+        "Approved";
+
+      request.approvalType =
+        approvalType;
+
+      request.reviewedBy =
+        req.user._id;
+
+      request.reviewedAt =
+        new Date();
+
+      request.reviewNote =
+        String(
+          req.body?.note ||
+          ""
+        ).trim();
+
+      request.attendanceId =
+        attendance._id;
+
+      await request.save();
+
+      /*
+       * Mark employee as active/working.
+       */
+
+      employee.status =
+        "Working";
+
+      employee.lastActivityAt =
+        new Date();
+
+      await employee.save();
+
+      return res.json({
+        success: true,
+
+        message:
+          "Attendance request approved successfully.",
+
+        request,
+
+        attendance,
+      });
+    } catch (error) {
+      console.error(
+        "Attendance approval error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Unable to approve attendance request.",
+      });
+    }
+  }
+);
+
+
+/* =====================================================
+   REJECT REMOTE ATTENDANCE REQUEST
+===================================================== */
+
+router.patch(
+  "/attendance-approval-requests/:id/reject",
+  async (req, res) => {
+    try {
+      const AttendanceApprovalRequest =
+        mongoose.models.AttendanceApprovalRequest;
+
+      if (!AttendanceApprovalRequest) {
+        return res.status(500).json({
+          success: false,
+          message:
+            "Attendance approval model is not available.",
+        });
+      }
+
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid approval request ID.",
+        });
+      }
+
+      const request =
+        await AttendanceApprovalRequest.findById(
+          id
+        );
+
+      if (!request) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Attendance approval request not found.",
+        });
+      }
+
+      if (
+        request.status !==
+        "Pending"
+      ) {
+        return res.status(409).json({
+          success: false,
+          message:
+            `This request is already ${request.status.toLowerCase()}.`,
+        });
+      }
+
+      request.status =
+        "Rejected";
+
+      request.reviewedBy =
+        req.user._id;
+
+      request.reviewedAt =
+        new Date();
+
+      request.reviewNote =
+        String(
+          req.body?.note ||
+          "Attendance request rejected."
+        ).trim();
+
+      request.attendanceId =
+        null;
+
+      await request.save();
+
+      return res.json({
+        success: true,
+
+        message:
+          "Attendance request rejected.",
+
+        request,
+      });
+    } catch (error) {
+      console.error(
+        "Attendance rejection error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Unable to reject attendance request.",
+      });
+    }
+  }
+);
+/* =====================================================
+   PRODUCT MASTER MODEL
+===================================================== */
+
+const Product = require("./models/Product");
+
+/* =====================================================
+   PROJECT MASTER MODEL
+===================================================== */
+
+const Project = require("./models/Project");
+
+/* =====================================================
+   REQUIREMENT / ENQUIRY MODEL
+===================================================== */
+
+const Requirement = require("./models/Requirement");
+/* =====================================================
+   CLIENT MASTER MODEL
+===================================================== */
+
+const Client = require("./models/Client");
+
+  /* =====================================================
+   PRODUCT SALE / INITIAL PRODUCT INVOICE
+===================================================== */
+
+/*
+ * This collection stores the ORIGINAL commercial sale
+ * of software/products to a client.
+ *
+ * IMPORTANT:
+ *
+ * ProductSale        = original software/product purchase
+ * AmcInvoice         = yearly maintenance/support invoice
+ *
+ * They are intentionally separate financial records.
+ */
+
+const ProductSale = require("./models/ProductSale");
+
+
+/* =====================================================
+   PRODUCT SALE PAYMENT
+===================================================== */
+
+/*
+ * Permanent payment records for original ProductSale.
+ *
+ * Do not store only a number in ProductSale.
+ * Every receipt/payment should have its own record.
+ */
+
+const ProductSalePayment = require("./models/ProductSalePayment");
+/* =====================================================
+ TASK SCHEMA
+===================================================== */
+
+const Task = require("./models/Task");
+
+ /* =====================================================
+   PROJECT TASK SUMMARY / AUTO PROGRESS
+===================================================== */
+
+async function syncProjectTaskProgress(projectId) {
+  if (
+    !projectId ||
+    !mongoose.Types.ObjectId.isValid(projectId)
+  ) {
+    return null;
+  }
+
+  const project = await Project.findOne({
+    _id: projectId,
+    isDeleted: false,
+  });
+
+  if (!project) {
+    return null;
+  }
+
+  const projectTasks = await Task.find({
+    projectId: project._id,
+    taskFor: "Project",
+    isDeleted: false,
+  })
+    .select("status progress dueDate")
+    .lean();
+
+  const totalTasks = projectTasks.length;
+
+  const completedTasks = projectTasks.filter(
+    (task) =>
+      task.status === "Completed" ||
+      Number(task.progress || 0) >= 100
+  ).length;
+
+  const activeTasks = projectTasks.filter(
+    (task) =>
+      ![
+        "Completed",
+        "Cancelled",
+      ].includes(task.status)
+  ).length;
+
+const now = new Date();
+
+/*
+ * A task becomes overdue only AFTER
+ * the end of its due date.
+ *
+ * Example:
+ * Due Date = 20 Aug
+ * It remains valid throughout 20 Aug.
+ * It becomes overdue on 21 Aug.
+ */
+const overdueTasks =
+  projectTasks.filter((task) => {
+    if (!task.dueDate) {
+      return false;
+    }
+
+    if (
+      [
+        "Completed",
+        "Closed",
+        "Cancelled",
+      ].includes(task.status)
+    ) {
+      return false;
+    }
+
+    const dueDate =
+      new Date(task.dueDate);
+
+    dueDate.setHours(
+      23,
+      59,
+      59,
+      999
+    );
+
+    return dueDate < now;
+  }).length;
+
+  const progress =
+  totalTasks > 0
+    ? Math.round(
+        projectTasks.reduce(
+          (total, task) => {
+            const taskProgress =
+              task.status === "Completed"
+                ? 100
+                : Math.min(
+                    100,
+                    Math.max(
+                      0,
+                      Number(task.progress || 0)
+                    )
+                  );
+
+            return total + taskProgress;
+          },
+          0
+        ) / totalTasks
+      )
+    : 0;
+
+  /*
+   * Keep project progress synchronized with tasks.
+   * We intentionally do not automatically change the
+   * project status here because status may be managed
+   * separately by the administrator.
+   */
+  if (Number(project.progress || 0) !== progress) {
+    project.progress = progress;
+    await project.save();
+  }
+
+  const inProgressTasks = projectTasks.filter(
+    (task) => task.status === "In Progress"
+  ).length;
+
+  const blockedTasks = projectTasks.filter(
+    (task) => task.status === "Blocked"
+  ).length;
+
+  return {
+    totalTasks,
+    activeTasks,
+    completedTasks,
+    inProgressTasks,
+    blockedTasks,
+    overdueTasks,
+    progress,
+    tasks: projectTasks,
+  };
+}
+/* =====================================================
+   ACTIVITY LOG MODEL
+===================================================== */
+const ActivityLog = require("./models/ActivityLog");
+
+/* =====================================================
+SUPPORT TICKET SCHEMAS
+===================================================== */
+const SupportTicket = require("./models/SupportTicket");
+
+/* =====================================================
+   AMC CONTRACT SCHEMAS
+===================================================== */
+
+const AmcContract = require("./models/AmcContract");
+
+const AmcInvoice = require("./models/AmcInvoice");
+
+/* =====================================================
+   IDEMPOTENCY LOG SCHEMA (Persistent Multi-Tier Idempotency)
+===================================================== */
+const idempotencyLogSchema = new mongoose.Schema(
+  {
+    idempotencyKey: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      index: true,
+    },
+    endpoint: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    contractId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: false,
+      index: true,
+    },
+    entityId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: false,
+      index: true,
+    },
+    payloadHash: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    status: {
+      type: String,
+      enum: ["IN_PROGRESS", "COMPLETED", "FAILED"],
+      default: "IN_PROGRESS",
+      index: true,
+    },
+    responseStatus: {
+      type: Number,
+      default: 200,
+    },
+    responseBody: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now,
+      expires: "7d",
+    },
+  },
+  {
+    timestamps: true,
+    collection: "idempotencylogs",
+  }
+);
+
+const IdempotencyLog =
+  mongoose.models.IdempotencyLog ||
+  mongoose.model("IdempotencyLog", idempotencyLogSchema);
+
+async function getNextAmcInvoiceIdentity(options = {}) {
+  const now = new Date();
+  const year = now.getFullYear();
+  const session = options?.session || null;
+
+  /*
+   * Get the highest invoiceNumber currently stored.
+   */
+  const lastInvoiceQuery = AmcInvoice.findOne({
+    isDeleted: {
+      $ne: true,
+    },
+  })
+    .sort({
+      invoiceNumber: -1,
+      createdAt: -1,
+    })
+    .select("invoiceNumber invoiceCode")
+    .lean();
+
+  if (session) {
+    lastInvoiceQuery.session(session);
+  }
+
+  const lastInvoice = await lastInvoiceQuery;
+
+  const nextNumber = Math.max(
+    Number(lastInvoice?.invoiceNumber || 0) + 1,
+    1
+  );
+
+  const invoiceCode = `AMC-INV-${year}-${String(nextNumber).padStart(4, "0")}`;
+
+  return {
+    invoiceNumber: nextNumber,
+    invoiceCode,
+  };
+}
+/* =====================================================
+   AMC PAYMENT SCHEMA
+===================================================== */
+
+const amcPaymentSchema =
+  new mongoose.Schema(
+    {
+      paymentCode: {
+        type: String,
+        required: true,
+        unique: true,
+        trim: true,
+        uppercase: true,
+        index: true,
+      },
+
+      idempotencyKey: {
+        type: String,
+        default: null,
+        trim: true,
+        index: true,
+        sparse: true,
+      },
+
+      amcContractId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "AmcContract",
+        required: true,
+        index: true,
+      },
+            /*
+       * Every payment belongs to one permanent invoice.
+       */
+      amcInvoiceId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "AmcInvoice",
+        required: [
+          true,
+          "AMC invoice is required.",
+        ],
+        index: true,
+      },
+
+      contractCode: {
+        type: String,
+        required: true,
+        trim: true,
+        uppercase: true,
+      },
+
+      invoiceCode: {
+        type: String,
+        default: "",
+        trim: true,
+        uppercase: true,
+      },
+
+      clientId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Client",
+        required: true,
+        index: true,
+      },
+
+      clientCode: {
+        type: String,
+        default: "",
+        trim: true,
+        uppercase: true,
+      },
+
+      clientName: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      productId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Product",
+        default: null,
+      },
+
+      productCode: {
+        type: String,
+        default: "",
+        trim: true,
+        uppercase: true,
+      },
+
+      productName: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      amount: {
+        type: Number,
+        required: [
+          true,
+          "Payment amount is required.",
+        ],
+        min: 0.01,
+      },
+
+      paymentDate: {
+        type: Date,
+        required: [
+          true,
+          "Payment date is required.",
+        ],
+        index: true,
+      },
+
+      mode: {
+        type: String,
+        enum: [
+          "Cash",
+          "Bank Transfer",
+          "UPI",
+          "Cheque",
+          "Card",
+          "Other",
+        ],
+        default: "Bank Transfer",
+      },
+
+      referenceNo: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      notes: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      receivedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+
+      receivedByName: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      isDeleted: {
+        type: Boolean,
+        default: false,
+        index: true,
+      },
+    },
+    {
+      timestamps: true,
+      collection: "amcpayments",
+    }
+  );
+
+amcPaymentSchema.index({
+  amcContractId: 1,
+  paymentDate: -1,
+});
+
+const AmcPayment =
+  mongoose.models.AmcPayment ||
+  mongoose.model(
+    "AmcPayment",
+    amcPaymentSchema
+  );
+
+/* =====================================================
+   AMC REMINDER MODEL
+===================================================== */
+const AmcReminder = require("./models/AmcReminder");
+
+/* =====================================================
+   APP COUNTER MODEL (Atomic Sequence Generator)
+===================================================== */
+const AppCounter = require("./models/AppCounter");
+
+/* =====================================================
+   CLIENT AMC REQUEST SCHEMA (Renewal & Quotation Requests)
+===================================================== */
+const ClientAmcRequest = require("./models/ClientAmcRequest");
+
+/* =====================================================
+   CLIENT DOCUMENT MODEL
+===================================================== */
+
+const ClientDocument = require("./models/ClientDocument");
+
+
+
+  async function generateRequirementCode() {
+  const year =
+    new Date().getFullYear();
+
+  const prefix =
+    `REQ-${year}-`;
+
+  const lastRequirement =
+    await Requirement.findOne({
+      requirementCode: {
+        $regex:
+          `^${prefix}`,
+      },
+    })
+      .sort({
+        requirementCode: -1,
+      })
+      .lean();
+
+  let nextNumber = 1;
+
+  if (
+    lastRequirement?.requirementCode
+  ) {
+    const match =
+      String(
+        lastRequirement.requirementCode
+      ).match(
+        /(\d+)$/
+      );
+
+    if (match) {
+      nextNumber =
+        Number(
+          match[1]
+        ) + 1;
+    }
+  }
+
+  return `${prefix}${String(
+    nextNumber
+  ).padStart(
+    4,
+    "0"
+  )}`;
+}
+
+  /* =====================================================
+   AMC HELPERS
+===================================================== */
+
+function generateAmcContractCode() {
+  const year =
+    new Date().getFullYear();
+
+  const uniquePart =
+    `${Date.now()}${Math.floor(
+      Math.random() * 1000
+    )
+      .toString()
+      .padStart(3, "0")}`.slice(-8);
+
+  return `AMC-CTR-${year}-${uniquePart}`;
+}
+
+function generateAmcInvoiceCode() {
+  const year =
+    new Date().getFullYear();
+
+  const uniquePart =
+    `${Date.now()}${Math.floor(
+      Math.random() * 1000
+    )
+      .toString()
+      .padStart(3, "0")}`.slice(-8);
+
+  return `AMC-INV-${year}-${uniquePart}`;
+}
+/* =====================================================
+   PRODUCT SALE NUMBER GENERATOR
+===================================================== */
+
+/*
+ * Generates:
+ *
+ * SAL-2026-0001
+ * SAL-2026-0002
+ * SAL-2026-0003
+ */
+
+async function generateProductSaleCode() {
+  const year =
+    new Date().getFullYear();
+
+  const prefix =
+    `SAL-${year}-`;
+
+  const lastSale =
+    await ProductSale.findOne({
+      saleCode: {
+        $regex: `^${prefix}`,
+      },
+    })
+      .sort({
+        saleNumber: -1,
+      })
+      .lean();
+
+  const nextNumber =
+    lastSale
+      ? Number(
+          lastSale.saleNumber || 0
+        ) + 1
+      : 1;
+
+  return {
+    saleNumber:
+      nextNumber,
+
+    saleCode:
+      `${prefix}${String(
+        nextNumber
+      ).padStart(4, "0")}`,
+  };
+}
+
+
+/* =====================================================
+   PRODUCT SALE PAYMENT NUMBER
+===================================================== */
+
+/*
+ * Generates:
+ *
+ * PSP-2026-0001
+ */
+
+async function generateProductSalePaymentCode() {
+  const year =
+    new Date().getFullYear();
+
+  const prefix =
+    `PSP-${year}-`;
+
+  const lastPayment =
+    await ProductSalePayment.findOne({
+      paymentCode: {
+        $regex: `^${prefix}`,
+      },
+    })
+      .sort({
+        paymentNumber: -1,
+      })
+      .lean();
+
+  const nextNumber =
+    lastPayment
+      ? Number(
+          lastPayment.paymentNumber || 0
+        ) + 1
+      : 1;
+
+  return {
+    paymentNumber:
+      nextNumber,
+
+    paymentCode:
+      `${prefix}${String(
+        nextNumber
+      ).padStart(4, "0")}`,
+  };
+}
+
+function generateAmcPaymentCode() {
+  const year =
+    new Date().getFullYear();
+
+  const uniquePart =
+    `${Date.now()}${Math.floor(
+      Math.random() * 1000
+    )
+      .toString()
+      .padStart(3, "0")}`.slice(-8);
+
+  return `AMC-PAY-${year}-${uniquePart}`;
+}
+
+function roundAmcAmount(value) {
+  return Number(
+    Number(value || 0).toFixed(2)
+  );
+}
+
+function calculateAmcAmounts({
+  taxableAmount,
+  cgstRate = 9,
+  sgstRate = 9,
+  igstRate = 0,
+}) {
+  const normalizedTaxableAmount =
+    roundAmcAmount(taxableAmount);
+
+  const normalizedCgstRate =
+    Math.max(
+      Number(cgstRate || 0),
+      0
+    );
+
+  const normalizedSgstRate =
+    Math.max(
+      Number(sgstRate || 0),
+      0
+    );
+
+  const normalizedIgstRate =
+    Math.max(
+      Number(igstRate || 0),
+      0
+    );
+
+  const cgstAmount =
+    roundAmcAmount(
+      normalizedTaxableAmount *
+      (normalizedCgstRate / 100)
+    );
+
+  const sgstAmount =
+    roundAmcAmount(
+      normalizedTaxableAmount *
+      (normalizedSgstRate / 100)
+    );
+
+  const igstAmount =
+    roundAmcAmount(
+      normalizedTaxableAmount *
+      (normalizedIgstRate / 100)
+    );
+
+  const totalTaxAmount =
+    roundAmcAmount(
+      cgstAmount +
+      sgstAmount +
+      igstAmount
+    );
+
+  const totalAmount =
+    roundAmcAmount(
+      normalizedTaxableAmount +
+      totalTaxAmount
+    );
+
+  return {
+    taxableAmount:
+      normalizedTaxableAmount,
+
+    cgstRate:
+      normalizedCgstRate,
+
+    cgstAmount,
+
+    sgstRate:
+      normalizedSgstRate,
+
+    sgstAmount,
+
+    igstRate:
+      normalizedIgstRate,
+
+    igstAmount,
+
+    totalTaxAmount,
+
+    totalAmount,
+  };
+}
+
+function calculateAmcStatus({
+  startDate,
+  expiryDate,
+  totalAmount,
+  paidAmount,
+  currentStatus,
+}) {
+  if (
+    currentStatus ===
+    "Cancelled"
+  ) {
+    return "Cancelled";
+  }
+
+  const normalizedTotal =
+    roundAmcAmount(totalAmount);
+
+  const normalizedPaid =
+    roundAmcAmount(paidAmount);
+
+  const pendingAmount =
+    Math.max(
+      roundAmcAmount(
+        normalizedTotal -
+        normalizedPaid
+      ),
+      0
+    );
+
+  if (pendingAmount === 0) {
+    return "Paid";
+  }
+
+  if (normalizedPaid > 0) {
+    return "Partially Paid";
+  }
+
+  const now = new Date();
+
+  now.setHours(
+    0,
+    0,
+    0,
+    0
+  );
+
+  if (expiryDate) {
+    const expiry =
+      new Date(expiryDate);
+
+    expiry.setHours(
+      0,
+      0,
+      0,
+      0
+    );
+
+    if (
+      !Number.isNaN(
+        expiry.getTime()
+      ) &&
+      expiry < now
+    ) {
+      return "Overdue";
+    }
+  }
+
+  if (startDate) {
+    const start =
+      new Date(startDate);
+
+    start.setHours(
+      0,
+      0,
+      0,
+      0
+    );
+
+    if (
+      !Number.isNaN(
+        start.getTime()
+      ) &&
+      start > now
+    ) {
+      return "Upcoming";
+    }
+  }
+
+  return "Pending";
+}
+
+async function resolveAmcClient(
+  clientId
+) {
+  if (
+    !mongoose.Types.ObjectId.isValid(
+      clientId
+    )
+  ) {
+    throw new Error(
+      "Invalid client ID."
+    );
+  }
+
+  const client =
+    await Client.findOne({
+      _id: clientId,
+      isDeleted: false,
+      status: "Active",
+    });
+
+  if (!client) {
+    throw new Error(
+      "Selected client was not found or is inactive."
+    );
+  }
+
+  return client;
+}
+
+function resolveAmcClientProduct(
+  client,
+  clientProductId
+) {
+  if (!client) {
+    throw new Error(
+      "Client was not found."
+    );
+  }
+
+  if (
+    !mongoose.Types.ObjectId.isValid(
+      clientProductId
+    )
+  ) {
+    throw new Error(
+      "Invalid client product ID."
+    );
+  }
+
+  const clientProduct =
+    client.products.id(
+      clientProductId
+    );
+
+  if (!clientProduct) {
+    throw new Error(
+      "Selected product is not assigned to this client."
+    );
+  }
+
+  if (
+    clientProduct.installationStatus ===
+    "Inactive"
+  ) {
+    throw new Error(
+      "Selected client product is inactive."
+    );
+  }
+
+  return clientProduct;
+}
+
+async function resolveAmcEmployee(
+  employeeId
+) {
+  const normalizedEmployeeId =
+    String(employeeId || "").trim();
+
+  if (!normalizedEmployeeId) {
+    return {
+      assignedEmployeeId:
+        null,
+
+      assignedEmployeeCode:
+        "",
+
+      assignedEmployeeName:
+        "Unassigned",
+    };
+  }
+
+  const employee =
+    await resolveClientEmployee(
+      normalizedEmployeeId,
+      {
+        required: false,
+      }
+    );
+
+  return {
+    assignedEmployeeId:
+      employee.assignedEmployeeId,
+
+    assignedEmployeeCode:
+      employee.assignedEmployeeCode,
+
+    assignedEmployeeName:
+      employee.assignedEmployeeName ||
+      "Unassigned",
+  };
+}
+function amcInvoiceResponse(
+  invoice
+) {
+  if (!invoice) {
+    return null;
+  }
+
+  return {
+    id:
+      invoice._id,
+
+    _id:
+      invoice._id,
+
+    invoiceCode:
+      invoice.invoiceCode,
+
+    invoiceNumber:
+      invoice.invoiceNumber,
+
+    invoiceDate:
+      invoice.invoiceDate,
+
+    invoiceType:
+      invoice.invoiceType,
+
+    amcContractId:
+      invoice.amcContractId,
+
+    contractCode:
+      invoice.contractCode,
+
+    contractStartDate:
+      invoice.contractStartDate,
+
+    contractExpiryDate:
+      invoice.contractExpiryDate,
+
+    dueDate:
+      invoice.dueDate,
+
+    clientId:
+      invoice.clientId,
+
+    clientCode:
+      invoice.clientCode,
+
+    clientName:
+      invoice.clientName,
+
+    contactPerson:
+      invoice.contactPerson,
+
+    contactMobile:
+      invoice.contactMobile,
+
+    contactEmail:
+      invoice.contactEmail,
+
+    clientProductId:
+      invoice.clientProductId,
+
+    productId:
+      invoice.productId,
+
+    productCode:
+      invoice.productCode,
+
+    productName:
+      invoice.productName,
+
+    productVersion:
+      invoice.productVersion,
+
+    plan:
+      invoice.plan,
+
+    licensedUsers:
+      invoice.licensedUsers,
+
+    description:
+      invoice.description,
+
+    taxableAmount:
+      invoice.taxableAmount,
+
+    cgstRate:
+      invoice.cgstRate,
+
+    cgstAmount:
+      invoice.cgstAmount,
+
+    sgstRate:
+      invoice.sgstRate,
+
+    sgstAmount:
+      invoice.sgstAmount,
+
+    igstRate:
+      invoice.igstRate,
+
+    igstAmount:
+      invoice.igstAmount,
+
+    totalTaxAmount:
+      invoice.totalTaxAmount,
+
+    totalAmount:
+      invoice.totalAmount,
+
+    paidAmount:
+      invoice.paidAmount,
+
+    pendingAmount:
+      invoice.pendingAmount,
+
+    paymentStatus:
+      invoice.paymentStatus,
+
+    status:
+      invoice.status,
+
+    notes:
+      invoice.notes,
+    taxClassification:
+      invoice.taxClassification || "",
+
+    idempotencyKey:
+      invoice.idempotencyKey || null,
+
+    createdAt:
+      invoice.createdAt,
+
+    updatedAt:
+      invoice.updatedAt,
+  };
+}
+function mergeAmcContractWithInvoice(
+  contract,
+  invoice
+) {
+  const contractData =
+    amcContractResponse(
+      contract
+    );
+
+  if (!invoice) {
+    /*
+     * Compatibility for old contracts created before
+     * the amcinvoices collection was introduced.
+     */
+    return {
+      ...contractData,
+
+      currentInvoice:
+        null,
+
+      invoice:
+        null,
+    };
+  }
+
+  const invoiceData =
+    amcInvoiceResponse(
+      invoice
+    );
+
+  return {
+    ...contractData,
+
+    currentInvoiceId:
+      invoice._id,
+
+    currentInvoiceCode:
+      invoice.invoiceCode,
+
+    /*
+     * Keep these top-level values so the current
+     * AmcBilling frontend continues working.
+     *
+     * Their source is now the permanent invoice.
+     */
+    invoiceCode:
+      invoice.invoiceCode,
+
+    invoiceDate:
+      invoice.invoiceDate,
+
+    startDate:
+      invoice.contractStartDate,
+
+    expiryDate:
+      invoice.contractExpiryDate,
+
+    dueDate:
+      invoice.dueDate,
+
+    clientId:
+      invoice.clientId,
+
+    clientCode:
+      invoice.clientCode,
+
+    clientName:
+      invoice.clientName,
+
+    contactPerson:
+      invoice.contactPerson,
+
+    contactMobile:
+      invoice.contactMobile,
+
+    contactEmail:
+      invoice.contactEmail,
+
+    clientProductId:
+      invoice.clientProductId,
+
+    productId:
+      invoice.productId,
+
+    productCode:
+      invoice.productCode,
+
+    productName:
+      invoice.productName,
+
+    productVersion:
+      invoice.productVersion,
+
+    plan:
+      invoice.plan,
+
+    licensedUsers:
+      invoice.licensedUsers,
+
+    taxableAmount:
+      invoice.taxableAmount,
+
+    cgstRate:
+      invoice.cgstRate,
+
+    cgstAmount:
+      invoice.cgstAmount,
+
+    sgstRate:
+      invoice.sgstRate,
+
+    sgstAmount:
+      invoice.sgstAmount,
+
+    igstRate:
+      invoice.igstRate,
+
+    igstAmount:
+      invoice.igstAmount,
+
+    totalTaxAmount:
+      invoice.totalTaxAmount,
+
+    totalAmount:
+      invoice.totalAmount,
+
+    paidAmount:
+      invoice.paidAmount,
+
+    pendingAmount:
+      invoice.pendingAmount,
+
+    /*
+     * Contract status remains the overall AMC status.
+     */
+    status:
+      contract.status,
+
+    invoicePaymentStatus:
+      invoice.paymentStatus,
+
+    currentInvoice:
+      invoiceData,
+
+    invoice:
+      invoiceData,
+  };
+}
+
+function amcContractResponse(
+  contract
+) {
+  return {
+    id:
+      contract._id,
+
+    _id:
+      contract._id,
+
+    contractCode:
+      contract.contractCode,
+          currentInvoiceId:
+      contract.currentInvoiceId,
+
+    currentInvoiceCode:
+      contract.currentInvoiceCode,
+
+    invoiceCode:
+      contract.invoiceCode,
+
+    invoiceDate:
+      contract.invoiceDate,
+
+    clientId:
+      contract.clientId,
+
+    clientCode:
+      contract.clientCode,
+
+    clientName:
+      contract.clientName,
+
+    contactPerson:
+      contract.contactPerson,
+
+    contactMobile:
+      contract.contactMobile,
+
+    contactEmail:
+      contract.contactEmail,
+
+    clientProductId:
+      contract.clientProductId,
+
+    productId:
+      contract.productId,
+
+    productCode:
+      contract.productCode,
+
+    productName:
+      contract.productName,
+
+    productVersion:
+      contract.productVersion,
+
+    plan:
+      contract.plan,
+
+    licensedUsers:
+      contract.licensedUsers,
+
+    startDate:
+      contract.startDate,
+
+    expiryDate:
+      contract.expiryDate,
+
+    dueDate:
+      contract.dueDate,
+
+    taxableAmount:
+      contract.taxableAmount,
+
+    cgstRate:
+      contract.cgstRate,
+
+    cgstAmount:
+      contract.cgstAmount,
+
+    sgstRate:
+      contract.sgstRate,
+
+    sgstAmount:
+      contract.sgstAmount,
+
+    igstRate:
+      contract.igstRate,
+
+    igstAmount:
+      contract.igstAmount,
+
+    totalTaxAmount:
+      contract.totalTaxAmount,
+
+    totalAmount:
+      contract.totalAmount,
+
+    paidAmount:
+      contract.paidAmount,
+
+    pendingAmount:
+      contract.pendingAmount,
+
+    status:
+      contract.status,
+
+    assignedEmployeeId:
+      contract.assignedEmployeeId,
+
+    assignedEmployeeCode:
+      contract.assignedEmployeeCode,
+
+    assignedEmployeeName:
+      contract.assignedEmployeeName,
+
+    reminderStatus:
+      contract.reminderStatus,
+
+    lastReminderAt:
+      contract.lastReminderAt,
+
+    nextFollowUpDate:
+      contract.nextFollowUpDate,
+
+    notes:
+      contract.notes,
+
+   renewalHistory:
+  contract.renewalHistory,
+
+documents:
+  (contract.documents || [])
+    .filter(
+      (document) =>
+        !document.isDeleted &&
+        document.status !==
+          "Archived"
+    )
+    .map(
+      (document) => ({
+        id:
+          document._id,
+
+        _id:
+          document._id,
+
+        type:
+          document.documentType,
+
+        documentType:
+          document.documentType,
+
+        name:
+          document.fileName,
+
+        fileName:
+          document.fileName,
+
+        mimeType:
+          document.mimeType,
+
+        size:
+          document.fileSize,
+
+        fileSize:
+          document.fileSize,
+
+        source:
+          document.source,
+
+        status:
+          document.status,
+
+        uploadedByName:
+          document.uploadedByName,
+
+        uploadedAt:
+          document.uploadedAt,
+
+        previewUrl:
+          `/api/admin/amc/contract/${contract._id}/document/${document._id}/view`,
+
+        downloadUrl:
+          `/api/admin/amc/contract/${contract._id}/document/${document._id}/download`,
+      })
+    ),
+
+timeline:
+  contract.timeline,
+
+    createdBy:
+      contract.createdBy,
+
+    createdByName:
+      contract.createdByName,
+
+    updatedBy:
+      contract.updatedBy,
+
+    updatedByName:
+      contract.updatedByName,
+
+    createdAt:
+      contract.createdAt,
+
+    updatedAt:
+      contract.updatedAt,
+  };
+}
+
+function amcPaymentResponse(
+  payment
+) {
+  return {
+    id:
+      payment._id,
+
+    _id:
+      payment._id,
+
+    paymentCode:
+      payment.paymentCode,
+
+    amcContractId:
+      payment.amcContractId,
+            amcInvoiceId:
+      payment.amcInvoiceId,
+
+    contractCode:
+      payment.contractCode,
+
+    invoiceCode:
+      payment.invoiceCode,
+
+    clientId:
+      payment.clientId,
+
+    clientCode:
+      payment.clientCode,
+
+    clientName:
+      payment.clientName,
+
+    productId:
+      payment.productId,
+
+    productCode:
+      payment.productCode,
+
+    productName:
+      payment.productName,
+
+    amount:
+      payment.amount,
+
+    paymentDate:
+      payment.paymentDate,
+
+    mode:
+      payment.mode,
+
+    referenceNo:
+      payment.referenceNo,
+
+    notes:
+      payment.notes,
+
+    receivedBy:
+      payment.receivedBy,
+
+    receivedByName:
+      payment.receivedByName,
+
+    createdAt:
+      payment.createdAt,
+
+    updatedAt:
+      payment.updatedAt,
+  };
+}
+
+function amcReminderResponse(
+  reminder
+) {
+  return {
+    id:
+      reminder._id,
+
+    _id:
+      reminder._id,
+
+    amcContractId:
+      reminder.amcContractId,
+
+    contractCode:
+      reminder.contractCode,
+
+    clientId:
+      reminder.clientId,
+
+    clientCode:
+      reminder.clientCode,
+
+    clientName:
+      reminder.clientName,
+
+    channel:
+      reminder.channel,
+
+    message:
+      reminder.message,
+
+    assignedEmployeeId:
+      reminder.assignedEmployeeId,
+
+    assignedEmployeeCode:
+      reminder.assignedEmployeeCode,
+
+    assignedEmployeeName:
+      reminder.assignedEmployeeName,
+
+    followUpDate:
+      reminder.followUpDate,
+
+    notes:
+      reminder.notes,
+
+    sentAt:
+      reminder.sentAt,
+
+    sentBy:
+      reminder.sentBy,
+
+    sentByName:
+      reminder.sentByName,
+
+    status:
+      reminder.status,
+
+    createdAt:
+      reminder.createdAt,
+
+    updatedAt:
+      reminder.updatedAt,
+  };
+}
+/* =====================================================
+ TASK HELPERS
+===================================================== */
+function generateTicketCode() {
+  const year =
+    new Date().getFullYear();
+
+  const uniquePart =
+    `${Date.now()}${Math.floor(
+      Math.random() * 1000
+    )
+      .toString()
+      .padStart(3, "0")}`.slice(-8);
+
+  return `TKT-${year}-${uniquePart}`;
+}
+
+function generateTaskCode() {
+  const year = new Date().getFullYear();
+
+  const uniquePart = `${Date.now()}${Math.floor(
+    Math.random() * 1000
+  )
+    .toString()
+    .padStart(3, "0")}`.slice(-8);
+
+  return `TSK-${year}-${uniquePart}`;
+}
+
+function normalizeObjectId(value) {
+  if (!value) {
+    return null;
+  }
+
+  return mongoose.Types.ObjectId.isValid(value)
+    ? new mongoose.Types.ObjectId(value)
+    : null;
+}
+
+async function createActivityLog({
+  action,
+  category = "System",
+  description = "",
+  entityType = "system",
+  entityId = null,
+  entityCode = "",
+  entityName = "",
+  clientId = null,
+  clientName = "",
+  employeeId = null,
+  employeeName = "",
+  performedBy = null,
+  performedByName = "",
+  performedByRole = "system",
+  metadata = {},
+}, options = {}) {
+  try {
+    const logData = {
+      action: String(action || "").trim(),
+
+      category,
+
+      description:
+        String(description || "").trim(),
+
+      entityType,
+
+      entityId: normalizeObjectId(entityId),
+
+      entityCode:
+        String(entityCode || "").trim(),
+
+      entityName:
+        String(entityName || "").trim(),
+
+      clientId: normalizeObjectId(clientId),
+
+      clientName:
+        String(clientName || "").trim(),
+
+      employeeId:
+        normalizeObjectId(employeeId),
+
+      employeeName:
+        String(employeeName || "").trim(),
+
+      performedBy:
+        normalizeObjectId(performedBy),
+
+      performedByName:
+        String(performedByName || "").trim(),
+
+      performedByRole,
+
+      metadata:
+        metadata &&
+          typeof metadata === "object"
+          ? metadata
+          : {},
+    };
+
+    if (options?.session) {
+      const logDoc = new ActivityLog(logData);
+      return await logDoc.save({ session: options.session });
+    }
+
+    return await ActivityLog.create(logData);
+  } catch (error) {
+    /*
+     * Activity logging must never break the main API.
+     */
+    console.error(
+      "Create activity log error:",
+      error
+    );
+
+    return null;
+  }
+}
+
+function productResponse(product) {
+  return {
+    id: product._id,
+    _id: product._id,
+
+    productCode:
+      product.productCode,
+
+    productName:
+      product.productName,
+
+    category:
+      product.category,
+
+    description:
+      product.description,
+
+    currentVersion:
+      product.currentVersion,
+
+    platform:
+      product.platform,
+
+    status:
+      product.status,
+
+    releaseDate:
+      product.releaseDate,
+
+    createdBy:
+      product.createdBy,
+
+    createdByName:
+      product.createdByName,
+
+    updatedBy:
+      product.updatedBy,
+
+    updatedByName:
+      product.updatedByName,
+
+    createdAt:
+      product.createdAt,
+
+    updatedAt:
+      product.updatedAt,
+  };
+}
+function rejectLockedProject(
+  project,
+  res
+) {
+  if (
+    project?.convertedToProduct === true
+  ) {
+    res.status(409).json({
+      success: false,
+
+      code:
+        "PROJECT_LOCKED",
+
+      message:
+        "This project has been converted to a product and is now a read-only historical record.",
+
+      data:
+        projectResponse(
+          project
+        ),
+    });
+
+    return true;
+  }
+
+  return false;
+}
+
+function projectResponse(project) {
+  return {
+    id: project._id,
+    _id: project._id,
+
+    projectCode:
+      project.projectCode,
+
+    projectName:
+      project.projectName,
+
+    projectType:
+      project.projectType,
+
+    productId:
+      project.productId,
+
+    productCode:
+      project.productCode,
+
+    productName:
+      project.productName,
+
+    clientId:
+      project.clientId,
+
+    clientCode:
+      project.clientCode,
+
+    clientName:
+      project.clientName,
+      requirementId:
+  project.requirementId,
+
+requirementCode:
+  project.requirementCode,
+
+finalAmount:
+  Number(
+    project.finalAmount || 0
+  ),
+
+amcApplicable:
+  Boolean(
+    project.amcApplicable
+  ),
+
+proposedAmcAmount:
+  Number(
+    project.proposedAmcAmount || 0
+  ),
+
+warrantyEndDate:
+  project.warrantyEndDate,
+  deliveryDate:
+  project.deliveryDate,
+
+amcContractId:
+  project.amcContractId,
+
+amcContractCode:
+  project.amcContractCode,
+
+amcActivated:
+  Boolean(
+    project.amcActivated
+  ),
+
+completedBy:
+  project.completedBy,
+
+completedByName:
+  project.completedByName,
+
+  convertedToProduct:
+  Boolean(
+    project.convertedToProduct
+  ),
+
+convertedProductAt:
+  project.convertedProductAt,
+
+convertedProductBy:
+  project.convertedProductBy,
+
+convertedProductByName:
+  project.convertedProductByName,
+
+isReadOnly:
+  Boolean(
+    project.convertedToProduct
+  ),
+    description:
+      project.description,
+
+    startDate:
+      project.startDate,
+
+    dueDate:
+      project.dueDate,
+
+    completedDate:
+      project.completedDate,
+
+    priority:
+      project.priority,
+
+    status:
+      project.status,
+
+    stage:
+      project.stage || "Planning",
+
+    projectManager:
+      project.projectManager || null,
+
+    projectManagerName:
+      project.projectManagerName || "",
+
+    teamMembers:
+      project.teamMembers || [],
+
+    timeline:
+      project.timeline || [],
+
+    progress:
+      project.progress,
+
+    createdBy:
+      project.createdBy,
+
+    createdByName:
+      project.createdByName,
+
+    updatedBy:
+      project.updatedBy,
+
+    updatedByName:
+      project.updatedByName,
+
+    createdAt:
+      project.createdAt,
+
+    updatedAt:
+      project.updatedAt,
+  };
+}
+
+/* =====================================================
+   CLIENT HELPERS
+===================================================== */
+
+/* =====================================================
+   CLIENT LOGIN HELPERS
+===================================================== */
+
+function generateTemporaryPassword() {
+  const upper =
+    "ABCDEFGHJKLMNPQRSTUVWXYZ";
+
+  const lower =
+    "abcdefghijkmnopqrstuvwxyz";
+
+  const numbers =
+    "23456789";
+
+  const symbols =
+    "@#$!";
+
+  const randomCharacter = (
+    characters
+  ) =>
+    characters[
+    crypto.randomInt(
+      0,
+      characters.length
+    )
+    ];
+
+  const requiredCharacters = [
+    randomCharacter(upper),
+    randomCharacter(lower),
+    randomCharacter(numbers),
+    randomCharacter(symbols),
+  ];
+
+  const allCharacters =
+    upper +
+    lower +
+    numbers +
+    symbols;
+
+  while (
+    requiredCharacters.length < 10
+  ) {
+    requiredCharacters.push(
+      randomCharacter(
+        allCharacters
+      )
+    );
+  }
+
+  for (
+    let index =
+      requiredCharacters.length -
+      1;
+    index > 0;
+    index -= 1
+  ) {
+    const randomIndex =
+      crypto.randomInt(
+        0,
+        index + 1
+      );
+
+    [
+      requiredCharacters[index],
+      requiredCharacters[
+      randomIndex
+      ],
+    ] = [
+        requiredCharacters[
+        randomIndex
+        ],
+        requiredCharacters[index],
+      ];
+  }
+
+  return requiredCharacters.join(
+    ""
+  );
+}
+
+function mapClientStatusToUserStatus(
+  clientStatus
+) {
+  if (
+    clientStatus === "Active"
+  ) {
+    return "Active";
+  }
+
+  if (
+    clientStatus ===
+    "Suspended"
+  ) {
+    return "Blocked";
+  }
+
+  return "Inactive";
+}
+
+async function findClientUser(
+  client
+) {
+  if (!client) {
+    return null;
+  }
+
+  let user =
+    await User.findOne({
+      role: "client",
+      clientId: client._id,
+    });
+
+  if (
+    !user &&
+    client.email
+  ) {
+    user =
+      await User.findOne({
+        role: "client",
+        email:
+          String(
+            client.email
+          )
+            .trim()
+            .toLowerCase(),
+      });
+  }
+
+  return user;
+}
+
+async function syncClientUser(
+  client
+) {
+  const existingUser =
+    await findClientUser(
+      client
+    );
+
+  if (!existingUser) {
+    return null;
+  }
+
+  existingUser.name =
+    client.contactPerson ||
+    client.companyName;
+
+  existingUser.email =
+    String(
+      client.email || ""
+    )
+      .trim()
+      .toLowerCase();
+
+  existingUser.mobile =
+    client.mobile || "";
+
+  existingUser.clientId =
+    client._id;
+
+  existingUser.clientCode =
+    client.clientCode;
+
+  existingUser.companyName =
+    client.companyName;
+
+  existingUser.status =
+    mapClientStatusToUserStatus(
+      client.status
+    );
+
+  await existingUser.save();
+
+  return existingUser;
+}
+
+function clientProductResponse(product = {}) {
+  return {
+    id:
+      product._id ||
+      product.id ||
+      "",
+
+    _id:
+      product._id ||
+      product.id ||
+      "",
+
+    productId:
+      product.productId?._id ||
+      product.productId ||
+      null,
+
+    productCode:
+      product.productCode ||
+      product.productId?.productCode ||
+      "",
+
+    productName:
+      product.productName ||
+      product.productId?.productName ||
+      "",
+
+    version:
+      product.version ||
+      product.productId?.currentVersion ||
+      "v1.0.0",
+
+    purchaseDate:
+      product.purchaseDate ||
+      "",
+
+    installationDate:
+      product.installationDate ||
+      "",
+
+    licensedUsers:
+      Math.max(
+        Number(
+          product.licensedUsers ||
+          1
+        ),
+        1
+      ),
+
+    supportType:
+      product.supportType ||
+      "Standard",
+
+    amcStatus:
+      product.amcStatus ||
+      "Not Started",
+
+    expiryDate:
+      product.expiryDate ||
+      "",
+
+    installationStatus:
+      product.installationStatus ||
+      "Installed",
+
+    notes:
+      product.notes ||
+      "",
+
+    createdAt:
+      product.createdAt ||
+      null,
+
+    updatedAt:
+      product.updatedAt ||
+      null,
+  };
+}
+function clientResponse(client) {
+  return {
+    id: client._id,
+    _id: client._id,
+
+    clientCode:
+      client.clientCode,
+
+    companyName:
+      client.companyName,
+
+    contactPerson:
+      client.contactPerson,
+
+    email:
+      client.email,
+    userId:
+      client.userId || null,
+
+    loginEnabled:
+      client.loginEnabled !==
+      false,
+
+    loginCreatedAt:
+      client.loginCreatedAt ||
+      null,
+
+    mobile:
+      client.mobile,
+
+    city:
+      client.city,
+
+    products:
+      Array.isArray(client.products)
+        ? client.products.map(
+          clientProductResponse
+        )
+        : [],
+
+    productCount:
+      Array.isArray(client.products)
+        ? client.products.length
+        : 0,
+
+    amcStatus:
+      client.amcStatus,
+
+    nextRenewal:
+      client.nextRenewal,
+
+    openTickets:
+      Number(
+        client.openTickets || 0
+      ),
+
+
+assignedEmployeeId:
+  client.assignedEmployeeId?._id ||
+  client.assignedEmployeeId ||
+  null,
+
+assignedEmployeeCode:
+  client.assignedEmployeeCode ||
+  client.assignedEmployeeId
+    ?.employeeCode ||
+  "",
+
+assignedEmployeeName:
+  client.assignedEmployeeName ||
+  client.assignedEmployeeId
+    ?.name ||
+  "Unassigned",
+
+
+
+    status:
+      client.status,
+
+    createdBy:
+      client.createdBy,
+
+    createdByName:
+      client.createdByName,
+
+    updatedBy:
+      client.updatedBy,
+
+    updatedByName:
+      client.updatedByName,
+
+    createdAt:
+      client.createdAt,
+
+    updatedAt:
+      client.updatedAt,
+  };
+}
+
+async function resolveClientProduct(
+  productData = {}
+) {
+  const productId =
+    productData.productId;
+
+  if (!productId) {
+    throw new Error(
+      "Product ID is required."
+    );
+  }
+
+  if (
+    !mongoose.Types.ObjectId.isValid(
+      productId
+    )
+  ) {
+    throw new Error(
+      "Invalid product ID."
+    );
+  }
+
+  const product =
+    await Product.findOne({
+      _id: productId,
+      isDeleted: false,
+    });
+
+  if (!product) {
+    throw new Error(
+      "Selected product was not found."
+    );
+  }
+
+  if (
+    product.status !== "Active"
+  ) {
+    throw new Error(
+      `${product.productName} is not active.`
+    );
+  }
+
+ return {
+  productId: product._id,
+  productCode: product.productCode,
+  productName: product.productName,
+  version: product.currentVersion || product.version || "v1.0.0",
+
+  purchaseDate: productData.purchaseDate || "",
+  installationDate: productData.installationDate || "",
+
+  licenceType: productData.licenceType || "Annual Licence",
+  licenceKey: productData.licenceKey || "",
+
+  licensedUsers: productData.licensedUsers || 1,
+  activeUsers: productData.activeUsers || 0,
+
+  supportType: productData.supportType || "Standard",
+  amcStatus: productData.amcStatus || "Not Started",
+  expiryDate: productData.expiryDate || "",
+
+  installationStatus: productData.installationStatus || "Installed",
+
+  serverType: productData.serverType || "",
+  database: productData.database || "",
+  assignedEngineer: productData.assignedEngineer || "Support Team",
+
+  modules: productData.modules || [],
+  documents: productData.documents || [],
+
+  notes: productData.notes || ""
+};
+}
+
+async function resolveClientProducts(
+  products = []
+) {
+  if (!Array.isArray(products)) {
+    return [];
+  }
+
+  const resolvedProducts = [];
+  const usedProductIds =
+    new Set();
+
+  for (const item of products) {
+    const resolved =
+      await resolveClientProduct(
+        item
+      );
+
+    const key =
+      String(
+        resolved.productId
+      );
+
+    if (
+      usedProductIds.has(key)
+    ) {
+      throw new Error(
+        `${resolved.productName} is assigned more than once.`
+      );
+    }
+
+    usedProductIds.add(key);
+    resolvedProducts.push(
+      resolved
+    );
+  }
+
+  return resolvedProducts;
+}
+
+function taskResponse(task) {
+  return {
+    id:
+      task._id,
+
+    _id:
+      task._id,
+
+    taskCode:
+      task.taskCode,
+
+    title:
+      task.title,
+
+    description:
+      task.description,
+
+    workType:
+      task.workType,
+    taskFor:
+      task.taskFor,
+
+    generalTaskFor:
+      task.generalTaskFor,
+
+    clientId:
+      task.clientId,
+
+    clientName:
+      task.clientName,
+
+    productId:
+      task.productId,
+
+    productCode:
+      task.productCode,
+
+    productName:
+      task.productName,
+
+    projectId:
+      task.projectId,
+
+    projectCode:
+      task.projectCode,
+
+    projectName:
+      task.projectName,
+
+    ticketId:
+      task.ticketId,
+
+    ticketCode:
+      task.ticketCode,
+
+    assignedEmployeeId:
+      task.assignedEmployeeId,
+
+    assignedEmployeeName:
+      task.assignedEmployeeName,
+
+    assignedEmployeeCode:
+      task.assignedEmployeeCode,
+
+    assignedBy:
+      task.assignedBy,
+
+    assignedByName:
+      task.assignedByName,
+
+    priority:
+      task.priority,
+
+    status:
+      task.status,
+
+    progress:
+      task.progress,
+
+    startDate:
+      task.startDate,
+
+    dueDate:
+      task.dueDate,
+
+    completedAt:
+      task.completedAt,
+
+    estimatedMinutes:
+      task.estimatedMinutes,
+
+    spentMinutes:
+      task.spentMinutes,
+
+    startedAt: task.startedAt,
+    pausedAt: task.pausedAt,
+    totalPausedMinutes: task.totalPausedMinutes,
+    elapsedMinutes: task.elapsedMinutes,
+    elapsedSeconds: task.elapsedSeconds,
+    lastUpdated: task.lastUpdated,
+
+    resolutionNote:
+      task.resolutionNote,
+
+    checklist:
+      task.checklist || [],
+
+    blockerReason:
+      task.blockerReason || "",
+
+    waitingFor:
+      task.waitingFor || "",
+
+    expectedResolutionDate:
+      task.expectedResolutionDate || null,
+
+    timeline:
+      task.timeline,
+
+    comments:
+      task.comments,
+
+    attachments:
+      task.attachments,
+
+    createdAt:
+      task.createdAt,
+
+    updatedAt:
+      task.updatedAt,
+  };
+}
+function ticketResponse(ticket) {
+  return {
+    id: ticket._id,
+    _id: ticket._id,
+
+    ticketCode:
+      ticket.ticketCode,
+
+    title: ticket.title,
+    description:
+      ticket.description,
+
+    clientId: ticket.clientId,
+    clientCode:
+      ticket.clientCode,
+    clientName:
+      ticket.clientName,
+
+    contactPerson:
+      ticket.contactPerson,
+    contactMobile:
+      ticket.contactMobile,
+    contactEmail:
+      ticket.contactEmail,
+
+    productId:
+      ticket.productId,
+    productName:
+      ticket.productName,
+    productVersion:
+      ticket.productVersion,
+
+    module: ticket.module,
+    category: ticket.category,
+
+    source: ticket.source,
+    priority: ticket.priority,
+    status: ticket.status,
+
+    assignedEmployeeId:
+      ticket.assignedEmployeeId,
+    assignedEmployeeName:
+      ticket.assignedEmployeeName,
+    assignedEmployeeCode:
+      ticket.assignedEmployeeCode,
+
+    assignedAt:
+      ticket.assignedAt,
+    assignedBy:
+      ticket.assignedBy,
+    assignedByName:
+      ticket.assignedByName,
+
+    dueDate: ticket.dueDate,
+    firstResponseAt:
+      ticket.firstResponseAt,
+
+    resolvedAt:
+      ticket.resolvedAt,
+    verifiedAt:
+      ticket.verifiedAt,
+    closedAt:
+      ticket.closedAt,
+
+    resolutionNote:
+      ticket.resolutionNote,
+    rootCause:
+      ticket.rootCause,
+
+    linkedTaskId:
+      ticket.linkedTaskId,
+    linkedTaskCode:
+      ticket.linkedTaskCode,
+
+    spentMinutes:
+      ticket.spentMinutes,
+
+    replies:
+      ticket.replies,
+
+    attachments:
+      ticket.attachments,
+
+    timeline:
+      ticket.timeline,
+
+    replyCount:
+      Array.isArray(ticket.replies)
+        ? ticket.replies.length
+        : 0,
+
+    attachmentCount:
+      Array.isArray(
+        ticket.attachments
+      )
+        ? ticket.attachments.length
+        : 0,
+
+    createdBy:
+      ticket.createdBy,
+
+    createdByName:
+      ticket.createdByName,
+
+    createdByRole:
+      ticket.createdByRole,
+
+    createdAt:
+      ticket.createdAt,
+
+    updatedAt:
+      ticket.updatedAt,
+
+    slaFirstResponseMinutes:
+      ticket.slaFirstResponseMinutes,
+    slaResolutionMinutes:
+      ticket.slaResolutionMinutes,
+    firstResponseDueAt:
+      ticket.firstResponseDueAt,
+    resolutionDueAt:
+      ticket.resolutionDueAt,
+    firstResolvedAt:
+      ticket.firstResolvedAt,
+    slaPolicyVersion:
+      ticket.slaPolicyVersion,
+    sla:
+      calculateTicketSla(ticket),
+    clientFeedback:
+      ticket.clientFeedback && ticket.clientFeedback.rating
+        ? {
+            rating: ticket.clientFeedback.rating,
+            comment: ticket.clientFeedback.comment || "",
+            submittedAt: ticket.clientFeedback.submittedAt || null,
+            submittedByName: ticket.clientFeedback.submittedByName || "",
+          }
+        : null,
+  };
+}
+
+async function findEmployeeById(employeeId) {
+  if (!mongoose.Types.ObjectId.isValid(employeeId)) {
+    return null;
+  }
+
+  return mongoose.connection
+    .collection("employees")
+    .findOne({
+      _id: new mongoose.Types.ObjectId(employeeId),
+      isActive: {
+        $ne: false,
+      },
+    });
+}
+async function resolveClientEmployee(
+  employeeId,
+  {
+    required = false,
+  } = {}
+) {
+  const normalizedEmployeeId =
+    String(employeeId || "").trim();
+
+  if (!normalizedEmployeeId) {
+    if (required) {
+      throw new Error(
+        "Please select an assigned employee."
+      );
+    }
+
+    return {
+      assignedEmployeeId: null,
+      assignedEmployeeCode: "",
+      assignedEmployeeName: "",
+    };
+  }
+
+  if (
+    !mongoose.Types.ObjectId.isValid(
+      normalizedEmployeeId
+    )
+  ) {
+    throw new Error(
+      "Invalid assigned employee ID."
+    );
+  }
+
+  const employee =
+    await findEmployeeById(
+      normalizedEmployeeId
+    );
+
+  if (!employee) {
+    throw new Error(
+      "Selected employee was not found or is inactive."
+    );
+  }
+
+  return {
+    assignedEmployeeId:
+      employee._id,
+
+    assignedEmployeeCode:
+      String(
+        employee.employeeCode || ""
+      )
+        .trim()
+        .toUpperCase(),
+
+    assignedEmployeeName:
+      String(
+        employee.name || ""
+      ).trim(),
+  };
+}
+
+
+
+async function updateEmployeeTaskSummary(
+  employeeId,
+  changes
+) {
+  if (!mongoose.Types.ObjectId.isValid(employeeId)) {
+    return;
+  }
+
+  await mongoose.connection
+    .collection("employees")
+    .updateOne(
+      {
+        _id: new mongoose.Types.ObjectId(employeeId),
+      },
+      changes
+    );
+}
+/* =====================================================
+   SMART EMPLOYEE AUTO ASSIGNMENT
+===================================================== */
+
+async function findBestEmployeeForTask({
+  clientId = null,
+  preferredEmployeeId = null,
+} = {}) {
+  /*
+   * Assignment order:
+   *
+   * 1. Client's assigned employee if FREE
+   * 2. Any other FREE employee with least workload
+   * 3. If nobody FREE -> employee with least workload
+   *
+   * Employees on Leave / Break / Offline / Inactive
+   * are not automatically assigned.
+   */
+
+  const employeesCollection =
+    mongoose.connection.collection("employees");
+
+  /* =========================================
+     FIND CLIENT'S PREFERRED EMPLOYEE
+  ========================================= */
+
+  let clientPreferredEmployeeId =
+    preferredEmployeeId || null;
+
+  if (
+    !clientPreferredEmployeeId &&
+    clientId &&
+    mongoose.Types.ObjectId.isValid(clientId)
+  ) {
+    const client = await Client.findById(clientId)
+      .select("assignedEmployeeId")
+      .lean();
+
+    if (client?.assignedEmployeeId) {
+      clientPreferredEmployeeId =
+        client.assignedEmployeeId;
+    }
+  }
+
+  /* =========================================
+     LOAD ELIGIBLE EMPLOYEES
+  ========================================= */
+
+  const employees = await employeesCollection
+    .find({
+      isActive: {
+        $ne: false,
+      },
+
+      status: {
+        $nin: [
+          "Leave",
+          "Break",
+          "Offline",
+          "Inactive",
+        ],
+      },
+    })
+    .toArray();
+
+  if (!employees.length) {
+    return null;
+  }
+
+  /* =========================================
+     GET REAL ACTIVE TASK COUNTS
+  ========================================= */
+
+  const employeeIds = employees.map(
+    (employee) => employee._id
+  );
+
+  const taskCounts = await Task.aggregate([
+    {
+      $match: {
+        assignedEmployeeId: {
+          $in: employeeIds,
+        },
+
+        isDeleted: false,
+
+        status: {
+          $nin: [
+            "Completed",
+            "Closed",
+            "Cancelled",
+          ],
+        },
+      },
+    },
+
+    {
+      $group: {
+        _id: "$assignedEmployeeId",
+        activeTasks: {
+          $sum: 1,
+        },
+      },
+    },
+  ]);
+
+  const taskCountMap = new Map(
+    taskCounts.map((item) => [
+      String(item._id),
+      Number(item.activeTasks || 0),
+    ])
+  );
+
+  /* =========================================
+     GET ACTIVE TICKET COUNTS
+  ========================================= */
+
+  const ticketCounts =
+    await SupportTicket.aggregate([
+      {
+        $match: {
+          assignedEmployeeId: {
+            $in: employeeIds,
+          },
+
+          isDeleted: false,
+
+          status: {
+            $nin: [
+              "Resolved",
+              "Verified",
+              "Closed",
+              "Cancelled",
+            ],
+          },
+        },
+      },
+
+      {
+        $group: {
+          _id: "$assignedEmployeeId",
+
+          activeTickets: {
+            $sum: 1,
+          },
+        },
+      },
+    ]);
+
+  const ticketCountMap = new Map(
+    ticketCounts.map((item) => [
+      String(item._id),
+      Number(item.activeTickets || 0),
+    ])
+  );
+
+  /* =========================================
+     BUILD WORKLOAD INFORMATION
+  ========================================= */
+
+  const rankedEmployees = employees.map(
+    (employee) => {
+      const activeTasks =
+        taskCountMap.get(
+          String(employee._id)
+        ) || 0;
+
+      const activeTickets =
+        ticketCountMap.get(
+          String(employee._id)
+        ) || 0;
+
+      return {
+        employee,
+
+        activeTasks,
+
+        activeTickets,
+
+        workload:
+          activeTasks + activeTickets,
+      };
+    }
+  );
+
+  /* =========================================
+     RULE 1:
+     CLIENT ASSIGNED EMPLOYEE IF FREE
+  ========================================= */
+
+  if (
+    clientPreferredEmployeeId &&
+    mongoose.Types.ObjectId.isValid(
+      clientPreferredEmployeeId
+    )
+  ) {
+    const preferred =
+      rankedEmployees.find(
+        (item) =>
+          String(item.employee._id) ===
+          String(clientPreferredEmployeeId)
+      );
+
+    if (
+      preferred &&
+      preferred.employee.status === "Free"
+    ) {
+      return {
+        employee: preferred.employee,
+
+        reason:
+          "CLIENT_ASSIGNED_EMPLOYEE_FREE",
+
+        workload:
+          preferred.workload,
+
+        activeTasks:
+          preferred.activeTasks,
+
+        activeTickets:
+          preferred.activeTickets,
+      };
+    }
+  }
+
+  /* =========================================
+     RULE 2:
+     FIND OTHER FREE EMPLOYEE
+  ========================================= */
+
+  const freeEmployees =
+    rankedEmployees
+      .filter(
+        (item) =>
+          item.employee.status === "Free"
+      )
+      .sort((a, b) => {
+        if (a.workload !== b.workload) {
+          return (
+            a.workload - b.workload
+          );
+        }
+
+        return (
+          a.activeTasks -
+          b.activeTasks
+        );
+      });
+
+  if (freeEmployees.length) {
+    const selected =
+      freeEmployees[0];
+
+    return {
+      employee:
+        selected.employee,
+
+      reason:
+        "FREE_EMPLOYEE_LEAST_WORKLOAD",
+
+      workload:
+        selected.workload,
+
+      activeTasks:
+        selected.activeTasks,
+
+      activeTickets:
+        selected.activeTickets,
+    };
+  }
+
+  /* =========================================
+     RULE 3:
+     NOBODY FREE -> LEAST WORKLOAD
+  ========================================= */
+
+  const workingEmployees =
+    rankedEmployees
+      .filter(
+        (item) =>
+          item.employee.status === "Working"
+      )
+      .sort((a, b) => {
+        if (a.workload !== b.workload) {
+          return (
+            a.workload - b.workload
+          );
+        }
+
+        return (
+          a.activeTasks -
+          b.activeTasks
+        );
+      });
+
+  if (!workingEmployees.length) {
+    return null;
+  }
+
+  const selected =
+    workingEmployees[0];
+
+  return {
+    employee:
+      selected.employee,
+
+    reason:
+      "WORKING_EMPLOYEE_LEAST_WORKLOAD",
+
+    workload:
+      selected.workload,
+
+    activeTasks:
+      selected.activeTasks,
+
+    activeTickets:
+      selected.activeTickets,
+  };
+}
+async function normalizeEmployeeTaskCounts(
+  employeeId
+) {
+  if (
+    !mongoose.Types.ObjectId.isValid(
+      employeeId
+    )
+  ) {
+    return;
+  }
+
+  const objectId =
+    new mongoose.Types.ObjectId(
+      employeeId
+    );
+
+  const activeTaskCount =
+    await Task.countDocuments({
+      assignedEmployeeId: objectId,
+
+      isDeleted: false,
+
+      status: {
+        $nin: [
+          "Completed",
+          "Closed",
+          "Cancelled",
+        ],
+      },
+    });
+
+  const completedTodayStart =
+    new Date();
+
+  completedTodayStart.setHours(
+    0,
+    0,
+    0,
+    0
+  );
+
+  const completedTodayCount =
+    await Task.countDocuments({
+      assignedEmployeeId: objectId,
+
+      isDeleted: false,
+
+      status: {
+        $in: ["Completed", "Closed"],
+      },
+
+      completedAt: {
+        $gte: completedTodayStart,
+      },
+    });
+
+  await mongoose.connection
+    .collection("employees")
+    .updateOne(
+      {
+        _id: objectId,
+      },
+      {
+        $set: {
+          openTasks:
+            activeTaskCount,
+
+          completedToday:
+            completedTodayCount,
+
+          lastActivityAt:
+            new Date(),
+        },
+      }
+    );
+}
+
+async function normalizeClientOpenTicketCount(
+  clientId
+) {
+  if (
+    !mongoose.Types.ObjectId.isValid(
+      clientId
+    )
+  ) {
+    return;
+  }
+
+  const objectId =
+    new mongoose.Types.ObjectId(
+      clientId
+    );
+
+  const openTicketCount =
+    await SupportTicket.countDocuments({
+      clientId: objectId,
+
+      isDeleted: false,
+
+      status: {
+        $nin: [
+          "Resolved",
+          "Verified",
+          "Closed",
+          "Cancelled",
+        ],
+      },
+    });
+
+  await Client.updateOne(
+    {
+      _id: objectId,
+    },
+    {
+      $set: {
+        openTickets:
+          openTicketCount,
+      },
+    }
+  );
+}
+/* =====================================================
+   CREATE PRODUCT
+   POST /api/admin/product
+===================================================== */
+
+router.post(
+  "/product",
+  async (req, res) => {
+    try {
+      const {
+        productCode,
+        productName,
+        category,
+        description,
+        currentVersion,
+        platform,
+        status,
+        releaseDate,
+      } = req.body;
+
+      const normalizedCode =
+        String(
+          productCode || ""
+        )
+          .trim()
+          .toUpperCase();
+
+      const normalizedName =
+        String(
+          productName || ""
+        ).trim();
+
+      if (!normalizedCode) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Product code is required.",
+        });
+      }
+
+      if (!normalizedName) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Product name is required.",
+        });
+      }
+
+      const duplicateProduct =
+        await Product.findOne({
+          isDeleted: false,
+
+          $or: [
+            {
+              productCode:
+                normalizedCode,
+            },
+
+            {
+              productName: {
+                $regex:
+                  `^${normalizedName.replace(
+                    /[.*+?^${}()|[\]\\]/g,
+                    "\\$&"
+                  )}$`,
+
+                $options: "i",
+              },
+            },
+          ],
+        });
+
+      if (duplicateProduct) {
+        return res.status(409).json({
+          success: false,
+
+          message:
+            duplicateProduct.productCode ===
+              normalizedCode
+              ? "Product code already exists."
+              : "Product name already exists.",
+        });
+      }
+
+
+      const product =
+        await Product.create({
+          productCode:
+            normalizedCode,
+
+          productName:
+            normalizedName,
+
+          category:
+            String(
+              category || "Software"
+            ).trim(),
+
+          description:
+            String(
+              description || ""
+            ).trim(),
+
+          currentVersion:
+            String(
+              currentVersion ||
+              "v1.0.0"
+            ).trim(),
+
+          platform:
+            platform || "Web",
+
+          status:
+            status || "Active",
+
+          releaseDate:
+            releaseDate
+              ? new Date(
+                releaseDate
+              )
+              : null,
+
+          createdBy:
+            req.user._id,
+
+          createdByName:
+            req.user.name ||
+            "Admin",
+
+          updatedBy:
+            req.user._id,
+
+          updatedByName:
+            req.user.name ||
+            "Admin",
+        });
+
+      await createActivityLog({
+        action:
+          "Product Created",
+
+        category:
+          "Product",
+
+        description:
+          `${product.productName} was added to Product Master.`,
+
+        entityType:
+          "product",
+
+        entityId:
+          product._id,
+
+        entityCode:
+          product.productCode,
+
+        entityName:
+          product.productName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+
+        metadata: {
+          category:
+            product.category,
+
+          version:
+            product.currentVersion,
+
+          platform:
+            product.platform,
+
+          status:
+            product.status,
+        },
+      });
+
+      return res.status(201).json({
+        success: true,
+
+        message:
+          "Product created successfully.",
+
+        data:
+          productResponse(product),
+      });
+    } catch (error) {
+      console.error(
+        "Create product error:",
+        error
+      );
+
+      if (error.code === 11000) {
+        return res.status(409).json({
+          success: false,
+          message:
+            "Product code already exists.",
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to create product.",
+      });
+    }
+  }
+);
+
+
+/* =====================================================
+   GET ALL PRODUCTS
+   GET /api/admin/products
+===================================================== */
+
+router.get(
+  "/products",
+  async (req, res) => {
+    try {
+      const {
+        search = "",
+        status = "All",
+        category = "All",
+        platform = "All",
+      } = req.query;
+
+      const query = {
+        isDeleted: false,
+      };
+
+      if (
+        status &&
+        status !== "All"
+      ) {
+        query.status = status;
+      }
+
+      if (
+        category &&
+        category !== "All"
+      ) {
+        query.category =
+          category;
+      }
+
+      if (
+        platform &&
+        platform !== "All"
+      ) {
+        query.platform =
+          platform;
+      }
+
+      const normalizedSearch =
+        String(search || "").trim();
+
+      if (normalizedSearch) {
+        query.$or = [
+          {
+            productCode: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+
+          {
+            productName: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+
+          {
+            category: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+
+          {
+            description: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+
+          {
+            currentVersion: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+        ];
+      }
+
+      const products =
+        await Product.find(query)
+          .sort({
+            productName: 1,
+          });
+
+      const stats = {
+        totalProducts:
+          products.length,
+
+        activeProducts:
+          products.filter(
+            (product) =>
+              product.status ===
+              "Active"
+          ).length,
+
+        inactiveProducts:
+          products.filter(
+            (product) =>
+              product.status ===
+              "Inactive"
+          ).length,
+
+        deprecatedProducts:
+          products.filter(
+            (product) =>
+              product.status ===
+              "Deprecated"
+          ).length,
+      };
+
+      return res.status(200).json({
+        success: true,
+
+        count:
+          products.length,
+
+        stats,
+
+        data:
+          products.map(
+            productResponse
+          ),
+      });
+    } catch (error) {
+      console.error(
+        "Load products error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to load products.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   GET ONE PRODUCT
+   GET /api/admin/product/:id
+===================================================== */
+
+router.get(
+  "/product/:id",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid product ID.",
+        });
+      }
+
+      const product =
+        await Product.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!product) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Product not found.",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        data:
+          productResponse(product),
+      });
+    } catch (error) {
+      console.error(
+        "Get product error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to load product.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   UPDATE PRODUCT
+   PUT /api/admin/product/:id
+===================================================== */
+
+router.put(
+  "/product/:id",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid product ID.",
+        });
+      }
+
+      const product =
+        await Product.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!product) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Product not found.",
+        });
+      }
+
+      const {
+        productCode,
+        productName,
+        category,
+        description,
+        currentVersion,
+        platform,
+        status,
+        releaseDate,
+      } = req.body;
+
+      const normalizedCode =
+        String(
+          productCode ??
+          product.productCode
+        )
+          .trim()
+          .toUpperCase();
+
+      const normalizedName =
+        String(
+          productName ??
+          product.productName
+        ).trim();
+
+      if (!normalizedCode) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Product code is required.",
+        });
+      }
+
+      if (!normalizedName) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Product name is required.",
+        });
+      }
+
+      const duplicateProduct =
+        await Product.findOne({
+          _id: {
+            $ne: id,
+          },
+
+          isDeleted: false,
+
+          $or: [
+            {
+              productCode:
+                normalizedCode,
+            },
+
+            {
+              productName: {
+                $regex:
+                  `^${normalizedName.replace(
+                    /[.*+?^${}()|[\]\\]/g,
+                    "\\$&"
+                  )}$`,
+
+                $options: "i",
+              },
+            },
+          ],
+        });
+
+      if (duplicateProduct) {
+        return res.status(409).json({
+          success: false,
+
+          message:
+            duplicateProduct.productCode ===
+              normalizedCode
+              ? "Another product already uses this product code."
+              : "Another product already uses this product name.",
+        });
+      }
+
+      const previousData = {
+        productCode:
+          product.productCode,
+
+        productName:
+          product.productName,
+
+        category:
+          product.category,
+
+        currentVersion:
+          product.currentVersion,
+
+        platform:
+          product.platform,
+
+        status:
+          product.status,
+      };
+
+      product.productCode =
+        normalizedCode;
+
+      product.productName =
+        normalizedName;
+
+      product.category =
+        String(
+          category ??
+          product.category ??
+          "Software"
+        ).trim();
+
+      product.description =
+        String(
+          description ??
+          product.description ??
+          ""
+        ).trim();
+
+      product.currentVersion =
+        String(
+          currentVersion ??
+          product.currentVersion ??
+          "v1.0.0"
+        ).trim();
+
+      if (
+        platform !== undefined
+      ) {
+        product.platform =
+          platform;
+      }
+
+      if (
+        status !== undefined
+      ) {
+        product.status =
+          status;
+      }
+
+      if (
+        releaseDate !== undefined
+      ) {
+        product.releaseDate =
+          releaseDate
+            ? new Date(
+              releaseDate
+            )
+            : null;
+      }
+
+      product.updatedBy =
+        req.user._id;
+
+      product.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      await product.save();
+
+      await createActivityLog({
+        action:
+          "Product Updated",
+
+        category:
+          "Product",
+
+        description:
+          `${product.productName} information was updated.`,
+
+        entityType:
+          "product",
+
+        entityId:
+          product._id,
+
+        entityCode:
+          product.productCode,
+
+        entityName:
+          product.productName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+
+        metadata: {
+          previous:
+            previousData,
+
+          current: {
+            productCode:
+              product.productCode,
+
+            productName:
+              product.productName,
+
+            category:
+              product.category,
+
+            currentVersion:
+              product.currentVersion,
+
+            platform:
+              product.platform,
+
+            status:
+              product.status,
+          },
+        },
+      });
+
+      return res.status(200).json({
+        success: true,
+
+        message:
+          "Product updated successfully.",
+
+        data:
+          productResponse(product),
+      });
+    } catch (error) {
+      console.error(
+        "Update product error:",
+        error
+      );
+
+      if (error.code === 11000) {
+        return res.status(409).json({
+          success: false,
+          message:
+            "Product code already exists.",
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to update product.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   CHANGE PRODUCT STATUS
+   PATCH /api/admin/product/:id/status
+===================================================== */
+
+router.patch(
+  "/product/:id/status",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      const { status } =
+        req.body;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid product ID.",
+        });
+      }
+
+      const allowedStatuses = [
+        "Active",
+        "Inactive",
+        "Deprecated",
+      ];
+
+      if (
+        !allowedStatuses.includes(
+          status
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid product status.",
+        });
+      }
+
+      const product =
+        await Product.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!product) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Product not found.",
+        });
+      }
+
+      const previousStatus =
+        product.status;
+
+      if (
+        previousStatus === status
+      ) {
+        return res.status(200).json({
+          success: true,
+
+          message:
+            "Product already has this status.",
+
+          data:
+            productResponse(product),
+        });
+      }
+
+      product.status =
+        status;
+
+      product.updatedBy =
+        req.user._id;
+
+      product.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      await product.save();
+
+      await createActivityLog({
+        action:
+          "Product Status Changed",
+
+        category:
+          "Product",
+
+        description:
+          `${product.productName} changed from ${previousStatus} to ${status}.`,
+
+        entityType:
+          "product",
+
+        entityId:
+          product._id,
+
+        entityCode:
+          product.productCode,
+
+        entityName:
+          product.productName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+
+        metadata: {
+          previousStatus,
+          currentStatus:
+            status,
+        },
+      });
+
+      return res.status(200).json({
+        success: true,
+
+        message:
+          "Product status updated successfully.",
+
+        data:
+          productResponse(product),
+      });
+    } catch (error) {
+      console.error(
+        "Change product status error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to change product status.",
+      });
+    }
+  }
+);
+/* =====================================================
+   CONVERT COMPLETED PROJECT TO PRODUCT
+   POST /api/admin/project/:id/convert-to-product
+===================================================== */
+
+router.post(
+  "/project/:id/convert-to-product",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid project ID.",
+        });
+      }
+
+      const project =
+        await Project.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Project not found.",
+        });
+      }
+      if (
+  project.convertedToProduct ===
+  true
+) {
+  return res.status(409).json({
+    success: false,
+
+    code:
+      "PROJECT_LOCKED",
+
+    message:
+      "This project has already been converted to a product. New project tasks cannot be created.",
+  });
+}
+
+      /*
+       * Already converted.
+       */
+
+      if (
+        project.convertedToProduct
+      ) {
+        return res.status(409).json({
+          success: false,
+
+          code:
+            "ALREADY_CONVERTED",
+
+          message:
+            "This project has already been converted to a product.",
+
+          data:
+            projectResponse(
+              project
+            ),
+        });
+      }
+
+      /*
+       * Only completed projects can
+       * become permanent products.
+       */
+
+      if (
+        project.status !==
+          "Completed" ||
+        Number(
+          project.progress || 0
+        ) < 100
+      ) {
+        return res.status(409).json({
+          success: false,
+
+          code:
+            "PROJECT_NOT_COMPLETED",
+
+          message:
+            "Complete the project before converting it to a product.",
+        });
+      }
+
+      /*
+       * A project already linked to an
+       * existing Product should not create
+       * another Product.
+       */
+
+      if (project.productId) {
+        return res.status(409).json({
+          success: false,
+
+          code:
+            "PROJECT_ALREADY_HAS_PRODUCT",
+
+          message:
+            "This project is already linked to an existing product.",
+        });
+      }
+
+      const {
+        productCode,
+        productName,
+
+        category,
+        description,
+
+        currentVersion,
+        platform,
+
+        releaseDate,
+      } = req.body || {};
+
+      const normalizedCode =
+        String(
+          productCode || ""
+        )
+          .trim()
+          .toUpperCase();
+
+      const normalizedName =
+        String(
+          productName ||
+            project.projectName ||
+            ""
+        ).trim();
+
+      if (!normalizedCode) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Product code is required.",
+        });
+      }
+
+      if (!normalizedName) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Product name is required.",
+        });
+      }
+
+      /*
+       * Prevent duplicate Product Code.
+       */
+
+      const duplicateProduct =
+        await Product.findOne({
+          productCode:
+            normalizedCode,
+
+          isDeleted:
+            false,
+        });
+
+      if (duplicateProduct) {
+        return res.status(409).json({
+          success: false,
+          message:
+            "Product code already exists.",
+        });
+      }
+
+      /*
+       * Create Product Master record.
+       */
+
+      const product =
+        await Product.create({
+          productCode:
+            normalizedCode,
+
+          productName:
+            normalizedName,
+
+          category:
+            String(
+              category ||
+                "Software"
+            ).trim() ||
+            "Software",
+
+          description:
+            String(
+              description ||
+                project.description ||
+                ""
+            ).trim(),
+
+          currentVersion:
+            String(
+              currentVersion ||
+                "v1.0.0"
+            ).trim() ||
+            "v1.0.0",
+
+          platform:
+            platform ||
+            "Web",
+
+          status:
+            "Active",
+
+          releaseDate:
+            releaseDate
+              ? new Date(
+                  releaseDate
+                )
+              : project.deliveryDate ||
+                project.completedDate ||
+                new Date(),
+
+          createdBy:
+            req.user._id,
+
+          createdByName:
+            req.user.name ||
+            "Admin",
+
+          updatedBy:
+            req.user._id,
+
+          updatedByName:
+            req.user.name ||
+            "Admin",
+        });
+
+      /*
+       * Link Product back to Project.
+       */
+
+      project.productId =
+        product._id;
+
+      project.productCode =
+        product.productCode;
+
+      project.productName =
+        product.productName;
+
+      /*
+       * Permanently lock Project.
+       */
+
+      project.convertedToProduct =
+        true;
+
+      project.convertedProductAt =
+        new Date();
+
+      project.convertedProductBy =
+        req.user._id;
+
+      project.convertedProductByName =
+        req.user.name ||
+        "Admin";
+
+      project.updatedBy =
+        req.user._id;
+
+      project.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      await project.save();
+
+      await createActivityLog({
+        action:
+          "Project Converted To Product",
+
+        category:
+          "Project",
+
+        description:
+          `${project.projectCode} - ${project.projectName} was converted to product ${product.productCode} - ${product.productName}.`,
+
+        entityType:
+          "project",
+
+        entityId:
+          project._id,
+
+        entityCode:
+          project.projectCode,
+
+        entityName:
+          project.projectName,
+
+        clientId:
+          project.clientId,
+
+        clientName:
+          project.clientName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+
+        metadata: {
+          productId:
+            product._id,
+
+          productCode:
+            product.productCode,
+
+          productName:
+            product.productName,
+
+          convertedAt:
+            project.convertedProductAt,
+        },
+      });
+
+      return res.status(201).json({
+        success: true,
+
+        message:
+          "Project converted to product successfully. The project is now read-only.",
+
+        data: {
+          project:
+            projectResponse(
+              project
+            ),
+
+          product:
+            productResponse(
+              product
+            ),
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Convert project to product error:",
+        error
+      );
+
+      if (error.code === 11000) {
+        return res.status(409).json({
+          success: false,
+
+          message:
+            "Product code already exists.",
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to convert project to product.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   SOFT DELETE PRODUCT
+   DELETE /api/admin/product/:id
+===================================================== */
+
+router.delete(
+  "/product/:id",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid product ID.",
+        });
+      }
+
+      const product =
+        await Product.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!product) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Product not found.",
+        });
+      }
+
+      const linkedClientCount =
+        await Client.countDocuments({
+          "products.productId":
+            product._id,
+        });
+
+      const linkedTicketCount =
+        await SupportTicket.countDocuments({
+          productId:
+            product._id,
+
+          isDeleted: false,
+        });
+
+      const linkedTaskCount =
+        await Task.countDocuments({
+          productId:
+            product._id,
+
+          isDeleted: false,
+        });
+
+      if (
+        linkedClientCount > 0 ||
+        linkedTicketCount > 0 ||
+        linkedTaskCount > 0
+      ) {
+        return res.status(409).json({
+          success: false,
+
+          message:
+            "This product is already used by clients, tickets or tasks. Mark it Inactive instead of deleting it.",
+
+          usage: {
+            clients:
+              linkedClientCount,
+
+            tickets:
+              linkedTicketCount,
+
+            tasks:
+              linkedTaskCount,
+          },
+        });
+      }
+
+      product.isDeleted =
+        true;
+
+      product.deletedAt =
+        new Date();
+
+      product.deletedBy =
+        req.user._id;
+
+      product.deletedByName =
+        req.user.name ||
+        "Admin";
+
+      product.status =
+        "Inactive";
+
+      await product.save();
+
+      await createActivityLog({
+        action:
+          "Product Deleted",
+
+        category:
+          "Product",
+
+        description:
+          `${product.productName} was removed from Product Master.`,
+
+        entityType:
+          "product",
+
+        entityId:
+          product._id,
+
+        entityCode:
+          product.productCode,
+
+        entityName:
+          product.productName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+
+        metadata: {
+          previousStatus:
+            product.status,
+
+          deletedAt:
+            product.deletedAt,
+        },
+      });
+
+      return res.status(200).json({
+        success: true,
+
+        message:
+          "Product deleted successfully.",
+
+        data: {
+          id:
+            product._id,
+
+          productCode:
+            product.productCode,
+
+          productName:
+            product.productName,
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Delete product error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to delete product.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   SEED DEFAULT PRODUCTS
+   POST /api/admin/products/seed
+===================================================== */
+
+router.post(
+  "/products/seed",
+  async (req, res) => {
+    try {
+      const defaultProducts = [
+        {
+          productCode:
+            "PRD-001",
+
+          productName:
+            "NexERP",
+
+          category:
+            "ERP",
+
+          description:
+            "Enterprise resource planning and billing software.",
+
+          currentVersion:
+            "v1.0.0",
+
+          platform:
+            "Web + Desktop",
+
+          status:
+            "Active",
+        },
+
+        {
+          productCode:
+            "PRD-002",
+
+          productName:
+            "BillFlow",
+
+          category:
+            "Billing",
+
+          description:
+            "Billing, invoicing and customer account software.",
+
+          currentVersion:
+            "v1.0.0",
+
+          platform:
+            "Web + Desktop",
+
+          status:
+            "Active",
+        },
+
+        {
+          productCode:
+            "PRD-003",
+
+          productName:
+            "StockPro",
+
+          category:
+            "Inventory",
+
+          description:
+            "Stock, batch and warehouse management software.",
+
+          currentVersion:
+            "v1.0.0",
+
+          platform:
+            "Web + Desktop",
+
+          status:
+            "Active",
+        },
+
+        {
+          productCode:
+            "PRD-004",
+
+          productName:
+            "RetailPOS",
+
+          category:
+            "POS",
+
+          description:
+            "Retail billing and point-of-sale software.",
+
+          currentVersion:
+            "v1.0.0",
+
+          platform:
+            "Desktop",
+
+          status:
+            "Active",
+        },
+
+        {
+          productCode:
+            "PRD-005",
+
+          productName:
+            "PayrollIX",
+
+          category:
+            "Payroll",
+
+          description:
+            "Employee payroll and salary management.",
+
+          currentVersion:
+            "v1.0.0",
+
+          platform:
+            "Web + Desktop",
+
+          status:
+            "Active",
+        },
+      ];
+
+      const results = [];
+
+      for (
+        const productData
+        of defaultProducts
+      ) {
+        const existingProduct =
+          await Product.findOne({
+            $or: [
+              {
+                productCode:
+                  productData.productCode,
+              },
+
+              {
+                productName: {
+                  $regex:
+                    `^${productData.productName}$`,
+
+                  $options: "i",
+                },
+              },
+            ],
+          });
+
+        if (existingProduct) {
+          results.push({
+            productCode:
+              existingProduct.productCode,
+
+            productName:
+              existingProduct.productName,
+
+            action:
+              "Skipped",
+
+            reason:
+              "Product already exists.",
+          });
+
+          continue;
+        }
+
+        const product =
+          await Product.create({
+            ...productData,
+
+            createdBy:
+              req.user._id,
+
+            createdByName:
+              req.user.name ||
+              "Admin",
+
+            updatedBy:
+              req.user._id,
+
+            updatedByName:
+              req.user.name ||
+              "Admin",
+          });
+
+        results.push({
+          productCode:
+            product.productCode,
+
+          productName:
+            product.productName,
+
+          action:
+            "Created",
+        });
+      }
+
+      const products =
+        await Product.find({
+          isDeleted: false,
+        }).sort({
+          productName: 1,
+        });
+
+      return res.status(200).json({
+        success: true,
+
+        message:
+          "Default product seed completed.",
+
+        results,
+
+        data:
+          products.map(
+            productResponse
+          ),
+      });
+    } catch (error) {
+      console.error(
+        "Seed products error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to seed products.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   CREATE PROJECT
+   POST /api/admin/project
+===================================================== */
+
+router.post(
+  "/project",
+  async (req, res) => {
+    try {
+      const {
+        projectCode,
+        projectName,
+        projectType,
+        productId,
+        clientId,
+        description,
+        startDate,
+        dueDate,
+        priority,
+        status,
+        progress,
+      } = req.body;
+
+      const normalizedCode =
+        String(projectCode || "")
+          .trim()
+          .toUpperCase();
+
+      const normalizedName =
+        String(projectName || "")
+          .trim();
+
+      if (!normalizedCode) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Project code is required.",
+        });
+      }
+
+      if (!normalizedName) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Project name is required.",
+        });
+      }
+
+      const duplicate =
+        await Project.findOne({
+          isDeleted: false,
+
+          $or: [
+            {
+              projectCode:
+                normalizedCode,
+            },
+
+            {
+              projectName: {
+                $regex:
+                  `^${normalizedName.replace(
+                    /[.*+?^${}()|[\]\\]/g,
+                    "\\$&"
+                  )}$`,
+
+                $options: "i",
+              },
+            },
+          ],
+        });
+
+      if (duplicate) {
+        return res.status(409).json({
+          success: false,
+
+          message:
+            duplicate.projectCode ===
+              normalizedCode
+              ? "Project code already exists."
+              : "Project name already exists.",
+        });
+      }
+
+      let resolvedProduct = null;
+
+      if (productId) {
+        if (
+          !mongoose.Types.ObjectId.isValid(
+            productId
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Invalid product ID.",
+          });
+        }
+
+        resolvedProduct =
+          await Product.findOne({
+            _id: productId,
+            isDeleted: false,
+          });
+
+        if (!resolvedProduct) {
+          return res.status(404).json({
+            success: false,
+            message:
+              "Selected product was not found.",
+          });
+        }
+      }
+
+      let resolvedClient = null;
+
+      if (clientId) {
+        if (
+          !mongoose.Types.ObjectId.isValid(
+            clientId
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Invalid client ID.",
+          });
+        }
+
+        resolvedClient =
+          await Client.findById(
+            clientId
+          );
+
+        if (!resolvedClient) {
+          return res.status(404).json({
+            success: false,
+            message:
+              "Selected client was not found.",
+          });
+        }
+      }
+
+      const normalizedProgress =
+        Math.min(
+          Math.max(
+            Number(progress || 0),
+            0
+          ),
+          100
+        );
+
+      const normalizedStatus =
+        status || "Planned";
+
+      /*
+       * Validate selected priority using
+       * System Settings.
+       */
+      const selectedPriority =
+        await validatePriority(
+          priority || "Medium"
+        );
+
+      if (!selectedPriority) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Selected priority is invalid or inactive.",
+        });
+      }
+
+      const project =
+        await Project.create({
+          projectCode:
+            normalizedCode,
+
+          projectName:
+            normalizedName,
+
+          projectType:
+            projectType ||
+            "Internal Development",
+
+          productId:
+            resolvedProduct?._id ||
+            null,
+
+          productCode:
+            resolvedProduct?.productCode ||
+            "",
+
+          productName:
+            resolvedProduct?.productName ||
+            "",
+
+          clientId:
+            resolvedClient?._id ||
+            null,
+
+          clientCode:
+            resolvedClient?.clientCode ||
+            "",
+
+          clientName:
+            resolvedClient?.companyName ||
+            "",
+
+          description:
+            String(
+              description || ""
+            ).trim(),
+
+          startDate:
+            startDate
+              ? new Date(startDate)
+              : null,
+
+          dueDate:
+            dueDate
+              ? new Date(dueDate)
+              : null,
+
+          completedDate:
+            normalizedStatus ===
+              "Completed"
+              ? new Date()
+              : null,
+
+          priority:
+            selectedPriority.name,
+
+          status:
+            normalizedStatus,
+
+          progress:
+            normalizedStatus ===
+              "Completed"
+              ? 100
+              : normalizedProgress,
+
+          createdBy:
+            req.user._id,
+
+          createdByName:
+            req.user.name ||
+            "Admin",
+
+          updatedBy:
+            req.user._id,
+
+          updatedByName:
+            req.user.name ||
+            "Admin",
+        });
+
+      await createActivityLog({
+        action:
+          "Project Created",
+
+        category:
+          "Project",
+
+        description:
+          `${project.projectName} was added to Project Master.`,
+
+        entityType:
+          "project",
+
+        entityId:
+          project._id,
+
+        entityCode:
+          project.projectCode,
+
+        entityName:
+          project.projectName,
+
+        clientId:
+          project.clientId,
+
+        clientName:
+          project.clientName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+
+        metadata: {
+          projectType:
+            project.projectType,
+
+          productId:
+            project.productId,
+
+          productName:
+            project.productName,
+
+          priority:
+            project.priority,
+
+          status:
+            project.status,
+
+          progress:
+            project.progress,
+        },
+      });
+
+      return res.status(201).json({
+        success: true,
+
+        message:
+          "Project created successfully.",
+
+        data:
+          projectResponse(project),
+      });
+    } catch (error) {
+      console.error(
+        "Create project error:",
+        error
+      );
+
+      if (error.code === 11000) {
+        return res.status(409).json({
+          success: false,
+          message:
+            "Project code already exists.",
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to create project.",
+      });
+    }
+  }
+);
+
+
+
+/* =====================================================
+   GET ALL PROJECTS
+   GET /api/admin/projects
+===================================================== */
+
+router.get(
+  "/projects",
+  async (req, res) => {
+    try {
+      const {
+        search = "",
+        status = "All",
+        projectType = "All",
+        priority = "All",
+        productId = "",
+        clientId = "",
+      } = req.query;
+
+      const query = {
+        isDeleted: false,
+      };
+
+      if (
+        status &&
+        status !== "All"
+      ) {
+        query.status = status;
+      }
+
+      if (
+        projectType &&
+        projectType !== "All"
+      ) {
+        query.projectType =
+          projectType;
+      }
+
+      if (
+        priority &&
+        priority !== "All"
+      ) {
+        query.priority =
+          priority;
+      }
+
+      if (productId) {
+        if (
+          !mongoose.Types.ObjectId.isValid(
+            productId
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Invalid product ID.",
+          });
+        }
+
+        query.productId =
+          productId;
+      }
+
+      if (clientId) {
+        if (
+          !mongoose.Types.ObjectId.isValid(
+            clientId
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Invalid client ID.",
+          });
+        }
+
+        query.clientId =
+          clientId;
+      }
+
+      const normalizedSearch =
+        String(search || "").trim();
+
+      if (normalizedSearch) {
+        query.$or = [
+          {
+            projectCode: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+
+          {
+            projectName: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+
+          {
+            productName: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+
+          {
+            clientName: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+
+          {
+            description: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+        ];
+      }
+
+      const projects =
+        await Project.find(query)
+          .sort({
+            createdAt: -1,
+          });
+
+      const stats = {
+        totalProjects:
+          projects.length,
+
+        plannedProjects:
+          projects.filter(
+            (project) =>
+              project.status ===
+              "Planned"
+          ).length,
+
+        activeProjects:
+          projects.filter(
+            (project) =>
+              project.status ===
+              "Active"
+          ).length,
+
+        onHoldProjects:
+          projects.filter(
+            (project) =>
+              project.status ===
+              "On Hold"
+          ).length,
+
+        completedProjects:
+          projects.filter(
+            (project) =>
+              project.status ===
+              "Completed"
+          ).length,
+      };
+
+      return res.status(200).json({
+        success: true,
+
+        count:
+          projects.length,
+
+        stats,
+
+        data:
+          projects.map(
+            projectResponse
+          ),
+      });
+    } catch (error) {
+      console.error(
+        "Load projects error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to load projects.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   GET ONE PROJECT
+   GET /api/admin/project/:id
+===================================================== */
+
+router.get(
+  "/project/:id",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid project ID.",
+        });
+      }
+
+      const project =
+        await Project.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Project not found.",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+
+        data:
+          projectResponse(project),
+      });
+    } catch (error) {
+      console.error(
+        "Get project error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to load project.",
+      });
+    }
+  }
+);
+
+
+/* =====================================================
+   PROJECT DETAILS WITH TASK SUMMARY
+   GET /api/admin/project/:id/details
+===================================================== */
+
+router.get(
+  "/project/:id/details",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid project ID.",
+        });
+      }
+
+      const project =
+        await Project.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Project not found.",
+        });
+      }
+
+      /*
+       * Synchronize project progress
+       * before returning the details.
+       */
+
+      const summary =
+        await syncProjectTaskProgress(
+          project._id
+        );
+
+      /*
+       * Reload project because progress
+       * may have just been updated.
+       */
+
+      const refreshedProject =
+        await Project.findOne({
+          _id: project._id,
+          isDeleted: false,
+        });
+
+      /*
+       * Load full project tasks.
+       */
+
+      const tasks =
+        await Task.find({
+          projectId:
+            project._id,
+
+          taskFor:
+            "Project",
+
+          isDeleted:
+            false,
+        })
+          .sort({
+            createdAt: -1,
+          })
+          .lean();
+
+      /*
+       * Project team:
+       * 1. Explicit project team members
+       * 2. Designated Project Manager
+       * 3. Distinct employees assigned to project tasks
+       */
+      const teamMap = new Map();
+
+      if (Array.isArray(refreshedProject.teamMembers)) {
+        for (const member of refreshedProject.teamMembers) {
+          const empId = member.employeeId ? String(member.employeeId) : "";
+          if (!empId) continue;
+          teamMap.set(empId, {
+            employeeId: member.employeeId,
+            employeeCode: member.employeeCode || "",
+            employeeName: member.employeeName || "Unassigned",
+            role: member.role || "Team Member",
+            responsibility: member.responsibility || "",
+            status: member.status || "Active",
+            addedAt: member.addedAt,
+            isExplicitMember: true,
+          });
+        }
+      }
+
+      if (refreshedProject.projectManager) {
+        const pmId = String(refreshedProject.projectManager);
+        if (teamMap.has(pmId)) {
+          const current = teamMap.get(pmId);
+          current.isProjectManager = true;
+          if (!current.role || current.role === "Team Member") {
+            current.role = "Project Manager";
+          }
+        } else {
+          teamMap.set(pmId, {
+            employeeId: refreshedProject.projectManager,
+            employeeCode: "",
+            employeeName: refreshedProject.projectManagerName || "Project Manager",
+            role: "Project Manager",
+            responsibility: "Project Leadership",
+            status: "Active",
+            isProjectManager: true,
+            isExplicitMember: true,
+          });
+        }
+      }
+
+      for (const task of tasks) {
+        const employeeId =
+          task.assignedEmployeeId
+            ? String(
+                task.assignedEmployeeId
+              )
+            : "";
+
+        if (
+          !employeeId ||
+          teamMap.has(employeeId)
+        ) {
+          continue;
+        }
+
+        teamMap.set(
+          employeeId,
+          {
+            employeeId:
+              task.assignedEmployeeId,
+
+            employeeCode:
+              task.assignedEmployeeCode ||
+              "",
+
+            employeeName:
+              task.assignedEmployeeName ||
+              "Unassigned",
+
+            role: "Task Assignee",
+            responsibility: "Assigned Project Tasks",
+            status: "Active",
+            isExplicitMember: false,
+          }
+        );
+      }
+
+      const team =
+        Array.from(
+          teamMap.values()
+        );
+
+      /*
+       * Format tasks for project screen.
+       */
+
+      const taskData =
+        tasks.map(
+          (task) => ({
+            id:
+              task._id,
+
+            taskCode:
+              task.taskCode,
+
+            title:
+              task.title,
+
+            description:
+              task.description ||
+              "",
+
+            workType:
+              task.workType ||
+              "",
+
+            priority:
+              task.priority ||
+              "Medium",
+
+            status:
+              task.status ||
+              "Assigned",
+
+            progress:
+              Number(
+                task.progress ||
+                0
+              ),
+
+            assignedEmployeeId:
+              task.assignedEmployeeId ||
+              null,
+
+            assignedEmployeeCode:
+              task.assignedEmployeeCode ||
+              "",
+
+            assignedEmployeeName:
+              task.assignedEmployeeName ||
+              "Unassigned",
+
+            startDate:
+              task.startDate ||
+              null,
+
+            dueDate:
+              task.dueDate ||
+              null,
+
+            completedAt:
+              task.completedAt ||
+              null,
+
+            estimatedMinutes:
+              Number(
+                task.estimatedMinutes ||
+                0
+              ),
+
+            spentMinutes:
+              Number(
+                task.spentMinutes ||
+                0
+              ),
+
+            createdAt:
+              task.createdAt,
+
+            updatedAt:
+              task.updatedAt,
+          })
+        );
+
+      return res.status(200).json({
+        success: true,
+
+        data: {
+          project:
+            projectResponse(
+              refreshedProject
+            ),
+
+          summary: {
+            totalTasks:
+              summary?.totalTasks ||
+              0,
+
+            activeTasks:
+              summary?.activeTasks ||
+              0,
+
+            completedTasks:
+              summary?.completedTasks ||
+              0,
+
+            inProgressTasks:
+              summary?.inProgressTasks ||
+              0,
+
+            blockedTasks:
+              summary?.blockedTasks ||
+              0,
+
+            overdueTasks:
+              summary?.overdueTasks ||
+              0,
+
+            progress:
+              summary?.progress ||
+              0,
+          },
+
+          teamMembers:
+            refreshedProject.teamMembers ||
+            [],
+
+          team,
+
+          tasks:
+            taskData,
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Project details error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to load project details.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   UPDATE PROJECT
+   PUT /api/admin/project/:id
+===================================================== */
+
+router.put(
+  "/project/:id",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid project ID.",
+        });
+      }
+
+      const project =
+        await Project.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Project not found.",
+        });
+      }
+      if (
+  rejectLockedProject(
+    project,
+    res
+  )
+) {
+  return;
+}
+
+      const {
+        projectCode,
+        projectName,
+        projectType,
+        productId,
+        clientId,
+        description,
+        startDate,
+        dueDate,
+        priority,
+        status,
+        progress,
+      } = req.body;
+
+      const normalizedCode =
+        String(
+          projectCode ??
+          project.projectCode
+        )
+          .trim()
+          .toUpperCase();
+
+      const normalizedName =
+        String(
+          projectName ??
+          project.projectName
+        ).trim();
+
+      if (!normalizedCode) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Project code is required.",
+        });
+      }
+
+      if (!normalizedName) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Project name is required.",
+        });
+      }
+
+      const duplicate =
+        await Project.findOne({
+          _id: {
+            $ne: id,
+          },
+
+          isDeleted: false,
+
+          $or: [
+            {
+              projectCode:
+                normalizedCode,
+            },
+
+            {
+              projectName: {
+                $regex:
+                  `^${normalizedName.replace(
+                    /[.*+?^${}()|[\]\\]/g,
+                    "\\$&"
+                  )}$`,
+
+                $options: "i",
+              },
+            },
+          ],
+        });
+
+      if (duplicate) {
+        return res.status(409).json({
+          success: false,
+
+          message:
+            duplicate.projectCode ===
+              normalizedCode
+              ? "Another project already uses this project code."
+              : "Another project already uses this project name.",
+        });
+      }
+
+      let resolvedProduct = null;
+
+      if (productId) {
+        if (
+          !mongoose.Types.ObjectId.isValid(
+            productId
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Invalid product ID.",
+          });
+        }
+
+        resolvedProduct =
+          await Product.findOne({
+            _id: productId,
+            isDeleted: false,
+          });
+
+        if (!resolvedProduct) {
+          return res.status(404).json({
+            success: false,
+            message:
+              "Selected product was not found.",
+          });
+        }
+      }
+
+      let resolvedClient = null;
+
+      if (clientId) {
+        if (
+          !mongoose.Types.ObjectId.isValid(
+            clientId
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Invalid client ID.",
+          });
+        }
+
+        resolvedClient =
+          await Client.findById(
+            clientId
+          );
+
+        if (!resolvedClient) {
+          return res.status(404).json({
+            success: false,
+            message:
+              "Selected client was not found.",
+          });
+        }
+      }
+
+      const previousData = {
+        projectCode:
+          project.projectCode,
+
+        projectName:
+          project.projectName,
+
+        projectType:
+          project.projectType,
+
+        productId:
+          project.productId,
+
+        productName:
+          project.productName,
+
+        clientId:
+          project.clientId,
+
+        clientName:
+          project.clientName,
+
+        status:
+          project.status,
+
+        priority:
+          project.priority,
+
+        progress:
+          project.progress,
+      };
+
+      project.projectCode =
+        normalizedCode;
+
+      project.projectName =
+        normalizedName;
+
+      project.projectType =
+        projectType ??
+        project.projectType;
+
+      project.productId =
+        resolvedProduct?._id ||
+        null;
+
+      project.productCode =
+        resolvedProduct?.productCode ||
+        "";
+
+      project.productName =
+        resolvedProduct?.productName ||
+        "";
+
+      project.clientId =
+        resolvedClient?._id ||
+        null;
+
+      project.clientCode =
+        resolvedClient?.clientCode ||
+        "";
+
+      project.clientName =
+        resolvedClient?.companyName ||
+        "";
+
+      project.description =
+        String(
+          description ??
+          project.description ??
+          ""
+        ).trim();
+
+      if (startDate !== undefined) {
+        project.startDate =
+          startDate
+            ? new Date(startDate)
+            : null;
+      }
+
+      if (dueDate !== undefined) {
+        project.dueDate =
+          dueDate
+            ? new Date(dueDate)
+            : null;
+      }
+
+      if (priority !== undefined) {
+        const selectedPriority =
+          await validatePriority(
+            priority
+          );
+
+        if (!selectedPriority) {
+          return res.status(400).json({
+            success: false,
+
+            message:
+              "Selected priority is invalid or inactive.",
+          });
+        }
+
+        project.priority =
+          selectedPriority.name;
+      }
+
+      if (status !== undefined) {
+        project.status =
+          status;
+      }
+
+      if (progress !== undefined) {
+        project.progress =
+          Math.min(
+            Math.max(
+              Number(progress || 0),
+              0
+            ),
+            100
+          );
+      }
+
+      if (
+        project.status ===
+        "Completed"
+      ) {
+        project.progress = 100;
+
+        project.completedDate =
+          project.completedDate ||
+          new Date();
+      } else {
+        project.completedDate =
+          null;
+      }
+
+      project.updatedBy =
+        req.user._id;
+
+      project.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      await project.save();
+
+      await createActivityLog({
+        action:
+          "Project Updated",
+
+        category:
+          "Project",
+
+        description:
+          `${project.projectName} information was updated.`,
+
+        entityType:
+          "project",
+
+        entityId:
+          project._id,
+
+        entityCode:
+          project.projectCode,
+
+        entityName:
+          project.projectName,
+
+        clientId:
+          project.clientId,
+
+        clientName:
+          project.clientName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+
+        metadata: {
+          previous:
+            previousData,
+
+          current: {
+            projectCode:
+              project.projectCode,
+
+            projectName:
+              project.projectName,
+
+            projectType:
+              project.projectType,
+
+            productId:
+              project.productId,
+
+            productName:
+              project.productName,
+
+            clientId:
+              project.clientId,
+
+            clientName:
+              project.clientName,
+
+            status:
+              project.status,
+
+            priority:
+              project.priority,
+
+            progress:
+              project.progress,
+          },
+        },
+      });
+
+      return res.status(200).json({
+        success: true,
+
+        message:
+          "Project updated successfully.",
+
+        data:
+          projectResponse(project),
+      });
+    } catch (error) {
+      console.error(
+        "Update project error:",
+        error
+      );
+
+      if (error.code === 11000) {
+        return res.status(409).json({
+          success: false,
+          message:
+            "Project code already exists.",
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to update project.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   CHANGE PROJECT STATUS
+   PATCH /api/admin/project/:id/status
+===================================================== */
+
+router.patch(
+  "/project/:id/status",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      const {
+        status,
+        progress,
+      } = req.body;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid project ID.",
+        });
+      }
+
+   const allowedStatuses = [
+  "Planned",
+  "Active",
+  "On Hold",
+  "Cancelled",
+];
+/*
+ * Completed projects must go through
+ * the dedicated completion workflow.
+ */
+if (status === "Completed") {
+  return res.status(400).json({
+    success: false,
+    requiresCompletionFlow: true,
+    message:
+      "Use Complete Project to finish this project. All project tasks must be completed first.",
+  });
+}
+
+      if (
+        !allowedStatuses.includes(
+          status
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid project status.",
+        });
+      }
+
+      const project =
+        await Project.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Project not found.",
+        });
+      }
+      if (
+  rejectLockedProject(
+    project,
+    res
+  )
+) {
+  return;
+}
+
+      const previousStatus =
+        project.status;
+
+      project.status =
+        status;
+
+      if (
+        progress !== undefined
+      ) {
+        project.progress =
+          Math.min(
+            Math.max(
+              Number(progress || 0),
+              0
+            ),
+            100
+          );
+      }
+
+   project.completedDate = null;
+
+      project.updatedBy =
+        req.user._id;
+
+      project.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      await project.save();
+
+      await createActivityLog({
+        action:
+          "Project Status Changed",
+
+        category:
+          "Project",
+
+        description:
+          `${project.projectName} changed from ${previousStatus} to ${status}.`,
+
+        entityType:
+          "project",
+
+        entityId:
+          project._id,
+
+        entityCode:
+          project.projectCode,
+
+        entityName:
+          project.projectName,
+
+        clientId:
+          project.clientId,
+
+        clientName:
+          project.clientName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+
+        metadata: {
+          previousStatus,
+
+          currentStatus:
+            project.status,
+
+          progress:
+            project.progress,
+        },
+      });
+
+      return res.status(200).json({
+        success: true,
+
+        message:
+          "Project status updated successfully.",
+
+        data:
+          projectResponse(project),
+      });
+    } catch (error) {
+      console.error(
+        "Change project status error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to change project status.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   PROJECT STAGE TRANSITION (PROFESSIONAL WORKFLOW)
+   PATCH /api/admin/project/:id/stage-transition
+===================================================== */
+
+router.patch("/project/:id/stage-transition", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid project ID.",
+      });
+    }
+
+    const {
+      stage,
+      status,
+      notes,
+      testingOwner,
+      clientReviewDate,
+      completionNotes,
+      closureNotes,
+      closureDate,
+    } = req.body || {};
+
+    const targetStage = String(stage || "").trim();
+
+    if (!targetStage) {
+      return res.status(400).json({
+        success: false,
+        message: "Target project stage is required.",
+      });
+    }
+
+    const project = await Project.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: "Project not found.",
+      });
+    }
+
+    if (rejectLockedProject(project, res)) {
+      return;
+    }
+
+    const previousStage = project.stage || "Planning";
+    const previousStatus = project.status || "Planned";
+
+    project.stage = targetStage;
+
+    if (status && ["Planned", "Active", "On Hold", "Completed", "Cancelled"].includes(status)) {
+      project.status = status;
+    } else {
+      if (["In Progress", "Testing / Review", "Client Review"].includes(targetStage)) {
+        if (project.status === "Planned") {
+          project.status = "Active";
+        }
+      } else if (["Completed", "Closed"].includes(targetStage)) {
+        project.status = "Completed";
+        if (!project.completedDate) project.completedDate = new Date();
+      }
+    }
+
+    project.updatedBy = req.user._id;
+    project.updatedByName = req.user.name || "Admin";
+
+    let timelineDesc = `Project moved to stage ${targetStage}.`;
+    if (notes) timelineDesc += ` Note: ${notes}`;
+    if (testingOwner) timelineDesc += ` Testing Owner: ${testingOwner}`;
+    if (clientReviewDate) timelineDesc += ` Review Date: ${new Date(clientReviewDate).toLocaleDateString()}`;
+    if (completionNotes) timelineDesc += ` Completion: ${completionNotes}`;
+    if (closureNotes) timelineDesc += ` Closure: ${closureNotes}`;
+
+    project.timeline = project.timeline || [];
+    project.timeline.push({
+      action: `Stage: ${previousStage} → ${targetStage}`,
+      description: timelineDesc,
+      oldStage: previousStage,
+      newStage: targetStage,
+      oldStatus: previousStatus,
+      newStatus: project.status,
+      notes: notes || completionNotes || closureNotes || "",
+      performedBy: req.user._id,
+      performedByName: req.user.name || "Admin",
+      performedByRole: "admin",
+      createdAt: new Date(),
+    });
+
+    await project.save();
+
+    await createActivityLog({
+      action: "Project Stage Changed",
+      category: "Project",
+      description: `${project.projectName} stage moved from ${previousStage} to ${targetStage}.`,
+      entityType: "project",
+      entityId: project._id,
+      entityCode: project.projectCode,
+      entityName: project.projectName,
+      clientId: project.clientId,
+      clientName: project.clientName,
+      performedBy: req.user._id,
+      performedByName: req.user.name || "Admin",
+      performedByRole: "admin",
+      metadata: {
+        previousStage,
+        newStage: targetStage,
+        previousStatus,
+        newStatus: project.status,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Project stage updated to ${targetStage} successfully.`,
+      data: projectResponse(project),
+    });
+  } catch (error) {
+    console.error("Project stage transition error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Unable to update project stage.",
+    });
+  }
+});
+
+/* =====================================================
+   ADD PROJECT TEAM MEMBER
+   POST /api/admin/project/:id/team-members
+===================================================== */
+
+router.post("/project/:id/team-members", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid project ID.",
+      });
+    }
+
+    const { employeeId, role, responsibility } = req.body || {};
+
+    if (!employeeId || !mongoose.Types.ObjectId.isValid(employeeId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid employee ID is required.",
+      });
+    }
+
+    const project = await Project.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: "Project not found.",
+      });
+    }
+
+    const employee = await mongoose.connection.collection("employees").findOne({
+      _id: new mongoose.Types.ObjectId(employeeId),
+      isDeleted: { $ne: true },
+    });
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found or is inactive.",
+      });
+    }
+
+    const empObjectId = new mongoose.Types.ObjectId(employee._id);
+
+    // 1. Check if employee is already an active member
+    const alreadyActive = project.teamMembers && project.teamMembers.some(
+      (m) => String(m.employeeId) === String(employee._id) && m.status === "Active"
+    );
+    if (alreadyActive) {
+      return res.status(409).json({
+        success: false,
+        message: `${employee.name} is already an active member of this project team.`,
+      });
+    }
+
+    const timelineEntry = {
+      action: "Team Member Added",
+      description: `${employee.name} added as ${role || "Team Member"}.`,
+      performedBy: req.user._id,
+      performedByName: req.user.name || "Admin",
+      performedByRole: "admin",
+      createdAt: new Date(),
+    };
+
+    let updatedProject = null;
+
+    // 2. If member exists in team (e.g. was Removed/Inactive), reactivate atomically
+    const existingMember = project.teamMembers && project.teamMembers.find(
+      (m) => String(m.employeeId) === String(employee._id)
+    );
+
+    if (existingMember) {
+      updatedProject = await Project.findOneAndUpdate(
+        {
+          _id: id,
+          isDeleted: false,
+          teamMembers: {
+            $elemMatch: {
+              employeeId: empObjectId,
+              status: { $ne: "Active" }
+            }
+          }
+        },
+        {
+          $set: {
+            "teamMembers.$.status": "Active",
+            "teamMembers.$.role": String(role || "Team Member").trim(),
+            "teamMembers.$.responsibility": String(responsibility || "").trim(),
+            "teamMembers.$.addedAt": new Date(),
+            updatedBy: req.user._id,
+            updatedByName: req.user.name || "Admin",
+          },
+          $push: { timeline: timelineEntry }
+        },
+        { returnDocument: "after" }
+      );
+    } else {
+      // 3. Brand new member: push ONLY IF not already in teamMembers
+      updatedProject = await Project.findOneAndUpdate(
+        {
+          _id: id,
+          isDeleted: false,
+          "teamMembers.employeeId": { $ne: empObjectId }
+        },
+        {
+          $push: {
+            teamMembers: {
+              _id: new mongoose.Types.ObjectId(),
+              employeeId: empObjectId,
+              employeeName: employee.name,
+              employeeCode: employee.employeeCode || "",
+              employeeEmail: employee.email || "",
+              role: String(role || "Team Member").trim(),
+              responsibility: String(responsibility || "").trim(),
+              addedAt: new Date(),
+              status: "Active",
+            },
+            timeline: timelineEntry
+          },
+          $set: {
+            updatedBy: req.user._id,
+            updatedByName: req.user.name || "Admin",
+          }
+        },
+        { returnDocument: "after" }
+      );
+    }
+
+    if (!updatedProject) {
+      return res.status(409).json({
+        success: false,
+        message: `${employee.name} is already an active member of this project team.`,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `${employee.name} added to project team successfully.`,
+      data: updatedProject.teamMembers,
+    });
+  } catch (error) {
+    console.error("Add project team member error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Unable to add team member.",
+    });
+  }
+});
+
+/* =====================================================
+   UPDATE PROJECT TEAM MEMBER
+   PATCH /api/admin/project/:id/team-members/:memberId
+===================================================== */
+
+router.patch("/project/:id/team-members/:memberId", async (req, res) => {
+  try {
+    const { id, memberId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(memberId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid project ID or member ID.",
+      });
+    }
+
+    const { role, responsibility, status } = req.body || {};
+
+    const project = await Project.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: "Project not found.",
+      });
+    }
+
+    project.teamMembers = project.teamMembers || [];
+
+    const member = project.teamMembers.find(
+      (m) => String(m._id) === String(memberId) || String(m.employeeId) === String(memberId)
+    );
+
+    if (!member) {
+      return res.status(404).json({
+        success: false,
+        message: "Team member not found in project.",
+      });
+    }
+
+    if (role !== undefined) member.role = String(role).trim();
+    if (responsibility !== undefined) member.responsibility = String(responsibility).trim();
+    if (status !== undefined && ["Active", "Removed"].includes(status)) member.status = status;
+
+    project.timeline = project.timeline || [];
+    project.timeline.push({
+      action: "Team Member Updated",
+      description: `Role/details updated for ${member.employeeName} (${member.role}).`,
+      performedBy: req.user._id,
+      performedByName: req.user.name || "Admin",
+      performedByRole: "admin",
+      createdAt: new Date(),
+    });
+
+    project.updatedBy = req.user._id;
+    project.updatedByName = req.user.name || "Admin";
+
+    await project.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Team member updated successfully.",
+      data: project.teamMembers,
+    });
+  } catch (error) {
+    console.error("Update project team member error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Unable to update team member.",
+    });
+  }
+});
+
+/* =====================================================
+   REMOVE PROJECT TEAM MEMBER
+   DELETE /api/admin/project/:id/team-members/:memberId
+===================================================== */
+
+router.delete("/project/:id/team-members/:memberId", async (req, res) => {
+  try {
+    const { id, memberId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(memberId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid project ID or member ID.",
+      });
+    }
+
+    const project = await Project.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: "Project not found.",
+      });
+    }
+
+    project.teamMembers = project.teamMembers || [];
+
+    const member = project.teamMembers.find(
+      (m) => String(m._id) === String(memberId) || String(m.employeeId) === String(memberId)
+    );
+
+    if (!member) {
+      return res.status(404).json({
+        success: false,
+        message: "Team member not found in project.",
+      });
+    }
+
+    // Mark as Removed (does NOT delete Employee or Tasks)
+    member.status = "Removed";
+
+    project.timeline = project.timeline || [];
+    project.timeline.push({
+      action: "Team Member Removed",
+      description: `${member.employeeName} removed from active project team.`,
+      performedBy: req.user._id,
+      performedByName: req.user.name || "Admin",
+      performedByRole: "admin",
+      createdAt: new Date(),
+    });
+
+    project.updatedBy = req.user._id;
+    project.updatedByName = req.user.name || "Admin";
+
+    await project.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `${member.employeeName} removed from project team.`,
+      data: project.teamMembers,
+    });
+  } catch (error) {
+    console.error("Remove project team member error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Unable to remove team member.",
+    });
+  }
+});
+
+/* =====================================================
+   ASSIGN/UPDATE PROJECT MANAGER
+   PATCH /api/admin/project/:id/project-manager
+===================================================== */
+
+router.patch("/project/:id/project-manager", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid project ID.",
+      });
+    }
+
+    const { projectManagerId } = req.body || {};
+
+    const project = await Project.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: "Project not found.",
+      });
+    }
+
+    let pmName = "";
+    if (projectManagerId) {
+      if (!mongoose.Types.ObjectId.isValid(projectManagerId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid Project Manager ID.",
+        });
+      }
+      const pm = await mongoose.connection.collection("employees").findOne({
+        _id: new mongoose.Types.ObjectId(projectManagerId),
+        isDeleted: { $ne: true },
+      });
+      if (!pm) {
+        return res.status(404).json({
+          success: false,
+          message: "Selected Project Manager not found or is inactive.",
+        });
+      }
+      project.projectManager = pm._id;
+      project.projectManagerName = pm.name;
+      pmName = pm.name;
+    } else {
+      project.projectManager = null;
+      project.projectManagerName = "";
+    }
+
+    project.timeline = project.timeline || [];
+    project.timeline.push({
+      action: "Project Manager Assigned",
+      description: pmName ? `Project Manager set to ${pmName}.` : "Project Manager cleared.",
+      performedBy: req.user._id,
+      performedByName: req.user.name || "Admin",
+      performedByRole: "admin",
+      createdAt: new Date(),
+    });
+
+    project.updatedBy = req.user._id;
+    project.updatedByName = req.user.name || "Admin";
+
+    await project.save();
+
+    return res.status(200).json({
+      success: true,
+      message: pmName ? `Project Manager assigned to ${pmName}.` : "Project Manager cleared.",
+      data: {
+        projectManager: project.projectManager,
+        projectManagerName: project.projectManagerName,
+      },
+    });
+  } catch (error) {
+    console.error("Assign Project Manager error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Unable to assign Project Manager.",
+    });
+  }
+});
+
+/* =====================================================
+   COMPLETE PROJECT
+   POST /api/admin/project/:id/complete
+
+   Rules:
+   - Project must exist
+   - Project must have at least one task
+   - Every active project task must be completed
+   - Progress must be 100%
+   - Records delivery/warranty/AMC planning
+   - Does NOT create AMC contract yet unless AMC setup
+     is handled separately
+===================================================== */
+
+router.post(
+  "/project/:id/complete",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid project ID.",
+        });
+      }
+
+      const project =
+        await Project.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Project not found.",
+        });
+      }
+
+      if (
+        project.status ===
+        "Completed"
+      ) {
+        return res.status(409).json({
+          success: false,
+          message:
+            "This project is already completed.",
+          data:
+            projectResponse(
+              project
+            ),
+        });
+      }
+
+      /*
+       * Recalculate current task state.
+       */
+      const summary =
+        await syncProjectTaskProgress(
+          project._id
+        );
+
+      const totalTasks =
+        Number(
+          summary?.totalTasks ||
+          0
+        );
+
+      const completedTasks =
+        Number(
+          summary?.completedTasks ||
+          0
+        );
+
+      const progress =
+        Number(
+          summary?.progress ||
+          0
+        );
+
+      /*
+       * A project should not be completed
+       * without any development tasks.
+       */
+      if (totalTasks === 0) {
+        return res.status(400).json({
+          success: false,
+          code:
+            "NO_PROJECT_TASKS",
+
+          message:
+            "Create and complete at least one project task before completing the project.",
+
+          summary: {
+            totalTasks,
+            completedTasks,
+            progress,
+          },
+        });
+      }
+
+      /*
+       * All tasks must be completed.
+       */
+      if (
+        completedTasks !==
+          totalTasks ||
+        progress < 100
+      ) {
+        return res.status(409).json({
+          success: false,
+          code:
+            "PROJECT_TASKS_INCOMPLETE",
+
+          message:
+            `${completedTasks} of ${totalTasks} project tasks are completed. Complete all tasks before closing the project.`,
+
+          summary: {
+            totalTasks,
+            completedTasks,
+            activeTasks:
+              summary?.activeTasks ||
+              0,
+
+            overdueTasks:
+              summary?.overdueTasks ||
+              0,
+
+            progress,
+          },
+        });
+      }
+
+      const {
+        completionDate,
+        deliveryDate,
+
+        finalAmount,
+
+        amcApplicable,
+        proposedAmcAmount,
+
+        warrantyEndDate,
+      } = req.body || {};
+
+      /*
+       * Dates
+       */
+
+      const parsedCompletionDate =
+        completionDate
+          ? new Date(
+              completionDate
+            )
+          : new Date();
+
+      if (
+        Number.isNaN(
+          parsedCompletionDate.getTime()
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid completion date.",
+        });
+      }
+
+      const parsedDeliveryDate =
+        deliveryDate
+          ? new Date(
+              deliveryDate
+            )
+          : parsedCompletionDate;
+
+      if (
+        Number.isNaN(
+          parsedDeliveryDate.getTime()
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid delivery date.",
+        });
+      }
+
+      let parsedWarrantyEndDate =
+        null;
+
+      if (warrantyEndDate) {
+        parsedWarrantyEndDate =
+          new Date(
+            warrantyEndDate
+          );
+
+        if (
+          Number.isNaN(
+            parsedWarrantyEndDate.getTime()
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Invalid warranty end date.",
+          });
+        }
+
+        if (
+          parsedWarrantyEndDate <
+          parsedDeliveryDate
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Warranty end date cannot be before delivery date.",
+          });
+        }
+      }
+
+      /*
+       * Commercial values
+       */
+
+      const normalizedFinalAmount =
+        Math.max(
+          Number(
+            finalAmount ??
+              project.finalAmount ??
+              0
+          ),
+          0
+        );
+
+      const normalizedAmcApplicable =
+        Boolean(
+          amcApplicable
+        );
+
+      const normalizedAmcAmount =
+        normalizedAmcApplicable
+          ? Math.max(
+              Number(
+                proposedAmcAmount ??
+                  project.proposedAmcAmount ??
+                  0
+              ),
+              0
+            )
+          : 0;
+
+      if (
+        normalizedAmcApplicable &&
+        normalizedAmcAmount <= 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Enter the proposed yearly AMC amount.",
+        });
+      }
+
+      /*
+       * Complete the project.
+       */
+
+      project.status =
+        "Completed";
+
+      project.progress =
+        100;
+
+      project.completedDate =
+        parsedCompletionDate;
+
+      project.deliveryDate =
+        parsedDeliveryDate;
+
+      project.finalAmount =
+        normalizedFinalAmount;
+
+      project.amcApplicable =
+        normalizedAmcApplicable;
+
+      project.proposedAmcAmount =
+        normalizedAmcAmount;
+
+      project.warrantyEndDate =
+        parsedWarrantyEndDate;
+
+      /*
+       * AMC is NOT automatically activated here.
+       *
+       * The existing AMC module requires a valid
+       * client product before a contract can exist.
+       */
+      project.amcActivated =
+        Boolean(
+          project.amcContractId
+        );
+
+      project.completedBy =
+        req.user._id;
+
+      project.completedByName =
+        req.user.name ||
+        "Admin";
+
+      project.updatedBy =
+        req.user._id;
+
+      project.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      await project.save();
+
+      /*
+       * Update Client summary.
+       */
+
+      if (project.clientId) {
+        const client =
+          await Client.findOne({
+            _id:
+              project.clientId,
+
+            isDeleted:
+              false,
+          });
+
+        if (client) {
+          if (
+            normalizedAmcApplicable
+          ) {
+            client.amcStatus =
+              client.amcStatus ===
+              "Not Started"
+                ? "Not Started"
+                : client.amcStatus;
+          }
+
+          client.updatedBy =
+            req.user._id;
+
+          client.updatedByName =
+            req.user.name ||
+            "Admin";
+
+          await client.save();
+        }
+      }
+
+      /*
+       * Activity log.
+       */
+
+      await createActivityLog({
+        action:
+          "Project Completed",
+
+        category:
+          "Project",
+
+        description:
+          `${project.projectCode} - ${project.projectName} was completed successfully.`,
+
+        entityType:
+          "project",
+
+        entityId:
+          project._id,
+
+        entityCode:
+          project.projectCode,
+
+        entityName:
+          project.projectName,
+
+        clientId:
+          project.clientId,
+
+        clientName:
+          project.clientName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+
+        metadata: {
+          completedDate:
+            project.completedDate,
+
+          deliveryDate:
+            project.deliveryDate,
+
+          finalAmount:
+            project.finalAmount,
+
+          amcApplicable:
+            project.amcApplicable,
+
+          proposedAmcAmount:
+            project.proposedAmcAmount,
+
+          warrantyEndDate:
+            project.warrantyEndDate,
+
+          totalTasks,
+
+          completedTasks,
+
+          progress:
+            project.progress,
+        },
+      });
+
+      /*
+       * Tell frontend whether AMC can
+       * already be activated.
+       *
+       * Existing AMC contracts require
+       * an actual product assigned to client.
+       */
+
+      let amcReady =
+        false;
+
+      let amcReason =
+        "";
+
+      if (
+        project.amcApplicable
+      ) {
+        if (
+          !project.clientId
+        ) {
+          amcReason =
+            "AMC cannot be activated because this project has no client.";
+        } else if (
+          !project.productId
+        ) {
+          amcReason =
+            "AMC is planned, but first assign the completed software/product to the client.";
+        } else {
+          const client =
+            await Client.findOne({
+              _id:
+                project.clientId,
+
+              isDeleted:
+                false,
+            });
+
+          const clientProduct =
+            client?.products?.find(
+              (item) =>
+                String(
+                  item.productId
+                ) ===
+                String(
+                  project.productId
+                )
+            );
+
+          if (clientProduct) {
+            amcReady =
+              true;
+          } else {
+            amcReason =
+              "AMC is planned, but this project product is not assigned to the client yet.";
+          }
+        }
+      }
+
+      return res.status(200).json({
+        success: true,
+
+        message:
+          "Project completed successfully.",
+
+        data: {
+          project:
+            projectResponse(
+              project
+            ),
+
+          summary: {
+            totalTasks,
+            completedTasks,
+            progress: 100,
+          },
+
+          amc: {
+            applicable:
+              project.amcApplicable,
+
+            activated:
+              project.amcActivated,
+
+            ready:
+              amcReady,
+
+            reason:
+              amcReason,
+
+            proposedAmount:
+              project.proposedAmcAmount,
+
+            warrantyEndDate:
+              project.warrantyEndDate,
+          },
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Complete project error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to complete project.",
+      });
+    }
+  }
+);
+/* =====================================================
+   SOFT DELETE PROJECT
+   DELETE /api/admin/project/:id
+===================================================== */
+
+router.delete(
+  "/project/:id",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid project ID.",
+        });
+      }
+
+      const project =
+        await Project.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Project not found.",
+        });
+      }
+      if (
+  rejectLockedProject(
+    project,
+    res
+  )
+) {
+  return;
+}
+
+      const linkedTaskCount =
+        await Task.countDocuments({
+          projectId:
+            project._id,
+
+          isDeleted: false,
+        });
+
+      if (linkedTaskCount > 0) {
+        return res.status(409).json({
+          success: false,
+
+          message:
+            "This project is already used by tasks. Mark it Cancelled instead of deleting it.",
+
+          usage: {
+            tasks:
+              linkedTaskCount,
+          },
+        });
+      }
+
+      const previousStatus =
+        project.status;
+
+      project.isDeleted =
+        true;
+
+      project.deletedAt =
+        new Date();
+
+      project.deletedBy =
+        req.user._id;
+
+      project.deletedByName =
+        req.user.name ||
+        "Admin";
+
+      project.status =
+        "Cancelled";
+
+      await project.save();
+
+      await createActivityLog({
+        action:
+          "Project Deleted",
+
+        category:
+          "Project",
+
+        description:
+          `${project.projectName} was removed from Project Master.`,
+
+        entityType:
+          "project",
+
+        entityId:
+          project._id,
+
+        entityCode:
+          project.projectCode,
+
+        entityName:
+          project.projectName,
+
+        clientId:
+          project.clientId,
+
+        clientName:
+          project.clientName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+
+        metadata: {
+          previousStatus,
+
+          deletedAt:
+            project.deletedAt,
+        },
+      });
+
+      return res.status(200).json({
+        success: true,
+
+        message:
+          "Project deleted successfully.",
+
+        data: {
+          id:
+            project._id,
+
+          projectCode:
+            project.projectCode,
+
+          projectName:
+            project.projectName,
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Delete project error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to delete project.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   ADD CLIENT
+===================================================== */
+/* =====================================================
+   CREATE CLIENT
+   POST /api/admin/client
+===================================================== */
+
+/* =====================================================
+   CREATE CLIENT AND LOGIN ACCOUNT
+   POST /api/admin/client
+===================================================== */
+
+router.post(
+  "/client",
+  validate(clientCreateSchema),
+  async (req, res) => {
+    let createdClient = null;
+    let createdUser = null;
+
+    try {
+      const {
+        clientCode,
+        companyName,
+        contactPerson,
+        email,
+        mobile,
+        city,
+        products,
+        amcStatus,
+        nextRenewal,
+        assignedEmployeeId,
+status,
+
+        createLogin = true,
+        temporaryPassword = "",
+      } = req.body;
+
+      const normalizedCode =
+        String(
+          clientCode || ""
+        )
+          .trim()
+          .toUpperCase();
+
+      const normalizedCompanyName =
+        String(
+          companyName || ""
+        ).trim();
+
+      const normalizedContactPerson =
+        String(
+          contactPerson || ""
+        ).trim();
+
+      const normalizedEmail =
+        String(
+          email || ""
+        )
+          .trim()
+          .toLowerCase();
+
+      if (!normalizedCode) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Client code is required.",
+          });
+      }
+
+      if (
+        !normalizedCompanyName
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Company name is required.",
+          });
+      }
+
+      if (
+        createLogin &&
+        !normalizedEmail
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Email is required when creating a client login account.",
+          });
+      }
+
+      const escapedCompanyName =
+        normalizedCompanyName.replace(
+          /[.*+?^${}()|[\]\\]/g,
+          "\\$&"
+        );
+
+      const duplicateClient =
+        await Client.findOne({
+          isDeleted: false,
+
+          $or: [
+            {
+              clientCode:
+                normalizedCode,
+            },
+            {
+              companyName: {
+                $regex:
+                  `^${escapedCompanyName}$`,
+                $options: "i",
+              },
+            },
+          ],
+        });
+
+      if (duplicateClient) {
+        return res
+          .status(409)
+          .json({
+            success: false,
+
+            message:
+              duplicateClient.clientCode ===
+                normalizedCode
+                ? "Client code already exists."
+                : "Company name already exists.",
+          });
+      }
+
+      if (createLogin) {
+        const existingUser =
+          await User.findOne({
+            email:
+              normalizedEmail,
+          });
+
+        if (existingUser) {
+          return res
+            .status(409)
+            .json({
+              success: false,
+              message:
+                "A login account with this email already exists.",
+            });
+        }
+      }
+
+      let resolvedProducts = [];
+
+      try {
+        resolvedProducts =
+          await resolveClientProducts(
+            products || []
+          );
+      } catch (error) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              error.message,
+          });
+      }
+      let resolvedEmployee;
+
+try {
+  resolvedEmployee =
+    await resolveClientEmployee(
+      assignedEmployeeId,
+      {
+        required: false,
+      }
+    );
+} catch (error) {
+  return res
+    .status(400)
+    .json({
+      success: false,
+
+      message:
+        error.message ||
+        "Unable to validate the assigned employee.",
+    });
+}
+
+      createdClient =
+        await Client.create({
+          clientCode:
+            normalizedCode,
+
+          companyName:
+            normalizedCompanyName,
+
+          contactPerson:
+            normalizedContactPerson,
+
+          email:
+            normalizedEmail,
+
+          mobile:
+            String(
+              mobile || ""
+            ).trim(),
+
+          city:
+            String(
+              city || ""
+            ).trim(),
+
+          products:
+            resolvedProducts,
+
+          amcStatus:
+            amcStatus ||
+            "Not Started",
+
+          nextRenewal:
+            nextRenewal || "",
+
+          openTickets: 0,
+
+        assignedEmployeeId:
+  resolvedEmployee
+    .assignedEmployeeId,
+
+assignedEmployeeCode:
+  resolvedEmployee
+    .assignedEmployeeCode,
+
+assignedEmployeeName:
+  resolvedEmployee
+    .assignedEmployeeName,
+
+          status:
+            status || "Active",
+
+          loginEnabled:
+            Boolean(
+              createLogin
+            ),
+
+          createdBy:
+            req.user._id,
+
+          createdByName:
+            req.user.name ||
+            "Admin",
+
+          updatedBy:
+            req.user._id,
+
+          updatedByName:
+            req.user.name ||
+            "Admin",
+        });
+
+      let plainTemporaryPassword =
+        "";
+
+      if (createLogin) {
+        plainTemporaryPassword =
+          String(
+            temporaryPassword || ""
+          ).trim() ||
+          generateTemporaryPassword();
+
+        if (
+          plainTemporaryPassword.length <
+          6
+        ) {
+          await Client.deleteOne({
+            _id:
+              createdClient._id,
+          });
+
+          return res
+            .status(400)
+            .json({
+              success: false,
+              message:
+                "Temporary password must contain at least 6 characters.",
+            });
+        }
+
+        const hashedPassword =
+          await bcrypt.hash(
+            plainTemporaryPassword,
+            12
+          );
+
+        createdUser =
+          await User.create({
+            name:
+              normalizedContactPerson ||
+              normalizedCompanyName,
+
+            email:
+              normalizedEmail,
+
+            mobile:
+              String(
+                mobile || ""
+              ).trim(),
+
+            password:
+              hashedPassword,
+
+            role:
+              "client",
+
+            status:
+              mapClientStatusToUserStatus(
+                createdClient.status
+              ),
+
+            clientId:
+              createdClient._id,
+
+            clientCode:
+              createdClient.clientCode,
+
+            companyName:
+              createdClient.companyName,
+
+            mustChangePassword:
+              true,
+          });
+
+        createdClient.userId =
+          createdUser._id;
+
+        createdClient.loginCreatedAt =
+          new Date();
+
+        await createdClient.save();
+      }
+
+      await createActivityLog({
+        action:
+          "Client Created",
+
+        category:
+          "Client",
+
+        description:
+          `${createdClient.companyName} was added to Client Master.`,
+
+        entityType:
+          "client",
+
+        entityId:
+          createdClient._id,
+
+        entityCode:
+          createdClient.clientCode,
+
+        entityName:
+          createdClient.companyName,
+
+        clientId:
+          createdClient._id,
+
+        clientName:
+          createdClient.companyName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+
+       metadata: {
+  city:
+    createdClient.city,
+
+  status:
+    createdClient.status,
+
+  productCount:
+    createdClient.products.length,
+
+  assignedEmployeeId:
+    createdClient
+      .assignedEmployeeId,
+
+  assignedEmployeeCode:
+    createdClient
+      .assignedEmployeeCode,
+
+  assignedEmployeeName:
+    createdClient
+      .assignedEmployeeName,
+
+  loginCreated:
+    Boolean(
+      createdUser
+    ),
+
+  userId:
+    createdUser?._id ||
+    null,
+},
+      });
+
+      return res
+        .status(201)
+        .json({
+          success: true,
+
+          message:
+            createdUser
+              ? "Client and login account created successfully."
+              : "Client created successfully.",
+
+          data:
+            clientResponse(
+              createdClient
+            ),
+
+          login: createdUser
+            ? {
+              userId:
+                createdUser._id,
+
+              email:
+                createdUser.email,
+
+              temporaryPassword:
+                plainTemporaryPassword,
+
+              mustChangePassword:
+                true,
+            }
+            : null,
+        });
+    } catch (error) {
+      console.error(
+        "Create client error:",
+        error
+      );
+
+      /*
+       * Manual rollback if creating the
+       * user fails after client creation.
+       */
+      if (
+        createdUser?._id
+      ) {
+        await User.deleteOne({
+          _id:
+            createdUser._id,
+        }).catch(() => { });
+      }
+
+      if (
+        createdClient?._id
+      ) {
+        await Client.deleteOne({
+          _id:
+            createdClient._id,
+        }).catch(() => { });
+      }
+
+      if (
+        error.code === 11000
+      ) {
+        return res
+          .status(409)
+          .json({
+            success: false,
+            message:
+              "Client code or login email already exists.",
+          });
+      }
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+          message:
+            error.message ||
+            "Unable to create client and login account.",
+        });
+    }
+  }
+);
+
+/* =====================================================
+   GET ALL CLIENTS
+   GET /api/admin/clients
+===================================================== */
+
+router.get(
+  "/clients",
+  async (req, res) => {
+    try {
+     const {
+  search = "",
+  status = "All",
+  amcStatus = "All",
+  productId = "",
+  assignedEmployeeId = "",
+} = req.query;
+
+      const query = {
+        isDeleted: false,
+      };
+
+      if (
+        status &&
+        status !== "All"
+      ) {
+        query.status =
+          status;
+      }
+
+      if (
+        amcStatus &&
+        amcStatus !== "All"
+      ) {
+        query.amcStatus =
+          amcStatus;
+      }
+
+      if (productId) {
+        if (
+          !mongoose.Types.ObjectId.isValid(
+            productId
+          )
+        ) {
+          return res
+            .status(400)
+            .json({
+              success: false,
+              message:
+                "Invalid product ID.",
+            });
+        }
+
+        query[
+          "products.productId"
+        ] =
+          new mongoose.Types.ObjectId(
+            productId
+          );
+      }
+
+        if (assignedEmployeeId) {
+  if (
+    !mongoose.Types.ObjectId.isValid(
+      assignedEmployeeId
+    )
+  ) {
+    return res
+      .status(400)
+      .json({
+        success: false,
+        message:
+          "Invalid assigned employee ID.",
+      });
+  }
+
+  query.assignedEmployeeId =
+    new mongoose.Types.ObjectId(
+      assignedEmployeeId
+    );
+}
+      const normalizedSearch =
+        String(
+          search || ""
+        ).trim();
+
+      if (
+        normalizedSearch
+      ) {
+        query.$or = [
+          {
+            clientCode: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+          {
+            companyName: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+          {
+            contactPerson: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+          {
+            email: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+          {
+            mobile: {
+              $regex:
+                normalizedSearch,
+              $options: "i",
+            },
+          },
+         {
+  city: {
+    $regex: normalizedSearch,
+    $options: "i",
+  },
+},
+{
+  assignedEmployeeName: {
+    $regex: normalizedSearch,
+    $options: "i",
+  },
+},
+{
+  assignedEmployeeCode: {
+    $regex: normalizedSearch,
+    $options: "i",
+  },
+},
+{
+  "products.productName": {
+    $regex: normalizedSearch,
+    $options: "i",
+  },
+},
+        ];
+      }
+
+      const clients =
+        await Client.find(
+          query
+        ).sort({
+          companyName: 1,
+        });
+
+      const stats = {
+        totalClients:
+          clients.length,
+
+        activeClients:
+          clients.filter(
+            (client) =>
+              client.status ===
+              "Active"
+          ).length,
+
+        inactiveClients:
+          clients.filter(
+            (client) =>
+              client.status ===
+              "Inactive"
+          ).length,
+
+        clientsWithAMC:
+          clients.filter(
+            (client) =>
+              client.amcStatus ===
+              "Paid" ||
+              client.amcStatus ===
+              "Partially Paid"
+          ).length,
+
+        totalProducts:
+          clients.reduce(
+            (
+              total,
+              client
+            ) =>
+              total +
+              (
+                client.products ||
+                []
+              ).length,
+            0
+          ),
+
+        openTickets:
+          clients.reduce(
+            (
+              total,
+              client
+            ) =>
+              total +
+              Number(
+                client.openTickets ||
+                0
+              ),
+            0
+          ),
+      };
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          count:
+            clients.length,
+
+          stats,
+
+          data:
+            clients.map(
+              clientResponse
+            ),
+        });
+    } catch (error) {
+      console.error(
+        "Load clients error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message ||
+            "Unable to load clients.",
+        });
+    }
+  }
+);
+
+/* =====================================================
+   GET ONE CLIENT
+   GET /api/admin/client/:id
+===================================================== */
+
+router.get(
+  "/client/:id",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Invalid client ID.",
+          });
+      }
+
+      const client =
+        await Client.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!client) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message:
+              "Client not found.",
+          });
+      }
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          data:
+            clientResponse(client),
+        });
+    } catch (error) {
+      console.error(
+        "Get client error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message ||
+            "Unable to load client.",
+        });
+    }
+  }
+);
+
+/* =====================================================
+   GET CLIENT AMC (contract + invoices)
+   GET /api/admin/client/:id/amc
+===================================================== */
+
+/* =====================================================
+   GET CLIENT AMC
+   GET /api/admin/client/:id/amc
+
+   Enterprise AMC history.
+
+   Financial source of truth:
+   AmcInvoice -> AmcPayment
+
+   IMPORTANT:
+   - Every AMC cycle is one permanent AmcInvoice.
+   - Old invoices remain unchanged after renewal.
+   - Payments remain linked to the exact invoice through
+     amcInvoiceId.
+   - Client AMC Management and AMC & Billing can now use
+     the same invoice-based figures.
+===================================================== */
+
+router.get(
+  "/client/:id/amc",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      /* ===============================================
+         VALIDATE CLIENT
+      =============================================== */
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid client ID.",
+        });
+      }
+
+      const client =
+        await Client.findOne({
+          _id: id,
+          isDeleted: {
+            $ne: true,
+          },
+        })
+          .select(
+            "_id clientCode companyName amcStatus nextRenewal"
+          )
+          .lean();
+
+      if (!client) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Client was not found.",
+        });
+      }
+
+      /* ===============================================
+         LOAD ALL AMC DATA FOR CLIENT
+      =============================================== */
+
+      const [
+        contracts,
+        invoices,
+        payments,
+      ] =
+        await Promise.all([
+          AmcContract.find({
+            clientId: id,
+            isDeleted: {
+              $ne: true,
+            },
+          })
+            .sort({
+              createdAt: -1,
+            })
+            .lean(),
+
+          AmcInvoice.find({
+            clientId: id,
+            isDeleted: {
+              $ne: true,
+            },
+            status: {
+              $ne: "Cancelled",
+            },
+          })
+            .sort({
+              contractStartDate: -1,
+              invoiceDate: -1,
+              createdAt: -1,
+            })
+            .lean(),
+
+          AmcPayment.find({
+            clientId: id,
+            isDeleted: {
+              $ne: true,
+            },
+          })
+            .sort({
+              paymentDate: -1,
+              createdAt: -1,
+            })
+            .lean(),
+        ]);
+
+      /* ===============================================
+         CONTRACT LOOKUP
+      =============================================== */
+
+      const contractMap =
+        new Map();
+
+      contracts.forEach(
+        (contract) => {
+          contractMap.set(
+            String(
+              contract._id
+            ),
+            contract
+          );
+
+          if (
+            contract.contractCode
+          ) {
+            contractMap.set(
+              String(
+                contract.contractCode
+              ),
+              contract
+            );
+          }
+        }
+      );
+
+      /* ===============================================
+         GROUP PAYMENTS BY AMC INVOICE
+      =============================================== */
+
+      const paymentsByInvoice =
+        new Map();
+
+      payments.forEach(
+        (payment) => {
+          const invoiceId =
+            String(
+              payment.amcInvoiceId ||
+              ""
+            );
+
+          if (!invoiceId) {
+            return;
+          }
+
+          if (
+            !paymentsByInvoice.has(
+              invoiceId
+            )
+          ) {
+            paymentsByInvoice.set(
+              invoiceId,
+              []
+            );
+          }
+
+          paymentsByInvoice
+            .get(
+              invoiceId
+            )
+            .push(
+              payment
+            );
+        }
+      );
+
+      /* ===============================================
+         BUILD PERMANENT INVOICE HISTORY
+
+         Each invoice is recalculated from the actual
+         payment records linked to that invoice.
+      =============================================== */
+
+      const invoiceHistory =
+        invoices.map(
+          (invoice) => {
+            const invoicePayments =
+              paymentsByInvoice.get(
+                String(
+                  invoice._id
+                )
+              ) ||
+              [];
+
+            const actualPaidAmount =
+              roundAmcAmount(
+                invoicePayments.reduce(
+                  (
+                    total,
+                    payment
+                  ) =>
+                    total +
+                    Number(
+                      payment.amount ||
+                      0
+                    ),
+                  0
+                )
+              );
+
+            const totalAmount =
+              roundAmcAmount(
+                Number(
+                  invoice.totalAmount ||
+                  0
+                )
+              );
+
+            const actualPendingAmount =
+              roundAmcAmount(
+                Math.max(
+                  totalAmount -
+                    actualPaidAmount,
+                  0
+                )
+              );
+
+            let paymentStatus =
+              "Pending";
+
+            if (
+              actualPendingAmount <=
+              0
+            ) {
+              paymentStatus =
+                "Paid";
+            } else if (
+              actualPaidAmount >
+              0
+            ) {
+              paymentStatus =
+                "Partially Paid";
+            } else {
+              const dueDate =
+                invoice.dueDate
+                  ? new Date(
+                      invoice.dueDate
+                    )
+                  : null;
+
+              if (
+                dueDate &&
+                !Number.isNaN(
+                  dueDate.getTime()
+                ) &&
+                dueDate <
+                  new Date()
+              ) {
+                paymentStatus =
+                  "Overdue";
+              }
+            }
+
+            const contract =
+              contractMap.get(
+                String(
+                  invoice.amcContractId ||
+                  ""
+                )
+              ) ||
+              contractMap.get(
+                String(
+                  invoice.contractCode ||
+                  ""
+                )
+              ) ||
+              null;
+
+            return {
+              id:
+                invoice._id,
+
+              _id:
+                invoice._id,
+
+              amcInvoiceId:
+                invoice._id,
+
+              invoiceCode:
+                invoice.invoiceCode ||
+                "",
+
+              invoiceNo:
+                invoice.invoiceCode ||
+                "",
+
+              invoiceNumber:
+                Number(
+                  invoice.invoiceNumber ||
+                  0
+                ),
+
+              amcContractId:
+                invoice.amcContractId ||
+                null,
+
+              contractCode:
+                invoice.contractCode ||
+                contract?.contractCode ||
+                "",
+
+              clientId:
+                invoice.clientId ||
+                client._id,
+
+              clientCode:
+                invoice.clientCode ||
+                client.clientCode ||
+                "",
+
+              clientName:
+                invoice.clientName ||
+                client.companyName ||
+                "",
+
+              productId:
+                invoice.productId ||
+                null,
+
+              productCode:
+                invoice.productCode ||
+                "",
+
+              productName:
+                invoice.productName ||
+                "",
+
+              productVersion:
+                invoice.productVersion ||
+                "",
+
+              plan:
+                invoice.plan ||
+                contract?.plan ||
+                "",
+
+              licensedUsers:
+                Number(
+                  invoice.licensedUsers ||
+                  contract?.licensedUsers ||
+                  0
+                ),
+
+              /* =======================================
+                 AMC CYCLE
+              ======================================= */
+
+              startDate:
+                invoice.contractStartDate ||
+                null,
+
+              endDate:
+                invoice.contractExpiryDate ||
+                null,
+
+              contractStartDate:
+                invoice.contractStartDate ||
+                null,
+
+              contractExpiryDate:
+                invoice.contractExpiryDate ||
+                null,
+
+              invoiceDate:
+                invoice.invoiceDate ||
+                null,
+
+              dueDate:
+                invoice.dueDate ||
+                null,
+
+              /* =======================================
+                 FINANCIALS
+              ======================================= */
+
+              grossAmount:
+                Number(
+                  invoice.grossAmount ||
+                  0
+                ),
+
+              discountAmount:
+                Number(
+                  invoice.discountAmount ||
+                  0
+                ),
+
+              taxableAmount:
+                Number(
+                  invoice.taxableAmount ||
+                  0
+                ),
+
+              cgstRate:
+                Number(
+                  invoice.cgstRate ||
+                  0
+                ),
+
+              sgstRate:
+                Number(
+                  invoice.sgstRate ||
+                  0
+                ),
+
+              igstRate:
+                Number(
+                  invoice.igstRate ||
+                  0
+                ),
+
+              cgstAmount:
+                Number(
+                  invoice.cgstAmount ||
+                  0
+                ),
+
+              sgstAmount:
+                Number(
+                  invoice.sgstAmount ||
+                  0
+                ),
+
+              igstAmount:
+                Number(
+                  invoice.igstAmount ||
+                  0
+                ),
+
+              totalAmount,
+
+              /*
+               * IMPORTANT:
+               *
+               * These are rebuilt from AmcPayment,
+               * not trusted blindly from invoice.paidAmount.
+               */
+              paidAmount:
+                actualPaidAmount,
+
+              pendingAmount:
+                actualPendingAmount,
+
+              paymentStatus,
+
+              status:
+                invoice.status ||
+                "Issued",
+
+              reminderStatus:
+                contract?.reminderStatus ||
+                "Not Sent",
+
+              /* =======================================
+                 INSTALLMENTS / RECEIPTS
+              ======================================= */
+
+              payments:
+                invoicePayments.map(
+                  (payment) => ({
+                    id:
+                      payment._id,
+
+                    _id:
+                      payment._id,
+
+                    paymentCode:
+                      payment.paymentCode ||
+                      "",
+
+                    paymentNumber:
+                      Number(
+                        payment.paymentNumber ||
+                        0
+                      ),
+
+                    paymentDate:
+                      payment.paymentDate ||
+                      null,
+
+                    amount:
+                      Number(
+                        payment.amount ||
+                        0
+                      ),
+
+                    mode:
+                      payment.mode ||
+                      "",
+
+                    referenceNo:
+                      payment.referenceNo ||
+                      "",
+
+                    notes:
+                      payment.notes ||
+                      "",
+
+                    receivedBy:
+                      payment.receivedBy ||
+                      null,
+
+                    receivedByName:
+                      payment.receivedByName ||
+                      payment.createdByName ||
+                      "",
+
+                    createdAt:
+                      payment.createdAt ||
+                      null,
+                  })
+                ),
+
+              paymentCount:
+                invoicePayments.length,
+
+              createdAt:
+                invoice.createdAt ||
+                null,
+
+              updatedAt:
+                invoice.updatedAt ||
+                null,
+            };
+          }
+        );
+
+      /* ===============================================
+         CLIENT AMC TOTALS
+      =============================================== */
+
+      const totalAmcValue =
+        roundAmcAmount(
+          invoiceHistory.reduce(
+            (
+              total,
+              invoice
+            ) =>
+              total +
+              Number(
+                invoice.totalAmount ||
+                0
+              ),
+            0
+          )
+        );
+
+      const totalPaid =
+        roundAmcAmount(
+          invoiceHistory.reduce(
+            (
+              total,
+              invoice
+            ) =>
+              total +
+              Number(
+                invoice.paidAmount ||
+                0
+              ),
+            0
+          )
+        );
+
+      const totalPending =
+        roundAmcAmount(
+          invoiceHistory.reduce(
+            (
+              total,
+              invoice
+            ) =>
+              total +
+              Number(
+                invoice.pendingAmount ||
+                0
+              ),
+            0
+          )
+        );
+
+      /* ===============================================
+         ACTIVE / CURRENT AMC CYCLE
+
+         Current means the latest non-cancelled invoice
+         by AMC cycle start date.
+      =============================================== */
+
+      const currentInvoice =
+        invoiceHistory.length >
+        0
+          ? invoiceHistory[0]
+          : null;
+
+      /* ===============================================
+         NEXT RENEWAL
+
+         Use nearest expiry that is today/future.
+      =============================================== */
+
+      const now =
+        new Date();
+
+      const futureExpiryDates =
+        invoiceHistory
+          .map(
+            (invoice) =>
+              invoice.endDate
+                ? new Date(
+                    invoice.endDate
+                  )
+                : null
+          )
+          .filter(
+            (date) =>
+              date &&
+              !Number.isNaN(
+                date.getTime()
+              ) &&
+              date >= now
+          )
+          .sort(
+            (
+              first,
+              second
+            ) =>
+              first -
+              second
+          );
+
+      const nextRenewal =
+        futureExpiryDates.length >
+        0
+          ? futureExpiryDates[0]
+          : null;
+
+      /* ===============================================
+         RESPONSE
+      =============================================== */
+
+      return res.status(200).json({
+        success: true,
+
+        data: {
+          client: {
+            id:
+              client._id,
+
+            clientCode:
+              client.clientCode ||
+              "",
+
+            companyName:
+              client.companyName ||
+              "",
+
+            amcStatus:
+              client.amcStatus ||
+              "Not Started",
+
+            nextRenewal:
+              nextRenewal ||
+              client.nextRenewal ||
+              null,
+          },
+
+          /*
+           * Keep contracts available for compatibility.
+           */
+          contracts,
+
+          /*
+           * Main financial source for frontend.
+           */
+          invoices:
+            invoiceHistory,
+
+          invoiceHistory,
+
+          currentInvoice,
+
+          invoiceCount:
+            invoiceHistory.length,
+
+          paymentCount:
+            payments.length,
+
+          totals: {
+            totalAmcValue,
+
+            totalPaid,
+
+            totalPending,
+
+            invoiceCount:
+              invoiceHistory.length,
+
+            paymentCount:
+              payments.length,
+          },
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Get client AMC error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to load client AMC records.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   GET CLIENT PAYMENTS
+   GET /api/admin/client/:id/payments
+===================================================== */
+/* =====================================================
+   GET CLIENT PAYMENTS
+   GET /api/admin/client/:id/payments
+
+   Combined client financial history:
+   1. Product Sale payments
+   2. AMC payments
+
+   IMPORTANT:
+   Existing ProductSalePayment and AmcPayment remain
+   separate source-of-truth collections.
+===================================================== */
+
+router.get(
+  "/client/:id/payments",
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      /* ============================================
+         VALIDATE CLIENT ID
+      ============================================ */
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid client ID.",
+        });
+      }
+
+      /* ============================================
+         VERIFY CLIENT
+      ============================================ */
+
+      const client =
+        await Client.findOne({
+          _id: id,
+
+          isDeleted: {
+            $ne: true,
+          },
+        })
+          .select(
+            "_id clientCode companyName"
+          )
+          .lean();
+
+      if (!client) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Client not found.",
+        });
+      }
+
+      /* ============================================
+         LOAD ALL FINANCIAL DATA IN PARALLEL
+      ============================================ */
+
+      const [
+        productSalePayments,
+        amcPayments,
+        productSales,
+        amcInvoices,
+      ] = await Promise.all([
+        ProductSalePayment.find({
+          clientId: id,
+
+          isDeleted: {
+            $ne: true,
+          },
+        })
+          .sort({
+            paymentDate: -1,
+            createdAt: -1,
+          })
+          .lean(),
+
+        AmcPayment.find({
+          clientId: id,
+
+          isDeleted: {
+            $ne: true,
+          },
+        })
+          .sort({
+            paymentDate: -1,
+            createdAt: -1,
+          })
+          .lean(),
+
+        ProductSale.find({
+          clientId: id,
+
+          isDeleted: {
+            $ne: true,
+          },
+
+          status: {
+            $ne: "Cancelled",
+          },
+        })
+          .sort({
+            saleDate: -1,
+          })
+          .lean(),
+
+        AmcInvoice.find({
+          clientId: id,
+
+          isDeleted: {
+            $ne: true,
+          },
+        })
+          .sort({
+            invoiceDate: -1,
+            createdAt: -1,
+          })
+          .lean(),
+      ]);
+
+      /* ============================================
+         FAST LOOKUP MAPS
+      ============================================ */
+
+      const productSaleMap =
+        new Map(
+          productSales.map(
+            (sale) => [
+              String(sale._id),
+              sale,
+            ]
+          )
+        );
+
+      const amcInvoiceMap =
+        new Map(
+          amcInvoices.map(
+            (invoice) => [
+              String(invoice._id),
+              invoice,
+            ]
+          )
+        );
+
+      /* ============================================
+         NORMALIZE PRODUCT SALE PAYMENTS
+      ============================================ */
+
+      const normalizedProductPayments =
+        productSalePayments.map(
+          (payment) => {
+            const sale =
+              productSaleMap.get(
+                String(
+                  payment.productSaleId ||
+                    ""
+                )
+              ) || null;
+
+            const productNames =
+              Array.isArray(
+                sale?.items
+              )
+                ? sale.items
+                    .map(
+                      (item) =>
+                        item.productName
+                    )
+                    .filter(Boolean)
+                : [];
+
+            return {
+              id:
+                payment._id,
+
+              _id:
+                payment._id,
+
+              sourceType:
+                "Product Sale",
+
+              paymentType:
+                "Product Sale",
+
+              receiptNo:
+                payment.paymentCode ||
+                "",
+
+              paymentCode:
+                payment.paymentCode ||
+                "",
+
+              clientId:
+                payment.clientId,
+
+              clientCode:
+                payment.clientCode ||
+                client.clientCode ||
+                "",
+
+              clientName:
+                payment.clientName ||
+                client.companyName ||
+                "",
+
+              invoiceId:
+                sale?._id ||
+                payment.productSaleId ||
+                null,
+
+              productSaleId:
+                payment.productSaleId ||
+                null,
+
+              invoiceNo:
+                sale?.invoiceNo ||
+                payment.saleCode ||
+                "",
+
+              saleCode:
+                sale?.saleCode ||
+                payment.saleCode ||
+                "",
+
+              product:
+                productNames.join(
+                  ", "
+                ) || "Product Sale",
+
+              productNames,
+
+              paymentDate:
+                payment.paymentDate,
+
+              amount:
+                Number(
+                  payment.amount || 0
+                ),
+
+              mode:
+                payment.mode || "",
+
+              referenceNo:
+                payment.referenceNo ||
+                "",
+
+              notes:
+                payment.notes || "",
+
+              receivedBy:
+                payment.createdByName ||
+                "Admin",
+
+              status:
+                "Completed",
+
+              invoiceTotal:
+                Number(
+                  sale?.totalAmount ||
+                    0
+                ),
+
+              invoicePaid:
+                Number(
+                  sale?.paidAmount ||
+                    0
+                ),
+
+              invoicePending:
+                Number(
+                  sale?.pendingAmount ||
+                    0
+                ),
+
+              invoiceStatus:
+                sale?.paymentStatus ||
+                "",
+
+              createdAt:
+                payment.createdAt ||
+                payment.paymentDate,
+            };
+          }
+        );
+
+      /* ============================================
+         NORMALIZE AMC PAYMENTS
+      ============================================ */
+
+      const normalizedAmcPayments =
+        amcPayments.map(
+          (payment) => {
+            const invoice =
+              amcInvoiceMap.get(
+                String(
+                  payment.amcInvoiceId ||
+                    ""
+                )
+              ) || null;
+
+            return {
+              id:
+                payment._id,
+
+              _id:
+                payment._id,
+
+              sourceType:
+                "AMC",
+
+              paymentType:
+                "AMC",
+
+              receiptNo:
+                payment.paymentCode ||
+                "",
+
+              paymentCode:
+                payment.paymentCode ||
+                "",
+
+              clientId:
+                payment.clientId,
+
+              clientCode:
+                payment.clientCode ||
+                client.clientCode ||
+                "",
+
+              clientName:
+                payment.clientName ||
+                client.companyName ||
+                "",
+
+              invoiceId:
+                invoice?._id ||
+                payment.amcInvoiceId ||
+                null,
+
+              amcInvoiceId:
+                payment.amcInvoiceId ||
+                null,
+
+              invoiceNo:
+                invoice?.invoiceCode ||
+                invoice?.invoiceNo ||
+                payment.invoiceCode ||
+                "",
+
+              product:
+                invoice?.productName ||
+                payment.productName ||
+                "AMC",
+
+              productNames:
+                invoice?.productName
+                  ? [
+                      invoice.productName,
+                    ]
+                  : [],
+
+              paymentDate:
+                payment.paymentDate,
+
+              amount:
+                Number(
+                  payment.amount || 0
+                ),
+
+              mode:
+                payment.mode || "",
+
+              referenceNo:
+                payment.referenceNo ||
+                "",
+
+              notes:
+                payment.notes || "",
+
+              receivedBy:
+                payment.receivedByName ||
+                payment.createdByName ||
+                "Admin",
+
+              status:
+                "Completed",
+
+              invoiceTotal:
+                Number(
+                  invoice?.totalAmount ||
+                    0
+                ),
+
+              invoicePaid:
+                Number(
+                  invoice?.paidAmount ||
+                    0
+                ),
+
+              invoicePending:
+                Number(
+                  invoice?.pendingAmount ||
+                    0
+                ),
+
+              invoiceStatus:
+                invoice?.paymentStatus ||
+                "",
+
+              createdAt:
+                payment.createdAt ||
+                payment.paymentDate,
+            };
+          }
+        );
+
+      /* ============================================
+         COMBINE + SORT PAYMENT HISTORY
+      ============================================ */
+
+      const payments = [
+        ...normalizedProductPayments,
+        ...normalizedAmcPayments,
+      ].sort(
+        (a, b) =>
+          new Date(
+            b.paymentDate ||
+              b.createdAt ||
+              0
+          ).getTime() -
+          new Date(
+            a.paymentDate ||
+              a.createdAt ||
+              0
+          ).getTime()
+      );
+
+      /* ============================================
+         PAYMENT TOTALS
+      ============================================ */
+
+      const productSalesReceived =
+        normalizedProductPayments.reduce(
+          (total, payment) =>
+            total +
+            Number(
+              payment.amount || 0
+            ),
+          0
+        );
+
+      const amcReceived =
+        normalizedAmcPayments.reduce(
+          (total, payment) =>
+            total +
+            Number(
+              payment.amount || 0
+            ),
+          0
+        );
+
+      const totalReceived =
+        productSalesReceived +
+        amcReceived;
+
+      /* ============================================
+         PRODUCT SALE INVOICE TOTALS
+      ============================================ */
+
+      const productSalesValue =
+        productSales.reduce(
+          (total, sale) =>
+            total +
+            Number(
+              sale.totalAmount || 0
+            ),
+          0
+        );
+
+      const productSalesPending =
+        productSales.reduce(
+          (total, sale) =>
+            total +
+            Math.max(
+              Number(
+                sale.pendingAmount ||
+                  0
+              ),
+              0
+            ),
+          0
+        );
+
+      /* ============================================
+         AMC INVOICE TOTALS
+      ============================================ */
+
+      const amcValue =
+        amcInvoices.reduce(
+          (total, invoice) =>
+            total +
+            Number(
+              invoice.totalAmount ||
+                0
+            ),
+          0
+        );
+
+      const amcPending =
+        amcInvoices.reduce(
+          (total, invoice) =>
+            total +
+            Math.max(
+              Number(
+                invoice.pendingAmount ??
+                  (
+                    Number(
+                      invoice.totalAmount ||
+                        0
+                    ) -
+                    Number(
+                      invoice.paidAmount ||
+                        0
+                    )
+                  )
+              ),
+              0
+            ),
+          0
+        );
+
+      const totalPending =
+        productSalesPending +
+        amcPending;
+
+      /* ============================================
+         LAST PAYMENT
+      ============================================ */
+
+      const lastPayment =
+        payments.length > 0
+          ? payments[0]
+          : null;
+
+      /* ============================================
+         RESPONSE
+      ============================================ */
+
+      return res.status(200).json({
+        success: true,
+
+        data: payments,
+
+        payments,
+
+        summary: {
+          totalReceived,
+
+          productSalesReceived,
+
+          amcReceived,
+
+          totalPending,
+
+          productSalesPending,
+
+          amcPending,
+
+          productSalesValue,
+
+          amcValue,
+
+          totalInvoiceValue:
+            productSalesValue +
+            amcValue,
+
+          paymentCount:
+            payments.length,
+
+          productSalePaymentCount:
+            normalizedProductPayments.length,
+
+          amcPaymentCount:
+            normalizedAmcPayments.length,
+
+          lastPaymentDate:
+            lastPayment?.paymentDate ||
+            null,
+
+          lastPaymentAmount:
+            Number(
+              lastPayment?.amount ||
+                0
+            ),
+
+          lastPaymentType:
+            lastPayment?.sourceType ||
+            null,
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Get combined client payments error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to load client payments.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   GET CLIENT DOCUMENTS
+   GET /api/admin/client/:id/documents
+===================================================== */
+
+router.get("/client/:id/documents", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid client ID.",
+      });
+    }
+
+    const documents = await ClientDocument.find({
+      clientId: id,
+      isDeleted: false,
+    }).sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      data: documents.map((doc) => ({
+        id: doc._id,
+        name: doc.name,
+        type: doc.type,
+        category: doc.category,
+        size: doc.size,
+        uploadedOn: doc.createdAt,
+        uploadedBy: doc.uploadedByName,
+        notes: doc.notes,
+      })),
+    });
+  } catch (error) {
+    console.error("Get client documents error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Unable to load client documents.",
+    });
+  }
+});
+
+/* =====================================================
+   ADD CLIENT DOCUMENT (metadata only)
+   POST /api/admin/client/:id/documents
+===================================================== */
+
+router.post("/client/:id/documents", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid client ID.",
+      });
+    }
+
+    const client = await Client.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        message: "Client not found.",
+      });
+    }
+
+    const {
+      name,
+      type = "Other",
+      category = "Other",
+      size = "",
+      notes = "",
+      uploadedByName = "",
+    } = req.body;
+
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Document name is required.",
+      });
+    }
+
+    const document = await ClientDocument.create({
+      clientId: client._id,
+      clientCode: client.clientCode || "",
+      clientName: client.companyName || "",
+      name: String(name).trim(),
+      type,
+      category,
+      size,
+      notes,
+      uploadedByName,
+    });
+
+    await ActivityLog.create({
+      action: "Document Uploaded",
+      category: "Client",
+      description: `${document.name} uploaded for ${client.companyName}`,
+      entityType: "client",
+      entityId: client._id,
+      entityName: client.companyName,
+      clientId: client._id,
+      clientName: client.companyName,
+      performedByName: uploadedByName || "Admin",
+      performedByRole: "admin",
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Document added.",
+      data: {
+        id: document._id,
+        name: document.name,
+        type: document.type,
+        category: document.category,
+        size: document.size,
+        uploadedOn: document.createdAt,
+        uploadedBy: document.uploadedByName,
+      },
+    });
+  } catch (error) {
+    console.error("Add client document error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Unable to add document.",
+    });
+  }
+});
+
+/* =====================================================
+   DELETE CLIENT DOCUMENT
+   DELETE /api/admin/client/:id/documents/:docId
+===================================================== */
+
+router.delete("/client/:id/documents/:docId", async (req, res) => {
+  try {
+    const { id, docId } = req.params;
+
+    if (
+      !mongoose.Types.ObjectId.isValid(id) ||
+      !mongoose.Types.ObjectId.isValid(docId)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid ID.",
+      });
+    }
+
+    const document = await ClientDocument.findOneAndUpdate(
+      { _id: docId, clientId: id },
+      { isDeleted: true },
+      { returnDocument: "after" }
+    );
+
+    if (!document) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Document removed.",
+    });
+  } catch (error) {
+    console.error("Delete client document error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Unable to delete document.",
+    });
+  }
+});
+
+/* =====================================================
+   UPDATE CLIENT
+   PUT /api/admin/client/:id
+===================================================== */
+
+router.put(
+  "/client/:id",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Invalid client ID.",
+          });
+      }
+
+      const client =
+        await Client.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!client) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message:
+              "Client not found.",
+          });
+      }
+
+      const {
+        clientCode,
+        companyName,
+        contactPerson,
+        email,
+        mobile,
+        city,
+        products,
+        amcStatus,
+        nextRenewal,
+       assignedEmployeeId,
+status,
+      } = req.body;
+
+      const normalizedCode =
+        String(
+          clientCode ??
+          client.clientCode
+        )
+          .trim()
+          .toUpperCase();
+
+      const normalizedCompanyName =
+        String(
+          companyName ??
+          client.companyName
+        ).trim();
+
+      if (!normalizedCode) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Client code is required.",
+          });
+      }
+
+      if (
+        !normalizedCompanyName
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Company name is required.",
+          });
+      }
+
+      const escapedCompanyName =
+        normalizedCompanyName.replace(
+          /[.*+?^${}()|[\]\\]/g,
+          "\\$&"
+        );
+
+      const duplicateClient =
+        await Client.findOne({
+          _id: {
+            $ne: id,
+          },
+
+          isDeleted: false,
+
+          $or: [
+            {
+              clientCode:
+                normalizedCode,
+            },
+            {
+              companyName: {
+                $regex:
+                  `^${escapedCompanyName}$`,
+                $options: "i",
+              },
+            },
+          ],
+        });
+
+      if (duplicateClient) {
+        return res
+          .status(409)
+          .json({
+            success: false,
+
+            message:
+              duplicateClient.clientCode ===
+                normalizedCode
+                ? "Another client already uses this client code."
+                : "Another client already uses this company name.",
+          });
+      }
+
+      if (
+        products !== undefined
+      ) {
+        try {
+          client.products =
+            await resolveClientProducts(
+              products
+            );
+        } catch (error) {
+          return res
+            .status(400)
+            .json({
+              success: false,
+              message:
+                error.message,
+            });
+        }
+      }
+
+      client.clientCode =
+        normalizedCode;
+
+      client.companyName =
+        normalizedCompanyName;
+
+      client.contactPerson =
+        String(
+          contactPerson ??
+          client.contactPerson ??
+          ""
+        ).trim();
+
+      const nextEmail =
+        String(
+          email ??
+          client.email ??
+          ""
+        )
+          .trim()
+          .toLowerCase();
+
+      /*
+       * Check whether another User account
+       * already uses the new email.
+       */
+      if (
+        nextEmail &&
+        nextEmail !== client.email
+      ) {
+        const duplicateLogin =
+          await User.findOne({
+            email: nextEmail,
+
+            _id: {
+              $ne:
+                client.userId ||
+                undefined,
+            },
+          });
+
+        if (duplicateLogin) {
+          return res
+            .status(409)
+            .json({
+              success: false,
+              message:
+                "Another login account already uses this email.",
+            });
+        }
+      }
+
+      client.email =
+        nextEmail;
+      client.mobile =
+        String(
+          mobile ??
+          client.mobile ??
+          ""
+        ).trim();
+
+      client.city =
+        String(
+          city ??
+          client.city ??
+          ""
+        ).trim();
+
+      if (
+        amcStatus !== undefined
+      ) {
+        client.amcStatus =
+          amcStatus;
+      }
+
+      if (
+        nextRenewal !==
+        undefined
+      ) {
+        client.nextRenewal =
+          nextRenewal || "";
+      }
+
+    
+if (
+  assignedEmployeeId !==
+  undefined
+) {
+  let resolvedEmployee;
+
+  try {
+    resolvedEmployee =
+      await resolveClientEmployee(
+        assignedEmployeeId,
+        {
+          required: false,
+        }
+      );
+  } catch (error) {
+    return res
+      .status(400)
+      .json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to validate the assigned employee.",
+      });
+  }
+
+  client.assignedEmployeeId =
+    resolvedEmployee
+      .assignedEmployeeId;
+
+  client.assignedEmployeeCode =
+    resolvedEmployee
+      .assignedEmployeeCode;
+
+  client.assignedEmployeeName =
+    resolvedEmployee
+      .assignedEmployeeName;
+}
+
+
+
+      if (
+        status !== undefined
+      ) {
+        client.status =
+          status;
+      }
+
+      client.updatedBy =
+        req.user._id;
+
+      client.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      await client.save();
+
+      await createActivityLog({
+        action:
+          "Client Updated",
+
+        category:
+          "Client",
+
+        description:
+          `${client.companyName} information was updated.`,
+
+        entityType:
+          "client",
+
+        entityId:
+          client._id,
+
+        entityCode:
+          client.clientCode,
+
+        entityName:
+          client.companyName,
+
+        clientId:
+          client._id,
+
+        clientName:
+          client.companyName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+
+      metadata: {
+  status:
+    client.status,
+
+  amcStatus:
+    client.amcStatus,
+
+  productCount:
+    client.products.length,
+
+  assignedEmployeeId:
+    client.assignedEmployeeId,
+
+  assignedEmployeeCode:
+    client.assignedEmployeeCode,
+
+  assignedEmployeeName:
+    client.assignedEmployeeName,
+},
+      });
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          message:
+            "Client updated successfully.",
+
+          data:
+            clientResponse(client),
+        });
+    } catch (error) {
+      console.error(
+        "Update client error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message ||
+            "Unable to update client.",
+        });
+    }
+  }
+);
+
+/* =====================================================
+   ASSIGN PRODUCT TO CLIENT
+   POST /api/admin/client/:id/product
+===================================================== */
+
+router.post(
+  "/client/:id/product",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Invalid client ID.",
+          });
+      }
+
+      const client =
+        await Client.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!client) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message:
+              "Client not found.",
+          });
+      }
+
+      let resolvedProduct;
+
+      try {
+        resolvedProduct =
+          await resolveClientProduct(
+            req.body
+          );
+      } catch (error) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              error.message,
+          });
+      }
+
+      const alreadyAssigned =
+        client.products.some(
+          (product) =>
+            String(
+              product.productId
+            ) ===
+            String(
+              resolvedProduct.productId
+            )
+        );
+
+      if (alreadyAssigned) {
+        return res
+          .status(409)
+          .json({
+            success: false,
+            message:
+              "This product is already assigned to the client.",
+          });
+      }
+
+    client.products.push({
+  ...resolvedProduct,
+
+  acquisitionType:
+    req.body.acquisitionType ||
+    "Legacy / Historical",
+
+  productSaleId:
+    null,
+
+  productSaleCode:
+    "",
+
+  originalInvoiceNo:
+    String(
+      req.body.originalInvoiceNo ||
+      ""
+    )
+      .trim()
+      .toUpperCase(),
+
+  originalPurchaseAmount:
+    Math.max(
+      Number(
+        req.body.originalPurchaseAmount ||
+        0
+      ),
+      0
+    ),
+
+  historicalDataComplete:
+    Boolean(
+      req.body.originalInvoiceNo ||
+      req.body.originalPurchaseAmount ||
+      req.body.purchaseDate
+    ),
+});
+
+      client.updatedBy =
+        req.user._id;
+
+      client.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      await client.save();
+
+      const assignedProduct =
+        client.products[
+        client.products.length -
+        1
+        ];
+
+      await createActivityLog({
+        action:
+          "Product Assigned",
+
+        category:
+          "Product",
+
+        description:
+          `${assignedProduct.productName} was assigned to ${client.companyName}.`,
+
+        entityType:
+          "product",
+
+        entityId:
+          assignedProduct.productId,
+
+        entityCode:
+          assignedProduct.productCode,
+
+        entityName:
+          assignedProduct.productName,
+
+        clientId:
+          client._id,
+
+        clientName:
+          client.companyName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+
+        metadata: {
+          clientProductId:
+            assignedProduct._id,
+
+          version:
+            assignedProduct.version,
+
+          supportType:
+            assignedProduct.supportType,
+
+          amcStatus:
+            assignedProduct.amcStatus,
+        },
+      });
+
+      return res
+        .status(201)
+        .json({
+          success: true,
+
+          message:
+            "Product assigned successfully.",
+
+          data:
+            clientResponse(client),
+        });
+    } catch (error) {
+      console.error(
+        "Assign client product error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message ||
+            "Unable to assign product.",
+        });
+    }
+  }
+);
+
+/* =====================================================
+   UPDATE CLIENT PRODUCT
+   PUT /api/admin/client/:clientId/product/:assignmentId
+===================================================== */
+
+router.put(
+  "/client/:clientId/product/:assignmentId",
+  async (req, res) => {
+    try {
+      const {
+        clientId,
+        assignmentId,
+      } = req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          clientId
+        ) ||
+        !mongoose.Types.ObjectId.isValid(
+          assignmentId
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Invalid client or assignment ID.",
+          });
+      }
+
+      const client =
+        await Client.findOne({
+          _id: clientId,
+          isDeleted: false,
+        });
+
+      if (!client) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message:
+              "Client not found.",
+          });
+      }
+
+      const assignment =
+        client.products.id(
+          assignmentId
+        );
+
+      if (!assignment) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message:
+              "Assigned product was not found.",
+          });
+      }
+
+     let resolvedProduct;
+
+try {
+  resolvedProduct =
+    await resolveClientProduct({
+      ...req.body,
+
+      productId:
+        req.body.productId ||
+        assignment.productId,
+    });
+} catch (error) {
+  return res
+    .status(400)
+    .json({
+      success: false,
+
+      message:
+        error.message ||
+        "Unable to validate the selected product.",
+    });
+}
+
+      const duplicate =
+        client.products.some(
+          (product) =>
+            String(product._id) !==
+            String(
+              assignmentId
+            ) &&
+            String(
+              product.productId
+            ) ===
+            String(
+              resolvedProduct.productId
+            )
+        );
+
+      if (duplicate) {
+        return res
+          .status(409)
+          .json({
+            success: false,
+            message:
+              "This product is already assigned to the client.",
+          });
+      }
+
+      assignment.productId =
+        resolvedProduct.productId;
+
+      assignment.productCode =
+        resolvedProduct.productCode;
+
+      assignment.productName =
+        resolvedProduct.productName;
+
+      assignment.version =
+        resolvedProduct.version;
+
+      assignment.purchaseDate =
+        resolvedProduct.purchaseDate;
+
+      assignment.installationDate =
+        resolvedProduct.installationDate;
+
+      assignment.licensedUsers =
+        resolvedProduct.licensedUsers;
+
+      assignment.supportType =
+        resolvedProduct.supportType;
+
+      assignment.amcStatus =
+        resolvedProduct.amcStatus;
+
+      assignment.expiryDate =
+        resolvedProduct.expiryDate;
+
+      assignment.installationStatus =
+        resolvedProduct.installationStatus;
+
+      assignment.notes =
+        resolvedProduct.notes;
+
+      client.updatedBy =
+        req.user._id;
+
+      client.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      await client.save();
+
+      await createActivityLog({
+        action:
+          "Client Product Updated",
+
+        category:
+          "Product",
+
+        description:
+          `${assignment.productName} assignment was updated for ${client.companyName}.`,
+
+        entityType:
+          "product",
+
+        entityId:
+          assignment.productId,
+
+        entityCode:
+          assignment.productCode,
+
+        entityName:
+          assignment.productName,
+
+        clientId:
+          client._id,
+
+        clientName:
+          client.companyName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+      });
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          message:
+            "Client product updated successfully.",
+
+          data:
+            clientResponse(client),
+        });
+    } catch (error) {
+      console.error(
+        "Update client product error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message ||
+            "Unable to update client product.",
+        });
+    }
+  }
+);
+
+/* =====================================================
+   REMOVE CLIENT PRODUCT
+   DELETE /api/admin/client/:clientId/product/:assignmentId
+===================================================== */
+
+router.delete(
+  "/client/:clientId/product/:assignmentId",
+  async (req, res) => {
+    try {
+      const {
+        clientId,
+        assignmentId,
+      } = req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          clientId
+        ) ||
+        !mongoose.Types.ObjectId.isValid(
+          assignmentId
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Invalid client or assignment ID.",
+          });
+      }
+
+      const client =
+        await Client.findOne({
+          _id: clientId,
+          isDeleted: false,
+        });
+
+      if (!client) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message:
+              "Client not found.",
+          });
+      }
+
+      const assignment =
+        client.products.id(
+          assignmentId
+        );
+
+      if (!assignment) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message:
+              "Assigned product was not found.",
+          });
+      }
+
+      const removedProduct = {
+        productId:
+          assignment.productId,
+
+        productCode:
+          assignment.productCode,
+
+        productName:
+          assignment.productName,
+      };
+
+      client.products.pull(
+        assignmentId
+      );
+
+      client.updatedBy =
+        req.user._id;
+
+      client.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      await client.save();
+
+      await createActivityLog({
+        action:
+          "Product Removed",
+
+        category:
+          "Product",
+
+        description:
+          `${removedProduct.productName} was removed from ${client.companyName}.`,
+
+        entityType:
+          "product",
+
+        entityId:
+          removedProduct.productId,
+
+        entityCode:
+          removedProduct.productCode,
+
+        entityName:
+          removedProduct.productName,
+
+        clientId:
+          client._id,
+
+        clientName:
+          client.companyName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+      });
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          message:
+            "Product removed successfully.",
+
+          data:
+            clientResponse(client),
+        });
+    } catch (error) {
+      console.error(
+        "Remove client product error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message ||
+            "Unable to remove client product.",
+        });
+    }
+  }
+);
+
+/* =====================================================
+   CHANGE CLIENT STATUS
+   PATCH /api/admin/client/:id/status
+===================================================== */
+
+router.patch(
+  "/client/:id/status",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      const { status } =
+        req.body;
+
+      const allowedStatuses = [
+        "Active",
+        "Inactive",
+        "Suspended",
+      ];
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Invalid client ID.",
+          });
+      }
+
+      if (
+        !allowedStatuses.includes(
+          status
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Invalid client status.",
+          });
+      }
+
+      const client =
+        await Client.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!client) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message:
+              "Client not found.",
+          });
+      }
+
+      client.status =
+        status;
+
+      client.updatedBy =
+        req.user._id;
+
+      client.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      await client.save();
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          message:
+            "Client status updated successfully.",
+
+          data:
+            clientResponse(client),
+        });
+    } catch (error) {
+      console.error(
+        "Change client status error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message ||
+            "Unable to change client status.",
+        });
+    }
+  }
+);
+
+/* =====================================================
+   SOFT DELETE CLIENT
+   DELETE /api/admin/client/:id
+===================================================== */
+
+router.delete(
+  "/client/:id",
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Invalid client ID.",
+          });
+      }
+
+      const client =
+        await Client.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!client) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message:
+              "Client not found.",
+          });
+      }
+
+      const [
+        projectCount,
+        taskCount,
+        ticketCount,
+      ] = await Promise.all([
+        Project.countDocuments({
+          clientId:
+            client._id,
+
+          isDeleted: false,
+        }),
+
+        Task.countDocuments({
+          clientId:
+            client._id,
+
+          isDeleted: false,
+        }),
+
+        SupportTicket.countDocuments(
+          {
+            clientId:
+              client._id,
+
+            isDeleted: false,
+          }
+        ),
+      ]);
+
+      if (
+        projectCount > 0 ||
+        taskCount > 0 ||
+        ticketCount > 0
+      ) {
+        return res
+          .status(409)
+          .json({
+            success: false,
+
+            message:
+              "This client is already used by projects, tasks or tickets. Mark the client Inactive instead of deleting it.",
+
+            usage: {
+              projects:
+                projectCount,
+
+              tasks:
+                taskCount,
+
+              tickets:
+                ticketCount,
+            },
+          });
+      }
+
+      client.isDeleted =
+        true;
+
+      client.deletedAt =
+        new Date();
+
+      client.deletedBy =
+        req.user._id;
+
+      client.deletedByName =
+        req.user.name ||
+        "Admin";
+
+      client.status =
+        "Inactive";
+
+      await client.save();
+
+      await createActivityLog({
+        action:
+          "Client Deleted",
+
+        category:
+          "Client",
+
+        description:
+          `${client.companyName} was removed from Client Master.`,
+
+        entityType:
+          "client",
+
+        entityId:
+          client._id,
+
+        entityCode:
+          client.clientCode,
+
+        entityName:
+          client.companyName,
+
+        clientId:
+          client._id,
+
+        clientName:
+          client.companyName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+      });
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          message:
+            "Client deleted successfully.",
+
+          data: {
+            id:
+              client._id,
+
+            clientCode:
+              client.clientCode,
+
+            companyName:
+              client.companyName,
+          },
+        });
+    } catch (error) {
+      console.error(
+        "Delete client error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message ||
+            "Unable to delete client.",
+        });
+    }
+  }
+);
+/* =====================================================
+   MIGRATE OLD CLIENT PRODUCTS TO PRODUCT MASTER
+   POST /api/admin/clients/migrate-products
+===================================================== */
+
+router.post(
+  "/clients/migrate-products",
+  async (req, res) => {
+    try {
+      const clients =
+        await Client.find({
+          isDeleted: {
+            $ne: true,
+          },
+        });
+
+      const products =
+        await Product.find({
+          isDeleted: false,
+        });
+
+      const productByName =
+        new Map();
+
+      for (const product of products) {
+        productByName.set(
+          String(
+            product.productName
+          )
+            .trim()
+            .toLowerCase(),
+          product
+        );
+      }
+
+      let migratedClients = 0;
+      let migratedProducts = 0;
+      const unmatchedProducts = [];
+
+      for (const client of clients) {
+        const rawProducts =
+          Array.isArray(
+            client.products
+          )
+            ? client.products
+            : [];
+
+        const migrated = [];
+        const usedIds =
+          new Set();
+
+        for (
+          const rawProduct
+          of rawProducts
+        ) {
+          const rawObject =
+            typeof rawProduct ===
+              "string"
+              ? {
+                productName:
+                  rawProduct,
+              }
+              : rawProduct.toObject
+                ? rawProduct.toObject()
+                : rawProduct;
+
+          let masterProduct = null;
+
+          if (
+            rawObject.productId &&
+            mongoose.Types.ObjectId.isValid(
+              rawObject.productId
+            )
+          ) {
+            masterProduct =
+              products.find(
+                (product) =>
+                  String(
+                    product._id
+                  ) ===
+                  String(
+                    rawObject.productId
+                  )
+              );
+          }
+
+          if (!masterProduct) {
+            const normalizedName =
+              String(
+                rawObject.productName ||
+                ""
+              )
+                .trim()
+                .toLowerCase();
+
+            masterProduct =
+              productByName.get(
+                normalizedName
+              );
+          }
+
+          if (!masterProduct) {
+            unmatchedProducts.push({
+              clientId:
+                client._id,
+
+              clientCode:
+                client.clientCode,
+
+              companyName:
+                client.companyName,
+
+              productName:
+                rawObject.productName ||
+                "",
+            });
+
+            continue;
+          }
+
+          const key =
+            String(
+              masterProduct._id
+            );
+
+          if (
+            usedIds.has(key)
+          ) {
+            continue;
+          }
+
+          usedIds.add(key);
+
+          migrated.push({
+            productId:
+              masterProduct._id,
+
+            productCode:
+              masterProduct.productCode,
+
+            productName:
+              masterProduct.productName,
+
+            version:
+              String(
+                rawObject.version ||
+                masterProduct.currentVersion ||
+                "v1.0.0"
+              ).trim(),
+
+            purchaseDate:
+              rawObject.purchaseDate ||
+              "",
+
+            installationDate:
+              rawObject.installationDate ||
+              "",
+
+            licensedUsers:
+              Math.max(
+                Number(
+                  rawObject.licensedUsers ||
+                  1
+                ),
+                1
+              ),
+
+            supportType:
+              rawObject.supportType ||
+              "Standard",
+
+            amcStatus:
+              rawObject.amcStatus ||
+              client.amcStatus ||
+              "Not Started",
+
+            expiryDate:
+              rawObject.expiryDate ||
+              client.nextRenewal ||
+              "",
+
+            installationStatus:
+              rawObject.installationStatus ||
+              "Installed",
+
+            notes:
+              String(
+                rawObject.notes ||
+                ""
+              ).trim(),
+          });
+
+          migratedProducts += 1;
+        }
+
+        const oldSnapshot =
+          JSON.stringify(
+            rawProducts.map(
+              (item) => ({
+                productId:
+                  item.productId ||
+                  null,
+
+                productCode:
+                  item.productCode ||
+                  "",
+
+                productName:
+                  item.productName ||
+                  String(item || ""),
+              })
+            )
+          );
+
+        const newSnapshot =
+          JSON.stringify(
+            migrated.map(
+              (item) => ({
+                productId:
+                  String(
+                    item.productId
+                  ),
+
+                productCode:
+                  item.productCode,
+
+                productName:
+                  item.productName,
+              })
+            )
+          );
+
+        if (
+          oldSnapshot !==
+          newSnapshot
+        ) {
+          client.products =
+            migrated;
+
+          client.updatedBy =
+            req.user._id;
+
+          client.updatedByName =
+            req.user.name ||
+            "Admin";
+
+          await client.save();
+          try {
+            await syncClientUser(
+              client
+            );
+          } catch (userSyncError) {
+            console.error(
+              "Client user sync error:",
+              userSyncError
+            );
+
+            return res
+              .status(409)
+              .json({
+                success: false,
+
+                message:
+                  userSyncError.code ===
+                    11000
+                    ? "The updated email is already used by another login account."
+                    : userSyncError.message ||
+                    "Client was saved, but the login account could not be synchronized.",
+              });
+          }
+
+          migratedClients += 1;
+        }
+      }
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          message:
+            "Client product migration completed.",
+
+          summary: {
+            totalClients:
+              clients.length,
+
+            migratedClients,
+
+            migratedProducts,
+
+            unmatchedCount:
+              unmatchedProducts.length,
+          },
+
+          unmatchedProducts,
+        });
+    } catch (error) {
+      console.error(
+        "Migrate client products error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message ||
+            "Unable to migrate client products.",
+        });
+    }
+  }
+);
+/* =====================================================
+   CREATE REQUIREMENT
+   POST /api/admin/requirement
+===================================================== */
+
+router.post(
+  "/requirement",
+  async (req, res) => {
+    try {
+      const {
+        sourceType,
+
+        clientId,
+
+        prospectName,
+        prospectCompany,
+        prospectMobile,
+        prospectEmail,
+        prospectCity,
+
+        title,
+        requirementType,
+        description,
+        source,
+
+        priority,
+
+        expectedDeliveryDate,
+
+        estimatedBudget,
+        estimatedCost,
+        quotedAmount,
+
+        quotationNo,
+        quotationDate,
+
+        assignedEmployeeId,
+
+        status,
+        notes,
+      } = req.body || {};
+
+      const normalizedSourceType =
+        String(
+          sourceType || ""
+        ).trim();
+
+      if (
+        ![
+          "Existing Client",
+          "New Prospect",
+        ].includes(
+          normalizedSourceType
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Select Existing Client or New Prospect.",
+          });
+      }
+
+      const normalizedTitle =
+        String(
+          title || ""
+        ).trim();
+
+      const normalizedDescription =
+        String(
+          description || ""
+        ).trim();
+
+      if (!normalizedTitle) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Requirement title is required.",
+          });
+      }
+
+      if (
+        !normalizedDescription
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Requirement description is required.",
+          });
+      }
+
+      /*
+       * Validate priority from existing System Settings.
+       */
+
+      const selectedPriority =
+        await validatePriority(
+          priority || "Medium"
+        );
+
+      if (!selectedPriority) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Selected priority is invalid or inactive.",
+          });
+      }
+
+      let resolvedClient =
+        null;
+
+      /*
+       * EXISTING CLIENT
+       */
+
+      if (
+        normalizedSourceType ===
+        "Existing Client"
+      ) {
+        if (
+          !clientId ||
+          !mongoose.Types.ObjectId.isValid(
+            clientId
+          )
+        ) {
+          return res
+            .status(400)
+            .json({
+              success: false,
+              message:
+                "Please select a valid client.",
+            });
+        }
+
+        resolvedClient =
+          await Client.findOne({
+            _id:
+              clientId,
+
+            isDeleted:
+              false,
+          });
+
+        if (!resolvedClient) {
+          return res
+            .status(404)
+            .json({
+              success: false,
+              message:
+                "Selected client was not found.",
+            });
+        }
+      }
+
+      /*
+       * NEW PROSPECT
+       */
+
+      if (
+        normalizedSourceType ===
+        "New Prospect"
+      ) {
+        if (
+          !String(
+            prospectName || ""
+          ).trim()
+        ) {
+          return res
+            .status(400)
+            .json({
+              success: false,
+              message:
+                "Prospect name is required.",
+            });
+        }
+
+        if (
+          !String(
+            prospectMobile || ""
+          ).trim()
+        ) {
+          return res
+            .status(400)
+            .json({
+              success: false,
+              message:
+                "Prospect mobile number is required.",
+            });
+        }
+      }
+
+      /*
+       * OPTIONAL EMPLOYEE ASSIGNMENT
+       */
+
+      let employee =
+        null;
+
+      if (assignedEmployeeId) {
+        if (
+          !mongoose.Types.ObjectId.isValid(
+            assignedEmployeeId
+          )
+        ) {
+          return res
+            .status(400)
+            .json({
+              success: false,
+              message:
+                "Invalid employee ID.",
+            });
+        }
+
+        employee =
+          await mongoose
+            .model(
+              "Employee"
+            )
+            .findById(
+              assignedEmployeeId
+            );
+
+        if (!employee) {
+          return res
+            .status(404)
+            .json({
+              success: false,
+              message:
+                "Assigned employee was not found.",
+            });
+        }
+      }
+
+      const requirementCode =
+        await generateRequirementCode();
+
+      const requirement =
+        await Requirement.create({
+          requirementCode,
+
+          sourceType:
+            normalizedSourceType,
+
+          clientId:
+            resolvedClient?._id ||
+            null,
+
+          clientCode:
+            resolvedClient?.clientCode ||
+            "",
+
+          clientName:
+            resolvedClient?.companyName ||
+            "",
+
+          prospectName:
+            String(
+              prospectName || ""
+            ).trim(),
+
+          prospectCompany:
+            String(
+              prospectCompany || ""
+            ).trim(),
+
+          prospectMobile:
+            String(
+              prospectMobile || ""
+            ).trim(),
+
+          prospectEmail:
+            String(
+              prospectEmail || ""
+            )
+              .trim()
+              .toLowerCase(),
+
+          prospectCity:
+            String(
+              prospectCity || ""
+            ).trim(),
+
+          title:
+            normalizedTitle,
+
+          requirementType:
+            requirementType ||
+            "New Software",
+
+          description:
+            normalizedDescription,
+
+          source:
+            source ||
+            (
+              normalizedSourceType ===
+                "Existing Client"
+                ? "Existing Client"
+                : "Other"
+            ),
+
+          priority:
+            selectedPriority.name,
+
+          expectedDeliveryDate:
+            expectedDeliveryDate
+              ? new Date(
+                  expectedDeliveryDate
+                )
+              : null,
+
+          estimatedBudget:
+            Math.max(
+              Number(
+                estimatedBudget ||
+                0
+              ),
+              0
+            ),
+
+          estimatedCost:
+            Math.max(
+              Number(
+                estimatedCost ||
+                0
+              ),
+              0
+            ),
+
+          quotedAmount:
+            Math.max(
+              Number(
+                quotedAmount ||
+                0
+              ),
+              0
+            ),
+
+          quotationNo:
+            String(
+              quotationNo || ""
+            )
+              .trim()
+              .toUpperCase(),
+
+          quotationDate:
+            quotationDate
+              ? new Date(
+                  quotationDate
+                )
+              : null,
+
+          assignedEmployeeId:
+            employee?._id ||
+            null,
+
+          assignedEmployeeCode:
+            employee?.employeeCode ||
+            "",
+
+          assignedEmployeeName:
+            employee?.name ||
+            "",
+
+          status:
+            status ||
+            "New",
+
+          notes:
+            String(
+              notes || ""
+            ).trim(),
+
+          createdBy:
+            req.user._id,
+
+          createdByName:
+            req.user.name ||
+            "Admin",
+
+          updatedBy:
+            req.user._id,
+
+          updatedByName:
+            req.user.name ||
+            "Admin",
+        });
+
+      return res
+        .status(201)
+        .json({
+          success: true,
+
+          message:
+            "Requirement created successfully.",
+
+          data:
+            requirement,
+        });
+    } catch (error) {
+      console.error(
+        "Create requirement error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message ||
+            "Unable to create requirement.",
+        });
+    }
+  }
+);
+/* =====================================================
+   GET REQUIREMENTS
+   GET /api/admin/requirements
+===================================================== */
+
+router.get(
+  "/requirements",
+  async (req, res) => {
+    try {
+      const {
+        search = "",
+        status = "All",
+        sourceType = "All",
+        priority = "All",
+        limit = 200,
+      } = req.query;
+
+      const query = {
+        isDeleted: false,
+      };
+
+      if (
+        status !== "All"
+      ) {
+        query.status =
+          status;
+      }
+
+      if (
+        sourceType !== "All"
+      ) {
+        query.sourceType =
+          sourceType;
+      }
+
+      if (
+        priority !== "All"
+      ) {
+        query.priority =
+          priority;
+      }
+
+      const normalizedSearch =
+        String(
+          search || ""
+        ).trim();
+
+      if (normalizedSearch) {
+        query.$or = [
+          {
+            requirementCode: {
+              $regex:
+                normalizedSearch,
+
+              $options:
+                "i",
+            },
+          },
+
+          {
+            title: {
+              $regex:
+                normalizedSearch,
+
+              $options:
+                "i",
+            },
+          },
+
+          {
+            clientName: {
+              $regex:
+                normalizedSearch,
+
+              $options:
+                "i",
+            },
+          },
+
+          {
+            prospectName: {
+              $regex:
+                normalizedSearch,
+
+              $options:
+                "i",
+            },
+          },
+
+          {
+            prospectCompany: {
+              $regex:
+                normalizedSearch,
+
+              $options:
+                "i",
+            },
+          },
+        ];
+      }
+
+      const safeLimit =
+        Math.min(
+          Math.max(
+            Number(
+              limit || 200
+            ),
+            1
+          ),
+          500
+        );
+
+      const data =
+        await Requirement.find(
+          query
+        )
+          .sort({
+            createdAt: -1,
+          })
+          .limit(
+            safeLimit
+          )
+          .lean();
+
+      return res.json({
+        success: true,
+        count:
+          data.length,
+        data,
+      });
+    } catch (error) {
+      console.error(
+        "Load requirements error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+          message:
+            "Unable to load requirements.",
+        });
+    }
+  }
+);
+router.get(
+  "/requirement/:id",
+  async (req, res) => {
+    try {
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          req.params.id
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Invalid requirement ID.",
+          });
+      }
+
+      const requirement =
+        await Requirement.findOne({
+          _id:
+            req.params.id,
+
+          isDeleted:
+            false,
+        });
+
+      if (!requirement) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message:
+              "Requirement not found.",
+          });
+      }
+
+      return res.json({
+        success: true,
+        data:
+          requirement,
+      });
+    } catch (error) {
+      return res
+        .status(500)
+        .json({
+          success: false,
+          message:
+            "Unable to load requirement.",
+        });
+    }
+  }
+);
+/* =====================================================
+   UPDATE REQUIREMENT STATUS
+===================================================== */
+
+router.patch(
+  "/requirement/:id/status",
+  async (req, res) => {
+    try {
+      const allowedStatuses = [
+        "New",
+        "Discussion",
+        "Analysis",
+        "Estimate Pending",
+        "Quotation Pending",
+        "Quotation Sent",
+        "Negotiation",
+        "Approved",
+        "Rejected",
+        "On Hold",
+        "Converted to Project",
+      ];
+
+      const status =
+        String(
+          req.body.status || ""
+        ).trim();
+
+      if (
+        !allowedStatuses.includes(
+          status
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Invalid requirement status.",
+          });
+      }
+
+      const requirement =
+        await Requirement.findOne({
+          _id:
+            req.params.id,
+
+          isDeleted:
+            false,
+        });
+
+      if (!requirement) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message:
+              "Requirement not found.",
+          });
+      }
+
+      if (
+        requirement.status ===
+          "Converted to Project" &&
+        status !==
+          "Converted to Project"
+      ) {
+        return res
+          .status(409)
+          .json({
+            success: false,
+            message:
+              "Converted requirement cannot be moved back to another status.",
+          });
+      }
+
+      const previousStatus = requirement.status;
+
+      requirement.status = status;
+
+      requirement.updatedBy = req.user._id;
+
+      requirement.updatedByName = req.user.name || "Admin";
+
+      const noteText = req.body.notes || req.body.note || "";
+      if (noteText) requirement.notes = String(noteText).trim();
+
+      requirement.timeline = requirement.timeline || [];
+      requirement.timeline.push({
+        action: `Status: ${previousStatus} → ${status}`,
+        oldStatus: previousStatus,
+        newStatus: status,
+        notes: noteText,
+        performedBy: req.user._id,
+        performedByName: req.user.name || "Admin",
+        performedByRole: req.user.role || "admin",
+        createdAt: new Date(),
+      });
+
+      await requirement.save();
+
+      return res.json({
+        success: true,
+
+        message:
+          "Requirement status updated.",
+
+        data:
+          requirement,
+      });
+    } catch (error) {
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message ||
+            "Unable to update requirement status.",
+        });
+    }
+  }
+);
+
+/* =====================================================
+   REQUIREMENT STAGE TRANSITION (PROFESSIONAL WORKFLOW)
+   PATCH /api/admin/requirement/:id/stage-transition
+===================================================== */
+
+router.patch(
+  "/requirement/:id/stage-transition",
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid requirement ID.",
+        });
+      }
+
+      const allowedStatuses = [
+        "New",
+        "Discussion",
+        "Analysis",
+        "Estimate Pending",
+        "Quotation Pending",
+        "Quotation Sent",
+        "Negotiation",
+        "Approved",
+        "Rejected",
+        "On Hold",
+        "Converted to Project",
+      ];
+
+      const {
+        status,
+        notes,
+        nextAction,
+        followUpDate,
+        contactMethod,
+        contactPerson,
+        demoDate,
+        demoOwner,
+        quotationReference,
+        quotationAmount,
+        quotationDate,
+        validUntil,
+        lostReason,
+        competitor,
+        holdReason,
+        assignedEmployeeId,
+        stageData,
+      } = req.body || {};
+
+      const targetStatus = String(status || "").trim();
+
+      if (!allowedStatuses.includes(targetStatus)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid requirement target status.",
+        });
+      }
+
+      const requirement = await Requirement.findOne({
+        _id: id,
+        isDeleted: false,
+      });
+
+      if (!requirement) {
+        return res.status(404).json({
+          success: false,
+          message: "Requirement not found.",
+        });
+      }
+
+      if (
+        requirement.status === "Converted to Project" &&
+        targetStatus !== "Converted to Project"
+      ) {
+        return res.status(409).json({
+          success: false,
+          message: "Converted requirement cannot be moved back to another status.",
+        });
+      }
+
+      const previousStatus = requirement.status;
+
+      requirement.status = targetStatus;
+
+      if (notes !== undefined) requirement.notes = String(notes || "").trim();
+      if (nextAction !== undefined) requirement.nextAction = String(nextAction || "").trim();
+      if (followUpDate !== undefined) {
+        requirement.followUpDate = followUpDate ? new Date(followUpDate) : null;
+      }
+      if (contactMethod !== undefined) requirement.contactMethod = String(contactMethod || "").trim();
+      if (contactPerson !== undefined) requirement.contactPerson = String(contactPerson || "").trim();
+      if (demoDate !== undefined) {
+        requirement.demoDate = demoDate ? new Date(demoDate) : null;
+      }
+      if (demoOwner !== undefined) requirement.demoOwner = String(demoOwner || "").trim();
+      if (quotationReference !== undefined) {
+        requirement.quotationReference = String(quotationReference || "").trim();
+        requirement.quotationNo = String(quotationReference || "").trim();
+      }
+      if (validUntil !== undefined) {
+        requirement.validUntil = validUntil ? new Date(validUntil) : null;
+      }
+      if (lostReason !== undefined) requirement.lostReason = String(lostReason || "").trim();
+      if (competitor !== undefined) requirement.competitor = String(competitor || "").trim();
+      if (holdReason !== undefined) requirement.holdReason = String(holdReason || "").trim();
+
+      if (quotationAmount !== undefined && !isNaN(Number(quotationAmount))) {
+        requirement.quotedAmount = Math.max(0, Number(quotationAmount));
+      }
+      if (quotationDate !== undefined) {
+        requirement.quotationDate = quotationDate ? new Date(quotationDate) : null;
+      }
+
+      if (stageData && typeof stageData === "object") {
+        requirement.stageData = { ...(requirement.stageData || {}), ...stageData };
+      }
+
+      if (assignedEmployeeId && mongoose.Types.ObjectId.isValid(assignedEmployeeId)) {
+        const EmployeeModel = mongoose.models.Employee || mongoose.model("Employee");
+        const emp = await EmployeeModel.findById(assignedEmployeeId);
+        if (emp) {
+          requirement.assignedEmployeeId = emp._id;
+          requirement.assignedEmployeeName = emp.name;
+          requirement.assignedEmployeeCode = emp.employeeCode || "";
+        }
+      }
+
+      requirement.updatedBy = req.user._id;
+      requirement.updatedByName = req.user.name || "Admin";
+
+      let timelineDesc = `Transitioned from ${previousStatus} to ${targetStatus}.`;
+      if (notes) timelineDesc += ` Notes: ${notes}`;
+      if (nextAction) timelineDesc += ` Next: ${nextAction}`;
+      if (targetStatus === "Rejected" && lostReason) timelineDesc += ` Reason: ${lostReason}`;
+      if (targetStatus === "On Hold" && holdReason) timelineDesc += ` Reason: ${holdReason}`;
+
+      requirement.timeline = requirement.timeline || [];
+      requirement.timeline.push({
+        action: `Status: ${previousStatus} → ${targetStatus}`,
+        oldStatus: previousStatus,
+        newStatus: targetStatus,
+        notes: notes || "",
+        nextAction: nextAction || "",
+        followUpDate: followUpDate ? new Date(followUpDate) : null,
+        performedBy: req.user._id,
+        performedByName: req.user.name || "Admin",
+        performedByRole: req.user.role || "admin",
+        metadata: {
+          lostReason: lostReason || "",
+          competitor: competitor || "",
+          holdReason: holdReason || "",
+          contactMethod: contactMethod || "",
+          contactPerson: contactPerson || "",
+          demoDate: demoDate || null,
+          demoOwner: demoOwner || "",
+          quotationReference: quotationReference || "",
+          quotationAmount: quotationAmount || 0,
+        },
+        createdAt: new Date(),
+      });
+
+      await requirement.save();
+
+      await createActivityLog({
+        action: "Requirement Stage Changed",
+        category: "Requirement",
+        description: `${requirement.requirementCode} transitioned from ${previousStatus} to ${targetStatus}.`,
+        entityType: "requirement",
+        entityId: requirement._id,
+        entityCode: requirement.requirementCode,
+        entityName: requirement.title,
+        clientId: requirement.clientId,
+        clientName: requirement.clientName || requirement.prospectName,
+        performedBy: req.user._id,
+        performedByName: req.user.name || "Admin",
+        performedByRole: "admin",
+        metadata: {
+          previousStatus,
+          targetStatus,
+          lostReason: lostReason || null,
+          nextAction: nextAction || null,
+        },
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: `Requirement moved to ${targetStatus} successfully.`,
+        data: requirement,
+      });
+    } catch (error) {
+      console.error("Requirement stage transition error:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message || "Unable to transition requirement stage.",
+      });
+    }
+  }
+);
+/* =====================================================
+   CONVERT REQUIREMENT TO PROJECT
+===================================================== */
+
+router.post(
+  "/requirement/:id/convert-to-project",
+  async (req, res) => {
+    try {
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          req.params.id
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              "Invalid requirement ID.",
+          });
+      }
+
+      const requirement = await Requirement.findOneAndUpdate(
+        {
+          _id: req.params.id,
+          status: "Approved",
+          $or: [{ convertedProjectId: null }, { convertedProjectId: { $exists: false } }],
+          isDeleted: false,
+        },
+        {
+          $set: { status: "Converting to Project" },
+        },
+        { new: false }
+      );
+
+      if (!requirement) {
+        const existing = await Requirement.findOne({
+          _id: req.params.id,
+          isDeleted: false,
+        });
+
+        if (!existing) {
+          return res.status(404).json({
+            success: false,
+            message: "Requirement not found.",
+          });
+        }
+
+        if (
+          existing.convertedProjectId ||
+          existing.status === "Converted to Project" ||
+          existing.status === "Converting to Project"
+        ) {
+          return res.status(409).json({
+            success: false,
+            message: "Requirement is already converted to a project.",
+          });
+        }
+
+        return res.status(400).json({
+          success: false,
+          message: "Requirement must be Approved before converting to a project.",
+        });
+      }
+
+      const unlockRequirement = async () => {
+        try {
+          await Requirement.updateOne(
+            { _id: req.params.id, status: "Converting to Project" },
+            { $set: { status: "Approved" } }
+          );
+        } catch (e) {
+          console.error("Unlock requirement error:", e);
+        }
+      };
+
+      /*
+       * For phase 1:
+       * New Prospect must first be converted into a Client
+       * from the UI.
+       *
+       * We deliberately do not auto-create clients yet,
+       * because your Client creation currently also handles
+       * account/login/product rules.
+       */
+
+    /*
+ * New Prospect:
+ *
+ * After the prospect agrees to the project,
+ * admin creates the Client normally from Client Master.
+ *
+ * During conversion the frontend can send that new clientId.
+ */
+
+const requestedClientId =
+  req.body?.clientId ||
+  requirement.clientId ||
+  null;
+
+if (
+  requirement.sourceType ===
+    "New Prospect" &&
+  !requestedClientId
+) {
+  await unlockRequirement();
+  return res
+    .status(409)
+    .json({
+      success: false,
+
+      requiresClientCreation:
+        true,
+
+      message:
+        "Create the prospect as a client, then select that client before converting the requirement.",
+    });
+}
+
+if (
+  requestedClientId &&
+  !mongoose.Types.ObjectId.isValid(
+    requestedClientId
+  )
+) {
+  await unlockRequirement();
+  return res
+    .status(400)
+    .json({
+      success: false,
+      message:
+        "Invalid client ID.",
+    });
+}
+
+const client =
+  requestedClientId
+    ? await Client.findOne({
+        _id:
+          requestedClientId,
+
+        isDeleted:
+          false,
+      })
+    : null;
+
+if (
+  requestedClientId &&
+  !client
+) {
+  await unlockRequirement();
+  return res
+    .status(404)
+    .json({
+      success: false,
+      message:
+        "Selected client was not found.",
+    });
+}
+
+/*
+ * If this requirement originally came from a prospect,
+ * permanently link it to the newly-created client.
+ */
+
+if (
+  client &&
+  String(
+    requirement.clientId || ""
+  ) !==
+    String(client._id)
+) {
+  requirement.clientId =
+    client._id;
+
+  requirement.clientCode =
+    client.clientCode ||
+    "";
+
+  requirement.clientName =
+    client.companyName ||
+    "";
+
+  await requirement.save();
+}
+
+      const {
+        clientId,
+        projectCode,
+        projectName,
+        projectType,
+        startDate,
+        dueDate,
+        priority,
+        finalAmount,
+        amcApplicable,
+        proposedAmcAmount,
+        warrantyEndDate,
+        projectManagerId,
+        initialTeamMembers,
+      } = req.body || {};
+
+      const normalizedCode =
+        String(
+          projectCode || ""
+        )
+          .trim()
+          .toUpperCase();
+
+      if (!normalizedCode) {
+        await unlockRequirement();
+        return res
+          .status(400)
+          .json({
+            success: false,
+
+            message:
+              "Project code is required.",
+          });
+      }
+
+      const duplicateProject =
+        await Project.findOne({
+          projectCode:
+            normalizedCode,
+
+          isDeleted:
+            false,
+        });
+
+      if (duplicateProject) {
+        await unlockRequirement();
+        return res
+          .status(409)
+          .json({
+            success: false,
+
+            message:
+              "Project code already exists.",
+          });
+      }
+
+      const selectedPriority =
+        await validatePriority(
+          priority ||
+          requirement.priority ||
+          "Medium"
+        );
+
+      if (!selectedPriority) {
+        await unlockRequirement();
+        return res
+          .status(400)
+          .json({
+            success: false,
+
+            message:
+              "Selected priority is invalid or inactive.",
+          });
+      }
+
+      const project =
+        await Project.create({
+          projectCode:
+            normalizedCode,
+
+          projectName:
+            String(
+              projectName ||
+              requirement.title
+            ).trim(),
+
+          projectType:
+            projectType ||
+            (
+              requirement.requirementType ===
+                "Customization"
+                ? "Customization"
+                : requirement.requirementType ===
+                    "Upgrade"
+                  ? "Upgrade"
+                  : "Client Implementation"
+            ),
+
+          clientId:
+            client?._id ||
+            null,
+
+          clientCode:
+            client?.clientCode ||
+            "",
+
+          clientName:
+            client?.companyName ||
+            requirement.clientName ||
+            requirement.prospectCompany ||
+            requirement.prospectName ||
+            "",
+
+          requirementId:
+            requirement._id,
+
+          requirementCode:
+            requirement.requirementCode,
+
+          description:
+            requirement.description,
+
+          startDate:
+            startDate
+              ? new Date(
+                  startDate
+                )
+              : new Date(),
+
+          dueDate:
+            dueDate
+              ? new Date(
+                  dueDate
+                )
+              : requirement.expectedDeliveryDate ||
+                null,
+
+          priority:
+            selectedPriority.name,
+
+          status:
+            "Planned",
+
+          stage:
+            "Planning",
+
+          progress:
+            0,
+
+          finalAmount:
+            Math.max(
+              Number(
+                finalAmount ||
+                requirement.quotedAmount ||
+                0
+              ),
+              0
+            ),
+
+          amcApplicable:
+            Boolean(
+              amcApplicable
+            ),
+
+          proposedAmcAmount:
+            Math.max(
+              Number(
+                proposedAmcAmount ||
+                0
+              ),
+              0
+            ),
+
+          warrantyEndDate:
+            warrantyEndDate
+              ? new Date(
+                  warrantyEndDate
+                )
+              : null,
+
+          createdBy:
+            req.user._id,
+
+          createdByName:
+            req.user.name ||
+            "Admin",
+
+          updatedBy:
+            req.user._id,
+
+          updatedByName:
+            req.user.name ||
+            "Admin",
+        });
+
+      if (projectManagerId && mongoose.Types.ObjectId.isValid(projectManagerId)) {
+        const EmployeeModel = mongoose.models.Employee || mongoose.model("Employee");
+        const pm = await EmployeeModel.findById(projectManagerId);
+        if (pm) {
+          project.projectManager = pm._id;
+          project.projectManagerName = pm.name;
+        }
+      }
+
+      if (Array.isArray(initialTeamMembers) && initialTeamMembers.length > 0) {
+        const EmployeeModel = mongoose.models.Employee || mongoose.model("Employee");
+        for (const tm of initialTeamMembers) {
+          if (tm.employeeId && mongoose.Types.ObjectId.isValid(tm.employeeId)) {
+            const emp = await EmployeeModel.findById(tm.employeeId);
+            if (emp) {
+              project.teamMembers.push({
+                employeeId: emp._id,
+                employeeName: emp.name,
+                employeeCode: emp.employeeCode || "",
+                employeeEmail: emp.email || "",
+                role: tm.role || "Team Member",
+                responsibility: tm.responsibility || "",
+                addedAt: new Date(),
+                status: "Active",
+              });
+            }
+          }
+        }
+      }
+
+      if (project.projectManager || (project.teamMembers && project.teamMembers.length > 0)) {
+        project.stage = "Team Assigned";
+      }
+
+      project.timeline = project.timeline || [];
+      project.timeline.push({
+        action: "Project Created from Requirement",
+        description: `Created from requirement ${requirement.requirementCode}.`,
+        oldStage: "Project Created",
+        newStage: project.stage,
+        oldStatus: "Planned",
+        newStatus: "Planned",
+        performedBy: req.user._id,
+        performedByName: req.user.name || "Admin",
+        performedByRole: "admin",
+        createdAt: new Date(),
+      });
+
+      await project.save();
+
+      requirement.status =
+        "Converted to Project";
+
+      requirement.convertedProjectId =
+        project._id;
+
+      requirement.convertedProjectCode =
+        project.projectCode;
+
+      requirement.convertedAt =
+        new Date();
+
+      requirement.updatedBy =
+        req.user._id;
+
+      requirement.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      requirement.timeline = requirement.timeline || [];
+      requirement.timeline.push({
+        action: "Converted to Project",
+        oldStatus: "Approved",
+        newStatus: "Converted to Project",
+        notes: `Converted to project ${project.projectCode} - ${project.projectName}.`,
+        performedBy: req.user._id,
+        performedByName: req.user.name || "Admin",
+        performedByRole: "admin",
+        metadata: {
+          projectId: project._id,
+          projectCode: project.projectCode,
+          projectName: project.projectName,
+        },
+        createdAt: new Date(),
+      });
+
+      await requirement.save();
+
+      return res
+        .status(201)
+        .json({
+          success: true,
+
+          message:
+            "Requirement converted to project successfully.",
+
+          data: {
+            requirement,
+            project,
+          },
+        });
+    } catch (error) {
+      console.error(
+        "Convert requirement to project error:",
+        error
+      );
+      try {
+        await Requirement.updateOne(
+          { _id: req.params.id, status: "Converting to Project" },
+          { $set: { status: "Approved" } }
+        );
+      } catch (e) {
+        console.error("Failed to restore requirement status:", e);
+      }
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message ||
+            "Unable to convert requirement to project.",
+        });
+    }
+  }
+);
+router.delete(
+  "/requirement/:id",
+  async (req, res) => {
+    try {
+      const requirement =
+        await Requirement.findOne({
+          _id:
+            req.params.id,
+
+          isDeleted:
+            false,
+        });
+
+      if (!requirement) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message:
+              "Requirement not found.",
+          });
+      }
+
+      if (
+        requirement.status ===
+        "Converted to Project"
+      ) {
+        return res
+          .status(409)
+          .json({
+            success: false,
+
+            message:
+              "Converted requirement cannot be deleted.",
+          });
+      }
+
+      requirement.isDeleted =
+        true;
+
+      requirement.deletedAt =
+        new Date();
+
+      requirement.deletedBy =
+        req.user._id;
+
+      requirement.deletedByName =
+        req.user.name ||
+        "Admin";
+
+      await requirement.save();
+
+      return res.json({
+        success: true,
+
+        message:
+          "Requirement deleted successfully.",
+      });
+    } catch (error) {
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          message:
+            error.message ||
+            "Unable to delete requirement.",
+        });
+    }
+  }
+);
+async function resolveTaskProject(projectId) {
+  if (!projectId) {
+    throw new Error(
+      "Project is required."
+    );
+  }
+
+  if (
+    !mongoose.Types.ObjectId.isValid(
+      projectId
+    )
+  ) {
+    throw new Error(
+      "Invalid project ID."
+    );
+  }
+
+  const project =
+    await Project.findOne({
+      _id: projectId,
+      isDeleted: false,
+    });
+
+  if (!project) {
+    throw new Error(
+      "Selected project was not found."
+    );
+  }
+
+  if (
+    ["Completed", "Cancelled"].includes(
+      project.status
+    )
+  ) {
+    throw new Error(
+      `Tasks cannot be created for a ${project.status.toLowerCase()} project.`
+    );
+  }
+
+  return {
+    projectId: project._id,
+    projectCode:
+      project.projectCode,
+    projectName:
+      project.projectName,
+    project,
+  };
+}
+router.post("/task/:id/start", async (req, res) => {
+try {
+const Task = mongoose.model("Task");
+const Employee = mongoose.model("Employee");
+
+
+const task = await Task.findById(req.params.id);
+if (!task) {
+  return res.status(404).json({
+    success: false,
+    message: "Task not found.",
+  });
+}
+
+const employee = await Employee.findById(task.assignedEmployeeId);
+if (!employee) {
+  return res.status(404).json({
+    success: false,
+    message: "Assigned employee not found.",
+  });
+}
+
+// Mark task as active
+task.status = "In Progress";
+task.startedAt = new Date();
+await task.save();
+if (
+  task.taskFor === "Project" &&
+  task.projectId
+) {
+  await syncProjectTaskProgress(
+    task.projectId
+  );
+}
+// Update employee current task
+employee.status = "Working";
+
+// Dashboard field
+employee.currentTask = task.title;
+
+// Windows Agent fields
+employee.currentTaskId = task._id;
+employee.currentTaskCode = task.taskCode || "";
+employee.currentTaskTitle = task.title || "";
+employee.currentClient = task.clientName || "—";
+employee.currentProject = task.projectName || "—";
+employee.currentTaskStartedAt = new Date();
+
+await employee.save();
+
+console.log("START TASK UPDATE", {
+  employee: employee.employeeCode,
+  taskId: employee.currentTaskId,
+  taskCode: employee.currentTaskCode,
+  taskTitle: employee.currentTaskTitle,
+  client: employee.currentClient,
+  project: employee.currentProject,
+});
+
+return res.json({
+  success: true,
+  message: "Task started successfully.",
+  task,
+  employee,
+});
+
+
+} catch (error) {
+console.error(error);
+return res.status(500).json({
+success: false,
+message: "Server error.",
+});
+}
+});
+
+/* =====================================================
+   CREATE TASK
+   POST /api/admin/task
+===================================================== */
+
+router.post("/task", validate(taskCreateSchema), async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+      workType,
+
+      taskFor,
+      generalTaskFor,
+
+      clientId,
+      clientName,
+
+      productId,
+      projectId,
+
+      ticketId,
+      ticketCode,
+
+      assignedEmployeeId,
+
+      priority,
+      status,
+
+      dueDate,
+      estimatedMinutes,
+    } = req.body;
+
+    const normalizedTaskFor =
+      ["Project", "Product", "General"].includes(
+        String(taskFor || "").trim()
+      )
+        ? String(taskFor).trim()
+        : "General";
+
+    let resolvedProject = {
+      projectId: null,
+      projectCode: "",
+      projectName: "",
+      project: null,
+    };
+
+    let resolvedProductId = null;
+    let resolvedProductCode = "";
+    let resolvedProductName = "";
+
+    let resolvedClientId = null;
+    let resolvedClientName =
+      "Internal Development";
+
+    /* =========================================
+       PROJECT TASK
+    ========================================= */
+
+    if (
+      normalizedTaskFor ===
+      "Project"
+    ) {
+      if (!projectId) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Please select a project.",
+        });
+      }
+
+      resolvedProject =
+        await resolveTaskProject(
+          projectId
+        );
+
+      const project =
+        resolvedProject.project;
+
+      resolvedClientId =
+        project.clientId ||
+        null;
+
+      resolvedClientName =
+        project.clientName ||
+        "Internal Development";
+
+      resolvedProductId =
+        project.productId ||
+        null;
+
+      resolvedProductCode =
+        project.productCode ||
+        "";
+
+      resolvedProductName =
+        project.productName ||
+        "";
+    }
+
+    /* =========================================
+       PRODUCT TASK
+    ========================================= */
+
+    if (
+      normalizedTaskFor ===
+      "Product"
+    ) {
+      if (!productId) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Please select a product.",
+        });
+      }
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          productId
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid product ID.",
+        });
+      }
+
+      const product =
+        await Product.findOne({
+          _id: productId,
+          isDeleted: false,
+          status: "Active",
+        });
+
+      if (!product) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Selected product was not found or is inactive.",
+        });
+      }
+
+      resolvedProductId =
+        product._id;
+
+      resolvedProductCode =
+        product.productCode;
+
+      resolvedProductName =
+        product.productName;
+
+      if (clientId) {
+        if (
+          !mongoose.Types.ObjectId.isValid(
+            clientId
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Invalid client ID.",
+          });
+        }
+
+        const client =
+          await Client.findOne({
+            _id: clientId,
+            isDeleted: false,
+          });
+
+        if (!client) {
+          return res.status(404).json({
+            success: false,
+            message:
+              "Selected client was not found.",
+          });
+        }
+
+        resolvedClientId =
+          client._id;
+
+        resolvedClientName =
+          client.companyName;
+      }
+    }
+
+    /* =========================================
+       GENERAL TASK
+    ========================================= */
+
+    if (
+      normalizedTaskFor ===
+      "General"
+    ) {
+      resolvedProject = {
+        projectId: null,
+        projectCode: "",
+        projectName: "",
+        project: null,
+      };
+
+      resolvedProductId = null;
+      resolvedProductCode = "";
+      resolvedProductName = "";
+
+      resolvedClientId = null;
+      resolvedClientName =
+        "Internal Development";
+    }
+    /* =========================================
+       EMPLOYEE VALIDATION
+    ========================================= */
+
+ /* =========================================
+   EMPLOYEE ASSIGNMENT
+   Manual selection OR Smart Auto Assignment
+========================================= */
+
+let employee = null;
+
+let assignmentMode = "MANUAL";
+
+let assignmentReason =
+  "ADMIN_SELECTED_EMPLOYEE";
+
+let assignmentWorkload = null;
+
+/*
+ * =====================================================
+ * OPTION 1:
+ * ADMIN MANUALLY SELECTED AN EMPLOYEE
+ * =====================================================
+ *
+ * Manual selection always gets first preference.
+ * Auto-assignment does NOT override Admin's choice.
+ */
+if (
+  assignedEmployeeId &&
+  String(assignedEmployeeId).trim()
+) {
+  employee = await findEmployeeById(
+    assignedEmployeeId
+  );
+
+  if (!employee) {
+    return res.status(404).json({
+      success: false,
+      message:
+        "Selected employee was not found or is inactive.",
+    });
+  }
+
+  assignmentMode = "MANUAL";
+
+  assignmentReason =
+    "ADMIN_SELECTED_EMPLOYEE";
+}
+
+/*
+ * =====================================================
+ * OPTION 2:
+ * NO EMPLOYEE SELECTED
+ * USE SMART AUTO ASSIGNMENT
+ * =====================================================
+ */
+else {
+  const autoAssignment =
+    await findBestEmployeeForTask({
+      clientId:
+        resolvedClientId || null,
+    });
+
+  if (
+    !autoAssignment ||
+    !autoAssignment.employee
+  ) {
+    return res.status(409).json({
+      success: false,
+      message:
+        "No employee is currently available for automatic assignment. Please select an employee manually.",
+    });
+  }
+
+  employee =
+    autoAssignment.employee;
+
+  assignmentMode =
+    "AUTO";
+
+  assignmentReason =
+    autoAssignment.reason;
+
+  assignmentWorkload = {
+    workload:
+      Number(
+        autoAssignment.workload || 0
+      ),
+
+    activeTasks:
+      Number(
+        autoAssignment.activeTasks || 0
+      ),
+
+    activeTickets:
+      Number(
+        autoAssignment.activeTickets || 0
+      ),
+  };
+
+  console.log(
+    "[AUTO TASK ASSIGNMENT]",
+    {
+      employeeId:
+        String(employee._id),
+
+      employeeCode:
+        employee.employeeCode,
+
+      employeeName:
+        employee.name,
+
+      clientId:
+        resolvedClientId
+          ? String(
+              resolvedClientId
+            )
+          : null,
+
+      reason:
+        assignmentReason,
+
+      workload:
+        assignmentWorkload,
+    }
+  );
+}
+
+    /* =========================================
+       DUE DATE VALIDATION
+    ========================================= */
+
+    if (!dueDate) {
+      return res.status(400).json({
+        success: false,
+        message: "Due date is required.",
+      });
+    }
+
+    /* =========================================
+       PRIORITY VALIDATION
+    ========================================= */
+
+    const selectedPriority =
+      await validatePriority(
+        priority || "Medium"
+      );
+
+    if (!selectedPriority) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Selected priority is invalid or inactive.",
+      });
+    }
+
+    /* =========================================
+       STATUS VALIDATION
+    ========================================= */
+
+    const selectedStatus =
+      await validateTaskStatus(
+        status || "Assigned"
+      );
+
+    if (!selectedStatus) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Selected task status is invalid or inactive.",
+      });
+    }
+    const task = await Task.create({
+      taskCode:
+        generateTaskCode(),
+
+      title:
+        String(title || "").trim(),
+
+      description:
+        String(
+          description || ""
+        ).trim(),
+
+      workType:
+        workType ||
+        "Client Support",
+
+      taskFor:
+        normalizedTaskFor,
+      generalTaskFor:
+        normalizedTaskFor ===
+          "General"
+          ? String(
+            generalTaskFor || ""
+          ).trim()
+          : "",
+
+      clientId:
+        resolvedClientId,
+
+      clientName:
+        resolvedClientName,
+
+      productId:
+        resolvedProductId,
+
+      productCode:
+        resolvedProductCode,
+
+      productName:
+        resolvedProductName,
+
+      projectId:
+        resolvedProject.projectId,
+
+      projectCode:
+        resolvedProject.projectCode,
+
+      projectName:
+        resolvedProject.projectName,
+
+      ticketId:
+        normalizeObjectId(
+          ticketId
+        ),
+
+      ticketCode:
+        String(
+          ticketCode || ""
+        ).trim(),
+
+      assignedEmployeeId:
+        employee._id,
+
+      assignedEmployeeName:
+        employee.name,
+
+      assignedEmployeeCode:
+        employee.employeeCode ||
+        "",
+
+      assignedBy:
+        req.user._id,
+
+      assignedByName:
+        req.user.name ||
+        "Admin",
+
+      priority:
+        selectedPriority.name,
+
+      status:
+        selectedStatus.name,
+
+      progress:
+        selectedStatus.isFinal
+          ? 100
+          : 0,
+
+      startDate:
+        selectedStatus.name ===
+          "In Progress"
+          ? new Date()
+          : null,
+
+      dueDate:
+        new Date(dueDate),
+
+      completedAt:
+        selectedStatus.isFinal
+          ? new Date()
+          : null,
+
+      estimatedMinutes:
+        Math.max(
+          Number(
+            estimatedMinutes || 0
+          ),
+          0
+        ),
+
+      spentMinutes:
+        0,
+
+ timeline: [
+  {
+    action:
+      "Task Created",
+
+    description:
+      normalizedTaskFor === "Project"
+        ? `Task created under project ${resolvedProject.projectName} and assigned to ${employee.name}.`
+        : normalizedTaskFor === "Product"
+          ? `Task created for product ${resolvedProductName} and assigned to ${employee.name}.`
+          : `General internal task created and assigned to ${employee.name}.`,
+
+    performedBy:
+      req.user._id,
+
+    performedByName:
+      req.user.name ||
+      "Admin",
+
+    performedByRole:
+      "admin",
+
+    createdAt:
+      new Date(),
+  },
+
+  ...(assignmentMode === "AUTO"
+    ? [
+        {
+          action:
+            "Auto Assigned",
+
+          description:
+            assignmentReason ===
+            "CLIENT_ASSIGNED_EMPLOYEE_FREE"
+              ? `${employee.name} was automatically selected because this employee is assigned to the client and is currently free.`
+
+              : assignmentReason ===
+                "FREE_EMPLOYEE_LEAST_WORKLOAD"
+                ? `${employee.name} was automatically selected as the free employee with the lowest workload (${assignmentWorkload?.activeTasks || 0} active tasks, ${assignmentWorkload?.activeTickets || 0} active tickets).`
+
+                : `${employee.name} was automatically selected because no employee was free and this employee had the lowest workload (${assignmentWorkload?.activeTasks || 0} active tasks, ${assignmentWorkload?.activeTickets || 0} active tickets).`,
+
+          performedBy:
+            null,
+
+          performedByName:
+            "System",
+
+          performedByRole:
+            "system",
+
+          createdAt:
+            new Date(),
+        },
+      ]
+    : []),
+],
+    });
+
+    await updateEmployeeTaskSummary(employee._id, {
+      $inc: {
+        openTasks: 1,
+      },
+
+      $set: {
+        status: "Working",
+        currentTask: task.title,
+        currentClient: task.clientName,
+        currentProject:
+          task.projectName,
+        lastActivityAt: new Date(),
+      },
+    });
+
+    await createActivityLog({
+      action: "Task Created",
+
+      category: "Task",
+
+      description:
+        `${task.taskCode} was created and assigned to ${employee.name}.`,
+
+      entityType: "task",
+
+      entityId: task._id,
+
+      entityCode: task.taskCode,
+
+      entityName: task.title,
+
+      clientId: task.clientId,
+
+      clientName: task.clientName,
+
+      employeeId: employee._id,
+
+      employeeName: employee.name,
+
+      performedBy: req.user._id,
+
+      performedByName:
+        req.user.name || "Admin",
+
+      performedByRole: "admin",
+
+      metadata: {
+        projectId: task.projectId,
+        projectCode: task.projectCode,
+        projectName: task.projectName,
+        priority: task.priority,
+        status: task.status,
+        dueDate: task.dueDate,
+      },
+    });
+/*
+ * Keep linked project progress synchronized.
+ */
+
+if (
+  task.taskFor === "Project" &&
+  task.projectId
+) {
+  await syncProjectTaskProgress(
+    task.projectId
+  );
+}
+// if (
+//   project?.convertedToProduct ===
+//   true
+// ) {
+//   return res.status(409).json({
+//     success: false,
+
+//     code:
+//       "PROJECT_LOCKED",
+
+//     message:
+//       "This project has already been converted to a product. New project tasks cannot be created.",
+//   });
+// }
+
+    return res.status(201).json({
+      success: true,
+      message: "Task created and assigned successfully.",
+      data: taskResponse(task),
+    });
+  } catch (error) {
+    console.error("Create task error:", error);
+
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "Task code conflict occurred. Please try again.",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message || "Unable to create task.",
+    });
+  }
+});
+
+/* =====================================================
+   GET ALL TASKS
+   GET /api/admin/tasks
+===================================================== */
+
+router.get("/tasks", async (req, res) => {
+  try {
+    const {
+      search = "",
+      status = "All",
+      priority = "All",
+      employeeId = "",
+      clientId = "",
+      projectId = "",
+    } = req.query;
+
+    const query = {
+      isDeleted: false,
+    };
+
+    if (status !== "All") {
+      query.status = status;
+    }
+
+    if (priority !== "All") {
+      query.priority = priority;
+    }
+
+    if (
+      employeeId &&
+      mongoose.Types.ObjectId.isValid(employeeId)
+    ) {
+      query.assignedEmployeeId =
+        new mongoose.Types.ObjectId(employeeId);
+    }
+
+    if (
+      clientId &&
+      mongoose.Types.ObjectId.isValid(clientId)
+    ) {
+      query.clientId =
+        new mongoose.Types.ObjectId(clientId);
+    }
+
+    if (
+      projectId &&
+      mongoose.Types.ObjectId.isValid(
+        projectId
+      )
+    ) {
+      query.projectId =
+        new mongoose.Types.ObjectId(
+          projectId
+        );
+    }
+
+    const normalizedSearch = String(search).trim();
+
+    if (normalizedSearch) {
+      query.$or = [
+        {
+          taskCode: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        {
+          title: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        {
+          description: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        {
+          clientName: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        {
+          projectCode: {
+            $regex:
+              normalizedSearch,
+
+            $options: "i",
+          },
+        },
+
+        {
+          projectName: {
+            $regex:
+              normalizedSearch,
+
+            $options: "i",
+          },
+        },
+        {
+          assignedEmployeeName: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+      ];
+    }
+
+    const tasks = await Task.find(query).sort({
+      createdAt: -1,
+    });
+
+    return res.status(200).json({
+      success: true,
+      count: tasks.length,
+      data: tasks.map(taskResponse),
+    });
+  } catch (error) {
+    console.error("Load tasks error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message || "Unable to load tasks.",
+    });
+  }
+});
+
+/* =====================================================
+   GET ONE TASK
+   GET /api/admin/task/:id
+===================================================== */
+
+router.get("/task/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid task ID.",
+      });
+    }
+
+    const task = await Task.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found.",
+      });
+    }
+
+    if (req.user.role === "employee") {
+      const employee = await getEmployeeForUser(req.user);
+      if (!employee || String(task.assignedEmployeeId) !== String(employee._id)) {
+        return res.status(403).json({ success: false, message: "You can view only your assigned tasks." });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: taskResponse(task),
+    });
+  } catch (error) {
+    console.error("Get task error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message || "Unable to load task.",
+    });
+  }
+});
+
+/* 
+=====================================================
+   UPDATE TASK
+   PUT /api/admin/task/:id
+===================================================== 
+*/
+
+router.put("/task/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid task ID.",
+      });
+    }
+
+    const task = await Task.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found.",
+      });
+    }
+
+    const previousEmployeeId = String(
+      task.assignedEmployeeId
+    );
+    const previousEmployeeName =
+      task.assignedEmployeeName;
+
+    const previousTaskData = {
+      title:
+        task.title,
+
+      clientName:
+        task.clientName,
+
+      projectId:
+        task.projectId,
+
+      projectCode:
+        task.projectCode,
+
+      projectName:
+        task.projectName,
+
+      priority:
+        task.priority,
+
+      dueDate:
+        task.dueDate,
+
+      estimatedMinutes:
+        task.estimatedMinutes,
+    };
+    const {
+      title,
+      description,
+      workType,
+      clientId,
+      clientName,
+      productId,
+      projectId,
+      ticketId,
+      ticketCode,
+      assignedEmployeeId,
+      priority,
+      status,
+      progress,
+      dueDate,
+      estimatedMinutes,
+      resolutionNote,
+    } = req.body;
+
+    if (title !== undefined) {
+      if (!String(title).trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "Task title cannot be empty.",
+        });
+      }
+
+      task.title = String(title).trim();
+    }
+
+    if (description !== undefined) {
+      task.description =
+        String(description || "").trim();
+    }
+
+    if (workType !== undefined) {
+      task.workType = workType;
+    }
+
+    if (projectId !== undefined) {
+      const resolvedProject =
+        await resolveTaskProject(
+          projectId
+        );
+
+      task.projectId =
+        resolvedProject.projectId;
+
+      task.projectCode =
+        resolvedProject.projectCode;
+
+      task.projectName =
+        resolvedProject.projectName;
+
+      task.clientId =
+        resolvedProject.project
+          .clientId ||
+        null;
+
+      task.clientName =
+        resolvedProject.project
+          .clientName ||
+        "Internal Development";
+
+      task.productId =
+        resolvedProject.project
+          .productId ||
+        null;
+    }
+
+    if (clientId !== undefined) {
+      if (!clientId) {
+        task.clientId = null;
+        task.clientName =
+          String(clientName || "").trim() ||
+          "Internal Development";
+      } else {
+        if (!mongoose.Types.ObjectId.isValid(clientId)) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid client ID.",
+          });
+        }
+
+        const client = await Client.findById(clientId);
+
+        if (!client) {
+          return res.status(404).json({
+            success: false,
+            message: "Selected client was not found.",
+          });
+        }
+
+        task.clientId = client._id;
+        task.clientName = client.companyName;
+      }
+    } else if (clientName !== undefined) {
+      task.clientName =
+        String(clientName || "").trim() ||
+        "Internal Development";
+    }
+
+    if (productId !== undefined) {
+      task.productId =
+        normalizeObjectId(productId);
+    }
+
+    if (ticketId !== undefined) {
+      task.ticketId =
+        normalizeObjectId(ticketId);
+    }
+
+    if (ticketCode !== undefined) {
+      task.ticketCode =
+        String(ticketCode || "").trim();
+    }
+
+    if (priority !== undefined) {
+      const selectedPriority =
+        await validatePriority(priority);
+
+      if (!selectedPriority) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Selected priority is invalid or inactive.",
+        });
+      }
+
+      task.priority =
+        selectedPriority.name;
+    }
+
+    if (dueDate !== undefined) {
+      task.dueDate = new Date(dueDate);
+    }
+
+    if (estimatedMinutes !== undefined) {
+      task.estimatedMinutes = Math.max(
+        Number(estimatedMinutes || 0),
+        0
+      );
+    }
+
+    if (resolutionNote !== undefined) {
+      task.resolutionNote =
+        String(resolutionNote || "").trim();
+    }
+
+    if (progress !== undefined) {
+      task.progress = Math.min(
+        Math.max(Number(progress || 0), 0),
+        100
+      );
+    }
+
+    if (status !== undefined) {
+      const selectedTaskStatus =
+        await validateTaskStatus(
+          status
+        );
+
+      if (!selectedTaskStatus) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Selected task status is invalid or inactive.",
+        });
+      }
+
+      task.status =
+        selectedTaskStatus.name;
+
+      if (
+        selectedTaskStatus.isFinal
+      ) {
+        task.progress = 100;
+
+        task.completedAt =
+          task.completedAt ||
+          new Date();
+      } else {
+        task.completedAt =
+          null;
+      }
+    }
+
+    if (
+      assignedEmployeeId &&
+      String(assignedEmployeeId) !==
+      previousEmployeeId
+    ) {
+      const newEmployee = await findEmployeeById(
+        assignedEmployeeId
+      );
+
+      if (!newEmployee) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Selected employee was not found or is inactive.",
+        });
+      }
+
+      task.assignedEmployeeId = newEmployee._id;
+      task.assignedEmployeeName = newEmployee.name;
+      task.assignedEmployeeCode =
+        newEmployee.employeeCode || "";
+
+      task.timeline.push({
+        action: "Task Reassigned",
+        description: `Task reassigned to ${newEmployee.name}.`,
+        performedBy: req.user._id,
+        performedByName:
+          req.user.name || "Admin",
+        performedByRole: "admin",
+      });
+
+      await updateEmployeeTaskSummary(
+        previousEmployeeId,
+        {
+          $inc: {
+            openTasks: -1,
+          },
+          $set: {
+            lastActivityAt: new Date(),
+          },
+        }
+      );
+
+      await updateEmployeeTaskSummary(
+        newEmployee._id,
+        {
+          $inc: {
+            openTasks: 1,
+          },
+          $set: {
+            status: "Working",
+            currentTask: task.title,
+            currentClient: task.clientName,
+            currentProject:
+              task.projectName,
+            lastActivityAt: new Date(),
+          },
+        }
+      );
+    } else {
+      task.timeline.push({
+        action: "Task Updated",
+        description:
+          "Task details were updated by Admin.",
+        performedBy: req.user._id,
+        performedByName:
+          req.user.name || "Admin",
+        performedByRole: "admin",
+      });
+    }
+    const employeeWasChanged =
+      String(task.assignedEmployeeId) !==
+      String(previousEmployeeId);
+
+    await task.save();
+
+
+    if (employeeWasChanged) {
+      await createActivityLog({
+        action: "Task Reassigned",
+
+        category: "Task",
+
+        description:
+          `${task.taskCode} was reassigned from ${previousEmployeeName || "Unassigned"
+          } to ${task.assignedEmployeeName}.`,
+
+        entityType: "task",
+
+        entityId: task._id,
+
+        entityCode: task.taskCode,
+
+        entityName: task.title,
+
+        clientId: task.clientId,
+
+        clientName: task.clientName,
+
+        employeeId:
+          task.assignedEmployeeId,
+
+        employeeName:
+          task.assignedEmployeeName,
+
+        performedBy: req.user._id,
+
+        performedByName:
+          req.user.name || "Admin",
+
+        performedByRole: "admin",
+
+        metadata: {
+          previousEmployeeId,
+          previousEmployeeName,
+          currentEmployeeId:
+            task.assignedEmployeeId,
+          currentEmployeeName:
+            task.assignedEmployeeName,
+          project: task.project,
+          priority: task.priority,
+        },
+      });
+    } else {
+      await createActivityLog({
+        action: "Task Updated",
+
+        category: "Task",
+
+        description:
+          `${task.taskCode} task information was updated.`,
+
+        entityType: "task",
+
+        entityId: task._id,
+
+        entityCode: task.taskCode,
+
+        entityName: task.title,
+
+        clientId: task.clientId,
+
+        clientName: task.clientName,
+
+        employeeId:
+          task.assignedEmployeeId,
+
+        employeeName:
+          task.assignedEmployeeName,
+
+        performedBy: req.user._id,
+
+        performedByName:
+          req.user.name || "Admin",
+
+        performedByRole: "admin",
+
+        metadata: {
+          previous: previousTaskData,
+
+          current: {
+            title: task.title,
+            clientName: task.clientName,
+            project: task.project,
+            priority: task.priority,
+            dueDate: task.dueDate,
+            estimatedMinutes:
+              task.estimatedMinutes,
+          },
+        },
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Task updated successfully.",
+      data: taskResponse(task),
+    });
+  } catch (error) {
+    console.error("Update task error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message || "Unable to update task.",
+    });
+  }
+});
+
+/* =====================================================
+   UPDATE TASK STATUS
+   PATCH /api/admin/task/:id/status
+===================================================== */
+
+router.patch("/task/:id/status", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid task ID.",
+      });
+    }
+
+    const {
+      status,
+      note,
+      blockerReason,
+      waitingFor,
+      expectedResolutionDate,
+      completionNote,
+      actualMinutes,
+      progress,
+    } = req.body || {};
+
+    if (!status || typeof status !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Task status is required.",
+      });
+    }
+
+    const trimmedStatus = status.trim();
+
+    const task = await Task.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found.",
+      });
+    }
+
+    const previousStatus = task.status;
+    const wasCompleted =
+      previousStatus === "Completed" || Number(task.progress || 0) >= 100;
+    const isCompleted = trimmedStatus === "Completed";
+
+    task.status = trimmedStatus;
+
+    if (isCompleted) {
+      task.completedAt = task.completedAt || new Date();
+      task.progress = 100;
+      if (completionNote) {
+        task.resolutionNote = String(completionNote).trim();
+      }
+      if (actualMinutes !== undefined && !isNaN(Number(actualMinutes))) {
+        task.spentMinutes = Math.max(0, Number(actualMinutes));
+      }
+    } else {
+      if (wasCompleted) {
+        task.completedAt = null;
+      }
+      if (progress !== undefined && !isNaN(Number(progress))) {
+        task.progress = Math.min(100, Math.max(0, Number(progress)));
+      }
+    }
+
+    if (trimmedStatus === "Blocked") {
+      if (blockerReason) {
+        task.blockerReason = String(blockerReason).trim();
+      }
+      if (waitingFor) {
+        task.waitingFor = String(waitingFor).trim();
+      }
+      if (expectedResolutionDate) {
+        task.expectedResolutionDate = new Date(expectedResolutionDate);
+      }
+    }
+
+    let timelineDesc = `Status changed from ${previousStatus} to ${trimmedStatus}.`;
+    if (note) timelineDesc += ` Note: ${note}`;
+    if (trimmedStatus === "Blocked" && blockerReason) {
+      timelineDesc += ` Blocker: ${blockerReason}`;
+    }
+    if (isCompleted && completionNote) {
+      timelineDesc += ` Resolution: ${completionNote}`;
+    }
+
+    task.timeline = task.timeline || [];
+    task.timeline.push({
+      action: `Status Changed to ${trimmedStatus}`,
+      description: timelineDesc,
+      performedBy: req.user._id,
+      performedByName: req.user.name || "Admin",
+      performedByRole: req.user.role || "admin",
+      createdAt: new Date(),
+    });
+
+    await task.save();
+
+    await createActivityLog({
+      action: "Task Status Updated",
+      category: "Task",
+      description: `${task.taskCode} status updated from ${previousStatus} to ${trimmedStatus}.`,
+      entityType: "task",
+      entityId: task._id,
+      entityCode: task.taskCode,
+      entityName: task.title,
+      clientId: task.clientId,
+      clientName: task.clientName,
+      employeeId: task.assignedEmployeeId,
+      employeeName: task.assignedEmployeeName,
+      performedBy: req.user._id,
+      performedByName: req.user.name || "Admin",
+      performedByRole: req.user.role || "admin",
+      metadata: {
+        previousStatus,
+        currentStatus: trimmedStatus,
+        blockerReason: blockerReason || null,
+        completionNote: completionNote || null,
+      },
+    });
+
+    if (isCompleted && !wasCompleted) {
+      await updateEmployeeTaskSummary(
+        task.assignedEmployeeId,
+        {
+          $inc: {
+            openTasks: -1,
+            completedToday: 1,
+          },
+
+          $set: {
+            status: "Free",
+            currentTask:
+              "Available for assignment",
+            currentClient: "—",
+            currentProject: "—",
+            lastActivityAt: new Date(),
+          },
+        }
+      );
+    }
+
+    if (!isCompleted && wasCompleted) {
+      await updateEmployeeTaskSummary(
+        task.assignedEmployeeId,
+        {
+          $inc: {
+            openTasks: 1,
+            completedToday: -1,
+          },
+
+          $set: {
+            status: "Working",
+            currentTask: task.title,
+            currentClient: task.clientName,
+            currentProject:
+              task.projectName,
+            lastActivityAt: new Date(),
+          },
+        }
+      );
+    }
+
+    // --- AUTO-RESOLVE LINKED TICKET ---
+    // Insert this block here
+    if (isCompleted && task.ticketId) {
+      const SupportTicket = mongoose.models.SupportTicket;
+      const ticket = await SupportTicket.findById(task.ticketId);
+      if (ticket && !["Resolved", "Closed"].includes(ticket.status)) {
+        ticket.status = "Resolved";
+        ticket.resolvedAt = new Date();
+        if (!ticket.firstResolvedAt) {
+          ticket.firstResolvedAt = ticket.resolvedAt;
+        }
+        if (!ticket.firstResponseAt) {
+          ticket.firstResponseAt = ticket.resolvedAt;
+        }
+        ticket.resolutionNote = `Resolved by completing linked task ${task.taskCode}.`;
+        ticket.timeline.push({
+          type: "resolved",
+          title: "Ticket Resolved Automatically",
+          description: `Resolved after linked task ${task.taskCode} was completed.`,
+          performedBy: req.user._id,
+          performedByName: req.user.name || "Admin",
+          performedByRole: req.user.role || "admin",
+        });
+        await ticket.save();
+        // Update client open ticket count
+        const Client = mongoose.models.Client;
+        if (Client) {
+          const openCount = await SupportTicket.countDocuments({
+            clientId: ticket.clientId,
+            isDeleted: false,
+            status: { $nin: ["Resolved", "Verified", "Closed", "Cancelled"] },
+          });
+          await Client.updateOne(
+            { _id: ticket.clientId },
+            { $set: { openTickets: openCount } }
+          );
+        }
+      }
+    }
+    // --- END AUTO-RESOLVE ---
+/*
+ * AUTO SYNC PROJECT PROGRESS
+ */
+
+if (
+  task.taskFor === "Project" &&
+  task.projectId
+) {
+  await syncProjectTaskProgress(
+    task.projectId
+  );
+}
+    return res.status(200).json({
+      success: true,
+      message: "Task status updated successfully.",
+      data: taskResponse(task),
+    });
+  } catch (error) {
+    console.error("Update task status error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Unable to update task status.",
+    });
+  }
+});
+
+/* =====================================================
+   ADD TASK CHECKLIST ITEM
+   POST /api/admin/task/:id/checklist
+===================================================== */
+
+router.post("/task/:id/checklist", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { text } = req.body || {};
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid task ID.",
+      });
+    }
+
+    const trimmedText = String(text || "").trim();
+    if (!trimmedText) {
+      return res.status(400).json({
+        success: false,
+        message: "Checklist item text is required.",
+      });
+    }
+
+    const task = await Task.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found.",
+      });
+    }
+
+    task.checklist = task.checklist || [];
+    task.checklist.push({
+      text: trimmedText,
+      completed: false,
+    });
+
+    task.timeline = task.timeline || [];
+    task.timeline.push({
+      action: "Checklist Item Added",
+      description: `Added checklist item: "${trimmedText}"`,
+      performedBy: req.user._id,
+      performedByName: req.user.name || "User",
+      performedByRole: req.user.role || "user",
+      createdAt: new Date(),
+    });
+
+    await task.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Checklist item added.",
+      data: task.checklist,
+    });
+  } catch (error) {
+    console.error("Add task checklist item error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Unable to add checklist item.",
+    });
+  }
+});
+
+/* =====================================================
+   UPDATE / TOGGLE TASK CHECKLIST ITEM
+   PATCH /api/admin/task/:id/checklist/:itemId
+===================================================== */
+
+router.patch("/task/:id/checklist/:itemId", async (req, res) => {
+  try {
+    const { id, itemId } = req.params;
+    const { completed, text } = req.body || {};
+
+    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(itemId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid task or item ID.",
+      });
+    }
+
+    const task = await Task.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found.",
+      });
+    }
+
+    task.checklist = task.checklist || [];
+    const item =
+      task.checklist.id ? task.checklist.id(itemId) : task.checklist.find((i) => String(i._id) === String(itemId));
+
+    if (!item) {
+      return res.status(404).json({
+        success: false,
+        message: "Checklist item not found.",
+      });
+    }
+
+    if (text !== undefined) {
+      item.text = String(text).trim();
+    }
+
+    if (completed !== undefined) {
+      item.completed = Boolean(completed);
+      if (item.completed) {
+        item.completedBy = req.user._id;
+        item.completedByName = req.user.name || "User";
+        item.completedAt = new Date();
+      } else {
+        item.completedBy = null;
+        item.completedByName = "";
+        item.completedAt = null;
+      }
+
+      task.timeline = task.timeline || [];
+      task.timeline.push({
+        action: item.completed ? "Checklist Completed" : "Checklist Unchecked",
+        description: `Checklist item "${item.text}" marked as ${item.completed ? "completed" : "incomplete"}.`,
+        performedBy: req.user._id,
+        performedByName: req.user.name || "User",
+        performedByRole: req.user.role || "user",
+        createdAt: new Date(),
+      });
+    }
+
+    await task.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Checklist item updated.",
+      data: task.checklist,
+    });
+  } catch (error) {
+    console.error("Update task checklist item error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Unable to update checklist item.",
+    });
+  }
+});
+
+/* =====================================================
+   DELETE TASK CHECKLIST ITEM
+   DELETE /api/admin/task/:id/checklist/:itemId
+===================================================== */
+
+router.delete("/task/:id/checklist/:itemId", async (req, res) => {
+  try {
+    const { id, itemId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(itemId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid task or item ID.",
+      });
+    }
+
+    const task = await Task.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found.",
+      });
+    }
+
+    task.checklist = task.checklist || [];
+    const itemIndex = task.checklist.findIndex((i) => String(i._id) === String(itemId));
+
+    if (itemIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: "Checklist item not found.",
+      });
+    }
+
+    const removedItem = task.checklist[itemIndex];
+    task.checklist.splice(itemIndex, 1);
+
+    task.timeline = task.timeline || [];
+    task.timeline.push({
+      action: "Checklist Item Removed",
+      description: `Removed checklist item: "${removedItem.text}"`,
+      performedBy: req.user._id,
+      performedByName: req.user.name || "User",
+      performedByRole: req.user.role || "user",
+      createdAt: new Date(),
+    });
+
+    await task.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Checklist item removed.",
+      data: task.checklist,
+    });
+  } catch (error) {
+    console.error("Delete task checklist item error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Unable to remove checklist item.",
+    });
+  }
+});
+
+/* =====================================================
+   ADD TASK COMMENT
+   POST /api/admin/task/:id/comment
+===================================================== */
+
+router.post("/task/:id/comment", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { message } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid task ID.",
+      });
+    }
+
+    if (!String(message || "").trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Comment message is required.",
+      });
+    }
+
+    const task = await Task.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found.",
+      });
+    }
+
+    let commenterName = req.user.name || "User";
+    if (req.user.role === "employee") {
+      const employee = await getEmployeeForUser(req.user);
+      if (!employee || String(task.assignedEmployeeId) !== String(employee._id)) {
+        return res.status(403).json({ success: false, message: "You can comment only on your assigned tasks." });
+      }
+      commenterName = employee.name || commenterName;
+    }
+
+    task.comments.push({
+      message: String(message).trim(),
+      authorId: req.user._id,
+      authorName: commenterName,
+      authorRole: req.user.role,
+    });
+
+    task.timeline.push({
+      action: "Comment Added",
+      description: "Admin added a task comment.",
+      performedBy: req.user._id,
+      performedByName:
+        req.user.name || "Admin",
+      performedByRole: "admin",
+    });
+
+    await task.save();
+    await createActivityLog({
+      action: "Task Comment Added",
+
+      category: "Task",
+
+      description:
+        `A comment was added to ${task.taskCode}.`,
+
+      entityType: "task",
+
+      entityId: task._id,
+
+      entityCode: task.taskCode,
+
+      entityName: task.title,
+
+      clientId: task.clientId,
+
+      clientName: task.clientName,
+
+      employeeId:
+        task.assignedEmployeeId,
+
+      employeeName:
+        task.assignedEmployeeName,
+
+      performedBy: req.user._id,
+
+      performedByName:
+        req.user.name || "Admin",
+
+      performedByRole: "admin",
+
+      metadata: {
+        comment:
+          String(message).trim(),
+      },
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Comment added successfully.",
+      data: taskResponse(task),
+    });
+  } catch (error) {
+    console.error("Add task comment error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message || "Unable to add comment.",
+    });
+  }
+});
+
+/* =====================================================
+   UPLOAD TASK ATTACHMENT
+===================================================== */
+router.post("/task/:id/attachment", uploadTaskAttachment.single("attachment"), async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ success: false, message: "Invalid task ID." });
+    if (!req.file) return res.status(400).json({ success: false, message: "Please select a file." });
+    const task = await Task.findOne({ _id: req.params.id, isDeleted: false });
+    if (!task) return res.status(404).json({ success: false, message: "Task not found." });
+    task.attachments.push({
+      fileName: req.file.originalname,
+      fileUrl: `/uploads/tasks/${req.file.filename}`,
+      fileType: req.file.mimetype,
+      fileSize: req.file.size,
+      uploadedBy: req.user._id,
+      uploadedByName: req.user.name || "Administrator",
+    });
+    task.timeline.push({ action: "Attachment Uploaded", description: `${req.file.originalname} was attached to the task.`, performedBy: req.user._id, performedByName: req.user.name || "Administrator", performedByRole: req.user.role });
+    await task.save();
+    return res.status(201).json({ success: true, message: "Task attachment uploaded successfully.", data: taskResponse(task) });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message || "Unable to upload task attachment." });
+  }
+});
+
+/* =====================================================
+   SOFT DELETE TASK
+   DELETE /api/admin/task/:id
+===================================================== */
+
+router.delete("/task/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid task ID.",
+      });
+    }
+
+    const task = await Task.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found.",
+      });
+    }
+const affectedProjectId =
+  task.taskFor === "Project" &&
+  task.projectId
+    ? task.projectId
+    : null;
+    const wasOpen = ![
+      "Completed",
+      "Closed",
+      "Cancelled",
+    ].includes(task.status);
+
+    task.isDeleted = true;
+
+    task.timeline.push({
+      action: "Task Deleted",
+      description:
+        "Task was removed by Admin.",
+      performedBy: req.user._id,
+      performedByName:
+        req.user.name || "Admin",
+      performedByRole: "admin",
+    });
+
+    await task.save();
+    if (affectedProjectId) {
+  await syncProjectTaskProgress(
+    affectedProjectId
+  );
+}
+    await createActivityLog({
+      action: "Task Deleted",
+
+      category: "Task",
+
+      description:
+        `${task.taskCode} was deleted by Admin.`,
+
+      entityType: "task",
+
+      entityId: task._id,
+
+      entityCode: task.taskCode,
+
+      entityName: task.title,
+
+      clientId: task.clientId,
+
+      clientName: task.clientName,
+
+      employeeId:
+        task.assignedEmployeeId,
+
+      employeeName:
+        task.assignedEmployeeName,
+
+      performedBy: req.user._id,
+
+      performedByName:
+        req.user.name || "Admin",
+
+      performedByRole: "admin",
+
+      metadata: {
+        status: task.status,
+        priority: task.priority,
+        project: task.project,
+        wasOpen,
+      },
+    });
+
+    if (wasOpen) {
+      await updateEmployeeTaskSummary(
+        task.assignedEmployeeId,
+        {
+          $inc: {
+            openTasks: -1,
+          },
+          $set: {
+            lastActivityAt: new Date(),
+          },
+        }
+      );
+    }
+    await normalizeEmployeeTaskCounts(
+      task.assignedEmployeeId
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Task deleted successfully.",
+      data: {
+        id: task._id,
+        taskCode: task.taskCode,
+        title: task.title,
+      },
+    });
+  } catch (error) {
+    console.error("Delete task error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message || "Unable to delete task.",
+    });
+  }
+});
+/* =====================================================
+   GET ACTIVITY LOGS
+   GET /api/admin/activities
+===================================================== */
+
+router.get("/activities", async (req, res) => {
+  try {
+    const {
+      search = "",
+      category = "All",
+      entityType = "All",
+      clientId = "",
+      employeeId = "",
+      limit = 50,
+      page = 1,
+    } = req.query;
+
+    const query = {
+      isDeleted: false,
+    };
+
+    if (category !== "All") {
+      query.category = category;
+    }
+
+    if (entityType !== "All") {
+      query.entityType = entityType;
+    }
+
+    if (
+      clientId &&
+      mongoose.Types.ObjectId.isValid(clientId)
+    ) {
+      query.clientId =
+        new mongoose.Types.ObjectId(clientId);
+    }
+
+    if (
+      employeeId &&
+      mongoose.Types.ObjectId.isValid(
+        employeeId
+      )
+    ) {
+      query.employeeId =
+        new mongoose.Types.ObjectId(
+          employeeId
+        );
+    }
+
+    const normalizedSearch =
+      String(search || "").trim();
+
+    if (normalizedSearch) {
+      query.$or = [
+        {
+          action: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        {
+          description: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        {
+          entityCode: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        {
+          entityName: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        {
+          clientName: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        {
+          employeeName: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        {
+          performedByName: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+      ];
+    }
+
+    const safeLimit = Math.min(
+      Math.max(Number(limit || 50), 1),
+      200
+    );
+
+    const safePage = Math.max(
+      Number(page || 1),
+      1
+    );
+
+    const skip =
+      (safePage - 1) * safeLimit;
+
+    const [activities, total] =
+      await Promise.all([
+        ActivityLog.find(query)
+          .sort({
+            createdAt: -1,
+          })
+          .skip(skip)
+          .limit(safeLimit),
+
+        ActivityLog.countDocuments(query),
+      ]);
+
+    return res.status(200).json({
+      success: true,
+
+      count: activities.length,
+
+      total,
+
+      page: safePage,
+
+      totalPages: Math.max(
+        Math.ceil(total / safeLimit),
+        1
+      ),
+
+      data: activities,
+    });
+  } catch (error) {
+    console.error(
+      "Load activity logs error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Unable to load activity logs.",
+    });
+  }
+});
+
+/* =====================================================
+   GET ONE ENTITY'S ACTIVITY
+   GET /api/admin/activities/:entityType/:entityId
+===================================================== */
+
+router.get(
+  "/activities/:entityType/:entityId",
+  async (req, res) => {
+    try {
+      const {
+        entityType,
+        entityId,
+      } = req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          entityId
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid entity ID.",
+        });
+      }
+
+      const activities =
+        await ActivityLog.find({
+          entityType,
+          entityId:
+            new mongoose.Types.ObjectId(
+              entityId
+            ),
+          isDeleted: false,
+        }).sort({
+          createdAt: -1,
+        });
+
+      return res.status(200).json({
+        success: true,
+        count: activities.length,
+        data: activities,
+      });
+    } catch (error) {
+      console.error(
+        "Load entity activity error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          error.message ||
+          "Unable to load activity.",
+      });
+    }
+  }
+);
+/* =====================================================
+   CREATE SUPPORT TICKET
+   POST /api/admin/ticket
+===================================================== */
+
+router.post("/ticket", validate(ticketCreateSchema), async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+
+      clientId,
+      productId,
+      productName,
+
+      module,
+      category,
+      source,
+      priority,
+
+      assignedEmployeeId,
+      dueDate,
+
+      contactPerson,
+      contactMobile,
+      contactEmail,
+    } = req.body;
+
+    const normalizedTitle =
+      String(title || "").trim();
+
+    const normalizedDescription =
+      String(description || "").trim();
+
+    if (!normalizedTitle) {
+      return res.status(400).json({
+        success: false,
+        message: "Ticket title is required.",
+      });
+    }
+
+    if (!normalizedDescription) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Problem description is required.",
+      });
+    }
+
+    if (
+      !clientId ||
+      !mongoose.Types.ObjectId.isValid(
+        clientId
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Please select a valid client.",
+      });
+    }
+
+    const client = await Client.findById(
+      clientId
+    );
+
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        message:
+          "Selected client was not found.",
+      });
+    }
+
+    let resolvedProduct = null;
+
+    if (
+      productId &&
+      mongoose.Types.ObjectId.isValid(
+        productId
+      )
+    ) {
+      resolvedProduct =
+        client.products.id(productId);
+    }
+
+    if (
+      !resolvedProduct &&
+      String(productName || "").trim()
+    ) {
+      const normalizedProductName =
+        String(productName)
+          .trim()
+          .toLowerCase();
+
+      resolvedProduct = (
+        client.products || []
+      ).find(
+        (product) =>
+          String(
+            product.productName || ""
+          )
+            .trim()
+            .toLowerCase() ===
+          normalizedProductName
+      );
+    }
+
+    if (!resolvedProduct) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Please select a product assigned to this client.",
+      });
+    }
+
+    let employee = null;
+
+    if (assignedEmployeeId) {
+      employee = await findEmployeeById(
+        assignedEmployeeId
+      );
+
+      if (!employee) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Selected employee was not found or is inactive.",
+        });
+      }
+
+      if (
+        employee.status === "Leave" ||
+        employee.status === "Inactive"
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            `Ticket cannot be assigned because ${employee.name} is ${employee.status.toLowerCase()}.`,
+        });
+      }
+    }
+
+    const initialStatus = employee
+      ? "Assigned"
+      : "New";
+
+    const ticketCreatedAt = new Date();
+    const effectivePriority = priority || "Medium";
+    const slaPolicy = getTicketSlaPolicy(effectivePriority);
+    const slaFirstResponseMinutes = slaPolicy.firstResponseMinutes;
+    const slaResolutionMinutes = slaPolicy.resolutionMinutes;
+    const firstResponseDueAt = calculateDueAt(
+      ticketCreatedAt,
+      slaFirstResponseMinutes
+    );
+    const resolutionDueAt = calculateDueAt(
+      ticketCreatedAt,
+      slaResolutionMinutes
+    );
+
+    const ticket = await SupportTicket.create({
+      ticketCode: generateTicketCode(),
+
+      createdAt: ticketCreatedAt,
+
+      slaFirstResponseMinutes,
+      slaResolutionMinutes,
+      firstResponseDueAt,
+      resolutionDueAt,
+      slaPolicyVersion: SLA_POLICY_VERSION,
+
+      title: normalizedTitle,
+
+      description:
+        normalizedDescription,
+
+      clientId: client._id,
+
+      clientCode:
+        client.clientCode || "",
+
+      clientName:
+        client.companyName,
+
+      contactPerson:
+        String(
+          contactPerson ||
+          client.contactPerson ||
+          ""
+        ).trim(),
+
+      contactMobile:
+        String(
+          contactMobile ||
+          client.mobile ||
+          ""
+        ).trim(),
+
+      contactEmail:
+        String(
+          contactEmail ||
+          client.email ||
+          ""
+        )
+          .trim()
+          .toLowerCase(),
+
+      productId:
+        resolvedProduct._id,
+
+      productName:
+        resolvedProduct.productName,
+
+      productVersion:
+        resolvedProduct.version || "",
+
+      module:
+        String(module || "General").trim(),
+
+      category:
+        category || "Other",
+
+      source:
+        source || "Admin",
+
+      priority:
+        effectivePriority,
+
+      status: initialStatus,
+
+      assignedEmployeeId:
+        employee ? employee._id : null,
+
+      assignedEmployeeName:
+        employee
+          ? employee.name
+          : "Unassigned",
+
+      assignedEmployeeCode:
+        employee
+          ? employee.employeeCode || ""
+          : "",
+
+      assignedAt:
+        employee ? new Date() : null,
+
+      assignedBy:
+        employee ? req.user._id : null,
+
+      assignedByName:
+        employee
+          ? req.user.name || "Admin"
+          : "",
+
+      dueDate:
+        dueDate
+          ? new Date(dueDate)
+          : null,
+
+      createdBy:
+        req.user._id,
+
+      createdByName:
+        req.user.name || "Admin",
+
+      createdByRole: "admin",
+
+      timeline: [
+        {
+          type: "created",
+
+          title:
+            "Ticket Created",
+
+          description:
+            "Support ticket was created by Admin.",
+
+          performedBy:
+            req.user._id,
+
+          performedByName:
+            req.user.name || "Admin",
+
+
+
+
+
+          performedByRole:
+            "admin",
+        },
+
+        ...(employee
+          ? [
+            {
+              type: "assigned",
+
+              title:
+                "Ticket Assigned",
+
+              description:
+                `Ticket assigned to ${employee.name}.`,
+
+              performedBy:
+                req.user._id,
+
+              performedByName:
+                req.user.name || "Admin",
+
+              performedByRole:
+                "admin",
+            },
+          ]
+          : []),
+      ],
+    });
+
+    await normalizeClientOpenTicketCount(
+      client._id
+    );
+
+    await createActivityLog({
+      action: "Ticket Created",
+
+      category: "Ticket",
+
+      description:
+        `${ticket.ticketCode} was created for ${client.companyName}.`,
+
+      entityType: "ticket",
+
+      entityId: ticket._id,
+
+      entityCode:
+        ticket.ticketCode,
+
+      entityName:
+        ticket.title,
+
+      clientId:
+        ticket.clientId,
+
+      clientName:
+        ticket.clientName,
+
+      employeeId:
+        ticket.assignedEmployeeId,
+
+      employeeName:
+        ticket.assignedEmployeeName,
+
+      performedBy:
+        req.user._id,
+
+      performedByName:
+        req.user.name || "Admin",
+
+      performedByRole:
+        "admin",
+
+      metadata: {
+        productName:
+          ticket.productName,
+
+        module:
+          ticket.module,
+
+        category:
+          ticket.category,
+
+        source:
+          ticket.source,
+
+        priority:
+          ticket.priority,
+
+        status:
+          ticket.status,
+
+        dueDate:
+          ticket.dueDate,
+      },
+    });
+
+    if (employee) {
+      await createActivityLog({
+        action:
+          "Ticket Assigned",
+
+        category:
+          "Ticket",
+
+        description:
+          `${ticket.ticketCode} was assigned to ${employee.name}.`,
+
+        entityType:
+          "ticket",
+
+        entityId:
+          ticket._id,
+
+        entityCode:
+          ticket.ticketCode,
+
+        entityName:
+          ticket.title,
+
+        clientId:
+          ticket.clientId,
+
+        clientName:
+          ticket.clientName,
+
+        employeeId:
+          employee._id,
+
+        employeeName:
+          employee.name,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name || "Admin",
+
+        performedByRole:
+          "admin",
+
+        metadata: {
+          status:
+            ticket.status,
+        },
+      });
+    }
+
+    return res.status(201).json({
+      success: true,
+
+      message: employee
+        ? "Ticket created and assigned successfully."
+        : "Ticket created successfully.",
+
+      data:
+        ticketResponse(ticket),
+    });
+  } catch (error) {
+    console.error(
+      "Create support ticket error:",
+      error
+    );
+
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+
+        message:
+          "Ticket code conflict occurred. Please try again.",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+
+      message:
+        error.message ||
+        "Unable to create support ticket.",
+    });
+  }
+});
+/* =====================================================
+   GET ALL SUPPORT TICKETS
+   GET /api/admin/tickets
+===================================================== */
+
+router.get("/tickets", async (req, res) => {
+  try {
+    const {
+      search = "",
+      status = "All",
+      priority = "All",
+      source = "All",
+      clientId = "",
+      employeeId = "",
+      productName = "",
+      page = 1,
+      limit = 100,
+    } = req.query;
+
+    const query = {
+      isDeleted: false,
+    };
+
+    if (status !== "All") {
+      query.status = status;
+    }
+
+    if (priority !== "All") {
+      query.priority = priority;
+    }
+
+    if (source !== "All") {
+      query.source = source;
+    }
+
+    if (
+      clientId &&
+      mongoose.Types.ObjectId.isValid(clientId)
+    ) {
+      query.clientId =
+        new mongoose.Types.ObjectId(clientId);
+    }
+
+    if (
+      employeeId &&
+      mongoose.Types.ObjectId.isValid(employeeId)
+    ) {
+      query.assignedEmployeeId =
+        new mongoose.Types.ObjectId(employeeId);
+    }
+
+    if (String(productName || "").trim()) {
+      query.productName = {
+        $regex: String(productName).trim(),
+        $options: "i",
+      };
+    }
+
+    const normalizedSearch =
+      String(search || "").trim();
+
+    if (normalizedSearch) {
+      query.$or = [
+        {
+          ticketCode: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        {
+          title: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        {
+          description: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        {
+          clientName: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        {
+          productName: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        {
+          module: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+        {
+          assignedEmployeeName: {
+            $regex: normalizedSearch,
+            $options: "i",
+          },
+        },
+      ];
+    }
+
+    const safeLimit = Math.min(
+      Math.max(Number(limit || 100), 1),
+      200
+    );
+
+    const safePage = Math.max(
+      Number(page || 1),
+      1
+    );
+
+    const skip =
+      (safePage - 1) * safeLimit;
+
+    const [tickets, total] =
+      await Promise.all([
+        SupportTicket.find(query)
+          .sort({
+            createdAt: -1,
+          })
+          .skip(skip)
+          .limit(safeLimit),
+
+        SupportTicket.countDocuments(query),
+      ]);
+
+    const statsQuery = {
+      isDeleted: false,
+    };
+
+    const [
+      openTickets,
+      criticalTickets,
+      waitingTickets,
+      resolvedTickets,
+    ] = await Promise.all([
+      SupportTicket.countDocuments({
+        ...statsQuery,
+        status: {
+          $nin: [
+            "Resolved",
+            "Verified",
+            "Closed",
+            "Cancelled",
+          ],
+        },
+      }),
+
+      SupportTicket.countDocuments({
+        ...statsQuery,
+        priority: "Critical",
+        status: {
+          $nin: [
+            "Resolved",
+            "Verified",
+            "Closed",
+            "Cancelled",
+          ],
+        },
+      }),
+
+      SupportTicket.countDocuments({
+        ...statsQuery,
+        status: "Waiting for Client",
+      }),
+
+      SupportTicket.countDocuments({
+        ...statsQuery,
+        status: {
+          $in: [
+            "Resolved",
+            "Verified",
+            "Closed",
+          ],
+        },
+      }),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+
+      count: tickets.length,
+      total,
+      page: safePage,
+
+      totalPages: Math.max(
+        Math.ceil(total / safeLimit),
+        1
+      ),
+
+      stats: {
+        openTickets,
+        criticalTickets,
+        waitingTickets,
+        resolvedTickets,
+      },
+
+      data: tickets.map(ticketResponse),
+    });
+  } catch (error) {
+    console.error(
+      "Load support tickets error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Unable to load support tickets.",
+    });
+  }
+});
+/* =====================================================
+   GET ONE SUPPORT TICKET
+   GET /api/admin/ticket/:id
+===================================================== */
+
+router.get("/ticket/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid ticket ID.",
+      });
+    }
+
+    const ticket =
+      await SupportTicket.findOne({
+        _id: id,
+        isDeleted: false,
+      });
+
+    if (!ticket) {
+      return res.status(404).json({
+        success: false,
+        message: "Support ticket not found.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: ticketResponse(ticket),
+    });
+  } catch (error) {
+    console.error(
+      "Load support ticket error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Unable to load support ticket.",
+    });
+  }
+});
+/* =====================================================
+   UPDATE SUPPORT TICKET
+   PUT /api/admin/ticket/:id
+===================================================== */
+
+router.put("/ticket/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid ticket ID.",
+      });
+    }
+
+    const ticket =
+      await SupportTicket.findOne({
+        _id: id,
+        isDeleted: false,
+      });
+
+    if (!ticket) {
+      return res.status(404).json({
+        success: false,
+        message: "Support ticket not found.",
+      });
+    }
+
+    const previousData = {
+      title: ticket.title,
+      description: ticket.description,
+      clientId: ticket.clientId,
+      clientName: ticket.clientName,
+      productId: ticket.productId,
+      productName: ticket.productName,
+      module: ticket.module,
+      category: ticket.category,
+      source: ticket.source,
+      priority: ticket.priority,
+      assignedEmployeeId:
+        ticket.assignedEmployeeId,
+      assignedEmployeeName:
+        ticket.assignedEmployeeName,
+      dueDate: ticket.dueDate,
+    };
+
+    const {
+      title,
+      description,
+
+      clientId,
+      productId,
+      productName,
+
+      module,
+      category,
+      source,
+      priority,
+
+      contactPerson,
+      contactMobile,
+      contactEmail,
+
+      assignedEmployeeId,
+      dueDate,
+    } = req.body;
+
+    if (title !== undefined) {
+      if (!String(title || "").trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "Ticket title cannot be empty.",
+        });
+      }
+
+      ticket.title =
+        String(title).trim();
+    }
+
+    if (description !== undefined) {
+      if (!String(description || "").trim()) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Problem description cannot be empty.",
+        });
+      }
+
+      ticket.description =
+        String(description).trim();
+    }
+
+    if (clientId !== undefined) {
+      if (
+        !clientId ||
+        !mongoose.Types.ObjectId.isValid(clientId)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Please select a valid client.",
+        });
+      }
+
+      const client =
+        await Client.findById(clientId);
+
+      if (!client) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Selected client was not found.",
+        });
+      }
+
+      let resolvedProduct = null;
+
+      if (
+        productId &&
+        mongoose.Types.ObjectId.isValid(productId)
+      ) {
+        resolvedProduct =
+          client.products.id(productId);
+      }
+
+      if (
+        !resolvedProduct &&
+        String(productName || "").trim()
+      ) {
+        const normalizedProductName =
+          String(productName)
+            .trim()
+            .toLowerCase();
+
+        resolvedProduct =
+          (client.products || []).find(
+            (product) =>
+              String(
+                product.productName || ""
+              )
+                .trim()
+                .toLowerCase() ===
+              normalizedProductName
+          );
+      }
+
+      if (!resolvedProduct) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Please select a product assigned to this client.",
+        });
+      }
+
+      ticket.clientId = client._id;
+      ticket.clientCode =
+        client.clientCode || "";
+      ticket.clientName =
+        client.companyName;
+
+      ticket.productId =
+        resolvedProduct._id;
+      ticket.productName =
+        resolvedProduct.productName;
+      ticket.productVersion =
+        resolvedProduct.version || "";
+
+      ticket.contactPerson =
+        String(
+          contactPerson ??
+          client.contactPerson ??
+          ""
+        ).trim();
+
+      ticket.contactMobile =
+        String(
+          contactMobile ??
+          client.mobile ??
+          ""
+        ).trim();
+
+      ticket.contactEmail =
+        String(
+          contactEmail ??
+          client.email ??
+          ""
+        )
+          .trim()
+          .toLowerCase();
+    } else {
+      if (contactPerson !== undefined) {
+        ticket.contactPerson =
+          String(contactPerson || "").trim();
+      }
+
+      if (contactMobile !== undefined) {
+        ticket.contactMobile =
+          String(contactMobile || "").trim();
+      }
+
+      if (contactEmail !== undefined) {
+        ticket.contactEmail =
+          String(contactEmail || "")
+            .trim()
+            .toLowerCase();
+      }
+    }
+
+    if (module !== undefined) {
+      ticket.module =
+        String(module || "General").trim();
+    }
+
+    if (category !== undefined) {
+      ticket.category = category;
+    }
+
+    if (source !== undefined) {
+      ticket.source = source;
+    }
+
+    if (priority !== undefined) {
+      ticket.priority = priority;
+    }
+
+    if (dueDate !== undefined) {
+      ticket.dueDate = dueDate
+        ? new Date(dueDate)
+        : null;
+    }
+
+    const oldEmployeeId =
+      ticket.assignedEmployeeId
+        ? String(ticket.assignedEmployeeId)
+        : "";
+
+    const oldEmployeeName =
+      ticket.assignedEmployeeName ||
+      "Unassigned";
+
+    let employeeWasChanged = false;
+
+    if (assignedEmployeeId !== undefined) {
+      if (!assignedEmployeeId) {
+        employeeWasChanged =
+          Boolean(ticket.assignedEmployeeId);
+
+        ticket.assignedEmployeeId = null;
+        ticket.assignedEmployeeName =
+          "Unassigned";
+        ticket.assignedEmployeeCode = "";
+        ticket.assignedAt = null;
+        ticket.assignedBy = null;
+        ticket.assignedByName = "";
+
+        if (ticket.status === "Assigned") {
+          ticket.status = "New";
+        }
+      } else {
+        const employee =
+          await findEmployeeById(
+            assignedEmployeeId
+          );
+
+
+
+        if (!employee) {
+          return res.status(404).json({
+            success: false,
+            message:
+              "Selected employee was not found or is inactive.",
+          });
+        }
+
+        if (
+          employee.status === "Leave" ||
+          employee.status === "Inactive"
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              `${employee.name} is currently ${employee.status}.`,
+          });
+        }
+
+        employeeWasChanged =
+          String(employee._id) !==
+          oldEmployeeId;
+
+        ticket.assignedEmployeeId =
+          employee._id;
+
+        ticket.assignedEmployeeName =
+          employee.name;
+
+        ticket.assignedEmployeeCode =
+          employee.employeeCode || "";
+
+        ticket.assignedAt =
+          new Date();
+
+        ticket.assignedBy =
+          req.user._id;
+
+        ticket.assignedByName =
+          req.user.name || "Admin";
+
+        if (ticket.status === "New") {
+          ticket.status = "Assigned";
+        }
+      }
+    }
+
+    ticket.timeline.push({
+      type: employeeWasChanged
+        ? "assigned"
+        : "updated",
+
+      title: employeeWasChanged
+        ? "Ticket Assignment Updated"
+        : "Ticket Updated",
+
+      description: employeeWasChanged
+        ? `Assignment changed from ${oldEmployeeName} to ${ticket.assignedEmployeeName}.`
+        : "Ticket details were updated by Admin.",
+
+      performedBy:
+        req.user._id,
+
+      performedByName:
+        req.user.name || "Admin",
+
+      performedByRole:
+        "admin",
+    });
+
+    await ticket.save();
+
+    if (
+      String(previousData.clientId || "") !==
+      String(ticket.clientId || "")
+    ) {
+      await normalizeClientOpenTicketCount(
+        previousData.clientId
+      );
+    }
+
+    await normalizeClientOpenTicketCount(
+      ticket.clientId
+    );
+
+    await createActivityLog({
+      action: employeeWasChanged
+        ? "Ticket Assigned"
+        : "Ticket Updated",
+
+      category: "Ticket",
+
+      description: employeeWasChanged
+        ? `${ticket.ticketCode} assignment changed from ${oldEmployeeName} to ${ticket.assignedEmployeeName}.`
+        : `${ticket.ticketCode} information was updated.`,
+
+      entityType: "ticket",
+
+      entityId: ticket._id,
+
+      entityCode:
+        ticket.ticketCode,
+
+      entityName:
+        ticket.title,
+
+      clientId:
+        ticket.clientId,
+
+      clientName:
+        ticket.clientName,
+
+      employeeId:
+        ticket.assignedEmployeeId,
+
+      employeeName:
+        ticket.assignedEmployeeName,
+
+      performedBy:
+        req.user._id,
+
+      performedByName:
+        req.user.name || "Admin",
+
+      performedByRole:
+        "admin",
+
+      metadata: {
+        previous: previousData,
+
+        current: {
+          title: ticket.title,
+          clientName:
+            ticket.clientName,
+          productName:
+            ticket.productName,
+          module: ticket.module,
+          category:
+            ticket.category,
+          source: ticket.source,
+          priority:
+            ticket.priority,
+          assignedEmployeeName:
+            ticket.assignedEmployeeName,
+          dueDate:
+            ticket.dueDate,
+        },
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: employeeWasChanged
+        ? "Ticket assignment updated successfully."
+        : "Ticket updated successfully.",
+      data: ticketResponse(ticket),
+    });
+  } catch (error) {
+    console.error(
+      "Update support ticket error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Unable to update support ticket.",
+    });
+  }
+});
+/* =====================================================
+   SOFT DELETE SUPPORT TICKET
+   DELETE /api/admin/ticket/:id
+===================================================== */
+
+router.delete("/ticket/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid ticket ID.",
+      });
+    }
+
+    const ticket =
+      await SupportTicket.findOne({
+        _id: id,
+        isDeleted: false,
+      });
+
+    if (!ticket) {
+      return res.status(404).json({
+        success: false,
+        message: "Support ticket not found.",
+      });
+    }
+
+    ticket.isDeleted = true;
+
+    ticket.timeline.push({
+      type: "deleted",
+      title: "Ticket Deleted",
+      description:
+        "Ticket was removed by Admin.",
+
+      performedBy:
+        req.user._id,
+
+      performedByName:
+        req.user.name || "Admin",
+
+      performedByRole:
+        "admin",
+    });
+
+    await ticket.save();
+
+    await normalizeClientOpenTicketCount(
+      ticket.clientId
+    );
+
+    await createActivityLog({
+      action: "Ticket Deleted",
+      category: "Ticket",
+
+      description:
+        `${ticket.ticketCode} was deleted by Admin.`,
+
+      entityType: "ticket",
+      entityId: ticket._id,
+
+      entityCode:
+        ticket.ticketCode,
+
+      entityName:
+        ticket.title,
+
+      clientId:
+        ticket.clientId,
+
+      clientName:
+        ticket.clientName,
+
+      employeeId:
+        ticket.assignedEmployeeId,
+
+      employeeName:
+        ticket.assignedEmployeeName,
+
+      performedBy:
+        req.user._id,
+
+      performedByName:
+        req.user.name || "Admin",
+
+      performedByRole:
+        "admin",
+
+      metadata: {
+        status: ticket.status,
+        priority: ticket.priority,
+        productName:
+          ticket.productName,
+        linkedTaskId:
+          ticket.linkedTaskId,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Support ticket deleted successfully.",
+
+      data: {
+        id: ticket._id,
+        ticketCode:
+          ticket.ticketCode,
+        title: ticket.title,
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Delete support ticket error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Unable to delete support ticket.",
+    });
+  }
+});
+/* =====================================================
+   UPDATE SUPPORT TICKET STATUS
+   PATCH /api/admin/ticket/:id/status
+===================================================== */
+
+router.patch("/ticket/:id/status", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid ticket ID.",
+      });
+    }
+
+
+
+    if (status === "Resolved") {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Use the resolve ticket action and provide a resolution note.",
+      });
+    }
+
+ const ticket = await SupportTicket.findOne({ _id: id, isDeleted: false });
+if (!ticket) {
+  fs.unlink(req.file.path, () => {});
+  return res.status(404).json({ success: false, message: "Support ticket not found." });
+}
+
+let uploaderName = req.user.name || "Admin";
+if (req.user.role === "employee") {
+  const employee = await getEmployeeForUser(req.user);
+  if (!employee || String(ticket.assignedEmployeeId) !== String(employee._id)) {
+    fs.unlink(req.file.path, () => {});
+    return res.status(403).json({ success: false, message: "You can only attach files to your assigned tickets." });
+  }
+  uploaderName = employee.name;
+}
+
+    const previousStatus = ticket.status;
+
+    if (previousStatus === status) {
+      return res.status(200).json({
+        success: true,
+        message: "Ticket already has this status.",
+        data: ticketResponse(ticket),
+      });
+    }
+
+    if (
+      status === "Assigned" &&
+      !ticket.assignedEmployeeId
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Assign an employee before changing the ticket to Assigned.",
+      });
+    }
+
+    const completedStatuses = [
+      "Resolved",
+      "Verified",
+      "Closed",
+    ];
+
+    const activeStatuses = [
+      "New",
+      "Assigned",
+      "In Progress",
+      "Waiting for Client",
+      "Testing",
+    ];
+
+    const isReopening =
+      completedStatuses.includes(
+        previousStatus
+      ) &&
+      activeStatuses.includes(status);
+
+    const isClosing =
+      status === "Closed";
+
+    ticket.status = status;
+
+    /*
+     * Reopened tickets are active again.
+     * Remove all completion timestamps.
+     */
+    if (isReopening) {
+      ticket.resolvedAt = null;
+      ticket.verifiedAt = null;
+      ticket.closedAt = null;
+    }
+
+    /*
+     * Normal active-status changes should also clear
+     * completion timestamps.
+     */
+    if (
+      activeStatuses.includes(status) &&
+      !isReopening
+    ) {
+      ticket.resolvedAt = null;
+      ticket.verifiedAt = null;
+      ticket.closedAt = null;
+    }
+
+    if (status === "Resolved") {
+      ticket.resolvedAt =
+        new Date();
+
+      ticket.closedAt = null;
+
+      if (!ticket.firstResolvedAt) {
+        ticket.firstResolvedAt = ticket.resolvedAt;
+      }
+    }
+
+    if (status === "Verified") {
+      ticket.verifiedAt =
+        new Date();
+
+      ticket.closedAt = null;
+
+      if (!ticket.firstResolvedAt) {
+        ticket.firstResolvedAt = ticket.verifiedAt;
+      }
+    }
+
+    if (isClosing) {
+      if (
+        !["Resolved", "Verified"].includes(
+          previousStatus
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Only a resolved or verified ticket can be closed.",
+        });
+      }
+
+      ticket.closedAt =
+        new Date();
+
+      if (!ticket.firstResolvedAt) {
+        ticket.firstResolvedAt = ticket.closedAt;
+      }
+    }
+
+    if (status === "Cancelled") {
+      ticket.closedAt =
+        new Date();
+    }
+
+    ticket.timeline.push({
+      type: isClosing
+        ? "closed"
+        : isReopening
+          ? "reopened"
+          : "status",
+
+      title: isClosing
+        ? "Ticket Closed"
+        : isReopening
+          ? "Ticket Reopened"
+          : "Ticket Status Changed",
+
+      description: isClosing
+        ? `Ticket was closed after resolution. Previous status: ${previousStatus}.`
+        : isReopening
+          ? `Ticket was reopened from ${previousStatus} and moved to ${status}.`
+          : `Status changed from ${previousStatus} to ${status}.`,
+
+      performedBy:
+        req.user._id,
+
+      performedByName:
+        req.user.name || "Admin",
+
+      performedByRole:
+        "admin",
+    });
+    await ticket.save();
+
+    await normalizeClientOpenTicketCount(
+      ticket.clientId
+    );
+
+    await createActivityLog({
+      action: isClosing
+        ? "Ticket Closed"
+        : isReopening
+          ? "Ticket Reopened"
+          : "Ticket Status Changed",
+
+      category: "Ticket",
+
+      description: isClosing
+        ? `${ticket.ticketCode} was closed by Admin.`
+        : isReopening
+          ? `${ticket.ticketCode} was reopened from ${previousStatus} and moved to ${status}.`
+          : `${ticket.ticketCode} changed from ${previousStatus} to ${status}.`,
+
+      entityType: "ticket",
+      entityId: ticket._id,
+      entityCode: ticket.ticketCode,
+      entityName: ticket.title,
+
+      clientId: ticket.clientId,
+      clientName: ticket.clientName,
+
+      employeeId: ticket.assignedEmployeeId,
+      employeeName: ticket.assignedEmployeeName,
+
+      performedBy: req.user._id,
+      performedByName: req.user.name || "Admin",
+      performedByRole: "admin",
+
+      metadata: {
+        previousStatus,
+        currentStatus: status,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Ticket status updated successfully.",
+      data: ticketResponse(ticket),
+    });
+  } catch (error) {
+    console.error(
+      "Update ticket status error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Unable to update ticket status.",
+    });
+  }
+});
+
+/* =====================================================
+   ASSIGN SUPPORT TICKET
+   PATCH /api/admin/ticket/:id/assign
+===================================================== */
+
+router.patch("/ticket/:id/assign", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { assignedEmployeeId } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid ticket ID.",
+      });
+    }
+
+    if (
+      !assignedEmployeeId ||
+      !mongoose.Types.ObjectId.isValid(
+        assignedEmployeeId
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Please select a valid employee.",
+      });
+    }
+
+    const ticket = await SupportTicket.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!ticket) {
+      return res.status(404).json({
+        success: false,
+        message: "Support ticket not found.",
+      });
+    }
+
+    const employee = await findEmployeeById(
+      assignedEmployeeId
+    );
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message:
+          "Selected employee was not found or is inactive.",
+      });
+    }
+
+    if (
+      employee.status === "Leave" ||
+      employee.status === "Inactive"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          `${employee.name} is currently ${employee.status}.`,
+      });
+    }
+
+    const previousEmployeeId =
+      ticket.assignedEmployeeId
+        ? String(ticket.assignedEmployeeId)
+        : "";
+
+    const previousEmployeeName =
+      ticket.assignedEmployeeName ||
+      "Unassigned";
+
+    if (
+      previousEmployeeId ===
+      String(employee._id)
+    ) {
+      return res.status(200).json({
+        success: true,
+        message:
+          "Ticket is already assigned to this employee.",
+        data: ticketResponse(ticket),
+      });
+    }
+
+    ticket.assignedEmployeeId =
+      employee._id;
+
+    ticket.assignedEmployeeName =
+      employee.name;
+
+    ticket.assignedEmployeeCode =
+      employee.employeeCode || "";
+
+    ticket.assignedAt = new Date();
+
+    ticket.assignedBy =
+      req.user._id;
+
+    ticket.assignedByName =
+      req.user.name || "Admin";
+
+    if (ticket.status === "New") {
+      ticket.status = "Assigned";
+    }
+
+    ticket.timeline.push({
+      type: "assigned",
+      title: "Ticket Assigned",
+      description:
+        `Assignment changed from ${previousEmployeeName} to ${employee.name}.`,
+      performedBy: req.user._id,
+      performedByName:
+        req.user.name || "Admin",
+      performedByRole: "admin",
+    });
+
+    await ticket.save();
+
+    await createActivityLog({
+      action: "Ticket Assigned",
+      category: "Ticket",
+
+      description:
+        `${ticket.ticketCode} was assigned from ${previousEmployeeName} to ${employee.name}.`,
+
+      entityType: "ticket",
+      entityId: ticket._id,
+      entityCode: ticket.ticketCode,
+      entityName: ticket.title,
+
+      clientId: ticket.clientId,
+      clientName: ticket.clientName,
+
+      employeeId: employee._id,
+      employeeName: employee.name,
+
+      performedBy: req.user._id,
+      performedByName:
+        req.user.name || "Admin",
+      performedByRole: "admin",
+
+      metadata: {
+        previousEmployeeId,
+        previousEmployeeName,
+        assignedEmployeeId:
+          employee._id,
+        assignedEmployeeName:
+          employee.name,
+        status: ticket.status,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Ticket assigned successfully.",
+      data: ticketResponse(ticket),
+    });
+  } catch (error) {
+    console.error(
+      "Assign support ticket error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Unable to assign support ticket.",
+    });
+  }
+});
+/* =====================================================
+   ADD SUPPORT TICKET REPLY
+   POST /api/admin/ticket/:id/reply
+===================================================== */
+
+router.post("/ticket/:id/reply", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const {
+      message,
+      replyType = "Public",
+    } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid ticket ID.",
+      });
+    }
+
+    const normalizedMessage =
+      String(message || "").trim();
+
+    if (!normalizedMessage) {
+      return res.status(400).json({
+        success: false,
+        message: "Reply message is required.",
+      });
+    }
+
+    if (
+      !["Public", "Internal"].includes(
+        replyType
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid reply type.",
+      });
+    }
+
+    const ticket = await SupportTicket.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!ticket) {
+      return res.status(404).json({
+        success: false,
+        message: "Support ticket not found.",
+      });
+    }
+
+    ticket.replies.push({
+      message: normalizedMessage,
+      replyType,
+
+      authorId: req.user._id,
+      authorName:
+        req.user.name || "Admin",
+      authorRole: "admin",
+    });
+
+    if (replyType === "Public" && !ticket.firstResponseAt) {
+      ticket.firstResponseAt =
+        new Date();
+    }
+
+    ticket.timeline.push({
+      type: "reply",
+
+      title:
+        replyType === "Internal"
+          ? "Internal Note Added"
+          : "Reply Added",
+
+      description:
+        replyType === "Internal"
+          ? "Admin added an internal note."
+          : "Admin replied to the ticket.",
+
+      performedBy: req.user._id,
+      performedByName:
+        req.user.name || "Admin",
+      performedByRole: "admin",
+    });
+
+    await ticket.save();
+
+    await createActivityLog({
+      action:
+        replyType === "Internal"
+          ? "Ticket Internal Note Added"
+          : "Ticket Reply Added",
+
+      category: "Ticket",
+
+      description:
+        replyType === "Internal"
+          ? `An internal note was added to ${ticket.ticketCode}.`
+          : `A reply was added to ${ticket.ticketCode}.`,
+
+      entityType: "ticket",
+      entityId: ticket._id,
+      entityCode: ticket.ticketCode,
+      entityName: ticket.title,
+
+      clientId: ticket.clientId,
+      clientName: ticket.clientName,
+
+      employeeId:
+        ticket.assignedEmployeeId,
+
+      employeeName:
+        ticket.assignedEmployeeName,
+
+      performedBy: req.user._id,
+      performedByName:
+        req.user.name || "Admin",
+      performedByRole: "admin",
+
+      metadata: {
+        replyType,
+        message: normalizedMessage,
+      },
+    });
+
+    return res.status(201).json({
+      success: true,
+      message:
+        replyType === "Internal"
+          ? "Internal note added successfully."
+          : "Reply added successfully.",
+      data: ticketResponse(ticket),
+    });
+  } catch (error) {
+    console.error(
+      "Add ticket reply error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Unable to add ticket reply.",
+    });
+  }
+});
+
+/* =====================================================
+   RESOLVE SUPPORT TICKET
+   PATCH /api/admin/ticket/:id/resolve
+===================================================== */
+
+router.patch("/ticket/:id/resolve", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const {
+      resolutionNote,
+      rootCause = "",
+    } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid ticket ID.",
+      });
+    }
+
+    const normalizedResolution =
+      String(resolutionNote || "").trim();
+
+    if (!normalizedResolution) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Resolution note is required.",
+      });
+    }
+
+    const ticket = await SupportTicket.findOne({
+      _id: id,
+      isDeleted: false,
+    });
+
+    if (!ticket) {
+      return res.status(404).json({
+        success: false,
+        message: "Support ticket not found.",
+      });
+    }
+
+    if (ticket.status === "Resolved") {
+      return res.status(200).json({
+        success: true,
+        message:
+          "Ticket is already resolved.",
+        data: ticketResponse(ticket),
+      });
+    }
+
+    const previousStatus =
+      ticket.status;
+
+    ticket.status = "Resolved";
+
+    ticket.resolutionNote =
+      normalizedResolution;
+
+    ticket.rootCause =
+      String(rootCause || "").trim();
+
+    ticket.resolvedAt =
+      new Date();
+
+    if (!ticket.firstResolvedAt) {
+      ticket.firstResolvedAt = ticket.resolvedAt;
+    }
+
+    if (!ticket.firstResponseAt) {
+      ticket.firstResponseAt = ticket.resolvedAt;
+    }
+
+    ticket.verifiedAt = null;
+    ticket.closedAt = null;
+
+    ticket.timeline.push({
+      type: "resolved",
+      title: "Ticket Resolved",
+      description:
+        normalizedResolution,
+
+      performedBy: req.user._id,
+      performedByName:
+        req.user.name || "Admin",
+      performedByRole: "admin",
+    });
+
+    await ticket.save();
+
+    await normalizeClientOpenTicketCount(
+      ticket.clientId
+    );
+
+    await createActivityLog({
+      action: "Ticket Resolved",
+      category: "Ticket",
+
+      description:
+        `${ticket.ticketCode} was resolved by Admin.`,
+
+      entityType: "ticket",
+      entityId: ticket._id,
+      entityCode: ticket.ticketCode,
+      entityName: ticket.title,
+
+      clientId: ticket.clientId,
+      clientName: ticket.clientName,
+
+      employeeId:
+        ticket.assignedEmployeeId,
+
+      employeeName:
+        ticket.assignedEmployeeName,
+
+      performedBy: req.user._id,
+      performedByName:
+        req.user.name || "Admin",
+      performedByRole: "admin",
+
+      metadata: {
+        previousStatus,
+        resolutionNote:
+          normalizedResolution,
+        rootCause:
+          ticket.rootCause,
+        resolvedAt:
+          ticket.resolvedAt,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Support ticket resolved successfully.",
+      data: ticketResponse(ticket),
+    });
+  } catch (error) {
+    console.error(
+      "Resolve support ticket error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Unable to resolve support ticket.",
+    });
+  }
+});
+
+/* =====================================================
+   UPLOAD SUPPORT TICKET ATTACHMENT
+   POST /api/admin/ticket/:id/attachment
+===================================================== */
+
+router.post(
+  "/ticket/:id/attachment",
+
+  uploadTicketAttachment.single(
+    "attachment"
+  ),
+
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        if (req.file?.path) {
+          fs.unlink(
+            req.file.path,
+            () => { }
+          );
+        }
+
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid ticket ID.",
+        });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Please select a file.",
+        });
+      }
+
+      const ticket =
+        await SupportTicket.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!ticket) {
+        fs.unlink(
+          req.file.path,
+          () => { }
+        );
+
+        return res.status(404).json({
+          success: false,
+          message:
+            "Support ticket not found.",
+        });
+      }
+
+      const fileUrl =
+        `/uploads/tickets/${req.file.filename}`;
+
+      ticket.attachments.push({
+        fileName:
+          req.file.originalname,
+
+        fileUrl,
+
+        fileType:
+          req.file.mimetype,
+
+        fileSize:
+          req.file.size,
+
+        uploadedBy:
+          req.user._id,
+
+        uploadedByName:
+          req.user.name ||
+          "Admin",
+
+        uploadedByRole:
+          "admin",
+      });
+
+      ticket.timeline.push({
+        type: "attachment",
+
+        title:
+          "Attachment Uploaded",
+
+        description:
+          `${req.file.originalname} was uploaded to the ticket.`,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+      });
+
+      await ticket.save();
+
+      await createActivityLog({
+        action:
+          "Ticket Attachment Uploaded",
+
+        category: "Ticket",
+
+        description:
+          `${req.file.originalname} was uploaded to ${ticket.ticketCode}.`,
+
+        entityType:
+          "ticket",
+
+        entityId:
+          ticket._id,
+
+        entityCode:
+          ticket.ticketCode,
+
+        entityName:
+          ticket.title,
+
+        clientId:
+          ticket.clientId,
+
+        clientName:
+          ticket.clientName,
+
+        employeeId:
+          ticket.assignedEmployeeId,
+
+        employeeName:
+          ticket.assignedEmployeeName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          "admin",
+
+        metadata: {
+          fileName:
+            req.file.originalname,
+
+          storedName:
+            req.file.filename,
+
+          fileUrl,
+
+          fileType:
+            req.file.mimetype,
+
+          fileSize:
+            req.file.size,
+        },
+      });
+
+      return res.status(201).json({
+        success: true,
+
+        message:
+          "Attachment uploaded successfully.",
+
+        data:
+          ticketResponse(ticket),
+      });
+    } catch (error) {
+      if (req.file?.path) {
+        fs.unlink(
+          req.file.path,
+          () => { }
+        );
+      }
+
+      console.error(
+        "Upload ticket attachment error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to upload attachment.",
+      });
+    }
+  }
+);
+router.use(
+  (
+    error,
+    req,
+    res,
+    next
+  ) => {
+    if (
+      error instanceof
+      multer.MulterError
+    ) {
+      if (
+        error.code ===
+        "LIMIT_FILE_SIZE"
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "File size must not exceed 10 MB.",
+        });
+      }
+
+      return res.status(400).json({
+        success: false,
+        message:
+          error.message ||
+          "File upload failed.",
+      });
+    }
+
+    if (
+      error?.message?.includes(
+        "Unsupported file type"
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    next(error);
+  }
+);
+/* =====================================================
+   CREATE AMC CONTRACT + FIRST PERMANENT INVOICE
+   POST /api/admin/amc/contract
+===================================================== */
+
+router.post(
+  "/amc/contract",
+  validate(amcContractCreateZodSchema),
+  async (req, res) => {
+    let createdContract =
+      null;
+
+    let createdInvoice =
+      null;
+
+    try {
+      const {
+        clientId,
+        clientProductId,
+
+        plan,
+        licensedUsers,
+
+        startDate,
+        expiryDate,
+        dueDate,
+
+        taxableAmount,
+
+        cgstRate,
+        sgstRate,
+        igstRate,
+
+        assignedEmployeeId,
+
+        notes,
+      } = req.body;
+
+      if (!clientId) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Please select a client.",
+        });
+      }
+
+      if (!clientProductId) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Please select a client product.",
+        });
+      }
+
+      if (!startDate) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "AMC start date is required.",
+        });
+      }
+
+      if (!expiryDate) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "AMC expiry date is required.",
+        });
+      }
+
+      if (!dueDate) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Payment due date is required.",
+        });
+      }
+
+      const parsedStartDate =
+        new Date(startDate);
+
+      const parsedExpiryDate =
+        new Date(expiryDate);
+
+      const parsedDueDate =
+        new Date(dueDate);
+
+      if (
+        Number.isNaN(
+          parsedStartDate.getTime()
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid AMC start date.",
+        });
+      }
+
+      if (
+        Number.isNaN(
+          parsedExpiryDate.getTime()
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid AMC expiry date.",
+        });
+      }
+
+      if (
+        Number.isNaN(
+          parsedDueDate.getTime()
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid payment due date.",
+        });
+      }
+
+      if (
+        parsedExpiryDate <=
+        parsedStartDate
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "AMC expiry date must be after the start date.",
+        });
+      }
+
+      const normalizedTaxableAmount =
+        Number(
+          taxableAmount ||
+          0
+        );
+
+      if (
+        !Number.isFinite(
+          normalizedTaxableAmount
+        ) ||
+        normalizedTaxableAmount <= 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Enter a valid AMC taxable amount.",
+        });
+      }
+
+      const normalizedUsers =
+        Math.max(
+          Number(
+            licensedUsers ||
+            1
+          ),
+          1
+        );
+
+      const allowedPlans = [
+        "Basic",
+        "Standard",
+        "Premium",
+        "Custom",
+      ];
+
+      const normalizedPlan =
+        allowedPlans.includes(
+          plan
+        )
+          ? plan
+          : "Standard";
+
+      const normalizedNotes =
+        String(
+          notes ||
+          ""
+        ).trim();
+
+      /*
+       * Read current Client Master only while creating
+       * snapshots. Future invoice reads do not depend
+       * on the client still existing.
+       */
+      const client =
+        await resolveAmcClient(
+          clientId
+        );
+
+      const clientProduct =
+        resolveAmcClientProduct(
+          client,
+          clientProductId
+        );
+
+      const resolvedEmployee =
+        await resolveAmcEmployee(
+          assignedEmployeeId
+        );
+
+      const duplicateContract =
+        await AmcContract.findOne({
+          clientId:
+            client._id,
+
+          clientProductId:
+            clientProduct._id,
+
+          isDeleted:
+            false,
+
+          status: {
+            $nin: [
+              "Cancelled",
+              "Paid",
+            ],
+          },
+
+          startDate: {
+            $lte:
+              parsedExpiryDate,
+          },
+
+          expiryDate: {
+            $gte:
+              parsedStartDate,
+          },
+        });
+
+      if (duplicateContract) {
+        return res.status(409).json({
+          success: false,
+
+          message:
+            `An active AMC contract already exists for ${clientProduct.productName}.`,
+
+          existingContract: {
+            id:
+              duplicateContract._id,
+
+            contractCode:
+              duplicateContract.contractCode,
+
+            status:
+              duplicateContract.status,
+          },
+        });
+      }
+
+      const calculatedAmounts =
+        calculateAmcAmounts({
+          taxableAmount:
+            normalizedTaxableAmount,
+
+          cgstRate:
+            Number(
+              cgstRate ??
+              9
+            ),
+
+          sgstRate:
+            Number(
+              sgstRate ??
+              9
+            ),
+
+          igstRate:
+            Number(
+              igstRate ??
+              0
+            ),
+        });
+
+      const contractStatus =
+        calculateAmcStatus({
+          startDate:
+            parsedStartDate,
+
+          expiryDate:
+            parsedExpiryDate,
+
+          totalAmount:
+            calculatedAmounts
+              .totalAmount,
+
+          paidAmount:
+            0,
+        });
+
+      const invoicePaymentStatus =
+        contractStatus ===
+        "Overdue"
+          ? "Overdue"
+          : "Pending";
+
+      const contractCode =
+        generateAmcContractCode();
+
+      const invoiceCode =
+        generateAmcInvoiceCode();
+
+      const now =
+        new Date();
+
+      const timeline = [
+        {
+          type:
+            "created",
+
+          title:
+            "AMC contract created",
+
+          description:
+            `${normalizedPlan} AMC contract was created for ${clientProduct.productName}.`,
+
+          performedBy:
+            req.user._id,
+
+          performedByName:
+            req.user.name ||
+            "Admin",
+
+          performedByRole:
+            req.user.role ||
+            "admin",
+        },
+
+        {
+          type:
+            "invoice",
+
+          title:
+            "AMC invoice generated",
+
+          description:
+            `Invoice ${invoiceCode} was generated for ₹${calculatedAmounts.totalAmount}.`,
+
+          performedBy:
+            req.user._id,
+
+          performedByName:
+            req.user.name ||
+            "Admin",
+
+          performedByRole:
+            req.user.role ||
+            "admin",
+        },
+      ];
+
+      if (
+        resolvedEmployee
+          .assignedEmployeeId
+      ) {
+        timeline.push({
+          type:
+            "assignment",
+
+          title:
+            `Assigned to ${resolvedEmployee.assignedEmployeeName}`,
+
+          description:
+            `${resolvedEmployee.assignedEmployeeCode || "Employee"} was assigned to manage this AMC contract.`,
+
+          performedBy:
+            req.user._id,
+
+          performedByName:
+            req.user.name ||
+            "Admin",
+
+          performedByRole:
+            req.user.role ||
+            "admin",
+        });
+      }
+
+      /*
+       * First create the agreement.
+       *
+       * Legacy invoice amount fields are temporarily kept
+       * for frontend compatibility. Financial truth is now
+       * stor
+... [truncated for diff preview]
+       * stored inside AmcInvoice.
+       */
+      /*
+       * Create contract, initial invoice, and update client master
+       * atomically inside a MongoDB transaction session.
+       */
+      const session = await mongoose.startSession();
+      try {
+        await session.withTransaction(async () => {
+          const createdContracts =
+            await AmcContract.create(
+              [
+                {
+                  contractCode,
+
+                  currentInvoiceCode:
+                    invoiceCode,
+
+                  invoiceCode,
+
+                  invoiceDate:
+                    now,
+
+                  clientId:
+                    client._id,
+
+                  clientCode:
+                    client.clientCode,
+
+                  clientName:
+                    client.companyName,
+
+                  contactPerson:
+                    client.contactPerson ||
+                    "",
+
+                  contactMobile:
+                    client.mobile ||
+                    "",
+
+                  contactEmail:
+                    client.email ||
+                    "",
+
+                  clientProductId:
+                    clientProduct._id,
+
+                  productId:
+                    clientProduct.productId,
+
+                  productCode:
+                    clientProduct.productCode,
+
+                  productName:
+                    clientProduct.productName,
+
+                  productVersion:
+                    clientProduct.version ||
+                    "",
+
+                  plan:
+                    normalizedPlan,
+
+                  licensedUsers:
+                    normalizedUsers,
+
+                  startDate:
+                    parsedStartDate,
+
+                  expiryDate:
+                    parsedExpiryDate,
+
+                  dueDate:
+                    parsedDueDate,
+
+                  ...calculatedAmounts,
+
+                  paidAmount:
+                    0,
+
+                  pendingAmount:
+                    calculatedAmounts
+                      .totalAmount,
+
+                  status:
+                    contractStatus,
+
+                  assignedEmployeeId:
+                    resolvedEmployee
+                      .assignedEmployeeId,
+
+                  assignedEmployeeCode:
+                    resolvedEmployee
+                      .assignedEmployeeCode,
+
+                  assignedEmployeeName:
+                    resolvedEmployee
+                      .assignedEmployeeName,
+
+                  reminderStatus:
+                    contractStatus ===
+                    "Paid"
+                      ? "Not Required"
+                      : "Not Sent",
+
+                  notes:
+                    normalizedNotes,
+
+                  timeline,
+
+                  createdBy:
+                    req.user._id,
+
+                  createdByName:
+                    req.user.name ||
+                    "Admin",
+
+                  updatedBy:
+                    req.user._id,
+
+                  updatedByName:
+                    req.user.name ||
+                    "Admin",
+                },
+              ],
+              { session }
+            );
+
+          createdContract = createdContracts[0];
+
+          /*
+           * Create the first permanent invoice using snapshots.
+           */
+          const createdInvoices =
+            await AmcInvoice.create(
+              [
+                {
+                  invoiceCode,
+
+                  invoiceDate:
+                    now,
+
+                  invoiceType:
+                    "Initial",
+
+                  amcContractId:
+                    createdContract._id,
+
+                  contractCode:
+                    createdContract
+                      .contractCode,
+
+                  contractStartDate:
+                    parsedStartDate,
+
+                  contractExpiryDate:
+                    parsedExpiryDate,
+
+                  dueDate:
+                    parsedDueDate,
+
+                  clientId:
+                    client._id,
+
+                  clientCode:
+                    client.clientCode,
+
+                  clientName:
+                    client.companyName,
+
+                  contactPerson:
+                    client.contactPerson ||
+                    "",
+
+                  contactMobile:
+                    client.mobile ||
+                    "",
+
+                  contactEmail:
+                    client.email ||
+                    "",
+
+                  clientProductId:
+                    clientProduct._id,
+
+                  productId:
+                    clientProduct.productId,
+
+                  productCode:
+                    clientProduct.productCode,
+
+                  productName:
+                    clientProduct.productName,
+
+                  productVersion:
+                    clientProduct.version ||
+                    "",
+
+                  plan:
+                    normalizedPlan,
+
+                  licensedUsers:
+                    normalizedUsers,
+
+                  description:
+                    `${normalizedPlan} Annual Maintenance Contract for ${clientProduct.productName}.`,
+
+                  ...calculatedAmounts,
+
+                  paidAmount:
+                    0,
+
+                  pendingAmount:
+                    calculatedAmounts
+                      .totalAmount,
+
+                  paymentStatus:
+                    invoicePaymentStatus,
+
+                  status:
+                    "Issued",
+
+                  notes:
+                    normalizedNotes,
+
+                  createdBy:
+                    req.user._id,
+
+                  createdByName:
+                    req.user.name ||
+                    "Admin",
+
+                  updatedBy:
+                    req.user._id,
+
+                  updatedByName:
+                    req.user.name ||
+                    "Admin",
+                },
+              ],
+              { session }
+            );
+
+          createdInvoice = createdInvoices[0];
+
+          /*
+           * Link contract to the permanent current invoice.
+           */
+          createdContract.currentInvoiceId =
+            createdInvoice._id;
+
+          createdContract.currentInvoiceCode =
+            createdInvoice.invoiceCode;
+
+          await createdContract.save({ session });
+
+          /*
+           * Client Master receives only current status values.
+           * No invoice or payment history is saved in Client.
+           */
+          clientProduct.supportType =
+            normalizedPlan ===
+            "Custom"
+              ? clientProduct
+                  .supportType
+              : normalizedPlan;
+
+          clientProduct.amcStatus =
+            contractStatus ===
+            "Upcoming"
+              ? "Not Started"
+              : contractStatus;
+
+          clientProduct.expiryDate =
+            parsedExpiryDate
+              .toISOString()
+              .slice(
+                0,
+                10
+              );
+
+          client.amcStatus =
+            contractStatus ===
+            "Upcoming"
+              ? "Not Started"
+              : contractStatus;
+
+          client.nextRenewal =
+            parsedExpiryDate
+              .toISOString()
+              .slice(
+                0,
+                10
+              );
+
+          await client.save({ session });
+        });
+      } finally {
+        await session.endSession();
+      }
+
+      await createActivityLog({
+        action:
+          "AMC Contract Created",
+
+        category:
+          "AMC",
+
+        description:
+          `${createdContract.contractCode} was created for ${client.companyName} - ${clientProduct.productName}.`,
+
+        entityType:
+          "amc",
+
+        entityId:
+          createdContract._id,
+
+        entityCode:
+          createdContract.contractCode,
+
+        entityName:
+          `${client.companyName} - ${clientProduct.productName}`,
+
+        clientId:
+          client._id,
+
+        clientName:
+          client.companyName,
+
+        employeeId:
+          resolvedEmployee
+            .assignedEmployeeId,
+
+        employeeName:
+          resolvedEmployee
+            .assignedEmployeeName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          req.user.role ||
+          "admin",
+
+        metadata: {
+          invoiceId:
+            createdInvoice._id,
+
+          invoiceCode:
+            createdInvoice
+              .invoiceCode,
+
+          productCode:
+            createdInvoice
+              .productCode,
+
+          productName:
+            createdInvoice
+              .productName,
+
+          plan:
+            createdInvoice.plan,
+
+          taxableAmount:
+            createdInvoice
+              .taxableAmount,
+
+          totalAmount:
+            createdInvoice
+              .totalAmount,
+
+          status:
+            createdContract.status,
+        },
+      });
+
+      return res.status(201).json({
+        success: true,
+
+        message:
+          "AMC contract and invoice created successfully.",
+
+        data: {
+          ...amcContractResponse(
+            createdContract
+          ),
+
+          currentInvoice:
+            amcInvoiceResponse(
+              createdInvoice
+            ),
+
+          invoice:
+            amcInvoiceResponse(
+              createdInvoice
+            ),
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Create AMC contract and invoice error:",
+        error
+      );
+
+      /*
+       * Manual rollback protects against half-created data
+       * when MongoDB transactions are unavailable.
+       */
+      if (
+        createdInvoice?._id
+      ) {
+        await AmcInvoice.deleteOne({
+          _id:
+            createdInvoice._id,
+        }).catch(() => {});
+      }
+
+      if (
+        createdContract?._id
+      ) {
+        await AmcContract.deleteOne({
+          _id:
+            createdContract._id,
+        }).catch(() => {});
+      }
+
+      if (
+        error.code ===
+        11000
+      ) {
+        return res.status(409).json({
+          success: false,
+
+          message:
+            "AMC contract or invoice number already exists.",
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to create AMC contract and invoice.",
+      });
+    }
+  }
+);
+/* =====================================================
+   GET ALL AMC CONTRACTS
+   GET /api/admin/amc/contracts
+===================================================== */
+
+/* =====================================================
+   GET ALL AMC CONTRACTS WITH CURRENT INVOICE
+   GET /api/admin/amc/contracts
+===================================================== */
+
+router.get(
+  "/amc/contracts",
+  async (req, res) => {
+    try {
+      const {
+        search = "",
+        status = "All",
+        plan = "All",
+        productId = "",
+        clientId = "",
+        assignedEmployeeId = "",
+        limit = 200,
+      } = req.query;
+
+      const today =
+        new Date();
+
+      today.setHours(
+        0,
+        0,
+        0,
+        0
+      );
+
+      /*
+       * Financial overdue status belongs to invoices.
+       */
+      await AmcInvoice.updateMany(
+        {
+          isDeleted:
+            false,
+
+          status: {
+            $ne:
+              "Cancelled",
+          },
+
+          paymentStatus: {
+            $in: [
+              "Pending",
+              "Partially Paid",
+            ],
+          },
+
+          dueDate: {
+            $lt:
+              today,
+          },
+
+          pendingAmount: {
+            $gt:
+              0,
+          },
+        },
+        {
+          $set: {
+            paymentStatus:
+              "Overdue",
+
+            updatedAt:
+              new Date(),
+          },
+        }
+      );
+
+      /*
+       * Synchronize current contract status using its
+       * current permanent invoice.
+       */
+      const overdueInvoices =
+        await AmcInvoice.find({
+          isDeleted:
+            false,
+
+          status: {
+            $ne:
+              "Cancelled",
+          },
+
+          paymentStatus:
+            "Overdue",
+
+          pendingAmount: {
+            $gt:
+              0,
+          },
+        })
+          .select(
+            "amcContractId"
+          )
+          .lean();
+
+      const overdueContractIds =
+        overdueInvoices
+          .map(
+            (invoice) =>
+              invoice.amcContractId
+          )
+          .filter(Boolean);
+
+      if (
+        overdueContractIds.length >
+        0
+      ) {
+        await AmcContract.updateMany(
+          {
+            _id: {
+              $in:
+                overdueContractIds,
+            },
+
+            isDeleted:
+              false,
+
+            status: {
+              $nin: [
+                "Paid",
+                "Cancelled",
+              ],
+            },
+          },
+          {
+            $set: {
+              status:
+                "Overdue",
+
+              updatedAt:
+                new Date(),
+            },
+          }
+        );
+      }
+
+      const query = {
+        isDeleted:
+          false,
+      };
+
+      if (
+        status &&
+        status !== "All"
+      ) {
+        query.status =
+          status;
+      }
+
+      if (
+        plan &&
+        plan !== "All"
+      ) {
+        query.plan =
+          plan;
+      }
+
+      if (
+        productId &&
+        mongoose.Types.ObjectId.isValid(
+          productId
+        )
+      ) {
+        query.productId =
+          new mongoose.Types.ObjectId(
+            productId
+          );
+      }
+
+      if (
+        clientId &&
+        mongoose.Types.ObjectId.isValid(
+          clientId
+        )
+      ) {
+        query.clientId =
+          new mongoose.Types.ObjectId(
+            clientId
+          );
+      }
+
+      if (
+        assignedEmployeeId &&
+        mongoose.Types.ObjectId.isValid(
+          assignedEmployeeId
+        )
+      ) {
+        query.assignedEmployeeId =
+          new mongoose.Types.ObjectId(
+            assignedEmployeeId
+          );
+      }
+
+      const normalizedSearch =
+        String(
+          search || ""
+        ).trim();
+
+      if (normalizedSearch) {
+        query.$or = [
+          {
+            contractCode: {
+              $regex:
+                normalizedSearch,
+
+              $options:
+                "i",
+            },
+          },
+
+          {
+            currentInvoiceCode: {
+              $regex:
+                normalizedSearch,
+
+              $options:
+                "i",
+            },
+          },
+
+          {
+            invoiceCode: {
+              $regex:
+                normalizedSearch,
+
+              $options:
+                "i",
+            },
+          },
+
+          {
+            clientCode: {
+              $regex:
+                normalizedSearch,
+
+              $options:
+                "i",
+            },
+          },
+
+          {
+            clientName: {
+              $regex:
+                normalizedSearch,
+
+              $options:
+                "i",
+            },
+          },
+
+          {
+            contactPerson: {
+              $regex:
+                normalizedSearch,
+
+              $options:
+                "i",
+            },
+          },
+
+          {
+            contactMobile: {
+              $regex:
+                normalizedSearch,
+
+              $options:
+                "i",
+            },
+          },
+
+          {
+            productCode: {
+              $regex:
+                normalizedSearch,
+
+              $options:
+                "i",
+            },
+          },
+
+          {
+            productName: {
+              $regex:
+                normalizedSearch,
+
+              $options:
+                "i",
+            },
+          },
+
+          {
+            assignedEmployeeCode: {
+              $regex:
+                normalizedSearch,
+
+              $options:
+                "i",
+            },
+          },
+
+          {
+            assignedEmployeeName: {
+              $regex:
+                normalizedSearch,
+
+              $options:
+                "i",
+            },
+          },
+        ];
+      }
+
+      const normalizedLimit =
+        Math.min(
+          Math.max(
+            Number(
+              limit ||
+              200
+            ),
+            1
+          ),
+          1000
+        );
+
+      const contracts =
+        await AmcContract.find(
+          query
+        )
+          .sort({
+            createdAt:
+              -1,
+          })
+          .limit(
+            normalizedLimit
+          );
+
+      /*
+       * Load all current invoices in one query.
+       * This avoids running one query per contract.
+       */
+      const currentInvoiceIds =
+        contracts
+          .map(
+            (contract) =>
+              contract.currentInvoiceId
+          )
+          .filter(Boolean);
+
+      const currentInvoiceCodes =
+        contracts
+          .filter(
+            (contract) =>
+              !contract.currentInvoiceId &&
+              (
+                contract.currentInvoiceCode ||
+                contract.invoiceCode
+              )
+          )
+          .map(
+            (contract) =>
+              contract.currentInvoiceCode ||
+              contract.invoiceCode
+          );
+
+      const invoiceOrConditions =
+        [];
+
+      if (
+        currentInvoiceIds.length >
+        0
+      ) {
+        invoiceOrConditions.push({
+          _id: {
+            $in:
+              currentInvoiceIds,
+          },
+        });
+      }
+
+      if (
+        currentInvoiceCodes.length >
+        0
+      ) {
+        invoiceOrConditions.push({
+          invoiceCode: {
+            $in:
+              currentInvoiceCodes,
+          },
+        });
+      }
+
+      const invoices =
+        invoiceOrConditions.length >
+        0
+          ? await AmcInvoice.find({
+              isDeleted:
+                false,
+
+              $or:
+                invoiceOrConditions,
+            })
+          : [];
+
+      const invoiceById =
+        new Map();
+
+      const invoiceByCode =
+        new Map();
+
+      invoices.forEach(
+        (invoice) => {
+          invoiceById.set(
+            String(
+              invoice._id
+            ),
+            invoice
+          );
+
+          invoiceByCode.set(
+            String(
+              invoice.invoiceCode
+            ),
+            invoice
+          );
+        }
+      );
+      // =============================
+// LOAD PAYMENTS AND REMINDERS
+// =============================
+const contractIds = contracts.map((contract) => String(contract._id));
+const contractCodes = contracts.map((contract) => contract.contractCode);
+
+const [payments, reminders] = await Promise.all([
+  AmcPayment.find({
+    isDeleted: false,
+    $or: [
+      { contractId: { $in: contractIds } },
+      { contractCode: { $in: contractCodes } },
+    ],
+  }).sort({ paymentDate: -1 }),
+
+  AmcReminder.find({
+    isDeleted: false,
+    $or: [
+      { amcContractId: { $in: contractIds } },
+      { contractCode: { $in: contractCodes } },
+    ],
+  }).sort({ sentAt: -1 }),
+]);
+
+const paymentsByContract = new Map();
+
+payments.forEach((payment) => {
+  const key =
+    payment.contractCode || String(payment.contractId || "");
+
+  if (!paymentsByContract.has(key)) {
+    paymentsByContract.set(key, []);
+  }
+
+  paymentsByContract.get(key).push(payment);
+});
+
+const remindersByContract = new Map();
+
+reminders.forEach((reminder) => {
+  const key =
+    reminder.contractCode || String(reminder.amcContractId || "");
+
+  if (!remindersByContract.has(key)) {
+    remindersByContract.set(key, []);
+  }
+
+  remindersByContract.get(key).push(reminder);
+});
+
+    const data = contracts.map((contract) => {
+  const invoice =
+    invoiceById.get(String(contract.currentInvoiceId || "")) ||
+    invoiceByCode.get(
+      String(contract.currentInvoiceCode || contract.invoiceCode || "")
+    ) ||
+    null;
+
+  const merged = mergeAmcContractWithInvoice(contract, invoice);
+merged.payments =
+  paymentsByContract.get(contract.contractCode) ||
+  paymentsByContract.get(String(contract._id)) ||
+  [];
+
+merged.reminders =
+  remindersByContract.get(contract.contractCode) ||
+  remindersByContract.get(String(contract._id)) ||
+  [];
+
+  merged.renewalHistory =
+    contract.renewalHistory || [];
+
+  return merged;
+});
+
+
+      /*
+       * Dashboard totals now come from permanent invoices,
+       * not Client Master or copied contract totals.
+       */
+      const invoiceStats =
+        await AmcInvoice.aggregate([
+          {
+            $match: {
+              isDeleted:
+                false,
+
+              status: {
+                $ne:
+                  "Cancelled",
+              },
+            },
+          },
+
+          {
+            $group: {
+              _id:
+                null,
+
+              totalCollected: {
+                $sum:
+                  "$paidAmount",
+              },
+
+              totalPending: {
+                $sum:
+                  "$pendingAmount",
+              },
+            },
+          },
+        ]);
+
+      const [
+        overdueCount,
+        upcomingCount,
+      ] =
+        await Promise.all([
+          AmcInvoice.countDocuments({
+            isDeleted:
+              false,
+
+            status: {
+              $ne:
+                "Cancelled",
+            },
+
+            paymentStatus:
+              "Overdue",
+
+            pendingAmount: {
+              $gt:
+                0,
+            },
+          }),
+
+          AmcContract.countDocuments({
+            isDeleted:
+              false,
+
+            status:
+              "Upcoming",
+          }),
+        ]);
+
+      return res.status(200).json({
+        success:
+          true,
+
+        data,
+
+        count:
+          data.length,
+
+        stats: {
+          totalCollected:
+            roundAmcAmount(
+              invoiceStats[0]
+                ?.totalCollected ||
+              0
+            ),
+
+          totalPending:
+            roundAmcAmount(
+              invoiceStats[0]
+                ?.totalPending ||
+              0
+            ),
+
+          overdueCount,
+
+          upcomingCount,
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Load AMC contracts with invoices error:",
+        error
+      );
+
+      return res.status(500).json({
+        success:
+          false,
+
+        message:
+          error.message ||
+          "Unable to load AMC contracts.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   GET ONE AMC CONTRACT
+   GET /api/admin/amc/contract/:id
+===================================================== */
+
+/* =====================================================
+   GET ONE AMC CONTRACT WITH INVOICE HISTORY
+   GET /api/admin/amc/contract/:id
+===================================================== */
+
+router.get(
+  "/amc/contract/:id",
+  async (req, res) => {
+    try {
+      const {
+        id,
+      } = req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success:
+            false,
+
+          message:
+            "Invalid AMC contract ID.",
+        });
+      }
+
+      const contract =
+        await AmcContract.findOne({
+          _id:
+            id,
+
+          isDeleted:
+            false,
+        });
+
+      if (!contract) {
+        return res.status(404).json({
+          success:
+            false,
+
+          message:
+            "AMC contract was not found.",
+        });
+      }
+
+      /*
+       * Load every permanent invoice belonging
+       * to this AMC contract.
+       */
+      const invoices =
+        await AmcInvoice.find({
+          amcContractId:
+            contract._id,
+
+          isDeleted:
+            false,
+        }).sort({
+          invoiceDate:
+            -1,
+
+          createdAt:
+            -1,
+        });
+
+      /*
+       * Resolve the current invoice using the linked ID.
+       * For older data, fall back to invoice code or the
+       * newest invoice.
+       */
+      let currentInvoice =
+        invoices.find(
+          (invoice) =>
+            String(
+              invoice._id
+            ) ===
+            String(
+              contract.currentInvoiceId ||
+              ""
+            )
+        ) ||
+        invoices.find(
+          (invoice) =>
+            invoice.invoiceCode ===
+            (
+              contract.currentInvoiceCode ||
+              contract.invoiceCode
+            )
+        ) ||
+        invoices[0] ||
+        null;
+
+      /*
+       * Update overdue status using invoice due date,
+       * not the AMC expiry date.
+       */
+      if (
+        currentInvoice &&
+        currentInvoice.status !==
+          "Cancelled"
+      ) {
+        const today =
+          new Date();
+
+        today.setHours(
+          0,
+          0,
+          0,
+          0
+        );
+
+        const invoiceDueDate =
+          currentInvoice.dueDate
+            ? new Date(
+                currentInvoice.dueDate
+              )
+            : null;
+
+        if (invoiceDueDate) {
+          invoiceDueDate.setHours(
+            0,
+            0,
+            0,
+            0
+          );
+        }
+
+        let calculatedPaymentStatus =
+          currentInvoice.paymentStatus;
+
+        if (
+          Number(
+            currentInvoice.pendingAmount ||
+            0
+          ) <= 0
+        ) {
+          calculatedPaymentStatus =
+            "Paid";
+        } else if (
+          Number(
+            currentInvoice.paidAmount ||
+            0
+          ) > 0
+        ) {
+          calculatedPaymentStatus =
+            "Partially Paid";
+        } else if (
+          invoiceDueDate &&
+          !Number.isNaN(
+            invoiceDueDate.getTime()
+          ) &&
+          invoiceDueDate < today
+        ) {
+          calculatedPaymentStatus =
+            "Overdue";
+        } else {
+          calculatedPaymentStatus =
+            "Pending";
+        }
+
+        if (
+          calculatedPaymentStatus !==
+          currentInvoice.paymentStatus
+        ) {
+          currentInvoice.paymentStatus =
+            calculatedPaymentStatus;
+
+          currentInvoice.updatedBy =
+            req.user._id;
+
+          currentInvoice.updatedByName =
+            req.user.name ||
+            "Admin";
+
+          await currentInvoice.save();
+        }
+
+        /*
+         * Keep the overall contract status synchronized
+         * with the current invoice payment status.
+         */
+        let calculatedContractStatus =
+          contract.status;
+
+        if (
+          contract.status !==
+          "Cancelled"
+        ) {
+          if (
+            calculatedPaymentStatus ===
+            "Paid"
+          ) {
+            calculatedContractStatus =
+              "Paid";
+          } else if (
+            calculatedPaymentStatus ===
+            "Partially Paid"
+          ) {
+            calculatedContractStatus =
+              "Partially Paid";
+          } else if (
+            calculatedPaymentStatus ===
+            "Overdue"
+          ) {
+            calculatedContractStatus =
+              "Overdue";
+          } else {
+            const startDate =
+              contract.startDate
+                ? new Date(
+                    contract.startDate
+                  )
+                : null;
+
+            if (startDate) {
+              startDate.setHours(
+                0,
+                0,
+                0,
+                0
+              );
+            }
+
+            calculatedContractStatus =
+              startDate &&
+              !Number.isNaN(
+                startDate.getTime()
+              ) &&
+              startDate > today
+                ? "Upcoming"
+                : "Pending";
+          }
+        }
+
+        const contractNeedsUpdate =
+          calculatedContractStatus !==
+            contract.status ||
+          String(
+            contract.currentInvoiceId ||
+            ""
+          ) !==
+            String(
+              currentInvoice._id
+            ) ||
+          contract.currentInvoiceCode !==
+            currentInvoice.invoiceCode;
+
+        if (contractNeedsUpdate) {
+          contract.status =
+            calculatedContractStatus;
+
+          contract.currentInvoiceId =
+            currentInvoice._id;
+
+          contract.currentInvoiceCode =
+            currentInvoice.invoiceCode;
+
+          /*
+           * Compatibility copies only.
+           * Invoice remains the financial source of truth.
+           */
+          contract.invoiceCode =
+            currentInvoice.invoiceCode;
+
+          contract.invoiceDate =
+            currentInvoice.invoiceDate;
+
+          contract.taxableAmount =
+            currentInvoice.taxableAmount;
+
+          contract.cgstRate =
+            currentInvoice.cgstRate;
+
+          contract.cgstAmount =
+            currentInvoice.cgstAmount;
+
+          contract.sgstRate =
+            currentInvoice.sgstRate;
+
+          contract.sgstAmount =
+            currentInvoice.sgstAmount;
+
+          contract.igstRate =
+            currentInvoice.igstRate;
+
+          contract.igstAmount =
+            currentInvoice.igstAmount;
+
+          contract.totalTaxAmount =
+            currentInvoice.totalTaxAmount;
+
+          contract.totalAmount =
+            currentInvoice.totalAmount;
+
+          contract.paidAmount =
+            currentInvoice.paidAmount;
+
+          contract.pendingAmount =
+            currentInvoice.pendingAmount;
+
+          contract.dueDate =
+            currentInvoice.dueDate;
+
+          contract.updatedBy =
+            req.user._id;
+
+          contract.updatedByName =
+            req.user.name ||
+            "Admin";
+
+          await contract.save();
+        }
+      }
+
+      const [
+        payments,
+        reminders,
+      ] =
+        await Promise.all([
+          AmcPayment.find({
+            amcContractId:
+              contract._id,
+
+            isDeleted:
+              false,
+          }).sort({
+            paymentDate:
+              -1,
+
+            createdAt:
+              -1,
+          }),
+
+          AmcReminder.find({
+            amcContractId:
+              contract._id,
+
+            isDeleted:
+              false,
+          }).sort({
+            sentAt:
+              -1,
+
+            createdAt:
+              -1,
+          }),
+        ]);
+
+      /*
+       * Group payments by permanent invoice.
+       */
+      const paymentsByInvoice =
+        new Map();
+
+      payments.forEach(
+        (payment) => {
+          const invoiceId =
+            String(
+              payment.amcInvoiceId ||
+              ""
+            );
+
+          if (
+            !paymentsByInvoice.has(
+              invoiceId
+            )
+          ) {
+            paymentsByInvoice.set(
+              invoiceId,
+              []
+            );
+          }
+
+          paymentsByInvoice
+            .get(
+              invoiceId
+            )
+            .push(
+              amcPaymentResponse(
+                payment
+              )
+            );
+        }
+      );
+
+      const invoiceHistory =
+        invoices.map(
+          (invoice) => ({
+            ...amcInvoiceResponse(
+              invoice
+            ),
+
+            isCurrent:
+              String(
+                invoice._id
+              ) ===
+              String(
+                currentInvoice?._id ||
+                ""
+              ),
+
+            payments:
+              paymentsByInvoice.get(
+                String(
+                  invoice._id
+                )
+              ) ||
+              [],
+
+            paymentCount:
+              (
+                paymentsByInvoice.get(
+                  String(
+                    invoice._id
+                  )
+                ) ||
+                []
+              ).length,
+          })
+        );
+
+      const contractData =
+        mergeAmcContractWithInvoice(
+          contract,
+          currentInvoice
+        );
+
+      return res.status(200).json({
+        success:
+          true,
+
+        data: {
+          ...contractData,
+
+          currentInvoice:
+            currentInvoice
+              ? {
+                  ...amcInvoiceResponse(
+                    currentInvoice
+                  ),
+
+                  payments:
+                    paymentsByInvoice.get(
+                      String(
+                        currentInvoice._id
+                      )
+                    ) ||
+                    [],
+                }
+              : null,
+
+          invoice:
+            currentInvoice
+              ? amcInvoiceResponse(
+                  currentInvoice
+                )
+              : null,
+
+          invoices:
+            invoiceHistory,
+
+          invoiceHistory,
+
+          invoiceCount:
+            invoices.length,
+
+          payments:
+            payments.map(
+              amcPaymentResponse
+            ),
+
+          reminders:
+            reminders.map(
+              amcReminderResponse
+            ),
+
+          paymentCount:
+            payments.length,
+
+          reminderCount:
+            reminders.length,
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Load AMC contract with invoice history error:",
+        error
+      );
+
+      return res.status(500).json({
+        success:
+          false,
+
+        message:
+          error.message ||
+          "Unable to load AMC contract.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   UPDATE AMC CONTRACT
+   PUT /api/admin/amc/contract/:id
+===================================================== */
+
+router.put(
+  "/amc/contract/:id",
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid AMC contract ID.",
+        });
+      }
+
+      const contract = await AmcContract.findOne({
+        _id: id,
+        isDeleted: false,
+      });
+
+      if (!contract) {
+        return res.status(404).json({
+          success: false,
+          message: "AMC contract was not found.",
+        });
+      }
+
+      const {
+        plan,
+        licensedUsers,
+        startDate,
+        expiryDate,
+        dueDate,
+        taxableAmount,
+        cgstRate,
+        sgstRate,
+        igstRate,
+        assignedEmployeeId,
+        notes,
+        status,
+      } = req.body;
+
+      // Validate dates
+      let parsedStartDate = contract.startDate;
+      if (startDate) {
+        const d = new Date(startDate);
+        if (Number.isNaN(d.getTime())) {
+          return res.status(400).json({ success: false, message: "Invalid AMC start date." });
+        }
+        parsedStartDate = d;
+      }
+
+      let parsedExpiryDate = contract.expiryDate;
+      if (expiryDate) {
+        const d = new Date(expiryDate);
+        if (Number.isNaN(d.getTime())) {
+          return res.status(400).json({ success: false, message: "Invalid AMC expiry date." });
+        }
+        parsedExpiryDate = d;
+      }
+
+      if (parsedExpiryDate <= parsedStartDate) {
+        return res.status(400).json({
+          success: false,
+          message: "AMC expiry date must be after the start date.",
+        });
+      }
+
+      let parsedDueDate = contract.dueDate;
+      if (dueDate) {
+        const d = new Date(dueDate);
+        if (Number.isNaN(d.getTime())) {
+          return res.status(400).json({ success: false, message: "Invalid payment due date." });
+        }
+        parsedDueDate = d;
+      }
+
+      const normalizedTaxableAmount = taxableAmount !== undefined ? Number(taxableAmount) : contract.taxableAmount;
+      if (!Number.isFinite(normalizedTaxableAmount) || normalizedTaxableAmount <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Enter a valid AMC taxable amount.",
+        });
+      }
+
+      const normalizedUsers = licensedUsers !== undefined ? Math.max(Number(licensedUsers || 1), 1) : contract.licensedUsers;
+
+      const allowedPlans = ["Basic", "Standard", "Premium", "Custom"];
+      if (plan && allowedPlans.includes(plan)) {
+        contract.plan = plan;
+      }
+
+      contract.licensedUsers = normalizedUsers;
+      contract.startDate = parsedStartDate;
+      contract.expiryDate = parsedExpiryDate;
+      contract.dueDate = parsedDueDate;
+
+      const effectiveCgstRate = cgstRate !== undefined ? Number(cgstRate) : (contract.cgstRate ?? 9);
+      const effectiveSgstRate = sgstRate !== undefined ? Number(sgstRate) : (contract.sgstRate ?? 9);
+      const effectiveIgstRate = igstRate !== undefined ? Number(igstRate) : (contract.igstRate ?? 0);
+
+      const calculatedAmounts = calculateAmcAmounts({
+        taxableAmount: normalizedTaxableAmount,
+        cgstRate: effectiveCgstRate,
+        sgstRate: effectiveSgstRate,
+        igstRate: effectiveIgstRate,
+      });
+
+      contract.taxableAmount = calculatedAmounts.taxableAmount;
+      contract.cgstRate = calculatedAmounts.cgstRate;
+      contract.cgstAmount = calculatedAmounts.cgstAmount;
+      contract.sgstRate = calculatedAmounts.sgstRate;
+      contract.sgstAmount = calculatedAmounts.sgstAmount;
+      contract.igstRate = calculatedAmounts.igstRate;
+      contract.igstAmount = calculatedAmounts.igstAmount;
+      contract.totalTaxAmount = calculatedAmounts.totalTaxAmount;
+      contract.totalAmount = calculatedAmounts.totalAmount;
+
+      const currentPaid = Number(contract.paidAmount || 0);
+      contract.pendingAmount = Math.max(0, calculatedAmounts.totalAmount - currentPaid);
+
+      if (status && ["Active", "Pending", "Upcoming", "Overdue", "Paid", "Cancelled"].includes(status)) {
+        if (status === "Cancelled" && currentPaid > 0) {
+          return res.status(400).json({
+            success: false,
+            message: "Cannot cancel an AMC contract that already has recorded payments. Reverse or adjust the payments first.",
+          });
+        }
+        contract.status = status;
+      } else {
+        if (currentPaid >= calculatedAmounts.totalAmount) {
+          contract.status = "Paid";
+        } else if (currentPaid > 0) {
+          contract.status = "Partially Paid";
+        } else {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          if (parsedDueDate && new Date(parsedDueDate) < today) {
+            contract.status = "Overdue";
+          } else if (parsedStartDate && new Date(parsedStartDate) > today) {
+            contract.status = "Upcoming";
+          } else {
+            contract.status = "Pending";
+          }
+        }
+      }
+
+      if (assignedEmployeeId !== undefined) {
+        if (assignedEmployeeId) {
+          const resolvedEmployee = await resolveAmcEmployee(assignedEmployeeId);
+          contract.assignedEmployeeId = resolvedEmployee.assignedEmployeeId;
+          contract.assignedEmployeeCode = resolvedEmployee.assignedEmployeeCode;
+          contract.assignedEmployeeName = resolvedEmployee.assignedEmployeeName;
+        } else {
+          contract.assignedEmployeeId = null;
+          contract.assignedEmployeeCode = "";
+          contract.assignedEmployeeName = "Unassigned";
+        }
+      }
+
+      if (notes !== undefined) {
+        contract.notes = String(notes || "").trim();
+      }
+
+      contract.updatedBy = req.user._id;
+      contract.updatedByName = req.user.name || "Admin";
+
+      contract.timeline = contract.timeline || [];
+      contract.timeline.push({
+        type: "updated",
+        title: "AMC contract updated",
+        description: `Contract ${contract.contractCode} details updated.`,
+        performedBy: req.user._id,
+        performedByName: req.user.name || "Admin",
+        performedByRole: req.user.role || "admin",
+      });
+
+      await contract.save();
+
+      if (contract.currentInvoiceId) {
+        const currentInvoice = await AmcInvoice.findOne({
+          _id: contract.currentInvoiceId,
+          isDeleted: false,
+        });
+
+        if (currentInvoice) {
+          currentInvoice.plan = contract.plan;
+          currentInvoice.licensedUsers = contract.licensedUsers;
+          currentInvoice.contractStartDate = contract.startDate;
+          currentInvoice.contractExpiryDate = contract.expiryDate;
+          currentInvoice.dueDate = contract.dueDate;
+          currentInvoice.taxableAmount = contract.taxableAmount;
+          currentInvoice.cgstRate = contract.cgstRate;
+          currentInvoice.cgstAmount = contract.cgstAmount;
+          currentInvoice.sgstRate = contract.sgstRate;
+          currentInvoice.sgstAmount = contract.sgstAmount;
+          currentInvoice.igstRate = contract.igstRate;
+          currentInvoice.igstAmount = contract.igstAmount;
+          currentInvoice.totalTaxAmount = contract.totalTaxAmount;
+          currentInvoice.totalAmount = contract.totalAmount;
+          currentInvoice.pendingAmount = Math.max(0, contract.totalAmount - (currentInvoice.paidAmount || 0));
+          if (currentInvoice.paidAmount >= currentInvoice.totalAmount) {
+            currentInvoice.paymentStatus = "Paid";
+          } else if (currentInvoice.paidAmount > 0) {
+            currentInvoice.paymentStatus = "Partially Paid";
+          } else {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            if (currentInvoice.dueDate && new Date(currentInvoice.dueDate) < today) {
+              currentInvoice.paymentStatus = "Overdue";
+            } else {
+              currentInvoice.paymentStatus = "Pending";
+            }
+          }
+          currentInvoice.notes = contract.notes;
+          currentInvoice.updatedBy = req.user._id;
+          currentInvoice.updatedByName = req.user.name || "Admin";
+          await currentInvoice.save();
+        }
+      }
+
+      if (contract.clientId) {
+        const client = await Client.findById(contract.clientId);
+        if (client) {
+          if (contract.clientProductId && client.products) {
+            const clientProduct = client.products.id(contract.clientProductId);
+            if (clientProduct) {
+              clientProduct.supportType = contract.plan === "Custom" ? clientProduct.supportType : contract.plan;
+              clientProduct.amcStatus = contract.status === "Upcoming" ? "Not Started" : contract.status;
+              if (contract.expiryDate) {
+                clientProduct.expiryDate = new Date(contract.expiryDate).toISOString().slice(0, 10);
+              }
+            }
+          }
+          client.amcStatus = contract.status === "Upcoming" ? "Not Started" : contract.status;
+          if (contract.expiryDate) {
+            client.nextRenewal = new Date(contract.expiryDate).toISOString().slice(0, 10);
+          }
+          client.updatedBy = req.user._id;
+          client.updatedByName = req.user.name || "Admin";
+          await client.save();
+        }
+      }
+
+      await createActivityLog({
+        action: "AMC Contract Updated",
+        category: "AMC",
+        description: `${contract.contractCode} was updated.`,
+        entityType: "amc",
+        entityId: contract._id,
+        entityCode: contract.contractCode,
+        clientId: contract.clientId,
+        clientName: contract.clientName,
+        performedBy: req.user._id,
+        performedByName: req.user.name || "Admin",
+        performedByRole: req.user.role || "admin",
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "AMC contract updated successfully.",
+        data: amcContractResponse(contract),
+      });
+    } catch (error) {
+      console.error("Update AMC contract error:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message || "Unable to update AMC contract.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   DELETE AMC CONTRACT (SOFT DELETE)
+   DELETE /api/admin/amc/contract/:id
+===================================================== */
+
+router.delete(
+  "/amc/contract/:id",
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid AMC contract ID.",
+        });
+      }
+
+      const contract = await AmcContract.findOne({
+        _id: id,
+        isDeleted: false,
+      });
+
+      if (!contract) {
+        return res.status(404).json({
+          success: false,
+          message: "AMC contract was not found.",
+        });
+      }
+
+      const paymentCount = await AmcPayment.countDocuments({
+        amcContractId: contract._id,
+        isDeleted: false,
+      });
+
+      if (paymentCount > 0) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Cannot delete an AMC contract that already has recorded payments. Retain historical financial records for audit integrity.",
+        });
+      }
+
+      const now = new Date();
+
+      contract.isDeleted = true;
+      contract.status = "Cancelled";
+      contract.deletedAt = now;
+      contract.deletedBy = req.user._id;
+      contract.deletedByName = req.user.name || "Admin";
+      await contract.save();
+
+      await AmcInvoice.updateMany(
+        { amcContractId: contract._id, isDeleted: false },
+        {
+          $set: {
+            isDeleted: true,
+            status: "Cancelled",
+            deletedAt: now,
+            deletedBy: req.user._id,
+            deletedByName: req.user.name || "Admin",
+          },
+        }
+      );
+
+      await AmcReminder.updateMany(
+        { amcContractId: contract._id, isDeleted: false },
+        {
+          $set: {
+            isDeleted: true,
+            deletedAt: now,
+          },
+        }
+      );
+
+      if (contract.clientId) {
+        const client = await Client.findById(contract.clientId);
+        if (client) {
+          const remainingProductContract = await AmcContract.findOne({
+            clientId: contract.clientId,
+            clientProductId: contract.clientProductId,
+            isDeleted: false,
+            status: { $nin: ["Cancelled"] },
+          }).sort({ expiryDate: -1 });
+
+          if (contract.clientProductId && client.products) {
+            const clientProduct = client.products.id(contract.clientProductId);
+            if (clientProduct) {
+              if (remainingProductContract) {
+                clientProduct.amcStatus = remainingProductContract.status;
+                clientProduct.expiryDate = remainingProductContract.expiryDate
+                  ? new Date(remainingProductContract.expiryDate).toISOString().slice(0, 10)
+                  : "";
+              } else {
+                clientProduct.amcStatus = "Not Started";
+                clientProduct.expiryDate = "";
+              }
+            }
+          }
+
+          const remainingClientContract = await AmcContract.findOne({
+            clientId: contract.clientId,
+            isDeleted: false,
+            status: { $nin: ["Cancelled"] },
+          }).sort({ expiryDate: -1 });
+
+          if (remainingClientContract) {
+            client.amcStatus = remainingClientContract.status;
+            client.nextRenewal = remainingClientContract.expiryDate
+              ? new Date(remainingClientContract.expiryDate).toISOString().slice(0, 10)
+              : "";
+          } else {
+            client.amcStatus = "Not Started";
+            client.nextRenewal = "";
+          }
+
+          client.updatedBy = req.user._id;
+          client.updatedByName = req.user.name || "Admin";
+          await client.save();
+        }
+      }
+
+      await createActivityLog({
+        action: "AMC Contract Deleted",
+        category: "AMC",
+        description: `${contract.contractCode} (${contract.productName}) was deleted.`,
+        entityType: "amc",
+        entityId: contract._id,
+        entityCode: contract.contractCode,
+        clientId: contract.clientId,
+        clientName: contract.clientName,
+        performedBy: req.user._id,
+        performedByName: req.user.name || "Admin",
+        performedByRole: req.user.role || "admin",
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "AMC contract deleted successfully.",
+      });
+    } catch (error) {
+      console.error("Delete AMC contract error:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message || "Unable to delete AMC contract.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   RECORD AMC INVOICE PAYMENT
+   POST /api/admin/amc/payment
+
+   Financial source of truth:
+   AmcInvoice -> AmcPayment
+
+   Accepted body:
+   {
+     amcInvoiceId,
+     amcContractId, // optional fallback
+     amount,
+     paymentDate,
+     mode,
+     referenceNo,
+     notes
+   }
+===================================================== */
+
+
+/* =====================================================
+   AMC PAYMENT LIST
+   GET /api/admin/amc-payments
+
+   Used by:
+   Payments & Collections
+
+   IMPORTANT:
+   This reads the existing AmcPayment collection.
+   It does NOT create a second payment collection.
+===================================================== */
+
+/* =====================================================
+   AMC PAYMENT LIST
+   GET /api/admin/amc-payments
+
+   Enterprise collection view.
+
+   IMPORTANT:
+   AmcPayment = actual receipt/installment
+   AmcInvoice = AMC cycle + financial source of truth
+
+   No invoice values are duplicated into AmcPayment.
+===================================================== */
+
+router.get(
+  "/amc-payments",
+  async (req, res) => {
+    try {
+      const limit =
+        Math.min(
+          Math.max(
+            Number(
+              req.query.limit ||
+              500
+            ),
+            1
+          ),
+          1000
+        );
+
+      /*
+       * STEP 1:
+       * Load actual AMC payment/installment records.
+       */
+      const payments =
+        await AmcPayment.find({
+          isDeleted: {
+            $ne: true,
+          },
+        })
+          .sort({
+            paymentDate: -1,
+            createdAt: -1,
+          })
+          .limit(limit)
+          .lean();
+
+      /*
+       * STEP 2:
+       * Collect the unique AMC invoice IDs.
+       *
+       * Example:
+       *
+       * AMC invoice = ₹10,000
+       *
+       * Payment 1 = ₹4,000
+       * Payment 2 = ₹6,000
+       *
+       * Both payments point to the SAME amcInvoiceId.
+       */
+      const invoiceIds =
+        [
+          ...new Set(
+            payments
+              .map(
+                (payment) =>
+                  String(
+                    payment.amcInvoiceId ||
+                    ""
+                  )
+              )
+              .filter(
+                (id) =>
+                  mongoose.Types.ObjectId.isValid(
+                    id
+                  )
+              )
+          ),
+        ];
+
+      /*
+       * STEP 3:
+       * Load the permanent AMC invoices.
+       */
+      const invoices =
+        invoiceIds.length > 0
+          ? await AmcInvoice.find({
+              _id: {
+                $in:
+                  invoiceIds,
+              },
+
+              isDeleted: {
+                $ne: true,
+              },
+            }).lean()
+          : [];
+
+      /*
+       * Fast invoice lookup.
+       */
+      const invoiceMap =
+        new Map(
+          invoices.map(
+            (invoice) => [
+              String(
+                invoice._id
+              ),
+              invoice,
+            ]
+          )
+        );
+
+      /*
+       * STEP 4:
+       * Return every payment with its AMC cycle information.
+       *
+       * We are NOT writing these invoice values into
+       * AmcPayment.
+       *
+       * They are joined only while reading.
+       */
+      const data =
+        payments.map(
+          (payment) => {
+            const invoice =
+              invoiceMap.get(
+                String(
+                  payment.amcInvoiceId ||
+                  ""
+                )
+              ) ||
+              null;
+
+            return {
+              /*
+               * PAYMENT / INSTALLMENT
+               */
+              id:
+                payment._id,
+
+              _id:
+                payment._id,
+
+              paymentCode:
+                payment.paymentCode ||
+                "",
+
+              paymentNumber:
+                Number(
+                  payment.paymentNumber ||
+                  0
+                ),
+
+              paymentDate:
+                payment.paymentDate ||
+                null,
+
+              amount:
+                Number(
+                  payment.amount ||
+                  0
+                ),
+
+              mode:
+                payment.mode ||
+                "",
+
+              referenceNo:
+                payment.referenceNo ||
+                "",
+
+              notes:
+                payment.notes ||
+                "",
+
+              /*
+               * AMC REFERENCES
+               */
+              amcContractId:
+                payment.amcContractId ||
+                invoice?.amcContractId ||
+                null,
+
+              contractCode:
+                payment.contractCode ||
+                invoice?.contractCode ||
+                "",
+
+              amcInvoiceId:
+                payment.amcInvoiceId ||
+                invoice?._id ||
+                null,
+
+              invoiceCode:
+                payment.invoiceCode ||
+                invoice?.invoiceCode ||
+                "",
+
+              invoiceNo:
+                payment.invoiceCode ||
+                invoice?.invoiceCode ||
+                "",
+
+              /*
+               * CLIENT
+               */
+              clientId:
+                payment.clientId ||
+                invoice?.clientId ||
+                null,
+
+              clientCode:
+                payment.clientCode ||
+                invoice?.clientCode ||
+                "",
+
+              clientName:
+                payment.clientName ||
+                invoice?.clientName ||
+                "",
+
+              /*
+               * PRODUCT
+               */
+              productId:
+                payment.productId ||
+                invoice?.productId ||
+                null,
+
+              productCode:
+                payment.productCode ||
+                invoice?.productCode ||
+                "",
+
+              productName:
+                payment.productName ||
+                invoice?.productName ||
+                "",
+
+              productVersion:
+                invoice?.productVersion ||
+                "",
+
+              plan:
+                invoice?.plan ||
+                "",
+
+              licensedUsers:
+                Number(
+                  invoice?.licensedUsers ||
+                  0
+                ),
+
+              /*
+               * AMC CYCLE / PERIOD
+
+               * THIS defines which AMC year/cycle the
+               * payment belongs to.
+               *
+               * Do NOT determine AMC cycle from paymentDate.
+               */
+              contractStartDate:
+                invoice?.contractStartDate ||
+                null,
+
+              contractExpiryDate:
+                invoice?.contractExpiryDate ||
+                null,
+
+              invoiceDate:
+                invoice?.invoiceDate ||
+                null,
+
+              dueDate:
+                invoice?.dueDate ||
+                null,
+
+              invoiceType:
+                invoice?.invoiceType ||
+                "",
+
+              /*
+               * AMC INVOICE FINANCIAL TOTALS
+               */
+              invoiceGrossAmount:
+                Number(
+                  invoice?.grossAmount ||
+                  0
+                ),
+
+              invoiceDiscountAmount:
+                Number(
+                  invoice?.discountAmount ||
+                  0
+                ),
+
+              invoiceTaxableAmount:
+                Number(
+                  invoice?.taxableAmount ||
+                  0
+                ),
+
+              invoiceCgstAmount:
+                Number(
+                  invoice?.cgstAmount ||
+                  0
+                ),
+
+              invoiceSgstAmount:
+                Number(
+                  invoice?.sgstAmount ||
+                  0
+                ),
+
+              invoiceIgstAmount:
+                Number(
+                  invoice?.igstAmount ||
+                  0
+                ),
+
+              invoiceTotalAmount:
+                Number(
+                  invoice?.totalAmount ||
+                  0
+                ),
+
+              invoicePaidAmount:
+                Number(
+                  invoice?.paidAmount ||
+                  0
+                ),
+
+              invoicePendingAmount:
+                Number(
+                  invoice?.pendingAmount ||
+                  0
+                ),
+
+              invoicePaymentStatus:
+                invoice?.paymentStatus ||
+                "Unpaid",
+
+              invoiceStatus:
+                invoice?.status ||
+                "",
+
+              /*
+               * AUDIT
+               */
+              receivedBy:
+                payment.receivedBy ||
+                null,
+
+              receivedByName:
+                payment.receivedByName ||
+                payment.createdByName ||
+                "",
+
+              createdBy:
+                payment.createdBy ||
+                null,
+
+              createdByName:
+                payment.createdByName ||
+                "",
+
+              createdAt:
+                payment.createdAt ||
+                null,
+
+              updatedAt:
+                payment.updatedAt ||
+                null,
+            };
+          }
+        );
+
+      /*
+       * STEP 5:
+       * Also prepare invoice/cycle summary.
+       *
+       * This is useful for the frontend because all
+       * installments belonging to one AMC invoice
+       * can be shown under one AMC cycle.
+       */
+      const cycleMap =
+        new Map();
+
+      data.forEach(
+        (payment) => {
+          const key =
+            String(
+              payment.amcInvoiceId ||
+              payment.invoiceCode ||
+              ""
+            );
+
+          if (!key) {
+            return;
+          }
+
+          if (
+            !cycleMap.has(
+              key
+            )
+          ) {
+            cycleMap.set(
+              key,
+              {
+                amcInvoiceId:
+                  payment.amcInvoiceId,
+
+                invoiceCode:
+                  payment.invoiceCode,
+
+                amcContractId:
+                  payment.amcContractId,
+
+                contractCode:
+                  payment.contractCode,
+
+                clientId:
+                  payment.clientId,
+
+                clientCode:
+                  payment.clientCode,
+
+                clientName:
+                  payment.clientName,
+
+                productId:
+                  payment.productId,
+
+                productCode:
+                  payment.productCode,
+
+                productName:
+                  payment.productName,
+
+                productVersion:
+                  payment.productVersion,
+
+                plan:
+                  payment.plan,
+
+                licensedUsers:
+                  payment.licensedUsers,
+
+                contractStartDate:
+                  payment.contractStartDate,
+
+                contractExpiryDate:
+                  payment.contractExpiryDate,
+
+                invoiceDate:
+                  payment.invoiceDate,
+
+                dueDate:
+                  payment.dueDate,
+
+                invoiceTotalAmount:
+                  payment.invoiceTotalAmount,
+
+                invoicePaidAmount:
+                  payment.invoicePaidAmount,
+
+                invoicePendingAmount:
+                  payment.invoicePendingAmount,
+
+                invoicePaymentStatus:
+                  payment.invoicePaymentStatus,
+
+                installments:
+                  [],
+
+                installmentCount:
+                  0,
+
+                collectedThroughPayments:
+                  0,
+              }
+            );
+          }
+
+          const cycle =
+            cycleMap.get(
+              key
+            );
+
+          cycle.installments.push({
+            id:
+              payment.id,
+
+            paymentCode:
+              payment.paymentCode,
+
+            paymentDate:
+              payment.paymentDate,
+
+            amount:
+              payment.amount,
+
+            mode:
+              payment.mode,
+
+            referenceNo:
+              payment.referenceNo,
+
+            notes:
+              payment.notes,
+          });
+
+          cycle.installmentCount +=
+            1;
+
+          cycle.collectedThroughPayments +=
+            Number(
+              payment.amount ||
+              0
+            );
+        }
+      );
+
+      const cycles =
+        Array.from(
+          cycleMap.values()
+        ).sort(
+          (
+            first,
+            second
+          ) =>
+            new Date(
+              second.contractStartDate ||
+              second.invoiceDate ||
+              0
+            ).getTime() -
+            new Date(
+              first.contractStartDate ||
+              first.invoiceDate ||
+              0
+            ).getTime()
+        );
+
+      return res.status(200).json({
+        success:
+          true,
+
+        count:
+          data.length,
+
+        /*
+         * Old frontend remains compatible.
+         */
+        data,
+
+        payments:
+          data,
+
+        /*
+         * NEW enterprise AMC-cycle structure.
+         */
+        cycles,
+
+        cycleCount:
+          cycles.length,
+      });
+    } catch (error) {
+      console.error(
+        "Load AMC payments error:",
+        error
+      );
+
+      return res.status(500).json({
+        success:
+          false,
+
+        message:
+          error.message ||
+          "Unable to load AMC payments.",
+      });
+    }
+  }
+);
+router.post(
+  "/amc/payment",
+  validate(amcPaymentZodSchema),
+  async (req, res) => {
+    try {
+      const {
+        amcInvoiceId,
+        amcContractId,
+        amount,
+        paymentDate,
+        mode = "Bank Transfer",
+        referenceNo = "",
+        notes = "",
+      } = req.body || {};
+
+      const normalizedAmount = roundAmcAmount(amount);
+
+      if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Enter a valid payment amount.",
+        });
+      }
+
+      if (!paymentDate) {
+        return res.status(400).json({
+          success: false,
+          message: "Payment date is required.",
+        });
+      }
+
+      const parsedPaymentDate = new Date(`${paymentDate}T00:00:00`);
+
+      if (Number.isNaN(parsedPaymentDate.getTime())) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid payment date.",
+        });
+      }
+
+      const allowedModes = [
+        "Cash",
+        "Bank Transfer",
+        "UPI",
+        "Cheque",
+        "Card",
+        "Other",
+      ];
+
+      const normalizedMode = allowedModes.includes(mode) ? mode : "Other";
+
+      const normalizedReferenceNo = String(referenceNo || "").trim();
+      const normalizedNotes = String(notes || "").trim();
+
+      if (
+        ["Bank Transfer", "UPI", "Cheque", "Card"].includes(normalizedMode) &&
+        !normalizedReferenceNo
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: `Reference number is required for ${normalizedMode}.`,
+        });
+      }
+
+      const validInvoiceId =
+        amcInvoiceId && mongoose.Types.ObjectId.isValid(amcInvoiceId);
+      const validContractId =
+        amcContractId && mongoose.Types.ObjectId.isValid(amcContractId);
+
+      if (!validInvoiceId && !validContractId) {
+        return res.status(400).json({
+          success: false,
+          message: "A valid AMC invoice ID is required.",
+        });
+      }
+
+      /* =================================================
+         IDEMPOTENCY HANDLING (Tier 1 & Tier 2)
+      ================================================= */
+      const idempotencyKey =
+        req.headers["idempotency-key"] ||
+        req.headers["x-idempotency-key"] ||
+        req.body?.idempotencyKey ||
+        null;
+      const normalizedIdempotencyKey = idempotencyKey
+        ? String(idempotencyKey).trim()
+        : null;
+
+      const payloadHash = crypto
+        .createHash("sha256")
+        .update(
+          JSON.stringify({
+            amcInvoiceId: amcInvoiceId || "",
+            amcContractId: amcContractId || "",
+            amount: normalizedAmount,
+            paymentDate,
+            mode: normalizedMode,
+            referenceNo: normalizedReferenceNo,
+          })
+        )
+        .digest("hex");
+
+      if (normalizedIdempotencyKey) {
+        // Tier 1: In-Flight / Fast Cache Check
+        const existingLog = await IdempotencyLog.findOne({
+          idempotencyKey: normalizedIdempotencyKey,
+        });
+
+        if (existingLog) {
+          if (existingLog.payloadHash === payloadHash) {
+            return res.status(200).json({
+              ...(existingLog.responseBody || {}),
+              isReplay: true,
+            });
+          } else {
+            return res.status(422).json({
+              success: false,
+              message:
+                "Idempotency key conflict: Request parameters do not match original transaction.",
+            });
+          }
+        }
+
+        // Tier 2: Durable Ledger Check by Idempotency Key
+        const existingPaymentByKey = await AmcPayment.findOne({
+          idempotencyKey: normalizedIdempotencyKey,
+          isDeleted: false,
+        });
+
+        if (existingPaymentByKey) {
+          const inv = await AmcInvoice.findOne({
+            _id: existingPaymentByKey.amcInvoiceId,
+            isDeleted: false,
+          });
+          const cont = await AmcContract.findOne({
+            _id: existingPaymentByKey.amcContractId,
+            isDeleted: false,
+          });
+          const contractData = cont && inv ? mergeAmcContractWithInvoice(cont, inv) : null;
+          return res.status(200).json({
+            success: true,
+            isReplay: true,
+            message: "AMC payment already recorded.",
+            data: {
+              payment: amcPaymentResponse(existingPaymentByKey),
+              invoice: inv ? amcInvoiceResponse(inv) : null,
+              contract: contractData,
+            },
+            payment: amcPaymentResponse(existingPaymentByKey),
+            invoice: inv ? amcInvoiceResponse(inv) : null,
+            contract: contractData,
+          });
+        }
+      }
+
+      /* =================================================
+         TRANSACTION EXECUTION WITH RETRY HANDLING
+      ================================================= */
+      let savedPayment = null;
+      let savedInvoice = null;
+      let savedContract = null;
+
+      const maxRetries = 3;
+      let attempt = 0;
+      let transactionSuccess = false;
+
+      while (attempt < maxRetries && !transactionSuccess) {
+        attempt++;
+
+        // Fast-path recovery on retry
+        if (normalizedIdempotencyKey && attempt > 1) {
+          const replayLog = await IdempotencyLog.findOne({
+            idempotencyKey: normalizedIdempotencyKey,
+            status: "COMPLETED",
+          });
+          if (replayLog && replayLog.responseBody) {
+            return res.status(200).json({
+              ...(replayLog.responseBody || {}),
+              isReplay: true,
+            });
+          }
+        }
+
+        const session = await mongoose.startSession();
+
+        try {
+          await session.withTransaction(async () => {
+            let invoice = null;
+
+            if (validInvoiceId) {
+              invoice = await AmcInvoice.findOne({
+                _id: amcInvoiceId,
+                isDeleted: false,
+              }).session(session);
+            }
+
+            if (!invoice && validContractId) {
+              const fallbackContract = await AmcContract.findOne({
+                _id: amcContractId,
+                isDeleted: false,
+              }).session(session);
+
+              if (fallbackContract?.currentInvoiceId) {
+                invoice = await AmcInvoice.findOne({
+                  _id: fallbackContract.currentInvoiceId,
+                  isDeleted: false,
+                }).session(session);
+              }
+
+              if (
+                !invoice &&
+                (fallbackContract?.currentInvoiceCode ||
+                  fallbackContract?.invoiceCode)
+              ) {
+                invoice = await AmcInvoice.findOne({
+                  invoiceCode:
+                    fallbackContract.currentInvoiceCode ||
+                    fallbackContract.invoiceCode,
+                  isDeleted: false,
+                }).session(session);
+              }
+            }
+
+            if (!invoice) {
+              const error = new Error("AMC invoice was not found.");
+              error.statusCode = 404;
+              throw error;
+            }
+
+            if (invoice.status === "Cancelled") {
+              const error = new Error(
+                "Payment cannot be recorded against a cancelled invoice."
+              );
+              error.statusCode = 400;
+              throw error;
+            }
+
+            const contract = await AmcContract.findOne({
+              _id: invoice.amcContractId,
+              isDeleted: false,
+            }).session(session);
+
+            if (!contract) {
+              const error = new Error(
+                "The AMC contract linked to this invoice was not found."
+              );
+              error.statusCode = 404;
+              throw error;
+            }
+
+            if (contract.status === "Cancelled") {
+              const error = new Error(
+                "Payment cannot be recorded against a cancelled AMC contract."
+              );
+              error.statusCode = 400;
+              throw error;
+            }
+
+            // ATOMIC WRITE LOCK on AmcInvoice document
+            const lockedInvoice = await AmcInvoice.findOneAndUpdate(
+              { _id: invoice._id, isDeleted: false },
+              { $inc: { paymentVersion: 1 } },
+              { session, new: true }
+            );
+
+            const invoiceTotal = roundAmcAmount(lockedInvoice.totalAmount);
+
+            // Recalculate paid amount from permanent payment records within this session
+            const existingPaymentTotals = await AmcPayment.aggregate([
+              {
+                $match: {
+                  amcInvoiceId: lockedInvoice._id,
+                  isDeleted: false,
+                },
+              },
+              {
+                $group: {
+                  _id: null,
+                  paidAmount: {
+                    $sum: "$amount",
+                  },
+                },
+              },
+            ]).session(session);
+
+            const existingPaidAmount = roundAmcAmount(
+              existingPaymentTotals[0]?.paidAmount || 0
+            );
+
+            const actualPendingAmount = Math.max(
+              roundAmcAmount(invoiceTotal - existingPaidAmount),
+              0
+            );
+
+            if (actualPendingAmount <= 0) {
+              const error = new Error("This invoice is already fully paid.");
+              error.statusCode = 400;
+              throw error;
+            }
+
+            if (normalizedAmount > actualPendingAmount) {
+              const error = new Error(
+                `Payment cannot exceed the pending amount of ₹${actualPendingAmount.toLocaleString(
+                  "en-IN",
+                  {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  }
+                )}.`
+              );
+              error.statusCode = 400;
+              throw error;
+            }
+
+            const paymentCode = generateAmcPaymentCode();
+
+            const createdPayments = await AmcPayment.create(
+              [
+                {
+                  paymentCode,
+                  idempotencyKey: normalizedIdempotencyKey,
+                  amcContractId: contract._id,
+                  amcInvoiceId: lockedInvoice._id,
+                  contractCode: contract.contractCode,
+                  invoiceCode: lockedInvoice.invoiceCode,
+                  clientId: lockedInvoice.clientId,
+                  clientCode: lockedInvoice.clientCode,
+                  clientName: lockedInvoice.clientName,
+                  productId: lockedInvoice.productId,
+                  productCode: lockedInvoice.productCode,
+                  productName: lockedInvoice.productName,
+                  amount: normalizedAmount,
+                  paymentDate: parsedPaymentDate,
+                  mode: normalizedMode,
+                  referenceNo: normalizedReferenceNo,
+                  notes: normalizedNotes,
+                  receivedBy: req.user._id,
+                  receivedByName: req.user.name || "Admin",
+                  isDeleted: false,
+                },
+              ],
+              {
+                session,
+              }
+            );
+
+            const payment = createdPayments[0];
+
+            const updatedPaidAmount = roundAmcAmount(
+              existingPaidAmount + normalizedAmount
+            );
+
+            const updatedPendingAmount = Math.max(
+              roundAmcAmount(invoiceTotal - updatedPaidAmount),
+              0
+            );
+
+            const paymentStatus =
+              updatedPendingAmount <= 0 ? "Paid" : "Partially Paid";
+
+            lockedInvoice.paidAmount = updatedPaidAmount;
+            lockedInvoice.pendingAmount = updatedPendingAmount;
+            lockedInvoice.paymentStatus = paymentStatus;
+            lockedInvoice.updatedBy = req.user._id;
+            lockedInvoice.updatedByName = req.user.name || "Admin";
+
+            await lockedInvoice.save({
+              session,
+            });
+
+            contract.currentInvoiceId = lockedInvoice._id;
+            contract.currentInvoiceCode = lockedInvoice.invoiceCode;
+            contract.invoiceCode = lockedInvoice.invoiceCode;
+            contract.invoiceDate = lockedInvoice.invoiceDate;
+            contract.taxableAmount = lockedInvoice.taxableAmount;
+            contract.cgstRate = lockedInvoice.cgstRate;
+            contract.cgstAmount = lockedInvoice.cgstAmount;
+            contract.sgstRate = lockedInvoice.sgstRate;
+            contract.sgstAmount = lockedInvoice.sgstAmount;
+            contract.igstRate = lockedInvoice.igstRate;
+            contract.igstAmount = lockedInvoice.igstAmount;
+            contract.totalTaxAmount = lockedInvoice.totalTaxAmount;
+            contract.totalAmount = lockedInvoice.totalAmount;
+            contract.paidAmount = updatedPaidAmount;
+            contract.pendingAmount = updatedPendingAmount;
+            contract.status = paymentStatus;
+            contract.reminderStatus =
+              paymentStatus === "Paid"
+                ? "Not Required"
+                : contract.reminderStatus;
+
+            if (paymentStatus === "Paid") {
+              contract.nextFollowUpDate = null;
+            }
+
+            contract.timeline.push({
+              type: "payment",
+              title:
+                paymentStatus === "Paid"
+                  ? "AMC invoice fully paid"
+                  : "AMC payment received",
+              description: `₹${normalizedAmount.toLocaleString("en-IN", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })} received through ${normalizedMode} against invoice ${lockedInvoice.invoiceCode}${
+                normalizedReferenceNo ? ` · Reference ${normalizedReferenceNo}` : ""
+              }. Pending amount: ₹${updatedPendingAmount.toLocaleString(
+                "en-IN",
+                {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                }
+              )}.`,
+              performedBy: req.user._id,
+              performedByName: req.user.name || "Admin",
+              performedByRole: req.user.role || "admin",
+            });
+
+            contract.updatedBy = req.user._id;
+            contract.updatedByName = req.user.name || "Admin";
+
+            await contract.save({
+              session,
+            });
+
+            // Update Client Master INSIDE the transaction session
+            if (lockedInvoice.clientId) {
+              const client = await Client.findOne({
+                _id: lockedInvoice.clientId,
+                isDeleted: { $ne: true },
+              }).session(session);
+
+              if (client) {
+                if (Array.isArray(client.products)) {
+                  const clientProduct = client.products.id
+                    ? client.products.id(lockedInvoice.clientProductId)
+                    : client.products.find(
+                        (p) =>
+                          String(p._id) ===
+                          String(lockedInvoice.clientProductId)
+                      );
+                  if (clientProduct) {
+                    clientProduct.amcStatus = paymentStatus;
+                  }
+                }
+
+                client.amcStatus = paymentStatus;
+                client.updatedBy = req.user._id;
+                client.updatedByName = req.user.name || "Admin";
+
+                await client.save({ session });
+              }
+            }
+
+            savedPayment = payment;
+            savedInvoice = lockedInvoice;
+            savedContract = contract;
+
+            if (normalizedIdempotencyKey) {
+              const contractData = mergeAmcContractWithInvoice(
+                savedContract,
+                savedInvoice
+              );
+              await IdempotencyLog.create(
+                [
+                  {
+                    idempotencyKey: normalizedIdempotencyKey,
+                    endpoint: "/api/admin/amc/payment",
+                    contractId: contract._id,
+                    entityId: lockedInvoice._id,
+                    payloadHash,
+                    status: "COMPLETED",
+                    responseStatus: 201,
+                    responseBody: {
+                      success: true,
+                      message:
+                        savedInvoice.paymentStatus === "Paid"
+                          ? "Payment recorded successfully. The invoice is now fully paid."
+                          : "Payment recorded successfully.",
+                      data: {
+                        payment: amcPaymentResponse(savedPayment),
+                        invoice: amcInvoiceResponse(savedInvoice),
+                        contract: contractData,
+                      },
+                      payment: amcPaymentResponse(savedPayment),
+                      invoice: amcInvoiceResponse(savedInvoice),
+                      contract: contractData,
+                    },
+                  },
+                ],
+                { session }
+              );
+            }
+          });
+
+          transactionSuccess = true;
+        } catch (error) {
+          const isTransient =
+            error.hasErrorLabel &&
+            (error.hasErrorLabel("TransientTransactionError") ||
+              error.hasErrorLabel("UnknownTransactionCommitResult"));
+
+          if (isTransient && attempt < maxRetries) {
+            console.warn(
+              `Transient error during AMC payment (attempt ${attempt}):`,
+              error.message
+            );
+            continue;
+          }
+
+          if (error.statusCode) {
+            return res.status(error.statusCode).json({
+              success: false,
+              message: error.message,
+            });
+          }
+
+          throw error;
+        } finally {
+          await session.endSession();
+        }
+      }
+
+      // Activity log outside transaction
+      try {
+        await createActivityLog({
+          action: "AMC Payment Received",
+          category: "Payment",
+          description: `Payment ${savedPayment.paymentCode} of ₹${savedPayment.amount.toLocaleString(
+            "en-IN",
+            {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            }
+          )} was received against invoice ${savedInvoice.invoiceCode}.`,
+          entityType: "payment",
+          entityId: savedPayment._id,
+          entityCode: savedPayment.paymentCode,
+          entityName: savedInvoice.invoiceCode,
+          clientId: savedInvoice.clientId,
+          clientName: savedInvoice.clientName,
+          employeeId: savedContract.assignedEmployeeId,
+          employeeName: savedContract.assignedEmployeeName,
+          performedBy: req.user._id,
+          performedByName: req.user.name || "Admin",
+          performedByRole: req.user.role || "admin",
+          metadata: {
+            amcContractId: savedContract._id,
+            contractCode: savedContract.contractCode,
+            amcInvoiceId: savedInvoice._id,
+            invoiceCode: savedInvoice.invoiceCode,
+            paymentCode: savedPayment.paymentCode,
+            paymentDate: savedPayment.paymentDate,
+            amount: savedPayment.amount,
+            mode: savedPayment.mode,
+            referenceNo: savedPayment.referenceNo,
+            paidAmount: savedInvoice.paidAmount,
+            pendingAmount: savedInvoice.pendingAmount,
+            paymentStatus: savedInvoice.paymentStatus,
+          },
+        });
+      } catch (logErr) {
+        console.error("AMC Payment ActivityLog error:", logErr.message);
+      }
+
+      const contractData = mergeAmcContractWithInvoice(
+        savedContract,
+        savedInvoice
+      );
+
+      return res.status(201).json({
+        success: true,
+        message:
+          savedInvoice.paymentStatus === "Paid"
+            ? "Payment recorded successfully. The invoice is now fully paid."
+            : "Payment recorded successfully.",
+        data: {
+          payment: amcPaymentResponse(savedPayment),
+          invoice: amcInvoiceResponse(savedInvoice),
+          contract: contractData,
+        },
+        payment: amcPaymentResponse(savedPayment),
+        invoice: amcInvoiceResponse(savedInvoice),
+        contract: contractData,
+      });
+    } catch (error) {
+      console.error("Record AMC invoice payment error:", error);
+      return res.status(error.statusCode || 500).json({
+        success: false,
+        message: error.message || "Unable to record AMC payment.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   AMC DOCUMENT API
+===================================================== */
+
+
+/* =====================================================
+   UPLOAD AMC DOCUMENT
+===================================================== */
+
+router.post(
+  "/amc/contract/:id/documents",
+
+  uploadAmcDocument.array(
+    "documents",
+    10
+  ),
+
+  async (
+    req,
+    res
+  ) => {
+    try {
+      const {
+        id,
+      } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res
+          .status(
+            400
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Invalid AMC contract ID.",
+          });
+      }
+
+      const contract =
+        await AmcContract.findOne({
+          _id:
+            id,
+
+          isDeleted:
+            false,
+        });
+
+      if (!contract) {
+        return res
+          .status(
+            404
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "AMC contract was not found.",
+          });
+      }
+
+      if (
+        !req.files ||
+        req.files.length ===
+          0
+      ) {
+        return res
+          .status(
+            400
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Please select at least one document.",
+          });
+      }
+
+      const documentType =
+        String(
+          req.body
+            .documentType ||
+            "Other Document"
+        ).trim();
+
+      if (
+        !allowedAmcDocumentTypes.includes(
+          documentType
+        )
+      ) {
+        for (
+          const file
+          of req.files
+        ) {
+          deleteAmcFile(
+            file.path
+          );
+        }
+
+        return res
+          .status(
+            400
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Invalid AMC document type.",
+          });
+      }
+
+      const uploadedAt =
+        new Date();
+
+      const documents =
+        req.files.map(
+          (
+            file
+          ) => ({
+            documentType,
+
+            fileName:
+              file.originalname,
+
+            storedFileName:
+              file.filename,
+
+            mimeType:
+              file.mimetype,
+
+            fileSize:
+              file.size,
+
+            relativePath:
+              path.join(
+                "uploads",
+                "amc",
+                file.filename
+              ),
+
+            source:
+              documentType ===
+              "Own Invoice / Bill"
+                ? "Own Invoice"
+                : "Uploaded",
+
+            status:
+              "Available",
+
+            uploadedBy:
+              req.user
+                ._id,
+
+            uploadedByName:
+              req.user
+                .name ||
+              "Admin",
+
+            uploadedAt,
+          })
+        );
+
+      contract.documents.push(
+        ...documents
+      );
+
+      contract.timeline.push({
+        type:
+          "document",
+
+        title:
+          documents.length ===
+          1
+            ? "AMC document uploaded"
+            : `${documents.length} AMC documents uploaded`,
+
+        description:
+          `${documentType}: ${documents
+            .map(
+              (
+                document
+              ) =>
+                document.fileName
+            )
+            .join(
+              ", "
+            )}`,
+
+        performedBy:
+          req.user
+            ._id,
+
+        performedByName:
+          req.user
+            .name ||
+          "Admin",
+
+        performedByRole:
+          req.user
+            .role ||
+          "admin",
+
+        createdAt:
+          uploadedAt,
+      });
+
+      contract.updatedBy =
+        req.user._id;
+
+      contract.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      await contract.save();
+
+      await createActivityLog({
+        action:
+          "AMC Document Uploaded",
+
+        category:
+          "AMC",
+
+        description:
+          `${documents.length} document(s) uploaded for ${contract.contractCode}.`,
+
+        entityType:
+          "amc",
+
+        entityId:
+          contract._id,
+
+        entityCode:
+          contract.contractCode,
+
+        entityName:
+          `${contract.clientName} - ${contract.productName}`,
+
+        clientId:
+          contract.clientId,
+
+        clientName:
+          contract.clientName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          req.user.role ||
+          "admin",
+
+        metadata: {
+          documentType,
+
+          fileCount:
+            documents.length,
+        },
+      });
+
+      return res
+        .status(
+          201
+        )
+        .json({
+          success:
+            true,
+
+          message:
+            "AMC document uploaded successfully.",
+
+          data:
+            amcContractResponse(
+              contract
+            ),
+        });
+    } catch (
+      error
+    ) {
+      console.error(
+        "AMC document upload error:",
+        error
+      );
+
+      if (
+        req.files
+      ) {
+        for (
+          const file
+          of req.files
+        ) {
+          deleteAmcFile(
+            file.path
+          );
+        }
+      }
+
+      return res
+        .status(
+          500
+        )
+        .json({
+          success:
+            false,
+
+          message:
+            error.message ||
+            "Unable to upload AMC document.",
+        });
+    }
+  }
+);
+
+
+/* =====================================================
+   GET AMC DOCUMENTS
+===================================================== */
+
+router.get(
+  "/amc/contract/:id/documents",
+
+  async (
+    req,
+    res
+  ) => {
+    try {
+      const {
+        id,
+      } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res
+          .status(
+            400
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Invalid AMC contract ID.",
+          });
+      }
+
+      const contract =
+        await AmcContract.findOne({
+          _id:
+            id,
+
+          isDeleted:
+            false,
+        });
+
+      if (!contract) {
+        return res
+          .status(
+            404
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "AMC contract was not found.",
+          });
+      }
+
+      const documents =
+        (
+          contract.documents ||
+          []
+        )
+          .filter(
+            (
+              document
+            ) =>
+              !document.isDeleted &&
+              document.status !==
+                "Archived"
+          )
+          .map(
+            (
+              document
+            ) => ({
+              id:
+                document._id,
+
+              _id:
+                document._id,
+
+              type:
+                document.documentType,
+
+              documentType:
+                document.documentType,
+
+              name:
+                document.fileName,
+
+              fileName:
+                document.fileName,
+
+              mimeType:
+                document.mimeType,
+
+              size:
+                document.fileSize,
+
+              fileSize:
+                document.fileSize,
+
+              source:
+                document.source,
+
+              status:
+                document.status,
+
+              uploadedByName:
+                document.uploadedByName,
+
+              uploadedAt:
+                document.uploadedAt,
+
+              previewUrl:
+                `/api/admin/amc/contract/${contract._id}/document/${document._id}/view`,
+
+              downloadUrl:
+                `/api/admin/amc/contract/${contract._id}/document/${document._id}/download`,
+            })
+          );
+
+      return res.json({
+        success:
+          true,
+
+        data: {
+          documents,
+        },
+      });
+    } catch (
+      error
+    ) {
+      console.error(
+        "Load AMC documents error:",
+        error
+      );
+
+      return res
+        .status(
+          500
+        )
+        .json({
+          success:
+            false,
+
+          message:
+            error.message ||
+            "Unable to load AMC documents.",
+        });
+    }
+  }
+);
+
+
+/* =====================================================
+   PREVIEW AMC DOCUMENT
+===================================================== */
+
+router.get(
+  "/amc/contract/:id/document/:documentId/view",
+
+  async (
+    req,
+    res
+  ) => {
+    try {
+      const {
+        id,
+        documentId,
+      } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        ) ||
+        !mongoose.Types.ObjectId.isValid(
+          documentId
+        )
+      ) {
+        return res
+          .status(
+            400
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Invalid document ID.",
+          });
+      }
+
+      const contract =
+        await AmcContract.findOne({
+          _id:
+            id,
+
+          isDeleted:
+            false,
+        });
+
+      if (!contract) {
+        return res
+          .status(
+            404
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "AMC contract was not found.",
+          });
+      }
+
+      const document =
+        contract.documents.id(
+          documentId
+        );
+
+      if (
+        !document ||
+        document.isDeleted ||
+        document.status ===
+          "Archived"
+      ) {
+        return res
+          .status(
+            404
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Document was not found.",
+          });
+      }
+
+      const absolutePath =
+        path.resolve(
+          __dirname,
+          document.relativePath
+        );
+
+      const uploadsRoot =
+        path.resolve(
+          __dirname,
+          "uploads"
+        );
+
+      if (
+        !absolutePath.startsWith(
+          uploadsRoot
+        )
+      ) {
+        return res
+          .status(
+            403
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Invalid document path.",
+          });
+      }
+
+      if (
+        !fs.existsSync(
+          absolutePath
+        )
+      ) {
+        return res
+          .status(
+            404
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Document file was not found.",
+          });
+      }
+
+      res.setHeader(
+        "Content-Type",
+        document.mimeType ||
+          "application/octet-stream"
+      );
+
+      res.setHeader(
+        "Content-Disposition",
+        `inline; filename="${String(
+          document.fileName ||
+            "document"
+        ).replace(
+          /["\r\n]/g,
+          "_"
+        )}"`
+      );
+
+      res.setHeader(
+        "X-Content-Type-Options",
+        "nosniff"
+      );
+
+      return res.sendFile(
+        absolutePath
+      );
+    } catch (
+      error
+    ) {
+      console.error(
+        "AMC document preview error:",
+        error
+      );
+
+      return res
+        .status(
+          500
+        )
+        .json({
+          success:
+            false,
+
+          message:
+            "Unable to preview AMC document.",
+        });
+    }
+  }
+);
+
+
+/* =====================================================
+   DOWNLOAD AMC DOCUMENT
+===================================================== */
+
+router.get(
+  "/amc/contract/:id/document/:documentId/download",
+
+  async (
+    req,
+    res
+  ) => {
+    try {
+      const {
+        id,
+        documentId,
+      } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        ) ||
+        !mongoose.Types.ObjectId.isValid(
+          documentId
+        )
+      ) {
+        return res
+          .status(
+            400
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Invalid document ID.",
+          });
+      }
+
+      const contract =
+        await AmcContract.findOne({
+          _id:
+            id,
+
+          isDeleted:
+            false,
+        });
+
+      if (!contract) {
+        return res
+          .status(
+            404
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "AMC contract was not found.",
+          });
+      }
+
+      const document =
+        contract.documents.id(
+          documentId
+        );
+
+      if (
+        !document ||
+        document.isDeleted ||
+        document.status ===
+          "Archived"
+      ) {
+        return res
+          .status(
+            404
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Document was not found.",
+          });
+      }
+
+      const absolutePath =
+        path.resolve(
+          __dirname,
+          document.relativePath
+        );
+
+      const uploadsRoot =
+        path.resolve(
+          __dirname,
+          "uploads"
+        );
+
+      if (
+        !absolutePath.startsWith(
+          uploadsRoot
+        )
+      ) {
+        return res
+          .status(
+            403
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Invalid document path.",
+          });
+      }
+
+      if (
+        !fs.existsSync(
+          absolutePath
+        )
+      ) {
+        return res
+          .status(
+            404
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Document file was not found.",
+          });
+      }
+
+      return res.download(
+        absolutePath,
+        document.fileName
+      );
+    } catch (
+      error
+    ) {
+      console.error(
+        "AMC document download error:",
+        error
+      );
+
+      return res
+        .status(
+          500
+        )
+        .json({
+          success:
+            false,
+
+          message:
+            "Unable to download AMC document.",
+        });
+    }
+  }
+);
+
+
+/* =====================================================
+   DELETE AMC DOCUMENT
+===================================================== */
+
+router.delete(
+  "/amc/contract/:id/document/:documentId",
+
+  async (
+    req,
+    res
+  ) => {
+    try {
+      const {
+        id,
+        documentId,
+      } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        ) ||
+        !mongoose.Types.ObjectId.isValid(
+          documentId
+        )
+      ) {
+        return res
+          .status(
+            400
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Invalid document ID.",
+          });
+      }
+
+      const contract =
+        await AmcContract.findOne({
+          _id:
+            id,
+
+          isDeleted:
+            false,
+        });
+
+      if (!contract) {
+        return res
+          .status(
+            404
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "AMC contract was not found.",
+          });
+      }
+
+      const document =
+        contract.documents.id(
+          documentId
+        );
+
+      if (
+        !document ||
+        document.isDeleted
+      ) {
+        return res
+          .status(
+            404
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Document was not found.",
+          });
+      }
+
+      const absolutePath =
+        path.resolve(
+          __dirname,
+          document.relativePath
+        );
+
+      document.isDeleted =
+        true;
+
+      document.status =
+        "Archived";
+
+      document.deletedAt =
+        new Date();
+
+      document.deletedBy =
+        req.user._id;
+
+      document.deletedByName =
+        req.user.name ||
+        "Admin";
+
+      contract.timeline.push({
+        type:
+          "document",
+
+        title:
+          "AMC document removed",
+
+        description:
+          `${document.fileName} was removed.`,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          req.user.role ||
+          "admin",
+
+        createdAt:
+          new Date(),
+      });
+
+      contract.updatedBy =
+        req.user._id;
+
+      contract.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      await contract.save();
+
+      /*
+       * Database is updated first.
+       * Only after successful save do we remove physical file.
+       */
+      deleteAmcFile(
+        absolutePath
+      );
+
+      await createActivityLog({
+        action:
+          "AMC Document Removed",
+
+        category:
+          "AMC",
+
+        description:
+          `${document.fileName} was removed from ${contract.contractCode}.`,
+
+        entityType:
+          "amc",
+
+        entityId:
+          contract._id,
+
+        entityCode:
+          contract.contractCode,
+
+        entityName:
+          `${contract.clientName} - ${contract.productName}`,
+
+        clientId:
+          contract.clientId,
+
+        clientName:
+          contract.clientName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          req.user.role ||
+          "admin",
+
+        metadata: {
+          documentId:
+            document._id,
+
+          documentType:
+            document.documentType,
+
+          fileName:
+            document.fileName,
+        },
+      });
+
+      return res.json({
+        success:
+          true,
+
+        message:
+          "AMC document removed successfully.",
+
+        data:
+          amcContractResponse(
+            contract
+          ),
+      });
+    } catch (
+      error
+    ) {
+      console.error(
+        "Delete AMC document error:",
+        error
+      );
+
+      return res
+        .status(
+          500
+        )
+        .json({
+          success:
+            false,
+
+          message:
+            error.message ||
+            "Unable to delete AMC document.",
+        });
+    }
+  }
+);
+
+/* =====================================================
+   CREATE AMC REMINDER
+   POST /api/admin/amc/contract/:id/reminder
+===================================================== */
+
+
+
+router.post(
+  "/amc/contract/:id/reminder",
+  async (req, res) => {
+    try {
+      const {
+        id,
+      } = req.params;
+
+      const {
+        channel,
+        message,
+        followUpDate,
+        assignedEmployeeId,
+        notes,
+      } = req.body;
+
+      /* -----------------------------------------------
+         Validate AMC contract ID
+      ------------------------------------------------ */
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid AMC contract ID.",
+        });
+      }
+
+      /* -----------------------------------------------
+         Validate reminder channel
+      ------------------------------------------------ */
+
+      const allowedChannels = [
+        "WhatsApp",
+        "Email",
+        "SMS",
+        "Phone Call",
+      ];
+
+      if (
+        !allowedChannels.includes(
+          channel
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Please select a valid reminder channel.",
+        });
+      }
+
+      const normalizedMessage =
+        String(
+          message || ""
+        ).trim();
+
+      if (!normalizedMessage) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Reminder message is required.",
+        });
+      }
+
+      /* -----------------------------------------------
+         Validate follow-up date
+      ------------------------------------------------ */
+
+      let parsedFollowUpDate =
+        null;
+
+      if (followUpDate) {
+        parsedFollowUpDate =
+          new Date(
+            followUpDate
+          );
+
+        if (
+          Number.isNaN(
+            parsedFollowUpDate.getTime()
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Invalid follow-up date.",
+          });
+        }
+      }
+
+      /* -----------------------------------------------
+         Find AMC contract
+      ------------------------------------------------ */
+
+      const contract =
+        await AmcContract.findOne({
+          _id: id,
+          isDeleted: false,
+        });
+
+      if (!contract) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "AMC contract was not found.",
+        });
+      }
+
+      if (
+        contract.status ===
+        "Cancelled"
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "A reminder cannot be created for a cancelled AMC contract.",
+        });
+      }
+
+      if (
+        Number(
+          contract.pendingAmount ||
+          0
+        ) <= 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "This AMC contract has no pending payment.",
+        });
+      }
+
+      /* -----------------------------------------------
+         Resolve employee from Employee Master
+
+         When no new employee is selected, retain the
+         employee already assigned to the AMC contract.
+      ------------------------------------------------ */
+
+      let resolvedEmployee = {
+        assignedEmployeeId:
+          contract.assignedEmployeeId ||
+          null,
+
+        assignedEmployeeCode:
+          contract.assignedEmployeeCode ||
+          "",
+
+        assignedEmployeeName:
+          contract.assignedEmployeeName ||
+          "Unassigned",
+      };
+
+      const normalizedEmployeeId =
+        String(
+          assignedEmployeeId || ""
+        ).trim();
+
+      if (normalizedEmployeeId) {
+        resolvedEmployee =
+          await resolveAmcEmployee(
+            normalizedEmployeeId
+          );
+      }
+
+      /* -----------------------------------------------
+         Determine reminder status
+      ------------------------------------------------ */
+
+      const reminderStatus =
+        channel === "Phone Call"
+          ? "Call Logged"
+          : "Sent";
+
+      const reminderSentAt =
+        new Date();
+
+      /* -----------------------------------------------
+         Save reminder
+      ------------------------------------------------ */
+
+      const reminder =
+        await AmcReminder.create({
+          amcContractId:
+            contract._id,
+
+          contractCode:
+            contract.contractCode,
+
+          clientId:
+            contract.clientId,
+
+          clientCode:
+            contract.clientCode,
+
+          clientName:
+            contract.clientName,
+
+          channel,
+
+          message:
+            normalizedMessage,
+
+          assignedEmployeeId:
+            resolvedEmployee
+              .assignedEmployeeId,
+
+          assignedEmployeeCode:
+            resolvedEmployee
+              .assignedEmployeeCode,
+
+          assignedEmployeeName:
+            resolvedEmployee
+              .assignedEmployeeName,
+
+          followUpDate:
+            parsedFollowUpDate,
+
+          notes:
+            String(
+              notes || ""
+            ).trim(),
+
+          sentAt:
+            reminderSentAt,
+
+          sentBy:
+            req.user._id,
+
+          sentByName:
+            req.user.name ||
+            "Admin",
+
+          status:
+            reminderStatus,
+        });
+
+      /* -----------------------------------------------
+         Update AMC contract
+      ------------------------------------------------ */
+
+      contract.reminderStatus =
+        reminderStatus;
+
+      contract.lastReminderAt =
+        reminderSentAt;
+
+      contract.nextFollowUpDate =
+        parsedFollowUpDate;
+
+      contract.assignedEmployeeId =
+        resolvedEmployee
+          .assignedEmployeeId;
+
+      contract.assignedEmployeeCode =
+        resolvedEmployee
+          .assignedEmployeeCode;
+
+      contract.assignedEmployeeName =
+        resolvedEmployee
+          .assignedEmployeeName;
+
+      contract.updatedBy =
+        req.user._id;
+
+      contract.updatedByName =
+        req.user.name ||
+        "Admin";
+
+      contract.timeline.push({
+        type:
+          "reminder",
+
+        title:
+          channel === "Phone Call"
+            ? "Payment follow-up call logged"
+            : `${channel} payment reminder sent`,
+
+        description:
+          channel === "Phone Call"
+            ? `Payment follow-up call was recorded. Next follow-up: ${
+                parsedFollowUpDate
+                  ? parsedFollowUpDate
+                      .toISOString()
+                      .slice(0, 10)
+                  : "Not scheduled"
+              }.`
+            : `Payment reminder was recorded through ${channel}. Next follow-up: ${
+                parsedFollowUpDate
+                  ? parsedFollowUpDate
+                      .toISOString()
+                      .slice(0, 10)
+                  : "Not scheduled"
+              }.`,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          req.user.role ||
+          "admin",
+
+        createdAt:
+          reminderSentAt,
+      });
+
+      await contract.save();
+
+      /* -----------------------------------------------
+         Create activity log
+      ------------------------------------------------ */
+
+      await createActivityLog({
+        action:
+          channel === "Phone Call"
+            ? "AMC Follow-up Call Logged"
+            : "AMC Reminder Sent",
+
+        category:
+          "AMC",
+
+        description:
+          channel === "Phone Call"
+            ? `Payment follow-up call was recorded for ${contract.contractCode}.`
+            : `${channel} payment reminder was recorded for ${contract.contractCode}.`,
+
+        entityType:
+          "amc",
+
+        entityId:
+          contract._id,
+
+        entityCode:
+          contract.contractCode,
+
+        entityName:
+          `${contract.clientName} - ${contract.productName}`,
+
+        clientId:
+          contract.clientId,
+
+        clientName:
+          contract.clientName,
+
+        employeeId:
+          resolvedEmployee
+            .assignedEmployeeId,
+
+        employeeName:
+          resolvedEmployee
+            .assignedEmployeeName,
+
+        performedBy:
+          req.user._id,
+
+        performedByName:
+          req.user.name ||
+          "Admin",
+
+        performedByRole:
+          req.user.role ||
+          "admin",
+
+        metadata: {
+          channel,
+
+          reminderStatus,
+
+          invoiceCode:
+            contract.invoiceCode,
+
+          pendingAmount:
+            contract.pendingAmount,
+
+          followUpDate:
+            parsedFollowUpDate,
+
+          assignedEmployeeCode:
+            resolvedEmployee
+              .assignedEmployeeCode,
+        },
+      });
+
+      return res.status(201).json({
+        success: true,
+
+        message:
+          channel === "Phone Call"
+            ? "Payment follow-up call recorded successfully."
+            : "AMC reminder recorded successfully.",
+
+        data: {
+          reminder:
+            amcReminderResponse(
+              reminder
+            ),
+
+          contract:
+            amcContractResponse(
+              contract
+            ),
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Create AMC reminder error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to save AMC reminder.",
+      });
+    }
+  }
+);
+router.get('/dashboard', async (req, res) => {
+  try {
+    const totalClients = await Client.countDocuments({ isDeleted: false });
+// AMC collected
+const amcCollectedResult = await AmcInvoice.aggregate([
+  {
+    $match: {
+      isDeleted: false,
+      paidAmount: { $gt: 0 },
+    },
+  },
+  {
+    $group: {
+      _id: null,
+      total: { $sum: '$paidAmount' },
+    },
+  },
+]);
+
+const amcCollected = amcCollectedResult[0]?.total || 0;
+
+// AMC pending
+const amcPendingResult = await AmcInvoice.aggregate([
+  {
+    $match: {
+      isDeleted: false,
+      pendingAmount: { $gt: 0 },
+    },
+  },
+  {
+    $group: {
+      _id: null,
+      total: { $sum: '$pendingAmount' },
+    },
+  },
+]);
+
+const amcPending = amcPendingResult[0]?.total || 0;
+
+
+    const openTickets = await SupportTicket.countDocuments({
+      isDeleted: false,
+      status: { $nin: ['Resolved', 'Verified', 'Closed', 'Cancelled'] }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        totalClients,
+        amcCollected,
+        amcPending,
+        openTickets
+      }
+    });
+  } catch (error) {
+    console.error('Dashboard error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+/* =========================================================
+   GET EMPLOYEE PC ACTIVITY
+   GET /api/admin/pc-activity/:employeeCode?date=2026-08-12
+========================================================= */
+
+
+router.get("/pc-activity/:employeeCode", async (req, res) => {
+  try {
+    const { employeeCode } = req.params;
+
+    if (!employeeCode) {
+      return res.status(400).json({
+        success: false,
+        message: "Employee code is required.",
+      });
+    }
+
+    // Date format: YYYY-MM-DD (default = today)
+ // Date format: YYYY-MM-DD (default = today in IST)
+const dateString =
+  req.query.date ||
+  new Date().toLocaleDateString('en-CA', {
+    timeZone: 'Asia/Kolkata',
+  });
+
+// Create the IST day bucket (stored in Mongo as 18:30 UTC of the previous day)
+const [year, month, day] = dateString.split('-').map(Number);
+
+const dayStart = new Date(Date.UTC(year, month - 1, day - 1, 18, 30, 0));
+const dayEnd = new Date(Date.UTC(year, month - 1, day, 18, 29, 59, 999));
+
+    const sessions = await AgentDailySummary.find({
+      employeeCode: employeeCode.toUpperCase(),
+      date: { $gte: dayStart, $lte: dayEnd },
+    })
+      .sort({ lastSeen: -1 })
+      .lean();
+
+    const device = await AgentDevice.findOne({
+      employeeCode: employeeCode.toUpperCase(),
+      isActive: true,
+    }).lean();
+
+    // ---------- Summary ----------
+    const totalSeconds = sessions.reduce(
+      (sum, item) => sum + (item.totalSeconds || 0),
+      0
+    );
+
+    const productiveSeconds = sessions
+      .filter(
+        (item) =>
+          item.category !== "Idle" &&
+          item.category !== "Break"
+      )
+      .reduce(
+        (sum, item) => sum + (item.totalSeconds || 0),
+        0
+      );
+
+    const idleSeconds = sessions
+      .filter((item) => item.category === "Idle")
+      .reduce(
+        (sum, item) => sum + (item.totalSeconds || 0),
+        0
+      );
+
+    const breakSeconds = sessions
+      .filter((item) => item.category === "Break")
+      .reduce(
+        (sum, item) => sum + (item.totalSeconds || 0),
+        0
+      );
+
+    const formatDuration = (seconds = 0) => {
+      const totalMinutes = Math.floor(seconds / 60);
+
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+
+      if (hours <= 0) return `${minutes}m`;
+      return minutes > 0
+        ? `${hours}h ${minutes}m`
+        : `${hours}h`;
+    };
+
+    // ---------- Current Activity ----------
+    const latest = sessions[0];
+
+    const currentActivity = latest
+      ? {
+          application: latest.application,
+          windowTitle: latest.lastWindowTitle,
+          startedAt: latest.firstSeen,
+          runningTime: formatDuration(
+            latest.totalSeconds
+          ),
+          status: device?.status || "Offline",
+          lastSyncAt: latest.lastSeen,
+          deviceName:
+            device?.deviceName ||
+            device?.pcName ||
+            latest.pcName,
+        }
+      : {
+          application: "No activity",
+          windowTitle: "",
+          startedAt: null,
+          runningTime: "0m",
+          status: "Offline",
+          lastSyncAt: null,
+          deviceName: device?.deviceName || "Not registered",
+        };
+
+    // ---------- Applications ----------
+    const applications = sessions.map((item) => ({
+      id: String(item._id),
+      application: item.application,
+      category: item.category,
+      startedAt: item.firstSeen,
+      endedAt: item.lastSeen,
+      duration: formatDuration(item.totalSeconds),
+      productivity:
+        item.category === "Idle"
+          ? "Idle"
+          : item.category === "Break"
+          ? "Break"
+          : "Productive",
+      project: item.project,
+      client: item.client,
+      taskId: item.taskId,
+      ticketId: item.ticketId,
+      windowTitle: item.lastWindowTitle,
+    }));
+
+    // ---------- Top Applications ----------
+    const topApplications = [...sessions]
+      .sort(
+        (a, b) =>
+          (b.totalSeconds || 0) -
+          (a.totalSeconds || 0)
+      )
+      .slice(0, 5)
+      .map((item) => ({
+        name: item.application,
+        duration: formatDuration(item.totalSeconds),
+        percentage:
+          totalSeconds > 0
+            ? Math.round(
+                (item.totalSeconds / totalSeconds) * 100
+              )
+            : 0,
+      }));
+
+    return res.json({
+      success: true,
+      data: {
+        currentActivity,
+        summary: {
+          productiveTime:
+            formatDuration(productiveSeconds),
+          idleTime: formatDuration(idleSeconds),
+          breakTime: formatDuration(breakSeconds),
+          applicationsUsed: sessions.length,
+        },
+        applications,
+        topApplications,
+        idleSessions: [],
+      },
+    });
+  } catch (error) {
+    console.error(
+      "PC activity fetch error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to load PC activity.",
+    });
+  }
+});
+/* =========================================================
+   GET EMPLOYEE OVERVIEW
+   GET /api/admin/team/:employeeCode/overview
+========================================================= */
+
+router.get("/team/:employeeCode/overview", async (req, res) => {
+  try {
+    const { employeeCode } = req.params;
+
+    const Employee = mongoose.models.Employee;
+    const Task = mongoose.models.Task;
+    const Attendance = mongoose.models.Attendance || require("./models/Attendance");
+    const SupportTicket = mongoose.models.SupportTicket;
+
+    const employee = await Employee.findOne({
+      employeeCode: employeeCode.toUpperCase(),
+    }).lean();
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found.",
+      });
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    const [attendance, openTasks, completedToday, openTickets] =
+      await Promise.all([
+        Attendance.findOne({
+          employeeId: employee._id,
+          date: today,
+        }).lean(),
+
+        Task.countDocuments({
+          assignedEmployeeId: employee._id,
+          isDeleted: false,
+          status: {
+            $in: [
+              "Assigned",
+              "In Progress",
+              "Paused",
+              "Testing",
+            ],
+          },
+        }),
+
+        Task.countDocuments({
+          assignedEmployeeId: employee._id,
+          isDeleted: false,
+          status: "Completed",
+          completedAt: {
+            $gte: new Date(`${today}T00:00:00.000Z`),
+            $lte: new Date(`${today}T23:59:59.999Z`),
+          },
+        }),
+
+        SupportTicket.countDocuments({
+          assignedEmployeeId: employee._id,
+          isDeleted: false,
+          status: {
+            $in: ["New", "Assigned", "In Progress"],
+          },
+        }),
+      ]);
+
+    const formatTime = (value) => {
+      if (!value) return "—";
+
+      return new Date(value).toLocaleTimeString("en-IN", {
+        hour: "numeric",
+        minute: "2-digit",
+      });
+    };
+
+    const activeMinutes =
+      attendance?.workingMinutes ||
+      attendance?.totalWorkedMinutes ||
+      0;
+
+    return res.json({
+      success: true,
+      data: {
+        role: employee.role || "Employee",
+        department: employee.department || "General",
+        employeeCode: employee.employeeCode,
+        loginTime: formatTime(attendance?.loginTime),
+        activeTime: `${Math.floor(activeMinutes / 60)}h ${activeMinutes % 60}m`,
+        openTasks,
+        completedToday,
+        openTickets,
+        status: employee.status,
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Employee overview fetch error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to load employee overview.",
+    });
+  }
+});
+/* =========================================================
+   GET EMPLOYEE ATTENDANCE
+   GET /api/admin/team/:employeeCode/attendance
+========================================================= */
+
+router.get("/team/:employeeCode/attendance", async (req, res) => {
+  try {
+    const { employeeCode } = req.params;
+
+    const Employee = mongoose.models.Employee;
+    const Attendance = mongoose.models.Attendance || require("./models/Attendance");
+
+    const employee = await Employee.findOne({
+      employeeCode: employeeCode.toUpperCase(),
+    });
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found.",
+      });
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    const attendance = await Attendance.findOne({
+      employeeId: employee._id,
+      date: today,
+    }).lean();
+
+    const formatTime = (value) => {
+      if (!value) return "—";
+
+      return new Date(value).toLocaleTimeString("en-IN", {
+        hour: "numeric",
+        minute: "2-digit",
+      });
+    };
+
+    const formatDuration = (minutes = 0) => {
+      const hrs = Math.floor(minutes / 60);
+      const mins = minutes % 60;
+
+      if (hrs <= 0) return `${mins}m`;
+      return `${hrs}h ${mins}m`;
+    };
+
+    return res.json({
+      success: true,
+      data: {
+        loginTime: formatTime(attendance?.loginTime),
+        logoutTime: attendance?.logoutTime
+          ? formatTime(attendance.logoutTime)
+          : "Not logged out",
+
+        attendanceStatus: attendance
+          ? attendance.status || "Present"
+          : "Absent",
+
+        activeTime: formatDuration(
+          attendance?.workingMinutes ||
+            attendance?.totalWorkedMinutes ||
+            0
+        ),
+
+        breakTime: formatDuration(
+          attendance?.totalBreakMinutes ||
+            attendance?.breakMinutes ||
+            0
+        ),
+
+        idleTime: "0m",
+        productiveTime: formatDuration(
+          attendance?.workingMinutes ||
+            attendance?.totalWorkedMinutes ||
+            0
+        ),
+
+        sessions: attendance
+          ? [
+              {
+                name: "Current Session",
+                start: formatTime(attendance.loginTime),
+                end: attendance.logoutTime
+                  ? formatTime(attendance.logoutTime)
+                  : "—",
+                duration: formatDuration(
+                  attendance?.workingMinutes ||
+                    attendance?.totalWorkedMinutes ||
+                    0
+                ),
+                status: attendance.logoutTime
+                  ? "Completed"
+                  : "Active",
+              },
+            ]
+          : [],
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Employee attendance fetch error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to load attendance.",
+    });
+  }
+});
+/* =====================================================
+   AMC MULTER ERROR HANDLER
+===================================================== */
+
+router.use(
+  (
+    error,
+    req,
+    res,
+    next
+  ) => {
+    if (
+      error instanceof
+      multer.MulterError
+    ) {
+      if (
+        error.code ===
+        "LIMIT_FILE_SIZE"
+      ) {
+        return res
+          .status(
+            400
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Document cannot exceed 10 MB.",
+          });
+      }
+
+      if (
+        error.code ===
+        "LIMIT_FILE_COUNT"
+      ) {
+        return res
+          .status(
+            400
+          )
+          .json({
+            success:
+              false,
+
+            message:
+              "Maximum 10 documents can be uploaded at once.",
+          });
+      }
+
+      return res
+        .status(
+          400
+        )
+        .json({
+          success:
+            false,
+
+          message:
+            error.message,
+        });
+    }
+
+    if (
+      error &&
+      String(
+        error.message ||
+          ""
+      ).includes(
+        "PDF, JPG"
+      )
+    ) {
+      return res
+        .status(
+          400
+        )
+        .json({
+          success:
+            false,
+
+          message:
+            error.message,
+        });
+    }
+
+    next(
+      error
+    );
+  }
+);
+/* =====================================================
+   CREATE PRODUCT SALE
+   POST /api/admin/product-sales
+===================================================== */
+
+router.post(
+  "/product-sales",
+  async (req, res) => {
+    try {
+      const {
+        clientId,
+        saleDate,
+        invoiceNo,
+        invoiceDate,
+        dueDate,
+        items,
+        discountAmount,
+        roundOff,
+        notes,
+      } = req.body || {};
+
+      /* ============================================
+         VALIDATE CLIENT
+      ============================================ */
+
+      if (
+        !clientId ||
+        !mongoose.Types.ObjectId.isValid(
+          clientId
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Valid client is required.",
+        });
+      }
+
+      const client =
+        await Client.findOne({
+          _id: clientId,
+          isDeleted: {
+            $ne: true,
+          },
+        });
+
+      if (!client) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Client not found.",
+        });
+      }
+
+      /* ============================================
+         VALIDATE ITEMS
+      ============================================ */
+
+      if (
+        !Array.isArray(items) ||
+        items.length === 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "At least one product is required.",
+        });
+      }
+
+      const normalizedItems = [];
+
+      for (const item of items) {
+        if (
+          !item.productId ||
+          !mongoose.Types.ObjectId.isValid(
+            item.productId
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Every sale item requires a valid product.",
+          });
+        }
+
+        const product =
+          await Product.findOne({
+            _id:
+              item.productId,
+
+            isDeleted: {
+              $ne: true,
+            },
+
+            status:
+              "Active",
+          }).lean();
+
+        if (!product) {
+          return res.status(404).json({
+            success: false,
+            message:
+              "One of the selected products was not found or is inactive.",
+          });
+        }
+
+        const quantity =
+          Math.max(
+            Number(
+              item.quantity || 1
+            ),
+            1
+          );
+
+        const rate =
+          Math.max(
+            Number(
+              item.rate || 0
+            ),
+            0
+          );
+
+        const itemDiscount =
+          Math.max(
+            Number(
+              item.discountAmount || 0
+            ),
+            0
+          );
+
+        const grossAmount =
+          quantity * rate;
+
+        const taxableAmount =
+          Math.max(
+            grossAmount -
+              itemDiscount,
+            0
+          );
+
+        const gstRate =
+          Math.max(
+            Number(
+              item.gstRate ?? 18
+            ),
+            0
+          );
+
+        /*
+         * For now:
+         * Maharashtra client -> CGST + SGST
+         * Other state -> IGST
+         *
+         * Later we can make company state
+         * come from System Settings.
+         */
+
+        const companyState =
+          "Maharashtra";
+
+        const sameState =
+          String(
+            client.state || ""
+          )
+            .trim()
+            .toLowerCase() ===
+          companyState.toLowerCase();
+
+        let cgstAmount = 0;
+        let sgstAmount = 0;
+        let igstAmount = 0;
+
+        if (gstRate > 0) {
+          if (sameState) {
+            cgstAmount =
+              taxableAmount *
+              (gstRate / 2) /
+              100;
+
+            sgstAmount =
+              taxableAmount *
+              (gstRate / 2) /
+              100;
+          } else {
+            igstAmount =
+              taxableAmount *
+              gstRate /
+              100;
+          }
+        }
+
+        const totalAmount =
+          taxableAmount +
+          cgstAmount +
+          sgstAmount +
+          igstAmount;
+
+        normalizedItems.push({
+          productId:
+            product._id,
+
+          productCode:
+            product.productCode,
+
+          productName:
+            product.productName,
+
+          version:
+            String(
+              item.version ||
+              product.currentVersion ||
+              ""
+            ).trim(),
+
+          licenceType:
+            item.licenceType ||
+            "Perpetual Licence",
+
+          licensedUsers:
+            Math.max(
+              Number(
+                item.licensedUsers || 1
+              ),
+              1
+            ),
+
+          quantity,
+
+          rate,
+
+          grossAmount:
+            Number(
+              grossAmount.toFixed(2)
+            ),
+
+          discountAmount:
+            Number(
+              itemDiscount.toFixed(2)
+            ),
+
+          taxableAmount:
+            Number(
+              taxableAmount.toFixed(2)
+            ),
+
+          gstRate,
+
+          cgstAmount:
+            Number(
+              cgstAmount.toFixed(2)
+            ),
+
+          sgstAmount:
+            Number(
+              sgstAmount.toFixed(2)
+            ),
+
+          igstAmount:
+            Number(
+              igstAmount.toFixed(2)
+            ),
+
+          totalAmount:
+            Number(
+              totalAmount.toFixed(2)
+            ),
+
+          purchaseDate:
+            item.purchaseDate ||
+            saleDate ||
+            new Date(),
+
+          installationDate:
+            item.installationDate ||
+            null,
+
+          warrantyMonths:
+            Math.max(
+              Number(
+                item.warrantyMonths ?? 12
+              ),
+              0
+            ),
+
+          warrantyStartDate:
+            item.warrantyStartDate ||
+            item.installationDate ||
+            saleDate ||
+            new Date(),
+
+          warrantyEndDate:
+            item.warrantyEndDate ||
+            null,
+
+          supportType:
+            item.supportType ||
+            "Standard",
+
+          installationStatus:
+            item.installationStatus ||
+            "Not Installed",
+
+          amcApplicable:
+            item.amcApplicable !== false,
+
+          proposedAmcAmount:
+            Math.max(
+              Number(
+                item.proposedAmcAmount || 0
+              ),
+              0
+            ),
+
+          notes:
+            String(
+              item.notes || ""
+            ).trim(),
+        });
+      }
+
+      /* ============================================
+         CALCULATE WARRANTY END DATES
+      ============================================ */
+
+      for (
+        const item of
+        normalizedItems
+      ) {
+        if (
+          !item.warrantyEndDate &&
+          item.warrantyStartDate
+        ) {
+          const warrantyEnd =
+            new Date(
+              item.warrantyStartDate
+            );
+
+          warrantyEnd.setMonth(
+            warrantyEnd.getMonth() +
+              Number(
+                item.warrantyMonths || 0
+              )
+          );
+
+          item.warrantyEndDate =
+            warrantyEnd;
+        }
+      }
+
+      /* ============================================
+         SALE TOTALS
+      ============================================ */
+
+      const grossTotal =
+        normalizedItems.reduce(
+          (sum, item) =>
+            sum +
+            Number(
+              item.grossAmount || 0
+            ),
+          0
+        );
+
+      const itemDiscountTotal =
+        normalizedItems.reduce(
+          (sum, item) =>
+            sum +
+            Number(
+              item.discountAmount || 0
+            ),
+          0
+        );
+
+      const headerDiscount =
+        Math.max(
+          Number(
+            discountAmount || 0
+          ),
+          0
+        );
+
+      const taxableTotal =
+        normalizedItems.reduce(
+          (sum, item) =>
+            sum +
+            Number(
+              item.taxableAmount || 0
+            ),
+          0
+        );
+
+      const cgstTotal =
+        normalizedItems.reduce(
+          (sum, item) =>
+            sum +
+            Number(
+              item.cgstAmount || 0
+            ),
+          0
+        );
+
+      const sgstTotal =
+        normalizedItems.reduce(
+          (sum, item) =>
+            sum +
+            Number(
+              item.sgstAmount || 0
+            ),
+          0
+        );
+
+      const igstTotal =
+        normalizedItems.reduce(
+          (sum, item) =>
+            sum +
+            Number(
+              item.igstAmount || 0
+            ),
+          0
+        );
+
+      const normalizedRoundOff =
+        Number(
+          roundOff || 0
+        );
+
+      const invoiceTotal =
+        Math.max(
+          taxableTotal +
+            cgstTotal +
+            sgstTotal +
+            igstTotal -
+            headerDiscount +
+            normalizedRoundOff,
+          0
+        );
+
+      /* ============================================
+         GENERATE SALE CODE
+      ============================================ */
+
+      const {
+        saleNumber,
+        saleCode,
+      } =
+        await generateProductSaleCode();
+
+      /* ============================================
+         CREATE SALE & ATOMIC CLIENT PRODUCT SYNC
+      ============================================ */
+
+      let sale = null;
+      const session = await mongoose.startSession();
+      try {
+        await session.withTransaction(async () => {
+          const createdSales = await ProductSale.create(
+            [
+              {
+                saleCode,
+                saleNumber,
+
+                invoiceNo:
+                  String(
+                    invoiceNo || saleCode
+                  )
+                    .trim()
+                    .toUpperCase(),
+
+                saleDate:
+                  saleDate ||
+                  new Date(),
+
+                invoiceDate:
+                  invoiceDate ||
+                  saleDate ||
+                  new Date(),
+
+                dueDate:
+                  dueDate ||
+                  null,
+
+                clientId:
+                  client._id,
+
+                clientCode:
+                  client.clientCode,
+
+                clientName:
+                  client.companyName,
+
+                contactPerson:
+                  client.contactPerson ||
+                  "",
+
+                mobile:
+                  client.mobile ||
+                  "",
+
+                email:
+                  client.email ||
+                  "",
+
+                gstNo:
+                  client.gstNo ||
+                  "",
+
+                state:
+                  client.state ||
+                  "",
+
+                billingAddress:
+                  [
+                    client.addressLine1,
+                    client.addressLine2,
+                    client.city,
+                    client.state,
+                    client.pinCode,
+                  ]
+                    .filter(Boolean)
+                    .join(", "),
+
+                items:
+                  normalizedItems,
+
+                grossAmount:
+                  Number(
+                    grossTotal.toFixed(2)
+                  ),
+
+                discountAmount:
+                  Number(
+                    (
+                      itemDiscountTotal +
+                      headerDiscount
+                    ).toFixed(2)
+                  ),
+
+                taxableAmount:
+                  Number(
+                    taxableTotal.toFixed(2)
+                  ),
+
+                cgstAmount:
+                  Number(
+                    cgstTotal.toFixed(2)
+                  ),
+
+                sgstAmount:
+                  Number(
+                    sgstTotal.toFixed(2)
+                  ),
+
+                igstAmount:
+                  Number(
+                    igstTotal.toFixed(2)
+                  ),
+
+                roundOff:
+                  normalizedRoundOff,
+
+                totalAmount:
+                  Number(
+                    invoiceTotal.toFixed(2)
+                  ),
+
+                paidAmount:
+                  0,
+
+                pendingAmount:
+                  Number(
+                    invoiceTotal.toFixed(2)
+                  ),
+
+                paymentStatus:
+                  "Unpaid",
+
+                status:
+                  "Confirmed",
+
+                notes:
+                  String(
+                    notes || ""
+                  ).trim(),
+
+                createdBy:
+                  req.user?._id ||
+                  null,
+
+                createdByName:
+                  req.user?.name ||
+                  "Admin",
+
+                updatedBy:
+                  req.user?._id ||
+                  null,
+
+                updatedByName:
+                  req.user?.name ||
+                  "Admin",
+              },
+            ],
+            { session }
+          );
+
+          sale = createdSales[0];
+
+          /* ============================================
+             AUTO-ASSIGN PRODUCTS TO CLIENT
+          ============================================ */
+
+          for (
+            const saleItem of
+            sale.items
+          ) {
+            const alreadyAssigned =
+              client.products.find(
+                (clientProduct) =>
+                  String(
+                    clientProduct.productId
+                  ) ===
+                  String(
+                    saleItem.productId
+                  )
+              );
+
+            let clientProduct;
+
+            if (alreadyAssigned) {
+              clientProduct =
+                alreadyAssigned;
+            } else {
+              client.products.push({
+                productId:
+                  saleItem.productId,
+
+                productCode:
+                  saleItem.productCode,
+
+                productName:
+                  saleItem.productName,
+
+                version:
+                  saleItem.version,
+
+                /* =========================================
+                   PRODUCT ORIGIN
+                ========================================= */
+
+                acquisitionType:
+                  "Product Sale",
+
+                productSaleId:
+                  sale._id,
+
+                productSaleCode:
+                  sale.saleCode,
+
+                originalInvoiceNo:
+                  sale.invoiceNo ||
+                  sale.saleCode,
+
+                originalPurchaseAmount:
+                  Number(
+                    saleItem.totalAmount ||
+                    0
+                  ),
+
+                historicalDataComplete:
+                  true,
+
+                /* =========================================
+                   PRODUCT / INSTALLATION DETAILS
+                ========================================= */
+
+                purchaseDate:
+                  saleItem.purchaseDate
+                    ? new Date(
+                        saleItem.purchaseDate
+                      )
+                        .toISOString()
+                        .slice(0, 10)
+                    : "",
+
+                installationDate:
+                  saleItem.installationDate
+                    ? new Date(
+                        saleItem.installationDate
+                      )
+                        .toISOString()
+                        .slice(0, 10)
+                    : "",
+
+                licensedUsers:
+                  saleItem.licensedUsers,
+
+                supportType:
+                  saleItem.supportType,
+
+                amcStatus:
+                  "Not Started",
+
+                expiryDate:
+                  saleItem.warrantyEndDate
+                    ? new Date(
+                        saleItem.warrantyEndDate
+                      )
+                        .toISOString()
+                        .slice(0, 10)
+                    : "",
+
+                installationStatus:
+                  saleItem.installationStatus,
+
+                licenceType:
+                  saleItem.licenceType,
+
+                notes:
+                  saleItem.notes ||
+                  "",
+              });
+
+              clientProduct =
+                client.products[
+                  client.products.length -
+                    1
+                ];
+            }
+
+            saleItem.clientProductId =
+              clientProduct._id;
+          }
+
+          await client.save({ session });
+
+          /*
+           * Save generated clientProductId values
+           * back into the permanent ProductSale.
+           */
+          await sale.save({ session });
+        });
+      } finally {
+        await session.endSession();
+      }
+
+      /* ============================================
+         ACTIVITY LOG
+      ============================================ */
+
+      try {
+        await ActivityLog.create({
+          action:
+            "Product Sale Created",
+
+          category:
+            "Product",
+
+          description:
+            `${sale.saleCode} created for ${client.companyName}.`,
+
+          entityType:
+            "product",
+
+          entityId:
+            sale._id,
+
+          entityCode:
+            sale.saleCode,
+
+          entityName:
+            client.companyName,
+
+          clientId:
+            client._id,
+
+          clientName:
+            client.companyName,
+
+          performedBy:
+            req.user?._id ||
+            null,
+
+          performedByName:
+            req.user?.name ||
+            "Admin",
+
+          performedByRole:
+            "admin",
+
+          metadata: {
+            totalAmount:
+              sale.totalAmount,
+
+            products:
+              sale.items.map(
+                (item) => ({
+                  productId:
+                    item.productId,
+
+                  productCode:
+                    item.productCode,
+
+                  productName:
+                    item.productName,
+
+                  clientProductId:
+                    item.clientProductId,
+                })
+              ),
+          },
+        });
+      } catch (activityError) {
+        console.error(
+          "Product sale activity log error:",
+          activityError
+        );
+      }
+
+      return res.status(201).json({
+        success: true,
+
+        message:
+          "Product sale created successfully.",
+
+        data:
+          sale,
+      });
+    } catch (error) {
+      console.error(
+        "Create Product Sale Error:",
+        error
+      );
+
+      if (
+        error instanceof
+        mongoose.Error.ValidationError
+      ) {
+        const firstError =
+          Object.values(
+            error.errors
+          )[0];
+
+        return res.status(400).json({
+          success: false,
+
+          message:
+            firstError?.message ||
+            "Product sale validation failed.",
+        });
+      }
+
+      if (error?.code === 11000) {
+        return res.status(409).json({
+          success: false,
+
+          message:
+            "Product sale number already exists. Please try again.",
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to create product sale.",
+      });
+    }
+  }
+);
+/* =====================================================
+   PRODUCT SALES - LIST
+   GET /api/admin/product-sales
+===================================================== */
+
+router.get(
+  "/product-sales",
+  async (req, res) => {
+    try {
+      const {
+        search = "",
+        clientId = "",
+        paymentStatus = "",
+        status = "",
+        fromDate = "",
+        toDate = "",
+        page = 1,
+        limit = 25,
+      } = req.query;
+
+      const query = {
+        isDeleted: {
+          $ne: true,
+        },
+      };
+
+      /* CLIENT FILTER */
+
+      if (
+        clientId &&
+        mongoose.Types.ObjectId.isValid(
+          clientId
+        )
+      ) {
+        query.clientId =
+          clientId;
+      }
+
+      /* PAYMENT STATUS FILTER */
+
+      if (
+        [
+          "Unpaid",
+          "Partially Paid",
+          "Paid",
+          "Overdue",
+        ].includes(
+          paymentStatus
+        )
+      ) {
+        query.paymentStatus =
+          paymentStatus;
+      }
+
+      /* SALE STATUS FILTER */
+
+      if (
+        [
+          "Draft",
+          "Confirmed",
+          "Cancelled",
+        ].includes(
+          status
+        )
+      ) {
+        query.status =
+          status;
+      }
+
+      /* DATE FILTER */
+
+      if (
+        fromDate ||
+        toDate
+      ) {
+        query.saleDate = {};
+
+        if (fromDate) {
+          const start =
+            new Date(
+              fromDate
+            );
+
+          start.setHours(
+            0,
+            0,
+            0,
+            0
+          );
+
+          query.saleDate.$gte =
+            start;
+        }
+
+        if (toDate) {
+          const end =
+            new Date(
+              toDate
+            );
+
+          end.setHours(
+            23,
+            59,
+            59,
+            999
+          );
+
+          query.saleDate.$lte =
+            end;
+        }
+      }
+
+      /* SEARCH */
+
+      const normalizedSearch =
+        String(
+          search || ""
+        ).trim();
+
+      if (
+        normalizedSearch
+      ) {
+        const escapedSearch =
+          normalizedSearch.replace(
+            /[.*+?^${}()|[\]\\]/g,
+            "\\$&"
+          );
+
+        const regex =
+          new RegExp(
+            escapedSearch,
+            "i"
+          );
+
+        query.$or = [
+          {
+            saleCode:
+              regex,
+          },
+          {
+            invoiceNo:
+              regex,
+          },
+          {
+            clientCode:
+              regex,
+          },
+          {
+            clientName:
+              regex,
+          },
+          {
+            "items.productCode":
+              regex,
+          },
+          {
+            "items.productName":
+              regex,
+          },
+        ];
+      }
+
+      /* PAGINATION */
+
+      const normalizedPage =
+        Math.max(
+          Number(page) ||
+            1,
+          1
+        );
+
+      const normalizedLimit =
+        Math.min(
+          Math.max(
+            Number(limit) ||
+              25,
+            1
+          ),
+          100
+        );
+
+      const skip =
+        (
+          normalizedPage -
+          1
+        ) *
+        normalizedLimit;
+
+      const [
+        sales,
+        total,
+      ] =
+        await Promise.all([
+          ProductSale.find(
+            query
+          )
+            .sort({
+              saleDate:
+                -1,
+
+              createdAt:
+                -1,
+            })
+            .skip(
+              skip
+            )
+            .limit(
+              normalizedLimit
+            )
+            .lean(),
+
+          ProductSale.countDocuments(
+            query
+          ),
+        ]);
+
+      return res.json({
+        success:
+          true,
+
+        data:
+          sales,
+
+        pagination: {
+          page:
+            normalizedPage,
+
+          limit:
+            normalizedLimit,
+
+          total,
+
+          totalPages:
+            Math.max(
+              Math.ceil(
+                total /
+                  normalizedLimit
+              ),
+              1
+            ),
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Product Sale List Error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success:
+            false,
+
+          message:
+            error.message ||
+            "Unable to load product sales.",
+        });
+    }
+  }
+);
+
+
+/* =====================================================
+   CLIENT PRODUCT SALES
+   GET /api/admin/client/:id/product-sales
+===================================================== */
+
+router.get(
+  "/client/:id/product-sales",
+  async (req, res) => {
+    try {
+      const {
+        id,
+      } = req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success:
+              false,
+
+            message:
+              "Invalid client ID.",
+          });
+      }
+
+      const client =
+        await Client.findOne({
+          _id:
+            id,
+
+          isDeleted: {
+            $ne: true,
+          },
+        })
+          .select(
+            "_id clientCode companyName"
+          )
+          .lean();
+
+      if (!client) {
+        return res
+          .status(404)
+          .json({
+            success:
+              false,
+
+            message:
+              "Client not found.",
+          });
+      }
+
+      const sales =
+        await ProductSale.find({
+          clientId:
+            client._id,
+
+          isDeleted: {
+            $ne: true,
+          },
+        })
+          .sort({
+            saleDate:
+              -1,
+
+            createdAt:
+              -1,
+          })
+          .lean();
+
+      return res.json({
+        success:
+          true,
+
+        client: {
+          id:
+            client._id,
+
+          clientCode:
+            client.clientCode,
+
+          clientName:
+            client.companyName,
+        },
+
+        count:
+          sales.length,
+
+        data:
+          sales,
+      });
+    } catch (error) {
+      console.error(
+        "Client Product Sales Error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success:
+            false,
+
+          message:
+            error.message ||
+            "Unable to load client product sales.",
+        });
+    }
+  }
+);
+
+
+/* =====================================================
+   SINGLE PRODUCT SALE
+   GET /api/admin/product-sales/:id
+===================================================== */
+
+router.get(
+  "/product-sales/:id",
+  async (req, res) => {
+    try {
+      const {
+        id,
+      } = req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success:
+              false,
+
+            message:
+              "Invalid product sale ID.",
+          });
+      }
+
+      const sale =
+        await ProductSale.findOne({
+          _id:
+            id,
+
+          isDeleted: {
+            $ne: true,
+          },
+        }).lean();
+
+      if (!sale) {
+        return res
+          .status(404)
+          .json({
+            success:
+              false,
+
+            message:
+              "Product sale not found.",
+          });
+      }
+
+      const payments =
+        await ProductSalePayment.find({
+          productSaleId:
+            sale._id,
+
+          isDeleted: {
+            $ne: true,
+          },
+        })
+          .sort({
+            paymentDate:
+              -1,
+
+            createdAt:
+              -1,
+          })
+          .lean();
+
+      return res.json({
+        success:
+          true,
+
+        data: {
+          ...sale,
+
+          payments,
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Product Sale Details Error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success:
+            false,
+
+          message:
+            error.message ||
+            "Unable to load product sale.",
+        });
+    }
+  }
+);
+/* =====================================================
+   PRODUCT SALE PAYMENT
+   POST /api/admin/product-sales/:id/payment
+===================================================== */
+
+router.post(
+  "/product-sales/:id/payment",
+  validate(productSalePaymentZodSchema),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const {
+        amount,
+        paymentDate,
+        mode,
+        referenceNo,
+        notes,
+      } = req.body || {};
+
+      /* ============================================
+         VALIDATE SALE ID
+      ============================================ */
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid product sale ID.",
+        });
+      }
+
+      /* ============================================
+         VALIDATE PAYMENT AMOUNT
+      ============================================ */
+      const paymentAmount = Number(amount);
+
+      if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Enter a valid payment amount greater than zero.",
+        });
+      }
+
+      const normalizedMode = mode || "Bank Transfer";
+      const normalizedReferenceNo = String(referenceNo || "").trim();
+      const normalizedNotes = String(notes || "").trim();
+
+      /* ============================================
+         IDEMPOTENCY HANDLING (Tier 1 & Tier 2)
+      ============================================ */
+      const idempotencyKey =
+        req.headers["idempotency-key"] ||
+        req.headers["x-idempotency-key"] ||
+        req.body?.idempotencyKey ||
+        null;
+      const normalizedIdempotencyKey = idempotencyKey
+        ? String(idempotencyKey).trim()
+        : null;
+
+      const payloadHash = crypto
+        .createHash("sha256")
+        .update(
+          JSON.stringify({
+            saleId: id,
+            amount: Number(paymentAmount.toFixed(2)),
+            paymentDate: paymentDate || "",
+            mode: normalizedMode,
+            referenceNo: normalizedReferenceNo,
+          })
+        )
+        .digest("hex");
+
+      if (normalizedIdempotencyKey) {
+        // Tier 1: In-Flight / Fast Cache Check
+        const existingLog = await IdempotencyLog.findOne({
+          idempotencyKey: normalizedIdempotencyKey,
+        });
+
+        if (existingLog) {
+          if (existingLog.payloadHash === payloadHash) {
+            return res.status(200).json({
+              ...(existingLog.responseBody || {}),
+              isReplay: true,
+            });
+          } else {
+            return res.status(422).json({
+              success: false,
+              message:
+                "Idempotency key conflict: Request parameters do not match original transaction.",
+            });
+          }
+        }
+
+        // Tier 2: Durable Ledger Check
+        const existingPaymentByKey = await ProductSalePayment.findOne({
+          idempotencyKey: normalizedIdempotencyKey,
+          isDeleted: { $ne: true },
+        });
+
+        if (existingPaymentByKey) {
+          const replaySale = await ProductSale.findOne({
+            _id: existingPaymentByKey.productSaleId,
+            isDeleted: { $ne: true },
+          });
+
+          return res.status(200).json({
+            success: true,
+            isReplay: true,
+            message: "Product sale payment already recorded.",
+            data: {
+              payment: existingPaymentByKey,
+              sale: replaySale
+                ? {
+                    id: replaySale._id,
+                    saleCode: replaySale.saleCode,
+                    totalAmount: replaySale.totalAmount,
+                    paidAmount: replaySale.paidAmount,
+                    pendingAmount: replaySale.pendingAmount,
+                    paymentStatus: replaySale.paymentStatus,
+                  }
+                : null,
+            },
+          });
+        }
+      }
+
+      /* ============================================
+         TRANSACTION EXECUTION WITH RETRY HANDLING
+      ============================================ */
+      let savedPayment = null;
+      let savedSale = null;
+
+      const maxRetries = 3;
+      let attempt = 0;
+      let transactionSuccess = false;
+
+      while (attempt < maxRetries && !transactionSuccess) {
+        attempt++;
+
+        // Fast-path recovery on retry
+        if (normalizedIdempotencyKey && attempt > 1) {
+          const replayLog = await IdempotencyLog.findOne({
+            idempotencyKey: normalizedIdempotencyKey,
+            status: "COMPLETED",
+          });
+          if (replayLog && replayLog.responseBody) {
+            return res.status(200).json({
+              ...(replayLog.responseBody || {}),
+              isReplay: true,
+            });
+          }
+        }
+
+        const session = await mongoose.startSession();
+
+        try {
+          await session.withTransaction(async () => {
+            const sale = await ProductSale.findOne({
+              _id: id,
+              isDeleted: { $ne: true },
+            }).session(session);
+
+            if (!sale) {
+              const err = new Error("Product sale not found.");
+              err.statusCode = 404;
+              throw err;
+            }
+
+            if (sale.status === "Cancelled") {
+              const err = new Error(
+                "Payment cannot be received against a cancelled product sale."
+              );
+              err.statusCode = 400;
+              throw err;
+            }
+
+            // ATOMIC WRITE LOCK on ProductSale document
+            const lockedSale = await ProductSale.findOneAndUpdate(
+              { _id: sale._id, isDeleted: { $ne: true } },
+              { $inc: { paymentVersion: 1 } },
+              { session, new: true }
+            );
+
+            const totalAmount = Number(lockedSale.totalAmount || 0);
+
+            // Recalculate existing payments within transaction session
+            const existingPayments = await ProductSalePayment.aggregate([
+              {
+                $match: {
+                  productSaleId: lockedSale._id,
+                  isDeleted: { $ne: true },
+                },
+              },
+              {
+                $group: {
+                  _id: null,
+                  totalPaid: {
+                    $sum: "$amount",
+                  },
+                },
+              },
+            ]).session(session);
+
+            const alreadyPaid = Number(
+              existingPayments?.[0]?.totalPaid || 0
+            );
+
+            const currentPending = Math.max(
+              Number((totalAmount - alreadyPaid).toFixed(2)),
+              0
+            );
+
+            if (currentPending <= 0) {
+              const err = new Error("This product sale is already fully paid.");
+              err.statusCode = 400;
+              throw err;
+            }
+
+            if (paymentAmount > currentPending + 0.01) {
+              const err = new Error(
+                `Payment cannot exceed pending amount ₹${currentPending.toFixed(2)}.`
+              );
+              err.statusCode = 400;
+              throw err;
+            }
+
+            const { paymentNumber, paymentCode } =
+              await generateProductSalePaymentCode();
+
+            const createdPayments = await ProductSalePayment.create(
+              [
+                {
+                  paymentCode,
+                  paymentNumber,
+                  idempotencyKey: normalizedIdempotencyKey,
+                  productSaleId: lockedSale._id,
+                  saleCode: lockedSale.saleCode,
+                  clientId: lockedSale.clientId,
+                  clientCode: lockedSale.clientCode,
+                  clientName: lockedSale.clientName,
+                  amount: Number(paymentAmount.toFixed(2)),
+                  paymentDate: paymentDate || new Date(),
+                  mode: normalizedMode,
+                  referenceNo: normalizedReferenceNo,
+                  notes: normalizedNotes,
+                  createdBy: req.user?._id || null,
+                  createdByName: req.user?.name || "Admin",
+                },
+              ],
+              { session }
+            );
+
+            const payment = createdPayments[0];
+
+            const newPaidAmount = Number(
+              (alreadyPaid + paymentAmount).toFixed(2)
+            );
+
+            const newPendingAmount = Number(
+              Math.max(totalAmount - newPaidAmount, 0).toFixed(2)
+            );
+
+            let paymentStatus = "Unpaid";
+
+            if (newPendingAmount <= 0.01) {
+              paymentStatus = "Paid";
+            } else if (newPaidAmount > 0) {
+              paymentStatus = "Partially Paid";
+            }
+
+            lockedSale.paidAmount = newPaidAmount;
+            lockedSale.pendingAmount = newPendingAmount;
+            lockedSale.paymentStatus = paymentStatus;
+            lockedSale.updatedBy = req.user?._id || null;
+            lockedSale.updatedByName = req.user?.name || "Admin";
+
+            await lockedSale.save({ session });
+
+            savedPayment = payment;
+            savedSale = lockedSale;
+
+            if (normalizedIdempotencyKey) {
+              await IdempotencyLog.create(
+                [
+                  {
+                    idempotencyKey: normalizedIdempotencyKey,
+                    endpoint: "/api/admin/product-sales/:id/payment",
+                    entityId: lockedSale._id,
+                    payloadHash,
+                    status: "COMPLETED",
+                    responseStatus: 201,
+                    responseBody: {
+                      success: true,
+                      message: "Product sale payment recorded successfully.",
+                      data: {
+                        payment,
+                        sale: {
+                          id: lockedSale._id,
+                          saleCode: lockedSale.saleCode,
+                          totalAmount: lockedSale.totalAmount,
+                          paidAmount: lockedSale.paidAmount,
+                          pendingAmount: lockedSale.pendingAmount,
+                          paymentStatus: lockedSale.paymentStatus,
+                        },
+                      },
+                    },
+                  },
+                ],
+                { session }
+              );
+            }
+          });
+
+          transactionSuccess = true;
+        } catch (error) {
+          const isTransient =
+            error.hasErrorLabel &&
+            (error.hasErrorLabel("TransientTransactionError") ||
+              error.hasErrorLabel("UnknownTransactionCommitResult"));
+
+          if (isTransient && attempt < maxRetries) {
+            console.warn(
+              `Transient error during product sale payment (attempt ${attempt}):`,
+              error.message
+            );
+            continue;
+          }
+
+          if (error.statusCode) {
+            return res.status(error.statusCode).json({
+              success: false,
+              message: error.message,
+            });
+          }
+
+          throw error;
+        } finally {
+          await session.endSession();
+        }
+      }
+
+      /* ============================================
+         ACTIVITY LOG
+      ============================================ */
+      try {
+        await ActivityLog.create({
+          action: "Product Sale Payment Received",
+          category: "Payment",
+          description: `${savedPayment.paymentCode} - ₹${savedPayment.amount.toFixed(
+            2
+          )} received against ${savedSale.saleCode}.`,
+          entityType: "product",
+          entityId: savedSale._id,
+          entityCode: savedSale.saleCode,
+          entityName: savedSale.clientName,
+          clientId: savedSale.clientId,
+          clientName: savedSale.clientName,
+          performedBy: req.user?._id || null,
+          performedByName: req.user?.name || "Admin",
+          performedByRole: "admin",
+          metadata: {
+            paymentId: savedPayment._id,
+            paymentCode: savedPayment.paymentCode,
+            paymentAmount: savedPayment.amount,
+            totalAmount: savedSale.totalAmount,
+            paidAmount: savedSale.paidAmount,
+            pendingAmount: savedSale.pendingAmount,
+            paymentStatus: savedSale.paymentStatus,
+            paymentMode: savedPayment.mode,
+            referenceNo: savedPayment.referenceNo,
+          },
+        });
+      } catch (activityError) {
+        console.error(
+          "Product Sale Payment Activity Error:",
+          activityError.message
+        );
+      }
+
+      /* ============================================
+         RESPONSE
+      ============================================ */
+      return res.status(201).json({
+        success: true,
+        message: "Product sale payment recorded successfully.",
+        data: {
+          payment: savedPayment,
+          sale: {
+            id: savedSale._id,
+            saleCode: savedSale.saleCode,
+            totalAmount: savedSale.totalAmount,
+            paidAmount: savedSale.paidAmount,
+            pendingAmount: savedSale.pendingAmount,
+            paymentStatus: savedSale.paymentStatus,
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Product Sale Payment Error:", error);
+
+      if (error instanceof mongoose.Error.ValidationError) {
+        const firstError = Object.values(error.errors)[0];
+        return res.status(400).json({
+          success: false,
+          message: firstError?.message || "Payment validation failed.",
+        });
+      }
+
+      if (error?.code === 11000) {
+        return res.status(409).json({
+          success: false,
+          message: "Payment number conflict. Please try again.",
+        });
+      }
+
+      return res.status(error.statusCode || 500).json({
+        success: false,
+        message: error.message || "Unable to record product sale payment.",
+      });
+    }
+  }
+);
+/* =====================================================
+   PRODUCT SALES SUMMARY
+   GET /api/admin/product-sales-summary
+===================================================== */
+
+router.get(
+  "/product-sales-summary",
+  async (req, res) => {
+    try {
+      const match = {
+        isDeleted: {
+          $ne: true,
+        },
+
+        status: {
+          $ne: "Cancelled",
+        },
+      };
+
+      const summary =
+        await ProductSale.aggregate([
+          {
+            $match:
+              match,
+          },
+
+          {
+            $group: {
+              _id:
+                null,
+
+              totalSales: {
+                $sum:
+                  1,
+              },
+
+              totalAmount: {
+                $sum:
+                  "$totalAmount",
+              },
+
+              paidAmount: {
+                $sum:
+                  "$paidAmount",
+              },
+
+              pendingAmount: {
+                $sum:
+                  "$pendingAmount",
+              },
+
+              unpaidCount: {
+                $sum: {
+                  $cond: [
+                    {
+                      $eq: [
+                        "$paymentStatus",
+                        "Unpaid",
+                      ],
+                    },
+                    1,
+                    0,
+                  ],
+                },
+              },
+
+              partialCount: {
+                $sum: {
+                  $cond: [
+                    {
+                      $eq: [
+                        "$paymentStatus",
+                        "Partially Paid",
+                      ],
+                    },
+                    1,
+                    0,
+                  ],
+                },
+              },
+
+              paidCount: {
+                $sum: {
+                  $cond: [
+                    {
+                      $eq: [
+                        "$paymentStatus",
+                        "Paid",
+                      ],
+                    },
+                    1,
+                    0,
+                  ],
+                },
+              },
+            },
+          },
+        ]);
+
+      const data =
+        summary[0] || {
+          totalSales:
+            0,
+
+          totalAmount:
+            0,
+
+          paidAmount:
+            0,
+
+          pendingAmount:
+            0,
+
+          unpaidCount:
+            0,
+
+          partialCount:
+            0,
+
+          paidCount:
+            0,
+        };
+
+      return res.json({
+        success:
+          true,
+
+        data,
+      });
+    } catch (error) {
+      console.error(
+        "Product Sales Summary Error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success:
+            false,
+
+          message:
+            "Unable to load product sales summary.",
+        });
+    }
+  }
+);
+
+
+/* =====================================================
+   CANCEL PRODUCT SALE
+   PATCH /api/admin/product-sales/:id/cancel
+===================================================== */
+
+router.patch(
+  "/product-sales/:id/cancel",
+  async (req, res) => {
+    try {
+      const {
+        id,
+      } =
+        req.params;
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            success:
+              false,
+
+            message:
+              "Invalid product sale ID.",
+          });
+      }
+
+      const sale =
+        await ProductSale.findOne({
+          _id:
+            id,
+
+          isDeleted: {
+            $ne: true,
+          },
+        });
+
+      if (!sale) {
+        return res
+          .status(404)
+          .json({
+            success:
+              false,
+
+            message:
+              "Product sale not found.",
+          });
+      }
+
+      if (
+        sale.status ===
+        "Cancelled"
+      ) {
+        return res
+          .status(400)
+          .json({
+            success:
+              false,
+
+            message:
+              "Product sale is already cancelled.",
+          });
+      }
+
+      const paymentCount =
+        await ProductSalePayment.countDocuments({
+          productSaleId:
+            sale._id,
+
+          isDeleted: {
+            $ne: true,
+          },
+        });
+
+      if (
+        paymentCount > 0
+      ) {
+        return res
+          .status(400)
+          .json({
+            success:
+              false,
+
+            message:
+              "Cannot cancel a product sale that already has payments. Reverse or adjust the payment first.",
+          });
+      }
+
+      sale.status =
+        "Cancelled";
+
+      sale.paymentStatus =
+        "Unpaid";
+
+      sale.updatedBy =
+        req.user?._id ||
+        null;
+
+      sale.updatedByName =
+        req.user?.name ||
+        "Admin";
+
+      await sale.save();
+
+      return res.json({
+        success:
+          true,
+
+        message:
+          "Product sale cancelled successfully.",
+
+        data:
+          sale,
+      });
+    } catch (error) {
+      console.error(
+        "Cancel Product Sale Error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success:
+            false,
+
+          message:
+            error.message ||
+            "Unable to cancel product sale.",
+        });
+    }
+  }
+);
+/* =====================================================
+   PRODUCT SALE PAYMENT LIST
+   GET /api/admin/product-sale-payments
+===================================================== */
+
+router.get(
+  "/product-sale-payments",
+  async (req, res) => {
+    try {
+      const limit =
+        Math.min(
+          Math.max(
+            Number(
+              req.query.limit ||
+              500
+            ),
+            1
+          ),
+          1000
+        );
+
+      const payments =
+        await ProductSalePayment.find({
+          isDeleted: {
+            $ne: true,
+          },
+        })
+          .sort({
+            paymentDate: -1,
+            createdAt: -1,
+          })
+          .limit(limit)
+          .lean();
+
+      return res.status(200).json({
+        success: true,
+
+        count:
+          payments.length,
+
+        data:
+          payments.map(
+            (payment) => ({
+              id:
+                payment._id,
+
+              _id:
+                payment._id,
+
+              productSaleId:
+                payment.productSaleId,
+
+              clientId:
+                payment.clientId,
+
+              clientCode:
+                payment.clientCode ||
+                "",
+
+              clientName:
+                payment.clientName ||
+                "",
+
+              saleCode:
+                payment.saleCode ||
+                "",
+
+              invoiceNo:
+                payment.invoiceNo ||
+                payment.saleCode ||
+                "",
+
+              paymentDate:
+                payment.paymentDate,
+
+              amount:
+                Number(
+                  payment.amount ||
+                  0
+                ),
+
+              mode:
+                payment.mode ||
+                "",
+
+              referenceNo:
+                payment.referenceNo ||
+                "",
+
+              notes:
+                payment.notes ||
+                "",
+
+              createdBy:
+                payment.createdBy ||
+                null,
+
+              createdByName:
+                payment.createdByName ||
+                "",
+
+              createdAt:
+                payment.createdAt,
+
+              updatedAt:
+                payment.updatedAt,
+            })
+          ),
+      });
+    } catch (error) {
+      console.error(
+        "Load product sale payments error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to load product sale payments.",
+      });
+    }
+  }
+);
+/* =====================================================
+/* =====================================================
+   RENEW AMC CONTRACT + CREATE NEW PERMANENT INVOICE
+   POST /api/admin/amc/contract/:id/renew
+
+   PRODUCTION-GRADE WORKFLOW:
+   - ACID MongoDB Session Transaction with Concurrency Write-Lock
+   - Multi-Tier Persistent Idempotency (IdempotencyLog + Ledger Check)
+   - Dual-Period Architecture (upcomingRenewal for Early Renewals)
+   - Authoritative GST & Place of Supply (POS) Calculation
+   - Immutable Historical Invoices & Receipts Guaranteed
+===================================================== */
+
+router.post(
+  "/amc/contract/:id/renew",
+  authenticateUser,
+  validate(amcRenewZodSchema),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      /* =================================================
+         AUTHORIZATION CHECK
+      ================================================= */
+      const userRole = String(req.user?.role || "").toLowerCase();
+      if (!req.user || !["admin", "superadmin", "super_admin"].includes(userRole)) {
+        return res.status(403).json({
+          success: false,
+          message: "Unauthorized. Administrator privileges required to renew AMC contracts.",
+        });
+      }
+
+      /* =================================================
+         VALIDATE CONTRACT ID
+      ================================================= */
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid AMC contract ID.",
+        });
+      }
+
+      /* =================================================
+         LOAD CONTRACT & CLIENT
+      ================================================= */
+      const contract = await AmcContract.findOne({
+        _id: id,
+        isDeleted: false,
+      });
+
+      if (!contract) {
+        return res.status(404).json({
+          success: false,
+          message: "AMC contract was not found.",
+        });
+      }
+
+      if (contract.status === "Cancelled") {
+        return res.status(400).json({
+          success: false,
+          message: "A cancelled AMC contract cannot be renewed.",
+        });
+      }
+
+      const client = await Client.findById(contract.clientId).lean();
+
+      /* =================================================
+         PARSE & NORMALIZE INPUTS
+      ================================================= */
+      const {
+        startDate,
+        expiryDate,
+        dueDate,
+        taxableAmount,
+        cgstRate,
+        sgstRate,
+        igstRate,
+        plan,
+        licensedUsers,
+        gstApplicable = "YES",
+        taxType,
+        gstRate = 18,
+        taxClassification,
+        idempotencyKey,
+        notes,
+      } = req.body || {};
+
+      const normalizedGstApplicable = String(gstApplicable || "YES").toUpperCase() === "NO" ? "NO" : "YES";
+      const allowedGstRates = [0, 5, 12, 18, 28];
+      const parsedGstRate = Number(gstRate !== undefined ? gstRate : 18);
+      const authorizedGstRate = allowedGstRates.includes(parsedGstRate) ? parsedGstRate : 18;
+
+      // Determine Place of Supply (POS)
+      const clientState = String(client?.billingAddress?.state || client?.state || "").trim().toLowerCase();
+      const isClientMaharashtra = clientState === "maharashtra" || clientState === "mh" || clientState === "27";
+      const derivedTaxType = isClientMaharashtra ? "intra" : "inter";
+      const normalizedTaxType = ["intra", "inter"].includes(String(taxType).toLowerCase())
+        ? String(taxType).toLowerCase()
+        : derivedTaxType;
+
+      // Statutory Tax Classification & Eligibility Validation
+      const validZeroGstReasons = [
+        "Commercial Invoice (Zero-GST / Non-Taxable Supply)",
+        "SEZ Unit / Developer (Supply under LUT without IGST)",
+        "Export of Services (Zero-Rated under LUT)",
+        "Tax Exempt Supply as per Statutory Notification",
+        "Custom Commercial Agreement (Zero-Tax)",
+      ];
+
+      let resolvedTaxClassification = "";
+
+      if (normalizedGstApplicable === "NO") {
+        const suppliedReason = String(taxClassification || "").trim();
+        if (suppliedReason && !validZeroGstReasons.includes(suppliedReason)) {
+          return res.status(400).json({
+            success: false,
+            message: `Invalid statutory zero-tax reason. Must be one of: ${validZeroGstReasons.join(", ")}`,
+          });
+        }
+        resolvedTaxClassification = suppliedReason || "Commercial Invoice (Zero-GST / Non-Taxable Supply)";
+
+        // Enforce statutory eligibility for specific tax concessions
+        if (resolvedTaxClassification === "SEZ Unit / Developer (Supply under LUT without IGST)") {
+          const clientGstin = String(client?.gstNumber || client?.gstin || "").trim();
+          if (!clientGstin && !client?.isSez) {
+            return res.status(400).json({
+              success: false,
+              message: "SEZ zero-tax supply requires a valid recipient GSTIN or registered SEZ unit designation.",
+            });
+          }
+        }
+
+        if (resolvedTaxClassification === "Export of Services (Zero-Rated under LUT)") {
+          const clientCountry = String(client?.billingAddress?.country || client?.country || "India").trim().toLowerCase();
+          const isIndia = clientCountry === "india" || clientCountry === "in" || clientCountry === "";
+          if (isIndia && !req.body.isExportSupply) {
+            return res.status(400).json({
+              success: false,
+              message: "Export of Services (Zero-Rated under LUT) requires foreign place of supply or certified export declaration.",
+            });
+          }
+        }
+      } else {
+        if (normalizedTaxType === "intra") {
+          resolvedTaxClassification = `Intra-State Taxable Supply (${authorizedGstRate}% GST)`;
+        } else {
+          resolvedTaxClassification = `Inter-State Taxable Supply (${authorizedGstRate}% IGST)`;
+        }
+      }
+
+      /* =================================================
+         CALCULATE NEW AMC PERIOD
+      ================================================= */
+      let newStartDate;
+      if (startDate) {
+        newStartDate = new Date(startDate);
+      } else {
+        const baseExpiry = contract.expiryDate ? new Date(contract.expiryDate) : new Date();
+        newStartDate = new Date(baseExpiry);
+        newStartDate.setDate(newStartDate.getDate() + 1);
+      }
+
+      if (Number.isNaN(newStartDate.getTime())) {
+        return res.status(400).json({
+          success: false,
+          message: "Unable to determine a valid AMC start date.",
+        });
+      }
+
+      let newExpiryDate;
+      if (expiryDate) {
+        newExpiryDate = new Date(expiryDate);
+      } else {
+        newExpiryDate = new Date(newStartDate);
+        newExpiryDate.setFullYear(newExpiryDate.getFullYear() + 1);
+        newExpiryDate.setDate(newExpiryDate.getDate() - 1);
+      }
+
+      if (Number.isNaN(newExpiryDate.getTime())) {
+        return res.status(400).json({
+          success: false,
+          message: "Unable to determine a valid AMC expiry date.",
+        });
+      }
+
+      if (newExpiryDate <= newStartDate) {
+        return res.status(400).json({
+          success: false,
+          message: "AMC expiry date must be strictly after the start date.",
+        });
+      }
+
+      let newDueDate;
+      if (dueDate) {
+        newDueDate = new Date(dueDate);
+      } else {
+        newDueDate = new Date(newStartDate);
+      }
+
+      if (Number.isNaN(newDueDate.getTime())) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid AMC payment due date.",
+        });
+      }
+
+      /* =================================================
+         COMMERCIAL & TAX AMOUNTS
+      ================================================= */
+      const newTaxableAmount = roundAmcAmount(
+        taxableAmount !== undefined
+          ? taxableAmount
+          : contract.taxableAmount || 0
+      );
+
+      if (!Number.isFinite(newTaxableAmount) || newTaxableAmount <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Enter a valid positive AMC basic/taxable amount.",
+        });
+      }
+
+      const normalizedPlan = String(plan || contract.plan || "Standard").trim();
+      const normalizedUsers = Math.max(Number(licensedUsers || contract.licensedUsers || 1), 1);
+      const normalizedIdempotencyKey = idempotencyKey ? String(idempotencyKey).trim() : null;
+
+      /* =================================================
+         CANONICAL PAYLOAD HASH FOR IDEMPOTENCY
+      ================================================= */
+      const canonicalPayload = {
+        contractId: contract._id.toString(),
+        startDate: newStartDate.toISOString().slice(0, 10),
+        expiryDate: newExpiryDate.toISOString().slice(0, 10),
+        dueDate: newDueDate.toISOString().slice(0, 10),
+        taxableAmount: newTaxableAmount,
+        gstApplicable: normalizedGstApplicable,
+        taxType: normalizedTaxType,
+        gstRate: authorizedGstRate,
+        plan: normalizedPlan,
+      };
+
+      const payloadHash = crypto
+        .createHash("sha256")
+        .update(JSON.stringify(canonicalPayload))
+        .digest("hex");
+
+      /* =================================================
+         MULTI-TIER IDEMPOTENCY & DUPLICATE CHECKS
+      ================================================= */
+      if (normalizedIdempotencyKey) {
+        // Tier 1: In-Flight / Fast Cache Check
+        const existingLog = await IdempotencyLog.findOne({
+          idempotencyKey: normalizedIdempotencyKey,
+        });
+
+        if (existingLog) {
+          if (existingLog.payloadHash === payloadHash) {
+            return res.status(200).json({
+              ...(existingLog.responseBody || {}),
+              isReplay: true,
+            });
+          } else {
+            return res.status(422).json({
+              success: false,
+              message: "Idempotency key conflict: Request parameters do not match the original transaction.",
+            });
+          }
+        }
+
+        // Tier 2: Durable Ledger Check by Idempotency Key
+        const existingInvoiceByKey = await AmcInvoice.findOne({
+          idempotencyKey: normalizedIdempotencyKey,
+          isDeleted: false,
+        });
+
+        if (existingInvoiceByKey) {
+          const contractData = mergeAmcContractWithInvoice(contract, existingInvoiceByKey);
+          const invoiceData = amcInvoiceResponse(existingInvoiceByKey);
+          return res.status(200).json({
+            success: true,
+            isReplay: true,
+            message: `AMC renewal invoice already generated (${existingInvoiceByKey.invoiceCode}).`,
+            data: {
+              contract: contractData,
+              invoice: invoiceData,
+            },
+            contract: contractData,
+            invoice: invoiceData,
+          });
+        }
+      }
+
+      // Durable Period Check (Exact Match)
+      const existingExactInvoice = await AmcInvoice.findOne({
+        amcContractId: contract._id,
+        contractStartDate: newStartDate,
+        contractExpiryDate: newExpiryDate,
+        isDeleted: false,
+        status: { $in: ["Issued", "Draft"] },
+      });
+
+      if (existingExactInvoice) {
+        return res.status(409).json({
+          success: false,
+          message: `AMC renewal already exists for this exact coverage period (${existingExactInvoice.invoiceCode}).`,
+        });
+      }
+
+      /* =================================================
+         TRANSACTION EXECUTION WITH RETRY HANDLING
+      ================================================= */
+      let createdInvoice = null;
+      let isEarlyRenewal = false;
+      let finalContract = null;
+
+      const maxRetries = 3;
+      let attempt = 0;
+      let transactionSuccess = false;
+
+      while (attempt < maxRetries && !transactionSuccess) {
+        attempt++;
+
+        // Fast-path recovery on retry: If a concurrent identical transaction committed while we were waiting on lock
+        if (normalizedIdempotencyKey && attempt > 1) {
+          const replayLog = await IdempotencyLog.findOne({
+            idempotencyKey: normalizedIdempotencyKey,
+            status: "COMPLETED",
+          });
+          if (replayLog && replayLog.responseBody) {
+            return res.status(replayLog.responseStatus || 200).json({
+              ...(replayLog.responseBody || {}),
+              isReplay: true,
+            });
+          }
+        }
+
+        const session = await mongoose.startSession();
+
+        try {
+          await session.withTransaction(async () => {
+            // 1. Atomic Per-Contract Concurrency Lock
+            const lockedContract = await AmcContract.findOneAndUpdate(
+              { _id: contract._id, isDeleted: false },
+              {
+                $set: { renewalLockAt: new Date() },
+                $inc: { renewalVersion: 1 },
+              },
+              { session, new: true }
+            );
+
+            if (!lockedContract) {
+              const err = new Error("AMC contract lock acquisition failed.");
+              err.statusCode = 409;
+              throw err;
+            }
+
+            // 2. Transactional Period Overlap Check
+            const overlappingInvoice = await AmcInvoice.findOne({
+              amcContractId: contract._id,
+              isDeleted: false,
+              status: { $in: ["Issued", "Draft"] },
+              contractStartDate: { $lte: newExpiryDate },
+              contractExpiryDate: { $gte: newStartDate },
+            }).session(session);
+
+            if (overlappingInvoice) {
+              const err = new Error(
+                `AMC renewal overlaps with existing active invoice (${overlappingInvoice.invoiceCode} for ${overlappingInvoice.contractStartDate.toISOString().slice(0, 10)} to ${overlappingInvoice.contractExpiryDate.toISOString().slice(0, 10)}).`
+              );
+              err.statusCode = 409;
+              throw err;
+            }
+
+            // 3. Authoritative Tax & Financial Calculation
+            let calculatedCgstRate = 0;
+            let calculatedSgstRate = 0;
+            let calculatedIgstRate = 0;
+
+            if (normalizedGstApplicable === "YES") {
+              if (normalizedTaxType === "intra") {
+                calculatedCgstRate = authorizedGstRate / 2;
+                calculatedSgstRate = authorizedGstRate / 2;
+              } else {
+                calculatedIgstRate = authorizedGstRate;
+              }
+            }
+
+            const authoritativeAmounts = calculateAmcAmounts({
+              taxableAmount: newTaxableAmount,
+              cgstRate: calculatedCgstRate,
+              sgstRate: calculatedSgstRate,
+              igstRate: calculatedIgstRate,
+            });
+
+            // 4. Sequential Invoice Number Reservation
+            const invoiceIdentity = await getNextAmcInvoiceIdentity({ session });
+
+            // 5. Create Permanent AmcInvoice
+            createdInvoice = new AmcInvoice({
+              invoiceCode: invoiceIdentity.invoiceCode,
+              invoiceNumber: invoiceIdentity.invoiceNumber,
+              invoiceType: "Renewal",
+              amcContractId: contract._id,
+              contractCode: contract.contractCode,
+              clientId: contract.clientId,
+              clientCode: contract.clientCode,
+              clientName: contract.clientName,
+              productId: contract.productId,
+              productCode: contract.productCode,
+              productName: contract.productName,
+              clientProductId: contract.clientProductId,
+              plan: normalizedPlan,
+              licensedUsers: normalizedUsers,
+              contractStartDate: newStartDate,
+              contractExpiryDate: newExpiryDate,
+              invoiceDate: new Date(),
+              dueDate: newDueDate,
+              taxableAmount: authoritativeAmounts.taxableAmount,
+              cgstRate: authoritativeAmounts.cgstRate,
+              cgstAmount: authoritativeAmounts.cgstAmount,
+              sgstRate: authoritativeAmounts.sgstRate,
+              sgstAmount: authoritativeAmounts.sgstAmount,
+              igstRate: authoritativeAmounts.igstRate,
+              igstAmount: authoritativeAmounts.igstAmount,
+              totalTaxAmount: authoritativeAmounts.totalTaxAmount,
+              totalAmount: authoritativeAmounts.totalAmount,
+              paidAmount: 0,
+              pendingAmount: authoritativeAmounts.totalAmount,
+              paymentStatus: "Pending",
+              status: "Issued",
+              taxClassification: resolvedTaxClassification,
+              idempotencyKey: normalizedIdempotencyKey,
+              notes: String(
+                notes ||
+                `AMC renewal after ${contract.currentInvoiceCode || contract.contractCode}`
+              ).trim(),
+              createdBy: req.user?._id || null,
+              createdByName: req.user?.name || "Admin",
+              updatedBy: req.user?._id || null,
+              updatedByName: req.user?.name || "Admin",
+              isDeleted: false,
+            });
+
+            await createdInvoice.save({ session });
+
+            // 6. Early Renewal vs Immediate Lifecycle Transition
+            const today = new Date();
+            const existingExpiry = contract.expiryDate ? new Date(contract.expiryDate) : null;
+            isEarlyRenewal =
+              contract.status !== "Cancelled" &&
+              existingExpiry &&
+              newStartDate > existingExpiry &&
+              today <= existingExpiry;
+
+            if (isEarlyRenewal) {
+              // Store as upcomingRenewal: ongoing active coverage stays untouched!
+              lockedContract.upcomingRenewal = {
+                invoiceId: createdInvoice._id,
+                invoiceCode: createdInvoice.invoiceCode,
+                startDate: newStartDate,
+                expiryDate: newExpiryDate,
+                dueDate: newDueDate,
+                plan: normalizedPlan,
+                licensedUsers: normalizedUsers,
+                taxableAmount: authoritativeAmounts.taxableAmount,
+                cgstRate: authoritativeAmounts.cgstRate,
+                cgstAmount: authoritativeAmounts.cgstAmount,
+                sgstRate: authoritativeAmounts.sgstRate,
+                sgstAmount: authoritativeAmounts.sgstAmount,
+                igstRate: authoritativeAmounts.igstRate,
+                igstAmount: authoritativeAmounts.igstAmount,
+                totalTaxAmount: authoritativeAmounts.totalTaxAmount,
+                totalAmount: authoritativeAmounts.totalAmount,
+                gstApplicable: normalizedGstApplicable,
+                taxType: normalizedTaxType,
+                taxClassification: resolvedTaxClassification,
+                paymentStatus: "Pending",
+                notes: createdInvoice.notes,
+                createdAt: new Date(),
+              };
+
+              lockedContract.timeline = lockedContract.timeline || [];
+              lockedContract.timeline.push({
+                type: "renewal",
+                title: "AMC Future Renewal Scheduled",
+                description: `Renewal invoice ${createdInvoice.invoiceCode} generated for future period ${newStartDate.toISOString().slice(0, 10)} to ${newExpiryDate.toISOString().slice(0, 10)}. Ongoing coverage remains active until ${existingExpiry.toISOString().slice(0, 10)}.`,
+                performedBy: req.user?._id || null,
+                performedByName: req.user?.name || "Admin",
+                performedByRole: req.user?.role || "admin",
+              });
+            } else {
+              // Standard / Post-expiry Renewal: Archive prior cycle and transition contract
+              lockedContract.renewalHistory = lockedContract.renewalHistory || [];
+              lockedContract.renewalHistory.push({
+                cycleNumber: (lockedContract.renewalHistory?.length || 0) + 1,
+                previousInvoiceId: lockedContract.currentInvoiceId || null,
+                previousInvoiceCode: lockedContract.currentInvoiceCode || lockedContract.invoiceCode || "",
+                startDate: lockedContract.startDate,
+                expiryDate: lockedContract.expiryDate,
+                dueDate: lockedContract.dueDate,
+                plan: lockedContract.plan,
+                licensedUsers: lockedContract.licensedUsers,
+                taxableAmount: lockedContract.taxableAmount,
+                cgstRate: lockedContract.cgstRate,
+                cgstAmount: lockedContract.cgstAmount,
+                sgstRate: lockedContract.sgstRate,
+                sgstAmount: lockedContract.sgstAmount,
+                igstRate: lockedContract.igstRate,
+                igstAmount: lockedContract.igstAmount,
+                totalTaxAmount: lockedContract.totalTaxAmount,
+                totalAmount: lockedContract.totalAmount,
+                paidAmount: lockedContract.paidAmount,
+                pendingAmount: lockedContract.pendingAmount,
+                status: lockedContract.status,
+                gstApplicable: lockedContract.gstApplicable || "YES",
+                taxType: lockedContract.taxType || "intra",
+                taxClassification: lockedContract.taxClassification || "Standard Rate (18%)",
+                notes: lockedContract.notes,
+                archivedAt: new Date(),
+                archivedBy: req.user?._id || null,
+                archivedByName: req.user?.name || "Admin",
+              });
+
+              lockedContract.startDate = newStartDate;
+              lockedContract.expiryDate = newExpiryDate;
+              lockedContract.dueDate = newDueDate;
+              lockedContract.plan = normalizedPlan;
+              lockedContract.licensedUsers = normalizedUsers;
+              lockedContract.taxableAmount = authoritativeAmounts.taxableAmount;
+              lockedContract.cgstRate = authoritativeAmounts.cgstRate;
+              lockedContract.cgstAmount = authoritativeAmounts.cgstAmount;
+              lockedContract.sgstRate = authoritativeAmounts.sgstRate;
+              lockedContract.sgstAmount = authoritativeAmounts.sgstAmount;
+              lockedContract.igstRate = authoritativeAmounts.igstRate;
+              lockedContract.igstAmount = authoritativeAmounts.igstAmount;
+              lockedContract.totalTaxAmount = authoritativeAmounts.totalTaxAmount;
+              lockedContract.totalAmount = authoritativeAmounts.totalAmount;
+              lockedContract.paidAmount = 0;
+              lockedContract.pendingAmount = authoritativeAmounts.totalAmount;
+              lockedContract.gstApplicable = normalizedGstApplicable;
+              lockedContract.taxType = normalizedTaxType;
+              lockedContract.taxClassification = resolvedTaxClassification;
+              lockedContract.currentInvoiceId = createdInvoice._id;
+              lockedContract.currentInvoiceCode = createdInvoice.invoiceCode;
+              lockedContract.invoiceCode = createdInvoice.invoiceCode;
+              lockedContract.invoiceDate = createdInvoice.invoiceDate;
+              lockedContract.status = "Pending";
+              lockedContract.upcomingRenewal = {
+                invoiceId: null,
+                invoiceCode: "",
+                startDate: null,
+                expiryDate: null,
+                dueDate: null,
+                plan: "Standard",
+                licensedUsers: 1,
+                taxableAmount: 0,
+                cgstRate: 0,
+                cgstAmount: 0,
+                sgstRate: 0,
+                sgstAmount: 0,
+                igstRate: 0,
+                igstAmount: 0,
+                totalTaxAmount: 0,
+                totalAmount: 0,
+                gstApplicable: "YES",
+                taxType: "intra",
+                taxClassification: "Standard Rate (18%)",
+                paymentStatus: "Pending",
+                notes: "",
+                createdAt: null,
+              };
+
+              // Synchronize Client Document
+              const clientDoc = await Client.findById(contract.clientId).session(session);
+              if (clientDoc) {
+                const clientProduct = clientDoc.products?.id
+                  ? clientDoc.products.id(contract.clientProductId)
+                  : (clientDoc.products || []).find((p) => String(p._id) === String(contract.clientProductId));
+                if (clientProduct) {
+                  clientProduct.amcStatus = "Pending";
+                  clientProduct.expiryDate = newExpiryDate.toISOString().slice(0, 10);
+                }
+                clientDoc.amcStatus = "Pending";
+                clientDoc.nextRenewal = newExpiryDate.toISOString().slice(0, 10);
+                clientDoc.updatedBy = req.user?._id || null;
+                clientDoc.updatedByName = req.user?.name || "Admin";
+                await clientDoc.save({ session });
+              }
+
+              lockedContract.timeline = lockedContract.timeline || [];
+              lockedContract.timeline.push({
+                type: "renewal",
+                title: "AMC Contract Renewed",
+                description: `Contract ${contract.contractCode} renewed. New invoice ${createdInvoice.invoiceCode} generated.`,
+                performedBy: req.user?._id || null,
+                performedByName: req.user?.name || "Admin",
+                performedByRole: req.user?.role || "admin",
+              });
+            }
+
+            lockedContract.updatedBy = req.user?._id || null;
+            lockedContract.updatedByName = req.user?.name || "Admin";
+            await lockedContract.save({ session });
+            finalContract = lockedContract;
+
+            // 7. Activity Log (Session-bound for atomic rollback safety)
+            await createActivityLog(
+              {
+                action: isEarlyRenewal ? "AMC Future Renewal Scheduled" : "AMC Renewed",
+                category: "AMC",
+                description: `${contract.contractCode} renewal invoice ${createdInvoice.invoiceCode} was generated.`,
+                entityType: "amc",
+                entityId: contract._id,
+                entityCode: contract.contractCode,
+                entityName: `${contract.clientName} - ${contract.productName}`,
+                clientId: contract.clientId,
+                clientName: contract.clientName,
+                employeeId: contract.assignedEmployeeId,
+                employeeName: contract.assignedEmployeeName,
+                performedBy: req.user?._id || null,
+                performedByName: req.user?.name || "Admin",
+                performedByRole: req.user?.role || "admin",
+                metadata: {
+                  isEarlyRenewal,
+                  newInvoiceId: createdInvoice._id,
+                  newInvoiceCode: createdInvoice.invoiceCode,
+                  startDate: newStartDate,
+                  expiryDate: newExpiryDate,
+                  taxableAmount: authoritativeAmounts.taxableAmount,
+                  totalAmount: authoritativeAmounts.totalAmount,
+                  gstApplicable: normalizedGstApplicable,
+                },
+              },
+              { session }
+            );
+
+            // 8. Record Idempotency Log
+            if (normalizedIdempotencyKey) {
+              await IdempotencyLog.create(
+                [
+                  {
+                    idempotencyKey: normalizedIdempotencyKey,
+                    endpoint: "/api/admin/amc/contract/:id/renew",
+                    contractId: contract._id,
+                    payloadHash,
+                    status: "COMPLETED",
+                    responseStatus: 201,
+                    responseBody: {
+                      success: true,
+                      message: isEarlyRenewal
+                        ? `AMC future renewal scheduled successfully. Invoice ${createdInvoice.invoiceCode} generated.`
+                        : `AMC renewed successfully. Invoice ${createdInvoice.invoiceCode} has been generated.`,
+                      data: {
+                        isEarlyRenewal,
+                        contract: mergeAmcContractWithInvoice(lockedContract, createdInvoice),
+                        invoice: amcInvoiceResponse(createdInvoice),
+                      },
+                      contract: mergeAmcContractWithInvoice(lockedContract, createdInvoice),
+                      invoice: amcInvoiceResponse(createdInvoice),
+                    },
+                  },
+                ],
+                { session }
+              );
+            }
+          });
+
+          transactionSuccess = true;
+        } catch (error) {
+          const isTransient =
+            error.hasErrorLabel &&
+            (error.hasErrorLabel("TransientTransactionError") ||
+              error.hasErrorLabel("UnknownTransactionCommitResult"));
+
+          if (isTransient && attempt < maxRetries) {
+            console.warn(`Transient error during AMC renewal (attempt ${attempt}):`, error.message);
+            continue;
+          }
+
+          if (error.statusCode) {
+            // If overlapping invoice was detected but was committed concurrently by our own idempotency key
+            if (error.statusCode === 409 && normalizedIdempotencyKey) {
+              const replayLog = await IdempotencyLog.findOne({
+                idempotencyKey: normalizedIdempotencyKey,
+                status: "COMPLETED",
+              });
+              if (replayLog && replayLog.responseBody) {
+                return res.status(replayLog.responseStatus || 200).json({
+                  ...(replayLog.responseBody || {}),
+                  isReplay: true,
+                });
+              }
+            }
+
+            return res.status(error.statusCode).json({
+              success: false,
+              message: error.message,
+            });
+          }
+
+          if (error.code === 11000) {
+            if (normalizedIdempotencyKey) {
+              const replayLog = await IdempotencyLog.findOne({
+                idempotencyKey: normalizedIdempotencyKey,
+                status: "COMPLETED",
+              });
+              if (replayLog && replayLog.responseBody) {
+                return res.status(replayLog.responseStatus || 200).json({
+                  ...(replayLog.responseBody || {}),
+                  isReplay: true,
+                });
+              }
+            }
+
+            // If collision occurred on invoice code/number during concurrent generation, retry with next sequence
+            const isInvoiceCollision =
+              (error.message && (error.message.includes("invoiceCode") || error.message.includes("invoiceNumber"))) ||
+              (error.keyPattern && (error.keyPattern.invoiceCode || error.keyPattern.invoiceNumber));
+
+            if (isInvoiceCollision && attempt < maxRetries) {
+              console.warn(
+                `Invoice identity sequence collision during renewal (attempt ${attempt}), retrying with next sequence...`
+              );
+              continue;
+            }
+
+            return res.status(409).json({
+              success: false,
+              message: "AMC renewal invoice or unique constraint collision. Please try again.",
+            });
+          }
+
+          console.error("AMC renewal transaction failed:", error);
+          return res.status(500).json({
+            success: false,
+            message: error.message || "Failed to complete AMC renewal transaction.",
+          });
+        } finally {
+          await session.endSession();
+        }
+      }
+
+      /* =================================================
+         FINAL RESPONSE
+      ================================================= */
+      const contractData = mergeAmcContractWithInvoice(finalContract, createdInvoice);
+      const invoiceData = amcInvoiceResponse(createdInvoice);
+
+      return res.status(201).json({
+        success: true,
+        isEarlyRenewal,
+        message: isEarlyRenewal
+          ? `AMC future renewal scheduled successfully. Invoice ${createdInvoice.invoiceCode} generated.`
+          : `AMC renewed successfully. Invoice ${createdInvoice.invoiceCode} has been generated.`,
+        data: {
+          isEarlyRenewal,
+          contract: contractData,
+          invoice: invoiceData,
+        },
+        contract: contractData,
+        invoice: invoiceData,
+      });
+    } catch (error) {
+      console.error("AMC renewal root error:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message || "Unable to renew AMC contract.",
+      });
+    }
+  }
+);
+
+/* =====================================================
+   AUTONOMOUS FUTURE AMC ACTIVATION WORKER
+   syncUpcomingAmcRenewals()
+===================================================== */
+async function syncUpcomingAmcRenewals() {
+  const now = new Date();
+  const dueContracts = await AmcContract.find({
+    isDeleted: false,
+    "upcomingRenewal.startDate": { $lte: now },
+    "upcomingRenewal.invoiceId": { $ne: null },
+  });
+
+  if (!dueContracts || dueContracts.length === 0) {
+    return { activatedCount: 0 };
+  }
+
+  let activatedCount = 0;
+
+  for (const contract of dueContracts) {
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        const freshContract = await AmcContract.findById(contract._id).session(session);
+        if (
+          !freshContract ||
+          !freshContract.upcomingRenewal?.startDate ||
+          freshContract.upcomingRenewal.startDate > now
+        ) {
+          return;
+        }
+
+        const upcoming = freshContract.upcomingRenewal;
+
+        // 1. Archive previous active cycle
+        freshContract.renewalHistory = freshContract.renewalHistory || [];
+        freshContract.renewalHistory.push({
+          cycleNumber: (freshContract.renewalHistory?.length || 0) + 1,
+          previousInvoiceId: freshContract.currentInvoiceId || null,
+          previousInvoiceCode: freshContract.currentInvoiceCode || freshContract.invoiceCode || "",
+          startDate: freshContract.startDate,
+          expiryDate: freshContract.expiryDate,
+          dueDate: freshContract.dueDate,
+          plan: freshContract.plan,
+          licensedUsers: freshContract.licensedUsers,
+          taxableAmount: freshContract.taxableAmount,
+          cgstRate: freshContract.cgstRate,
+          cgstAmount: freshContract.cgstAmount,
+          sgstRate: freshContract.sgstRate,
+          sgstAmount: freshContract.sgstAmount,
+          igstRate: freshContract.igstRate,
+          igstAmount: freshContract.igstAmount,
+          totalTaxAmount: freshContract.totalTaxAmount,
+          totalAmount: freshContract.totalAmount,
+          paidAmount: freshContract.paidAmount,
+          pendingAmount: freshContract.pendingAmount,
+          status: freshContract.status,
+          gstApplicable: freshContract.gstApplicable || "YES",
+          taxType: freshContract.taxType || "intra",
+          taxClassification: freshContract.taxClassification || "Standard Rate (18%)",
+          notes: freshContract.notes,
+          archivedAt: now,
+          archivedBy: null,
+          archivedByName: "Autonomous AMC Scheduler",
+        });
+
+        // 2. Transition active cycle to the upcoming renewal
+        freshContract.startDate = upcoming.startDate;
+        freshContract.expiryDate = upcoming.expiryDate;
+        freshContract.dueDate = upcoming.dueDate;
+        freshContract.plan = upcoming.plan;
+        freshContract.licensedUsers = upcoming.licensedUsers;
+        freshContract.taxableAmount = upcoming.taxableAmount;
+        freshContract.cgstRate = upcoming.cgstRate;
+        freshContract.cgstAmount = upcoming.cgstAmount;
+        freshContract.sgstRate = upcoming.sgstRate;
+        freshContract.sgstAmount = upcoming.sgstAmount;
+        freshContract.igstRate = upcoming.igstRate;
+        freshContract.igstAmount = upcoming.igstAmount;
+        freshContract.totalTaxAmount = upcoming.totalTaxAmount;
+        freshContract.totalAmount = upcoming.totalAmount;
+        freshContract.gstApplicable = upcoming.gstApplicable;
+        freshContract.taxType = upcoming.taxType;
+        freshContract.taxClassification = upcoming.taxClassification;
+        freshContract.currentInvoiceId = upcoming.invoiceId;
+        freshContract.currentInvoiceCode = upcoming.invoiceCode;
+        freshContract.invoiceCode = upcoming.invoiceCode;
+        freshContract.invoiceDate = upcoming.createdAt || now;
+
+        const linkedInvoice = await AmcInvoice.findById(upcoming.invoiceId).session(session);
+        freshContract.paidAmount = linkedInvoice?.paidAmount || 0;
+        freshContract.pendingAmount = linkedInvoice?.pendingAmount || upcoming.totalAmount;
+        freshContract.status = linkedInvoice?.paymentStatus === "Paid" ? "Paid" : "Pending";
+
+        // 3. Clear upcomingRenewal
+        freshContract.upcomingRenewal = {
+          invoiceId: null,
+          invoiceCode: "",
+          startDate: null,
+          expiryDate: null,
+          dueDate: null,
+          plan: "Standard",
+          licensedUsers: 1,
+          taxableAmount: 0,
+          cgstRate: 0,
+          cgstAmount: 0,
+          sgstRate: 0,
+          sgstAmount: 0,
+          igstRate: 0,
+          igstAmount: 0,
+          totalTaxAmount: 0,
+          totalAmount: 0,
+          gstApplicable: "YES",
+          taxType: "intra",
+          taxClassification: "Standard Rate (18%)",
+          paymentStatus: "Pending",
+          notes: "",
+          createdAt: null,
+        };
+
+        // 4. Update Client Product Status
+        const client = await Client.findById(freshContract.clientId).session(session);
+        if (client) {
+          const clientProd = client.products?.id
+            ? client.products.id(freshContract.clientProductId)
+            : (client.products || []).find((p) => String(p._id) === String(freshContract.clientProductId));
+          if (clientProd) {
+            clientProd.expiryDate = freshContract.expiryDate.toISOString().slice(0, 10);
+            clientProd.amcStatus = freshContract.status;
+          }
+          client.nextRenewal = freshContract.expiryDate.toISOString().slice(0, 10);
+          client.amcStatus = freshContract.status;
+          await client.save({ session });
+        }
+
+        freshContract.timeline = freshContract.timeline || [];
+        freshContract.timeline.push({
+          type: "renewal",
+          title: "Scheduled AMC Renewal Activated",
+          description: `Upcoming AMC cycle for ${freshContract.startDate.toISOString().slice(0, 10)} to ${freshContract.expiryDate.toISOString().slice(0, 10)} transitioned automatically.`,
+          performedByName: "Autonomous Scheduler",
+        });
+
+        await freshContract.save({ session });
+        activatedCount++;
+      });
+    } catch (err) {
+      console.error(`Autonomous renewal activation failed for contract ${contract.contractCode}:`, err);
+    } finally {
+      await session.endSession();
+    }
+  }
+
+  return { activatedCount };
+}
+
+/* =====================================================
+   SECURED CRON / WEBHOOK ENDPOINT FOR SCHEDULER
+   POST /api/admin/amc/cron/sync-renewals
+===================================================== */
+router.post("/amc/cron/sync-renewals", async (req, res) => {
+  try {
+    const cronSecret = process.env.CRON_SECRET;
+    const providedSecret = req.headers["x-cron-secret"] || req.query.secret;
+
+    let isAuthorized = false;
+    if (cronSecret && providedSecret && providedSecret === cronSecret) {
+      isAuthorized = true;
+    } else {
+      // Fallback to standard Bearer token authentication
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        try {
+          const jwt = require("jsonwebtoken");
+          const token = authHeader.split(" ")[1];
+          const decoded = jwt.verify(token, process.env.JWT_SECRET);
+          const role = String(decoded?.role || "").toLowerCase();
+          if (["admin", "superadmin", "super_admin"].includes(role)) {
+            isAuthorized = true;
+          }
+        } catch (jwtErr) {
+          isAuthorized = false;
+        }
+      }
+    }
+
+    if (!isAuthorized) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized. Valid cron secret or administrator credentials required.",
+      });
+    }
+
+    const result = await syncUpcomingAmcRenewals();
+    return res.status(200).json({
+      success: true,
+      message: `Autonomous AMC renewal sync completed successfully. Activated ${result.activatedCount} contract(s).`,
+      data: result,
+    });
+  } catch (error) {
+    console.error("Cron sync-renewals error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to execute autonomous AMC renewal sync.",
+    });
+  }
+});
+
+/* =========================================================
+   OMNI GLOBAL SEARCH (Cross-Entity Unified Search)
+========================================================= */
+router.get("/global-search", authenticateUser, async (req, res) => {
+  try {
+    const q = String(req.query.q || "").trim();
+    if (!q || q.length < 2) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+      });
+    }
+
+    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(escaped, "i");
+
+    const ClientModel = mongoose.models.Client || Client;
+    const RequirementModel = mongoose.models.Requirement || Requirement;
+    const ProjectModel = mongoose.models.Project || Project;
+    const TaskModel = mongoose.models.Task || Task;
+    const SupportTicketModel = mongoose.models.SupportTicket || SupportTicket;
+    const AmcInvoiceModel = mongoose.models.AmcInvoice || AmcInvoice;
+
+    const [clients, requirements, projects, tasks, tickets, invoices] = await Promise.all([
+      ClientModel ? ClientModel.find({
+        $or: [
+          { companyName: regex },
+          { clientCode: regex },
+          { contactPerson: regex },
+          { email: regex },
+          { phone: regex },
+        ],
+      }).limit(5).lean().catch(() => []) : [],
+
+      RequirementModel ? RequirementModel.find({
+        $or: [
+          { title: regex },
+          { requirementNo: regex },
+          { clientName: regex },
+          { contactPerson: regex },
+        ],
+      }).limit(5).lean().catch(() => []) : [],
+
+      ProjectModel ? ProjectModel.find({
+        $or: [
+          { projectName: regex },
+          { projectCode: regex },
+          { clientName: regex },
+        ],
+      }).limit(5).lean().catch(() => []) : [],
+
+      TaskModel ? TaskModel.find({
+        $or: [
+          { title: regex },
+          { taskNo: regex },
+          { client: regex },
+          { assignedEmployeeName: regex },
+        ],
+      }).limit(5).lean().catch(() => []) : [],
+
+      SupportTicketModel ? SupportTicketModel.find({
+        $or: [
+          { ticketNo: regex },
+          { title: regex },
+          { client: regex },
+          { assignedEmployeeName: regex },
+        ],
+      }).limit(5).lean().catch(() => []) : [],
+
+      AmcInvoiceModel ? AmcInvoiceModel.find({
+        $or: [
+          { invoiceNumber: regex },
+          { clientName: regex },
+        ],
+      }).limit(5).lean().catch(() => []) : [],
+    ]);
+
+    const results = [];
+
+    (clients || []).forEach((c) => {
+      results.push({
+        id: c._id,
+        recordId: c._id,
+        title: c.companyName,
+        subtitle: [c.clientCode, c.contactPerson, c.city].filter(Boolean).join(" • "),
+        category: "Clients",
+        targetModule: "clients",
+      });
+    });
+
+    (requirements || []).forEach((r) => {
+      results.push({
+        id: r._id,
+        recordId: r._id,
+        title: r.title,
+        subtitle: [r.requirementNo, r.clientName, r.status].filter(Boolean).join(" • "),
+        category: "Leads",
+        targetModule: "requirements",
+      });
+    });
+
+    (projects || []).forEach((p) => {
+      results.push({
+        id: p._id,
+        recordId: p._id,
+        title: p.projectName,
+        subtitle: [p.projectCode, p.clientName, p.status].filter(Boolean).join(" • "),
+        category: "Projects",
+        targetModule: "projects",
+      });
+    });
+
+    (tasks || []).forEach((t) => {
+      results.push({
+        id: t._id,
+        recordId: t._id,
+        title: t.title,
+        subtitle: [t.taskNo, t.client, t.status].filter(Boolean).join(" • "),
+        category: "Tasks",
+        targetModule: "tasks",
+      });
+    });
+
+    (tickets || []).forEach((s) => {
+      results.push({
+        id: s._id,
+        recordId: s._id,
+        title: s.title,
+        subtitle: [s.ticketNo, s.client, s.status].filter(Boolean).join(" • "),
+        category: "Tickets",
+        targetModule: "tickets",
+      });
+    });
+
+    (invoices || []).forEach((inv) => {
+      results.push({
+        id: inv._id,
+        recordId: inv._id,
+        title: `Invoice #${inv.invoiceNumber}`,
+        subtitle: [inv.clientName, `₹${inv.grandTotal || inv.totalAmount || 0}`, inv.status].filter(Boolean).join(" • "),
+        category: "Invoices",
+        targetModule: "billing",
+      });
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: results,
+    });
+  } catch (error) {
+    console.error("Omni global search error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error during global search",
+      data: [],
+    });
+  }
+});
+
+/* =====================================================
+   AMC RENEWAL & QUOTATION REQUESTS (ADMIN WORKFLOW)
+===================================================== */
+
+const quotationUploadDirectory = path.join(__dirname, "uploads", "quotations");
+if (!fs.existsSync(quotationUploadDirectory)) {
+  fs.mkdirSync(quotationUploadDirectory, { recursive: true });
+}
+
+const quotationStorage = multer.diskStorage({
+  destination: (req, file, callback) => {
+    callback(null, quotationUploadDirectory);
+  },
+  filename: (req, file, callback) => {
+    const originalExtension = path.extname(file.originalname);
+    const originalBaseName = path
+      .basename(file.originalname, originalExtension)
+      .replace(/[^a-zA-Z0-9-_]/g, "-")
+      .slice(0, 80);
+    const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1e9)}-${originalBaseName}${originalExtension}`;
+    callback(null, uniqueName);
+  },
+});
+
+const uploadQuotationDocument = multer({
+  storage: quotationStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, callback) => {
+    const allowed = [
+      "application/pdf",
+      "image/jpeg",
+      "image/png",
+      "image/jpg",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ];
+    if (allowed.includes(file.mimetype)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error("Unsupported file type. Upload a PDF, Word document, or image."));
+  },
+});
+
+function formatAdminAmcRequest(doc) {
+  if (!doc) return null;
+  const d = doc.toObject ? doc.toObject() : { ...doc };
+  return {
+    id: String(d._id),
+    _id: String(d._id),
+    requestCode: d.requestCode,
+    activeRequestKey: d.activeRequestKey,
+    clientId: String(d.clientId),
+    clientCode: d.clientCode || "",
+    clientName: d.clientName || "",
+    contractId: String(d.contractId),
+    contractCode: d.contractCode || "",
+    productId: d.productId ? String(d.productId) : null,
+    productName: d.productName || "",
+    currentExpiryDate: d.currentExpiryDate || null,
+    requestType: d.requestType,
+    renewalPeriod: d.renewalPeriod || "1 Year",
+    preferredStartDate: d.preferredStartDate || null,
+    remarks: d.remarks || "",
+    status: d.status,
+    quotationAmount: Number(d.quotationAmount || 0),
+    quotationDetails: d.quotationDetails || "",
+    quotationDocument: d.quotationDocument && d.quotationDocument.filePath ? {
+      fileName: d.quotationDocument.fileName || "",
+      fileUrl: d.quotationDocument.fileUrl || "",
+      fileSize: d.quotationDocument.fileSize || 0,
+      mimeType: d.quotationDocument.mimeType || "",
+      uploadedAt: d.quotationDocument.uploadedAt || null,
+    } : null,
+    adminNotes: d.adminNotes || "",
+    reviewedBy: d.reviewedBy ? String(d.reviewedBy) : null,
+    reviewedByName: d.reviewedByName || "",
+    reviewedAt: d.reviewedAt || null,
+    assignedEmployeeId: d.assignedEmployeeId ? String(d.assignedEmployeeId) : null,
+    assignedEmployeeCode: d.assignedEmployeeCode || "",
+    assignedEmployeeName: d.assignedEmployeeName || "",
+    timeline: (d.timeline || []).map((t) => ({
+      action: t.action,
+      status: t.status,
+      remarks: t.remarks || "",
+      performedByName: t.performedByName || (t.performedByRole === "client" ? "Client" : "Administrator"),
+      performedByRole: t.performedByRole || "system",
+      timestamp: t.timestamp,
+    })),
+    createdAt: d.createdAt,
+    updatedAt: d.updatedAt,
+  };
+}
+
+async function getNextAmcRequestCode() {
+  const year = new Date().getFullYear();
+  const counter = await AppCounter.findByIdAndUpdate(
+    `amc_req_${year}`,
+    { $inc: { seq: 1 } },
+    { new: true, upsert: true }
+  );
+  return `AMC-REQ-${year}-${String(counter.seq).padStart(4, "0")}`;
+}
+
+// GET /api/admin/amc-requests (with alias /amc/requests)
+router.get(["/amc-requests", "/amc/requests"], async (req, res) => {
+  try {
+    const { status = "All", requestType = "All", search = "", limit = 50, skip = 0 } = req.query;
+    const query = { isDeleted: false };
+    if (status && status !== "All") {
+      query.status = status;
+    }
+    if (requestType && requestType !== "All") {
+      query.requestType = requestType;
+    }
+    if (search && search.trim()) {
+      const regex = new RegExp(search.trim(), "i");
+      query.$or = [
+        { requestCode: regex },
+        { clientName: regex },
+        { clientCode: regex },
+        { productName: regex },
+        { contractCode: regex },
+      ];
+    }
+    const [total, requests] = await Promise.all([
+      ClientAmcRequest.countDocuments(query),
+      ClientAmcRequest.find(query)
+        .sort({ createdAt: -1 })
+        .skip(Number(skip) || 0)
+        .limit(Math.min(100, Math.max(1, Number(limit) || 50)))
+        .lean(),
+    ]);
+
+    return res.json({
+      success: true,
+      total,
+      data: requests.map(formatAdminAmcRequest),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to load AMC requests.",
+    });
+  }
+});
+
+// GET /api/admin/amc-requests/:id (with alias /amc/requests/:id)
+router.get(["/amc-requests/:id", "/amc/requests/:id"], async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Invalid request ID." });
+    }
+    const request = await ClientAmcRequest.findOne({ _id: id, isDeleted: false }).lean();
+    if (!request) {
+      return res.status(404).json({ success: false, message: "AMC request not found." });
+    }
+    return res.json({
+      success: true,
+      data: formatAdminAmcRequest(request),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch AMC request.",
+    });
+  }
+});
+
+// PATCH /api/admin/amc-requests/:id/status (with alias /amc/requests/:id/status)
+router.patch(
+  ["/amc-requests/:id/status", "/amc/requests/:id/status"],
+  uploadQuotationDocument.single("quotationFile"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ success: false, message: "Invalid request ID." });
+      }
+
+      const request = await ClientAmcRequest.findOne({ _id: id, isDeleted: false });
+      if (!request) {
+        return res.status(404).json({ success: false, message: "AMC request not found." });
+      }
+
+      const {
+        status,
+        adminNotes,
+        clientRemarks,
+        remarks,
+        quotationAmount,
+        quotationDetails,
+        assignedEmployeeId,
+      } = req.body;
+
+      const validStatuses = [
+        "Submitted",
+        "Under Review",
+        "Quotation Ready",
+        "Completed",
+        "Rejected",
+        "Cancelled",
+      ];
+      if (status && !validStatuses.includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
+        });
+      }
+
+      const previousStatus = request.status;
+      const targetStatus = status || previousStatus;
+
+      if (adminNotes !== undefined) request.adminNotes = (adminNotes || "").trim();
+      if (quotationDetails !== undefined) request.quotationDetails = (quotationDetails || "").trim();
+      if (quotationAmount !== undefined && quotationAmount !== "" && !isNaN(Number(quotationAmount))) {
+        request.quotationAmount = Math.max(0, Number(quotationAmount));
+      }
+
+      if (req.file) {
+        request.quotationDocument = {
+          fileName: req.file.originalname,
+          fileUrl: `/uploads/quotations/${req.file.filename}`,
+          filePath: req.file.path,
+          fileSize: req.file.size,
+          mimeType: req.file.mimetype,
+          uploadedAt: new Date(),
+        };
+      }
+
+      request.reviewedBy = req.user ? req.user._id : null;
+      request.reviewedByName = req.user ? (req.user.name || "Administrator") : "Administrator";
+      request.reviewedAt = new Date();
+
+      if (assignedEmployeeId && mongoose.Types.ObjectId.isValid(assignedEmployeeId)) {
+        request.assignedEmployeeId = assignedEmployeeId;
+      }
+
+      if (status && status !== previousStatus) {
+        request.status = targetStatus;
+        if (["Completed", "Rejected", "Cancelled"].includes(targetStatus)) {
+          request.activeRequestKey = null;
+        }
+
+        const timelineRemark = (clientRemarks || remarks || `Status updated to ${targetStatus}`).trim();
+        request.timeline.push({
+          action: `Status changed to ${targetStatus}`,
+          status: targetStatus,
+          remarks: timelineRemark,
+          performedBy: req.user ? req.user._id : null,
+          performedByName: req.user ? (req.user.name || "Administrator") : "Administrator",
+          performedByRole: "admin",
+          timestamp: new Date(),
+        });
+      } else if (req.file || quotationAmount || quotationDetails || adminNotes) {
+        request.timeline.push({
+          action: "Quotation updated",
+          status: request.status,
+          remarks: "Quotation details or attachment updated by Administrator",
+          performedBy: req.user ? req.user._id : null,
+          performedByName: req.user ? (req.user.name || "Administrator") : "Administrator",
+          performedByRole: "admin",
+          timestamp: new Date(),
+        });
+      }
+
+      await request.save();
+
+      return res.json({
+        success: true,
+        message: "AMC request updated successfully.",
+        data: formatAdminAmcRequest(request),
+      });
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message || "Failed to update AMC request status.",
+      });
+    }
+  }
+);
+
+// GET /api/admin/amc-requests/:id/quotation (with alias /amc/requests/:id/quotation)
+router.get(
+  ["/amc-requests/:id/quotation", "/amc/requests/:id/quotation"],
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ success: false, message: "Invalid request ID." });
+      }
+      const request = await ClientAmcRequest.findOne({ _id: id, isDeleted: false });
+      if (!request || !request.quotationDocument || !request.quotationDocument.filePath) {
+        return res.status(404).json({ success: false, message: "Quotation document not found." });
+      }
+      if (!fs.existsSync(request.quotationDocument.filePath)) {
+        return res.status(404).json({ success: false, message: "Quotation file not found on server." });
+      }
+      res.setHeader("Content-Type", request.quotationDocument.mimeType || "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `inline; filename="${encodeURIComponent(request.quotationDocument.fileName || 'quotation.pdf')}"`
+      );
+      fs.createReadStream(request.quotationDocument.filePath).pipe(res);
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message || "Error reading quotation document.",
+      });
+    }
+  }
+);
+
+router.syncUpcomingAmcRenewals = syncUpcomingAmcRenewals;
+module.exports = router;

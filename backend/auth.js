@@ -5,105 +5,29 @@ const jwt = require("jsonwebtoken");
 const authenticateUser = require("./authMiddleware");
 const crypto = require("crypto");
 const AuthSession = require("./models/AuthSession");
+const {
+  loginAccountLimiter,
+  loginIpLimiter,
+  registerLimiter,
+  changePasswordLimiter,
+  refreshLimiter,
+} = require("./rateLimiter");
+const {
+  validate,
+  loginSchema,
+  registerAdminSchema,
+  refreshSchema,
+  changePasswordSchema,
+} = require("./validation");
 
 const router = express.Router();
 
 /* =========================================================
-   USER SCHEMA
+   USER MODEL
    Admin, Employee and Client use the same users collection
    ========================================================= */
 
-const userSchema = new mongoose.Schema(
-  {
-    name: {
-      type: String,
-      required: [true, "Name is required."],
-      trim: true,
-    },
-
-    email: {
-      type: String,
-      required: [true, "Email is required."],
-      unique: true,
-      lowercase: true,
-      trim: true,
-    },
-    employeeCode: {
-  type: String,
-  default: "",
-  trim: true,
-  uppercase: true,
-  index: true,
-},
-
-    password: {
-      type: String,
-      required: [true, "Password is required."],
-      minlength: 6,
-      select: false,
-    },
-
-    role: {
-      type: String,
-      enum: ["admin", "employee", "client"],
-      required: true,
-      lowercase: true,
-    },
-    clientId: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "Client",
-  default: null,
-  index: true,
-},
-
-clientCode: {
-  type: String,
-  default: "",
-  trim: true,
-  uppercase: true,
-},
-
-companyName: {
-  type: String,
-  default: "",
-  trim: true,
-},
-
-mobile: {
-  type: String,
-  default: "",
-  trim: true,
-},
-
-mustChangePassword: {
-  type: Boolean,
-  default: false,
-},
-
-passwordChangedAt: {
-  type: Date,
-  default: null,
-},
-
-    status: {
-      type: String,
-      enum: ["Active", "Inactive", "Blocked"],
-      default: "Active",
-    },
-
-    lastLoginAt: {
-      type: Date,
-      default: null,
-    },
-  },
-  {
-    timestamps: true,
-    collection: "users",
-  }
-);
-
-const User =
-  mongoose.models.User || mongoose.model("User", userSchema);
+const User = require("./models/User");
  
 
 
@@ -328,7 +252,7 @@ async function createAuthSession(
    POST /api/auth/register-admin
    ========================================================= */
 
-router.post("/register-admin", async (req, res, next) => {
+router.post("/register-admin", registerLimiter, validate(registerAdminSchema), async (req, res, next) => {
   try {
     const { name, email, password } = req.body;
 
@@ -418,7 +342,7 @@ router.post("/register-admin", async (req, res, next) => {
    POST /api/auth/login
    ========================================================= */
 
-router.post("/login", async (req, res, next) => {
+router.post("/login", loginIpLimiter, loginAccountLimiter, validate(loginSchema), async (req, res, next) => {
   try {
     const { email, password, role } = req.body;
 
@@ -617,6 +541,7 @@ session: {
 
 router.post(
   "/refresh",
+  refreshLimiter,
   async (req, res, next) => {
     try {
       const {
@@ -985,6 +910,8 @@ router.get(
 router.post(
   "/change-password",
   authenticateUser,
+  changePasswordLimiter,
+  validate(changePasswordSchema),
   async (req, res, next) => {
     try {
       const {

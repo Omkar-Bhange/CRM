@@ -5,6 +5,7 @@ import {
     useRef,
 } from "react";
 import * as XLSX from "xlsx";
+import ErrorBoundary from "../../components/ui/ErrorBoundary";
 import {
     AlertCircle,
     Calendar,
@@ -1943,7 +1944,9 @@ export default function PaymentsCollections() {
             )}
 
             {/* RECEIPT VOUCHER MODAL */}
-            {renderReceiptModal()}
+            <ErrorBoundary level="modal" moduleName="Payment Receipt Voucher" onClose={() => setSelectedPaymentForReceipt(null)}>
+                {renderReceiptModal()}
+            </ErrorBoundary>
         </div>
     );
 }

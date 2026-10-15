@@ -4,7 +4,10 @@ const cors = require("cors");
 const dotenv = require("dotenv");
 const path = require("path");
 const crypto = require("crypto");
+const helmet = require("helmet");
 const AgentDevice = require("./models/AgentDevice");
+const { agentRegisterLimiter } = require("./rateLimiter");
+const { mongoSanitizeMiddleware } = require("./validation");
 async function authenticateAgent(req, res, next) {
   try {
     const auth = req.headers.authorization || "";
@@ -77,8 +80,59 @@ console.log("========================================");
 
 const app = express();
 
+if (process.env.NODE_ENV === "production" || process.env.TRUST_PROXY) {
+  app.set(
+    "trust proxy",
+    process.env.TRUST_PROXY
+      ? (isNaN(process.env.TRUST_PROXY)
+          ? process.env.TRUST_PROXY
+          : Number(process.env.TRUST_PROXY))
+      : 1
+  );
+}
+
 const PORT =
   process.env.PORT || 5000;
+
+/* =========================================================
+   SECURITY HEADERS (HELMET)
+========================================================= */
+
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        baseUri: ["'self'"],
+        fontSrc: ["'self'", "https:", "data:"],
+        formAction: ["'self'"],
+        frameAncestors: ["'none'"],
+        imgSrc: ["'self'", "data:", "blob:", "*"],
+        objectSrc: ["'none'"],
+        scriptSrc: ["'self'"],
+        scriptSrcAttr: ["'none'"],
+        styleSrc: ["'self'", "https:", "'unsafe-inline'"],
+        upgradeInsecureRequests:
+          process.env.NODE_ENV === "production" ? [] : null,
+      },
+    },
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+    crossOriginEmbedderPolicy: false,
+    xFrameOptions: { action: "deny" },
+    xContentTypeOptions: true,
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+    strictTransportSecurity:
+      process.env.NODE_ENV === "production"
+        ? {
+            maxAge: 31536000,
+            includeSubDomains: true,
+            preload: false,
+          }
+        : false,
+    hidePoweredBy: true,
+  })
+);
 
 /* =========================================================
    MIDDLEWARE
@@ -121,19 +175,14 @@ app.use(
   })
 );
 
+app.use(mongoSanitizeMiddleware);
+
 /* =========================================================
-   STATIC FILES
+   SECURE AUTHENTICATED UPLOADS SERVING
 ========================================================= */
 
-app.use(
-  "/uploads",
-  express.static(
-    path.join(
-      __dirname,
-      "uploads"
-    )
-  )
-);
+const secureUploadsRoutes = require("./secureUploads");
+app.use("/uploads", secureUploadsRoutes);
 
 /* =========================================================
    API ROUTES
@@ -245,105 +294,11 @@ app.post("/api/agent/upload", async (req, res) => {
     message: "Deprecated. Agent must use /api/agent/events",
   });
 });
-const AgentDailySummary = mongoose.models.AgentDailySummary;
+const AgentDailySummary = require("./models/AgentDailySummary");
 /* =========================================================
-   PROCESSED AGENT SESSION DAILY BUCKET
-
-   Instead of:
-   1 Mongo document = 1 session
-
-   We now use:
-   1 Mongo document =
-   1 employee + 1 PC + 1 day
-
-   Example:
-   {
-     employeeCode: "EMP100",
-     pcName: "Total4",
-     date: 2026-08-22,
-     sessionIds: ["id1", "id2", "id3", ...]
-   }
+   PROCESSED AGENT SESSION DAILY BUCKET MODEL
 ========================================================= */
-
-const processedSessionBucketSchema =
-  new mongoose.Schema(
-    {
-      employeeCode: {
-        type: String,
-        required: true,
-        uppercase: true,
-        trim: true,
-        index: true,
-      },
-
-      pcName: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      date: {
-        type: Date,
-        required: true,
-        index: true,
-      },
-
-      sessionIds: {
-        type: [String],
-        default: [],
-      },
-
-      expiresAt: {
-        type: Date,
-        required: true,
-      },
-    },
-    {
-      collection:
-        "agent_processed_session_buckets",
-
-      versionKey: false,
-
-      timestamps: true,
-    }
-  );
-
-/*
- * Only one bucket is allowed for:
- *
- * EMP100 + Total4 + 2026-08-22
- */
-processedSessionBucketSchema.index(
-  {
-    employeeCode: 1,
-    pcName: 1,
-    date: 1,
-  },
-  {
-    unique: true,
-  }
-);
-
-/*
- * Automatically remove old deduplication
- * buckets after expiry.
- */
-processedSessionBucketSchema.index(
-  {
-    expiresAt: 1,
-  },
-  {
-    expireAfterSeconds: 0,
-  }
-);
-
-const ProcessedSessionBucket =
-  mongoose.models
-    .ProcessedSessionBucket ||
-  mongoose.model(
-    "ProcessedSessionBucket",
-    processedSessionBucketSchema
-  );
+const ProcessedSessionBucket = require("./models/ProcessedSessionBucket");
   /* =========================================================
    RESERVE ONE SESSION ID INSIDE DAILY BUCKET
 ========================================================= */
@@ -1015,6 +970,177 @@ if (
     }
 
     // =====================================================
+    // PRODUCTIVITY CLASSIFICATION HELPER
+    // =====================================================
+    const PRODUCTIVE_CATEGORIES = [
+      "Development",
+      "Database",
+      "Remote Support",
+      "Design",
+      "Documentation",
+      "Office",
+      "File Management",
+      "Communication",
+      "Utility",
+    ];
+
+    const UNPRODUCTIVE_CATEGORIES = [
+      "Entertainment",
+      "Social Media",
+      "Games",
+    ];
+
+    const resolveApplicationCategoryAndProductivity = (appInput, windowTitleInput, explicitCategory) => {
+      const app = String(appInput || "").trim().toLowerCase();
+      const title = String(windowTitleInput || "").trim().toLowerCase();
+      const cat = String(explicitCategory || "").trim();
+
+      // 1. Remote Support tools (UltraViewer, AnyDesk, TeamViewer, RustDesk, RDP, etc.)
+      if (
+        app.includes("ultraviewer") ||
+        app.includes("anydesk") ||
+        app.includes("teamviewer") ||
+        app.includes("rustdesk") ||
+        app.includes("mstsc") ||
+        app.includes("remote desktop") ||
+        app.includes("zoho assist") ||
+        app.includes("supremo") ||
+        app.includes("ammyy") ||
+        app.includes("vnc") ||
+        title.includes("ultraviewer") ||
+        title.includes("anydesk") ||
+        title.includes("teamviewer") ||
+        title.includes("rustdesk")
+      ) {
+        return { category: "Remote Support", productivity: "Productive" };
+      }
+
+      // 2. Database tools (SSMS, SQL Server Management Studio, DBeaver, pgAdmin, MySQL Workbench, etc.)
+      if (
+        app.includes("ssms") ||
+        app.includes("sql server management studio") ||
+        app.includes("dbeaver") ||
+        app.includes("pgadmin") ||
+        app.includes("mysql") ||
+        app.includes("navicat") ||
+        app.includes("datagrip") ||
+        app.includes("heidisql") ||
+        app.includes("tableplus") ||
+        app.includes("compass") ||
+        app.includes("studio 3t") ||
+        app.includes("robo 3t") ||
+        app.includes("redis") ||
+        app.includes("sql") ||
+        title.includes("management studio") ||
+        title.includes("ssms") ||
+        title.includes(".sql") ||
+        title.includes("database")
+      ) {
+        return { category: "Database", productivity: "Productive" };
+      }
+
+      // 3. File Explorer / Windows Explorer / File Managers
+      if (
+        app === "explorer" ||
+        app === "explorer.exe" ||
+        app.includes("file explorer") ||
+        app.includes("windows explorer") ||
+        app.includes("total commander") ||
+        app.includes("7-zip") ||
+        app.includes("winrar") ||
+        app.includes("everything") ||
+        title.includes("file explorer")
+      ) {
+        return { category: "File Management", productivity: "Productive" };
+      }
+
+      // 4. Code Editors, IDEs & Developer Terminals
+      if (
+        app.includes("code") ||
+        app.includes("visual studio") ||
+        app.includes("devenv") ||
+        app.includes("cursor") ||
+        app.includes("sublime") ||
+        app.includes("notepad++") ||
+        app.includes("idea") ||
+        app.includes("webstorm") ||
+        app.includes("pycharm") ||
+        app.includes("phpstorm") ||
+        app.includes("android studio") ||
+        app.includes("eclipse") ||
+        app.includes("terminal") ||
+        app.includes("powershell") ||
+        app.includes("cmd") ||
+        app.includes("git") ||
+        app.includes("postman") ||
+        app.includes("insomnia") ||
+        app.includes("docker") ||
+        title.includes("visual studio code") ||
+        title.includes("cursor")
+      ) {
+        return { category: "Development", productivity: "Productive" };
+      }
+
+      // 5. Office, Documents & Design
+      if (
+        app.includes("winword") ||
+        app.includes("word") ||
+        app.includes("excel") ||
+        app.includes("powerpnt") ||
+        app.includes("powerpoint") ||
+        app.includes("onenote") ||
+        app.includes("acrobat") ||
+        app.includes("pdf") ||
+        app.includes("figma") ||
+        app.includes("photoshop") ||
+        app.includes("illustrator") ||
+        app.includes("canva")
+      ) {
+        return { category: "Office", productivity: "Productive" };
+      }
+
+      // 6. Collaboration & Communication
+      if (
+        app.includes("teams") ||
+        app.includes("slack") ||
+        app.includes("zoom") ||
+        app.includes("skype") ||
+        app.includes("meet")
+      ) {
+        return { category: "Communication", productivity: "Productive" };
+      }
+
+      // 7. Entertainment, Social Media & Games (Unproductive)
+      if (
+        app.includes("netflix") ||
+        app.includes("spotify") ||
+        app.includes("steam") ||
+        app.includes("game") ||
+        title.includes("youtube") ||
+        title.includes("facebook") ||
+        title.includes("instagram") ||
+        title.includes("twitter") ||
+        title.includes("tiktok") ||
+        title.includes("netflix")
+      ) {
+        return { category: "Entertainment", productivity: "Unproductive" };
+      }
+
+      // 8. Explicit category fallback
+      if (cat && cat !== "Other" && cat !== "General") {
+        const isProd = PRODUCTIVE_CATEGORIES.includes(cat);
+        const isUnprod = UNPRODUCTIVE_CATEGORIES.includes(cat);
+        return {
+          category: cat,
+          productivity: isProd ? "Productive" : isUnprod ? "Unproductive" : "Neutral",
+        };
+      }
+
+      // Default fallback
+      return { category: "Office", productivity: "Productive" };
+    };
+
+    // =====================================================
     // PROCESS NEW SESSIONS
     // =====================================================
 
@@ -1098,6 +1224,12 @@ try {
           activeTask?.status ||
           "";
 
+        const resolvedApp = resolveApplicationCategoryAndProductivity(
+          session.application,
+          session.windowTitle,
+          session.category
+        );
+
         // -----------------------------------------------
         // DAILY SUMMARY
         // -----------------------------------------------
@@ -1141,12 +1273,11 @@ try {
                 "",
 
               category:
-                session.category ||
-                "Other",
+                resolvedApp.category,
 
               activity:
                 session.activity ||
-                "",
+                (resolvedApp.productivity === "Unproductive" ? "Idle" : "Active"),
 
               taskId:
                 summaryTaskId,
@@ -1283,7 +1414,7 @@ try {
     });
   }
 });
-app.post("/api/agent/register", async (req, res) => {
+app.post("/api/agent/register", agentRegisterLimiter, async (req, res) => {
   try {
     const {
       employeeCode,
@@ -1614,7 +1745,8 @@ app.get("/api/agent/online", async (req, res) => {
 // =========================================================
 const Employee = mongoose.models.Employee;
 const AttendanceV2 =
-  mongoose.models.AttendanceV2;
+  mongoose.models.AttendanceV2 ||
+  require("./models/AttendanceV2");
 
 app.post(
   "/api/agent/heartbeat",

@@ -16,6 +16,7 @@ import ReportsDashboard from "./reports/ReportsDashboard";
 import AppShell from "../components/layout/AppShell";
 import OverviewDashboard from "./overview/OverviewDashboard";
 import DataTable from "../components/data/DataTable";
+import ErrorBoundary from "../components/ui/ErrorBoundary";
 import {
     ArrowUpRight,
     Bell,
@@ -4349,52 +4350,111 @@ export default function Admin({ user: propUser = null, onLogout }) {
                 user={user}
                 onLogout={onLogout}
                 badgeCounts={{
-                    tickets: 3,
-                    attendance: attendanceApprovalRequests.filter(
+                    tickets: (recentTickets || []).filter(
+                        (t) => !["Resolved", "Verified", "Closed"].includes(t.status)
+                    ).length,
+                    attendance: (attendanceApprovalRequests || []).filter(
                         (r) => r.status === "Pending"
                     ).length,
+                    billing: (amcRenewals || []).filter(
+                        (r) => r.status === "Overdue" || r.status === "Pending"
+                    ).length,
+                    tasks: (activeTasks || []).filter(
+                        (t) => !["Completed", "Resolved", "Closed", "Done"].includes(t.status)
+                    ).length,
                 }}
-                notifications={attendanceApprovalRequests.map((req) => ({
-                    id: req._id,
-                    type: "attendance_approval",
-                    title: req.employeeName,
-                    employeeName: req.employeeName,
-                    employeeCode: req.employeeCode,
-                    date: req.date,
-                    pcName: req.pcName || "",
-                    networkType: req.networkType || "",
-                    requestType: req.requestType || "Remote Login",
-                    reason: req.reason || "Login requires admin approval.",
-                    status: req.status || "Pending",
-                    message:
-                        req.status === "Pending"
-                            ? `Login detected at ${
-                                  req.requestedAt
-                                      ? new Date(
-                                            req.requestedAt
-                                        ).toLocaleTimeString([], {
-                                            hour: "2-digit",
-                                            minute: "2-digit",
-                                        })
-                                      : "today"
-                              }`
-                            : req.status === "Approved"
-                            ? `Approved by ${req.reviewedByName || "Admin"}`
-                            : `Rejected by ${req.reviewedByName || "Admin"}`,
-                    time: req.requestedAt
-                        ? new Date(req.requestedAt).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                          })
-                        : "Pending",
-                    requestedAt: req.requestedAt,
-                    reviewedAt: req.reviewedAt,
-                    reviewedBy: req.reviewedBy,
-                    reviewedByName:
-                        req.reviewedByName ||
-                        (req.reviewedBy?.name ? req.reviewedBy.name : (req.reviewedBy ? "Admin" : "")),
-                    reviewNote: req.reviewNote || "",
-                }))}
+                notifications={[
+                    ...(attendanceApprovalRequests || []).map((req) => ({
+                        id: req._id,
+                        category: "attendance",
+                        type: "attendance_approval",
+                        title: req.employeeName,
+                        employeeName: req.employeeName,
+                        employeeCode: req.employeeCode,
+                        date: req.date,
+                        pcName: req.pcName || "",
+                        networkType: req.networkType || "",
+                        requestType: req.requestType || "Remote Login",
+                        reason: req.reason || "Login requires admin approval.",
+                        status: req.status || "Pending",
+                        message:
+                            req.status === "Pending"
+                                ? `Punch detected at ${
+                                      req.requestedAt
+                                          ? new Date(
+                                                req.requestedAt
+                                            ).toLocaleTimeString([], {
+                                                hour: "2-digit",
+                                                minute: "2-digit",
+                                            })
+                                          : "today"
+                                  }`
+                                : req.status === "Approved"
+                                ? `Approved by ${req.reviewedByName || "Admin"}`
+                                : `Rejected by ${req.reviewedByName || "Admin"}`,
+                        time: req.requestedAt
+                            ? new Date(req.requestedAt).toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                              })
+                            : "Pending",
+                        requestedAt: req.requestedAt,
+                        reviewedAt: req.reviewedAt,
+                        reviewedBy: req.reviewedBy,
+                        reviewedByName:
+                            req.reviewedByName ||
+                            (req.reviewedBy?.name ? req.reviewedBy.name : (req.reviewedBy ? "Admin" : "")),
+                        reviewNote: req.reviewNote || "",
+                        target: "attendance",
+                    })),
+                    ...(amcRenewals || []).map((amc) => ({
+                        id: `amc-${amc.id || Math.random()}`,
+                        category: "billing",
+                        type: "amc_renewal",
+                        title: amc.client || "Client AMC",
+                        client: amc.client,
+                        product: amc.product || "Software AMC",
+                        amount: amc.amount,
+                        dueDate: amc.dueDate,
+                        status: amc.status || "Pending",
+                        message: `${amc.product || "Software"} AMC renewal (${amc.amount}) is ${amc.status?.toLowerCase() || "pending"} - Due: ${amc.dueDate}`,
+                        time: amc.dueDate || "Expiring Soon",
+                        target: "billing",
+                    })),
+                    ...(recentTickets || [])
+                        .filter((t) => !["Resolved", "Verified", "Closed"].includes(t.status))
+                        .map((ticket) => ({
+                            id: `ticket-${ticket.id}`,
+                            category: "tickets",
+                            type: "ticket_alert",
+                            title: ticket.title,
+                            ticketCode: ticket.id,
+                            client: ticket.client,
+                            priority: ticket.priority || "Medium",
+                            status: ticket.status || "Open",
+                            message: `Ticket #${ticket.id} (${ticket.priority}): ${ticket.title}`,
+                            time: ticket.createdAt || "Recent",
+                            target: "tickets",
+                        })),
+                    ...(activeTasks || [])
+                        .filter((tsk) => !["Completed", "Resolved", "Closed", "Done"].includes(tsk.status))
+                        .slice(0, 5)
+                        .map((tsk) => ({
+                            id: `task-${tsk.id}`,
+                            category: "tasks",
+                            type: "task_alert",
+                            title: tsk.title,
+                            taskCode: tsk.id,
+                            client: tsk.client,
+                            assignedTo: tsk.assignedTo,
+                            priority: tsk.priority || "Normal",
+                            dueDate: tsk.dueDate,
+                            status: tsk.status || "In Progress",
+                            message: `Task #${tsk.id} (${tsk.status}) assigned to ${tsk.assignedTo || "Team"} - Due ${tsk.dueDate}`,
+                            time: tsk.dueDate || "Upcoming",
+                            target: "tasks",
+                        })),
+                ]}
                 onApproveAttendance={approveAttendanceRequest}
                 onRejectAttendance={rejectAttendanceRequest}
                 attendanceApprovalActionId={attendanceApprovalActionId}
@@ -4410,25 +4470,36 @@ export default function Admin({ user: propUser = null, onLogout }) {
             >
                 <div className="mx-auto max-w-[1600px]">
                     {activeMenu === "overview" ? (
-                            <div className="enterprise-page">
-                                <OverviewDashboard
-                                    user={user}
-                                    dashboardStats={dashboardStats}
-                                    dashboardLoading={dashboardLoading}
-                                    dashboardError={dashboardError}
-                                    onRetryDashboard={loadDashboard}
-                                    amcRenewals={amcRenewals}
-                                    teamMembers={teamMembers}
-                                    recentTickets={recentTickets}
-                                    activeTasks={activeTasks}
-                                    clientActivities={clientActivities}
-                                    onOpenAddClient={openClientDrawer}
-                                    onNavigate={(module) => setActiveMenu(module)}
-                                />
-                            </div>
+                            <ErrorBoundary
+                                level="module"
+                                moduleName="Overview Dashboard"
+                                onNavigateToDashboard={() => setActiveMenu("overview")}
+                            >
+                                <div className="enterprise-page">
+                                    <OverviewDashboard
+                                        user={user}
+                                        dashboardStats={dashboardStats}
+                                        dashboardLoading={dashboardLoading}
+                                        dashboardError={dashboardError}
+                                        onRetryDashboard={loadDashboard}
+                                        amcRenewals={amcRenewals}
+                                        teamMembers={teamMembers}
+                                        recentTickets={recentTickets}
+                                        activeTasks={activeTasks}
+                                        clientActivities={clientActivities}
+                                        onOpenAddClient={openClientDrawer}
+                                        onNavigate={(module) => setActiveMenu(module)}
+                                    />
+                                </div>
+                            </ErrorBoundary>
 
                         ) : activeMenu === "clients" ? (
-                            selectedClient ? (
+                            <ErrorBoundary
+                                level="module"
+                                moduleName="Client Management"
+                                onNavigateToDashboard={() => setActiveMenu("overview")}
+                            >
+                                selectedClient ? (
                                 <div className="enterprise-page">
                                     <div>
                                         {/* Client Details Header */}
@@ -4549,6 +4620,11 @@ export default function Admin({ user: propUser = null, onLogout }) {
 
                                                         <button
                                                             type="button"
+                                                            onClick={() => {
+                                                                if (selectedClient.mobile) {
+                                                                    window.location.href = `tel:${selectedClient.mobile}`;
+                                                                }
+                                                            }}
                                                             className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
                                                         >
                                                             <Phone size={15} />
@@ -4557,6 +4633,11 @@ export default function Admin({ user: propUser = null, onLogout }) {
 
                                                         <button
                                                             type="button"
+                                                            onClick={() => {
+                                                                if (selectedClient.email) {
+                                                                    window.location.href = `mailto:${selectedClient.email}`;
+                                                                }
+                                                            }}
                                                             className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
                                                         >
                                                             <Mail size={15} />
@@ -4565,10 +4646,11 @@ export default function Admin({ user: propUser = null, onLogout }) {
 
                                                         <button
                                                             type="button"
-                                                            className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700"
+                                                            onClick={() => setClientDetailsTab("overview")}
+                                                            className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700 shadow-xs"
                                                         >
                                                             <ExternalLink size={15} />
-                                                            Open Workspace
+                                                            Client 360
                                                         </button>
                                                     </div>
                                                 </div>
@@ -4775,6 +4857,7 @@ export default function Admin({ user: propUser = null, onLogout }) {
 
                                                             <button
                                                                 type="button"
+                                                                onClick={() => setClientDetailsTab("products")}
                                                                 className="text-xs font-semibold text-violet-600 transition hover:text-violet-700"
                                                             >
                                                                 Manage Products
@@ -5150,7 +5233,8 @@ export default function Admin({ user: propUser = null, onLogout }) {
 
                                                                     <button
                                                                         type="button"
-                                                                        className="flex h-9 items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700"
+                                                                        onClick={() => setActiveMenu("tickets")}
+                                                                        className="flex h-9 items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700 shadow-xs"
                                                                     >
                                                                         <Plus size={15} />
                                                                         Raise Ticket
@@ -7156,68 +7240,135 @@ export default function Admin({ user: propUser = null, onLogout }) {
                                     </div>
                                 </div>
                             )
+                            </ErrorBoundary>
 
                         ) : activeMenu === "requirements" ? (
-                            <div className="enterprise-page">
-                                <Requirements
-                                    clients={clients}
-                                    employees={employees}
-                                />
-                            </div>
+                            <ErrorBoundary
+                                level="module"
+                                moduleName="Requirements"
+                                onNavigateToDashboard={() => setActiveMenu("overview")}
+                            >
+                                <div className="enterprise-page">
+                                    <Requirements
+                                        clients={clients}
+                                        employees={employees}
+                                    />
+                                </div>
+                            </ErrorBoundary>
                         ) : activeMenu === "projects" ? (
-                            <div className="enterprise-page">
-                                <Projects
-                                    clients={clients}
-                                    products={productMasters}
-                                    employees={employees}
-                                    onCreateProjectTask={(project) => {
-                                        setProjectForNewTask(
-                                            project
-                                        );
+                            <ErrorBoundary
+                                level="module"
+                                moduleName="Projects"
+                                onNavigateToDashboard={() => setActiveMenu("overview")}
+                            >
+                                <div className="enterprise-page">
+                                    <Projects
+                                        clients={clients}
+                                        products={productMasters}
+                                        employees={employees}
+                                        onCreateProjectTask={(project) => {
+                                            setProjectForNewTask(
+                                                project
+                                            );
 
-                                        setActiveMenu(
-                                            "tasks"
-                                        );
-                                    }}
-                                />
-                            </div>
+                                            setActiveMenu(
+                                                "tasks"
+                                            );
+                                        }}
+                                    />
+                                </div>
+                            </ErrorBoundary>
                         ) : activeMenu === "tickets" ? (
-                            <div className="enterprise-page"><SupportTickets /></div>
+                            <ErrorBoundary
+                                level="module"
+                                moduleName="Support Tickets"
+                                onNavigateToDashboard={() => setActiveMenu("overview")}
+                            >
+                                <div className="enterprise-page"><SupportTickets /></div>
+                            </ErrorBoundary>
                         ) : activeMenu === "product-sales" ? (
-                            <div className="enterprise-page">
-                                <ProductSales />
-                            </div>
+                            <ErrorBoundary
+                                level="module"
+                                moduleName="Product Sales"
+                                onNavigateToDashboard={() => setActiveMenu("overview")}
+                            >
+                                <div className="enterprise-page">
+                                    <ProductSales />
+                                </div>
+                            </ErrorBoundary>
                         ) : activeMenu === "billing" ? (
-                            <div className="enterprise-page"><AmcBilling /></div>
+                            <ErrorBoundary
+                                level="module"
+                                moduleName="AMC Billing"
+                                onNavigateToDashboard={() => setActiveMenu("overview")}
+                            >
+                                <div className="enterprise-page"><AmcBilling /></div>
+                            </ErrorBoundary>
                         ) : activeMenu === "payments-collections" ? (
-                            <div className="enterprise-page">
-                                <PaymentsCollections />
-                            </div>
+                            <ErrorBoundary
+                                level="module"
+                                moduleName="Payments & Collections"
+                                onNavigateToDashboard={() => setActiveMenu("overview")}
+                            >
+                                <div className="enterprise-page">
+                                    <PaymentsCollections />
+                                </div>
+                            </ErrorBoundary>
                         ) : activeMenu === "team" ? (
-                            <div className="enterprise-page"><Team /></div>
+                            <ErrorBoundary
+                                level="module"
+                                moduleName="Team Management"
+                                onNavigateToDashboard={() => setActiveMenu("overview")}
+                            >
+                                <div className="enterprise-page"><Team /></div>
+                            </ErrorBoundary>
                         ) : activeMenu === "tasks" ? (
-                            <div className="enterprise-page">
-                                <Tasks
-                                    initialProject={
-                                        projectForNewTask
-                                    }
-                                    onInitialProjectHandled={() => {
-                                        setProjectForNewTask(
-                                            null
-                                        );
-                                    }}
-                                />
-                            </div>
+                            <ErrorBoundary
+                                level="module"
+                                moduleName="Tasks"
+                                onNavigateToDashboard={() => setActiveMenu("overview")}
+                            >
+                                <div className="enterprise-page">
+                                    <Tasks
+                                        initialProject={
+                                            projectForNewTask
+                                        }
+                                        onInitialProjectHandled={() => {
+                                            setProjectForNewTask(
+                                                null
+                                            );
+                                        }}
+                                    />
+                                </div>
+                            </ErrorBoundary>
                         ) : activeMenu === "attendance" ? (
-                            <div className="enterprise-page">
-                                <Attendance />
-                            </div>
+                            <ErrorBoundary
+                                level="module"
+                                moduleName="Attendance"
+                                onNavigateToDashboard={() => setActiveMenu("overview")}
+                            >
+                                <div className="enterprise-page">
+                                    <Attendance />
+                                </div>
+                            </ErrorBoundary>
                         ) : activeMenu === "reports" ? (
-                            <div className="enterprise-page">
-                                <ReportsDashboard />
-                            </div>
+                            <ErrorBoundary
+                                level="module"
+                                moduleName="Reports Dashboard"
+                                onNavigateToDashboard={() => setActiveMenu("overview")}
+                            >
+                                <div className="enterprise-page">
+                                    <ReportsDashboard />
+                                </div>
+                            </ErrorBoundary>
                         ) : activeMenu === "settings" ? (
-                            <div className="enterprise-page"><SystemSettings /></div>
+                            <ErrorBoundary
+                                level="module"
+                                moduleName="System Settings"
+                                onNavigateToDashboard={() => setActiveMenu("overview")}
+                            >
+                                <div className="enterprise-page"><SystemSettings /></div>
+                            </ErrorBoundary>
                         ) : (
                             <div className="flex min-h-[calc(100vh-140px)] items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white/60 p-8">
                                 <div className="text-center">
@@ -7245,6 +7396,7 @@ export default function Admin({ user: propUser = null, onLogout }) {
                     />
 
                     <aside className="enterprise-drawer fixed inset-y-0 right-0 z-[80] flex w-full max-w-[620px] flex-col bg-white shadow-[-24px_0_70px_rgba(15,23,42,0.18)]">
+                        <ErrorBoundary level="drawer" moduleName="Client Drawer" onClose={closeClientDrawer}>
                         {/* Drawer Header */}
                         <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-5 sm:px-6">
                             <div>
@@ -8176,7 +8328,7 @@ export default function Admin({ user: propUser = null, onLogout }) {
                             </div>
 
                         </form>
-
+                        </ErrorBoundary>
                     </aside>
 
                 </>

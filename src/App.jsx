@@ -7,6 +7,7 @@ import Login from "./Login";
 import Admin from "./admin/Admin";
 import EmployeeLayout from "./employee/EmployeeLayout";
 import ClientLayout from "./client/ClientLayout";
+import ErrorBoundary from "./components/ui/ErrorBoundary";
 
 import {
   clearAuthStorage,
@@ -238,12 +239,16 @@ export default function App() {
     "admin"
   ) {
     return (
-      <Admin
-        user={currentUser}
-        onLogout={
-          handleLogout
-        }
-      />
+      <ErrorBoundary
+        level="portal"
+        moduleName="Admin Workspace"
+        onLogout={handleLogout}
+      >
+        <Admin
+          user={currentUser}
+          onLogout={handleLogout}
+        />
+      </ErrorBoundary>
     );
   }
 
@@ -252,14 +257,16 @@ export default function App() {
     "employee"
   ) {
     return (
-      <EmployeeLayout
-        user={
-          currentUser
-        }
-        onLogout={
-          handleLogout
-        }
-      />
+      <ErrorBoundary
+        level="portal"
+        moduleName="Employee Workspace"
+        onLogout={handleLogout}
+      >
+        <EmployeeLayout
+          user={currentUser}
+          onLogout={handleLogout}
+        />
+      </ErrorBoundary>
     );
   }
 
@@ -268,22 +275,27 @@ export default function App() {
     "client"
   ) {
     return (
-      <ClientLayout
-        user={
-          currentUser
-        }
-        onLogout={
-          handleLogout
-        }
-      />
+      <ErrorBoundary
+        level="portal"
+        moduleName="Client Portal"
+        onLogout={handleLogout}
+      >
+        <ClientLayout
+          user={currentUser}
+          onLogout={handleLogout}
+        />
+      </ErrorBoundary>
     );
   }
 
   return (
-    <Login
-      onLogin={
-        handleLogin
-      }
-    />
+    <ErrorBoundary
+      level="root"
+      moduleName="Authentication"
+    >
+      <Login
+        onLogin={handleLogin}
+      />
+    </ErrorBoundary>
   );
 }

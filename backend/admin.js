@@ -8,18 +8,29 @@ const bcrypt =
 const crypto =
   require("crypto");
 const authenticateUser = require("./authMiddleware");
-const { User } = require("./auth");
+const User = require("./models/User");
 const {
   SystemSettings,
 } = require("./settings");
-const AgentDailySummary = require("./agentSession");
+const AgentDailySummary = require("./models/AgentDailySummary");
 const AgentDevice = require("./models/AgentDevice");
+const AttendanceApprovalRequest = require("./models/AttendanceApprovalRequest");
 const {
   getTicketSlaPolicy,
   calculateDueAt,
   calculateTicketSla,
   SLA_POLICY_VERSION,
 } = require("./slaConfig");
+const {
+  validate,
+  clientCreateSchema,
+  taskCreateSchema,
+  ticketCreateSchema,
+  amcPaymentZodSchema,
+  productSalePaymentZodSchema,
+  amcContractCreateZodSchema,
+  amcRenewZodSchema,
+} = require("./validation");
 
 const SETTINGS_KEY =
   "system";
@@ -982,7 +993,8 @@ router.patch(
         mongoose.models.AttendanceApprovalRequest;
 
       const Attendance =
-        mongoose.models.AttendanceV2;
+        mongoose.models.AttendanceV2 ||
+        require("./models/AttendanceV2");
 
       const Employee =
         mongoose.models.Employee;
@@ -1378,1495 +1390,27 @@ router.patch(
   }
 );
 /* =====================================================
-   PRODUCT MASTER SCHEMA
+   PRODUCT MASTER MODEL
 ===================================================== */
 
-const productSchema = new mongoose.Schema(
-  {
-    productCode: {
-      type: String,
-      required: [
-        true,
-        "Product code is required.",
-      ],
-      unique: true,
-      trim: true,
-      uppercase: true,
-      index: true,
-    },
-
-    productName: {
-      type: String,
-      required: [
-        true,
-        "Product name is required.",
-      ],
-      trim: true,
-      index: true,
-    },
-
-    category: {
-      type: String,
-      default: "Software",
-      trim: true,
-      index: true,
-    },
-
-    description: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    currentVersion: {
-      type: String,
-      default: "v1.0.0",
-      trim: true,
-    },
-
-    platform: {
-      type: String,
-      enum: [
-        "Web",
-        "Desktop",
-        "Mobile",
-        "Web + Mobile",
-        "Desktop + Mobile",
-        "Web + Desktop",
-        "Web + Desktop + Mobile",
-        "Other",
-      ],
-      default: "Web",
-    },
-
-    status: {
-      type: String,
-      enum: [
-        "Active",
-        "Inactive",
-        "Deprecated",
-      ],
-      default: "Active",
-      index: true,
-    },
-
-    releaseDate: {
-      type: Date,
-      default: null,
-    },
-
-    createdBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
-
-    createdByName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    updatedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
-
-    updatedByName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    isDeleted: {
-      type: Boolean,
-      default: false,
-      index: true,
-    },
-
-    deletedAt: {
-      type: Date,
-      default: null,
-    },
-
-    deletedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
-
-    deletedByName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-  },
-  {
-    timestamps: true,
-    collection: "products",
-  }
-);
-
-
-
-productSchema.index({
-  productName: "text",
-  productCode: "text",
-  category: "text",
-  description: "text",
-});
-
-const Product =
-  mongoose.models.Product ||
-  mongoose.model(
-    "Product",
-    productSchema
-  );
+const Product = require("./models/Product");
 
 /* =====================================================
- PROJECT MASTER SCHEMA
+   PROJECT MASTER MODEL
 ===================================================== */
 
-const projectTeamMemberSchema = new mongoose.Schema(
-  {
-    employeeId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Employee",
-      required: true,
-    },
-    employeeName: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    employeeCode: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    employeeEmail: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    role: {
-      type: String,
-      default: "Team Member",
-      trim: true,
-    },
-    responsibility: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    addedAt: {
-      type: Date,
-      default: Date.now,
-    },
-    status: {
-      type: String,
-      enum: ["Active", "Removed"],
-      default: "Active",
-    },
-  },
-  {
-    _id: true,
-  }
-);
-
-const projectTimelineSchema = new mongoose.Schema(
-  {
-    action: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    description: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    oldStage: {
-      type: String,
-      default: "",
-    },
-    newStage: {
-      type: String,
-      default: "",
-    },
-    oldStatus: {
-      type: String,
-      default: "",
-    },
-    newStatus: {
-      type: String,
-      default: "",
-    },
-    notes: {
-      type: String,
-      default: "",
-    },
-    performedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
-    performedByName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    performedByRole: {
-      type: String,
-      default: "admin",
-      trim: true,
-    },
-    createdAt: {
-      type: Date,
-      default: Date.now,
-    },
-  },
-  {
-    _id: true,
-  }
-);
-
-const projectSchema = new mongoose.Schema(
-  {
-    projectCode: {
-      type: String,
-      required: [
-        true,
-        "Project code is required.",
-      ],
-      unique: true,
-      trim: true,
-      uppercase: true,
-      index: true,
-    },
-
-    projectName: {
-      type: String,
-      required: [
-        true,
-        "Project name is required.",
-      ],
-      trim: true,
-      index: true,
-    },
-
-    projectType: {
-      type: String,
-      enum: [
-        "Product Development",
-        "Client Implementation",
-        "Internal Development",
-        "Maintenance",
-        "Upgrade",
-        "Customization",
-        "Research",
-        "Other",
-      ],
-      default: "Internal Development",
-      index: true,
-    },
-
-productId: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "Product",
-  default: null,
-  index: true,
-},
-
-    productCode: {
-      type: String,
-      default: "",
-      trim: true,
-      uppercase: true,
-    },
-
-    productName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    clientId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Client",
-      default: null,
-      index: true,
-    },
-
-    clientCode: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    clientName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    requirementId: {
-  type:
-    mongoose.Schema.Types.ObjectId,
-
-  ref: "Requirement",
-
-  default: null,
-  index: true,
-},
-
-requirementCode: {
-  type: String,
-  default: "",
-  trim: true,
-  uppercase: true,
-},
-
-finalAmount: {
-  type: Number,
-  default: 0,
-  min: 0,
-},
-
-amcApplicable: {
-  type: Boolean,
-  default: false,
-},
-
-proposedAmcAmount: {
-  type: Number,
-  default: 0,
-  min: 0,
-},
-
-warrantyEndDate: {
-  type: Date,
-  default: null,
-},
-deliveryDate: {
-  type: Date,
-  default: null,
-},
-
-amcContractId: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "AmcContract",
-  default: null,
-  index: true,
-},
-
-amcContractCode: {
-  type: String,
-  default: "",
-  trim: true,
-  uppercase: true,
-},
-
-amcActivated: {
-  type: Boolean,
-  default: false,
-},
-
-completedBy: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "User",
-  default: null,
-},
-
-completedByName: {
-  type: String,
-  default: "",
-  trim: true,
-},
-convertedToProduct: {
-  type: Boolean,
-  default: false,
-  index: true,
-},
-
-convertedProductAt: {
-  type: Date,
-  default: null,
-},
-
-convertedProductBy: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "User",
-  default: null,
-},
-
-convertedProductByName: {
-  type: String,
-  default: "",
-  trim: true,
-},
-
-    description: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    startDate: {
-      type: Date,
-      default: null,
-    },
-
-    dueDate: {
-      type: Date,
-      default: null,
-      index: true,
-    },
-
-    completedDate: {
-      type: Date,
-      default: null,
-    },
-
-    priority: {
-      type: String,
-      default: "Medium",
-      trim: true,
-      index: true,
-    },
-
-    status: {
-      type: String,
-      enum: [
-        "Planned",
-        "Active",
-        "On Hold",
-        "Completed",
-        "Cancelled",
-      ],
-      default: "Planned",
-      index: true,
-    },
-
-    projectManager: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Employee",
-      default: null,
-      index: true,
-    },
-
-    projectManagerName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    stage: {
-      type: String,
-      default: "Planning",
-      trim: true,
-      index: true,
-    },
-
-    teamMembers: {
-      type: [projectTeamMemberSchema],
-      default: [],
-    },
-
-    timeline: {
-      type: [projectTimelineSchema],
-      default: [],
-    },
-
-    progress: {
-      type: Number,
-      default: 0,
-      min: 0,
-      max: 100,
-    },
-
-    createdBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
-
-    createdByName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    updatedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
-
-    updatedByName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    isDeleted: {
-      type: Boolean,
-      default: false,
-      index: true,
-    },
-
-    deletedAt: {
-      type: Date,
-      default: null,
-    },
-
-    deletedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
-
-    deletedByName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-  },
-  {
-    timestamps: true,
-    collection: "projects",
-  }
-);
-
-projectSchema.index({
-  projectName: "text",
-  projectCode: "text",
-  productName: "text",
-  clientName: "text",
-  description: "text",
-});
-
-const Project =
-  mongoose.models.Project ||
-  mongoose.model(
-    "Project",
-    projectSchema
-  );
+const Project = require("./models/Project");
 
 /* =====================================================
-   REQUIREMENT / ENQUIRY SCHEMA
+   REQUIREMENT / ENQUIRY MODEL
 ===================================================== */
 
-const requirementTimelineSchema = new mongoose.Schema(
-  {
-    action: {
-      type: String,
-      default: "Status Updated",
-      trim: true,
-    },
-    oldStatus: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    newStatus: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    notes: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    nextAction: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    followUpDate: {
-      type: Date,
-      default: null,
-    },
-    performedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
-    performedByName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    performedByRole: {
-      type: String,
-      default: "admin",
-      trim: true,
-    },
-    metadata: {
-      type: mongoose.Schema.Types.Mixed,
-      default: {},
-    },
-    createdAt: {
-      type: Date,
-      default: Date.now,
-    },
-  },
-  {
-    _id: true,
-  }
-);
-
-const requirementSchema =
-  new mongoose.Schema(
-    {
-      requirementCode: {
-        type: String,
-        required: true,
-        unique: true,
-        trim: true,
-        uppercase: true,
-        index: true,
-      },
-
-      sourceType: {
-        type: String,
-        enum: [
-          "Existing Client",
-          "New Prospect",
-        ],
-        required: true,
-        index: true,
-      },
-
-      /* ===============================================
-         EXISTING CLIENT
-      =============================================== */
-
-      clientId: {
-        type:
-          mongoose.Schema.Types.ObjectId,
-        ref: "Client",
-        default: null,
-        index: true,
-      },
-
-      clientCode: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      clientName: {
-        type: String,
-        default: "",
-        trim: true,
-        index: true,
-      },
-
-      /* ===============================================
-         NEW PROSPECT
-      =============================================== */
-
-      prospectName: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      prospectCompany: {
-        type: String,
-        default: "",
-        trim: true,
-        index: true,
-      },
-
-      prospectMobile: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      prospectEmail: {
-        type: String,
-        default: "",
-        trim: true,
-        lowercase: true,
-      },
-
-      prospectCity: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      /* ===============================================
-         REQUIREMENT
-      =============================================== */
-
-      title: {
-        type: String,
-        required: true,
-        trim: true,
-        index: true,
-      },
-
-      requirementType: {
-        type: String,
-
-        enum: [
-          "New Software",
-          "Customization",
-          "Mobile App",
-          "Website",
-          "Integration",
-          "Upgrade",
-          "Automation",
-          "Support Requirement",
-          "Other",
-        ],
-
-        default:
-          "New Software",
-
-        index: true,
-      },
-
-      description: {
-        type: String,
-        required: true,
-        trim: true,
-      },
-
-      source: {
-        type: String,
-
-        enum: [
-          "Existing Client",
-          "Phone",
-          "WhatsApp",
-          "Email",
-          "Website",
-          "Referral",
-          "Walk In",
-          "Other",
-        ],
-
-        default:
-          "Existing Client",
-
-        index: true,
-      },
-
-      priority: {
-        type: String,
-        default: "Medium",
-        trim: true,
-        index: true,
-      },
-
-      expectedDeliveryDate: {
-        type: Date,
-        default: null,
-      },
-
-      /* ===============================================
-         COMMERCIAL / QUOTATION
-      =============================================== */
-
-      estimatedBudget: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      estimatedCost: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      quotedAmount: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      quotationNo: {
-        type: String,
-        default: "",
-        trim: true,
-        uppercase: true,
-      },
-
-      quotationDate: {
-        type: Date,
-        default: null,
-      },
-
-      /* ===============================================
-         ASSIGNMENT
-      =============================================== */
-
-      assignedEmployeeId: {
-        type:
-          mongoose.Schema.Types.ObjectId,
-
-        ref: "Employee",
-
-        default: null,
-        index: true,
-      },
-
-      assignedEmployeeCode: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      assignedEmployeeName: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      /* ===============================================
-         WORKFLOW
-      =============================================== */
-
-      status: {
-        type: String,
-
-        enum: [
-          "New",
-          "Discussion",
-          "Analysis",
-          "Estimate Pending",
-          "Quotation Pending",
-          "Quotation Sent",
-          "Negotiation",
-          "Approved",
-          "Rejected",
-          "On Hold",
-          "Converted to Project",
-        ],
-
-        default:
-          "New",
-
-        index: true,
-      },
-
-      notes: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      timeline: {
-        type: [requirementTimelineSchema],
-        default: [],
-      },
-
-      lostReason: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      competitor: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      holdReason: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      nextAction: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      followUpDate: {
-        type: Date,
-        default: null,
-      },
-
-      contactMethod: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      contactPerson: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      demoDate: {
-        type: Date,
-        default: null,
-      },
-
-      demoOwner: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      quotationReference: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      validUntil: {
-        type: Date,
-        default: null,
-      },
-
-      stageData: {
-        type: mongoose.Schema.Types.Mixed,
-        default: {},
-      },
-
-      /* ===============================================
-         PROJECT CONVERSION
-      =============================================== */
-
-      convertedProjectId: {
-        type:
-          mongoose.Schema.Types.ObjectId,
-
-        ref: "Project",
-
-        default: null,
-      },
-
-      convertedProjectCode: {
-        type: String,
-        default: "",
-        trim: true,
-        uppercase: true,
-      },
-
-      convertedAt: {
-        type: Date,
-        default: null,
-      },
-
-      /* ===============================================
-         AUDIT
-      =============================================== */
-
-      createdBy: {
-        type:
-          mongoose.Schema.Types.ObjectId,
-
-        ref: "User",
-
-        default: null,
-      },
-
-      createdByName: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      updatedBy: {
-        type:
-          mongoose.Schema.Types.ObjectId,
-
-        ref: "User",
-
-        default: null,
-      },
-
-      updatedByName: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      isDeleted: {
-        type: Boolean,
-        default: false,
-        index: true,
-      },
-
-      deletedAt: {
-        type: Date,
-        default: null,
-      },
-
-      deletedBy: {
-        type:
-          mongoose.Schema.Types.ObjectId,
-
-        ref: "User",
-
-        default: null,
-      },
-
-      deletedByName: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-    },
-    {
-      timestamps: true,
-      collection: "requirements",
-    }
-  );
-
-
-requirementSchema.index({
-  requirementCode: "text",
-  title: "text",
-  clientName: "text",
-  prospectName: "text",
-  prospectCompany: "text",
-  description: "text",
-});
-
-
-const Requirement =
-  mongoose.models.Requirement ||
-  mongoose.model(
-    "Requirement",
-    requirementSchema
-  );
-/* ===========================
-   CLIENT SCHEMA
-=========================== */
-
+const Requirement = require("./models/Requirement");
 /* =====================================================
-   CLIENT SCHEMA
+   CLIENT MASTER MODEL
 ===================================================== */
 
-const clientProductSchema =
-  new mongoose.Schema(
-    {
-      productId: {
-        type:
-          mongoose.Schema.Types.ObjectId,
-        ref: "Product",
-        required: [
-          true,
-          "Product ID is required.",
-        ],
-        index: true,
-      },
-
-      productCode: {
-        type: String,
-        required: true,
-        trim: true,
-        uppercase: true,
-      },
-
-      productName: {
-        type: String,
-        required: true,
-        trim: true,
-      },
-
-      version: {
-        type: String,
-        default: "v1.0.0",
-        trim: true,
-      },
-
-      purchaseDate: {
-        type: String,
-        default: "",
-      },
-
-      installationDate: {
-        type: String,
-        default: "",
-      },
-
-      licensedUsers: {
-        type: Number,
-        default: 1,
-        min: 1,
-      },
-
-      supportType: {
-        type: String,
-        enum: [
-          "Basic",
-          "Standard",
-          "Premium",
-        ],
-        default: "Standard",
-      },
-      acquisitionType: {
-  type: String,
-  enum: [
-    "Product Sale",
-    "Legacy / Historical",
-    "Migration",
-  ],
-  default: "Legacy / Historical",
-},
-
-productSaleId: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "ProductSale",
-  default: null,
-},
-
-productSaleCode: {
-  type: String,
-  default: "",
-  trim: true,
-  uppercase: true,
-},
-
-originalInvoiceNo: {
-  type: String,
-  default: "",
-  trim: true,
-  uppercase: true,
-},
-
-originalPurchaseAmount: {
-  type: Number,
-  default: 0,
-  min: 0,
-},
-
-historicalDataComplete: {
-  type: Boolean,
-  default: false,
-},
-
-      amcStatus: {
-        type: String,
-        enum: [
-          "Not Started",
-          "Pending",
-          "Paid",
-          "Partially Paid",
-          "Overdue",
-        ],
-        default: "Not Started",
-      },
-
-      expiryDate: {
-        type: String,
-        default: "",
-      },
-
-      installationStatus: {
-        type: String,
-        enum: [
-          "Not Installed",
-          "Installation Pending",
-          "Installed",
-          "Inactive",
-        ],
-        default: "Installed",
-      },
-      licenceType: {
-  type: String,
-  enum: ["Perpetual Licence", "Annual Licence", "Monthly Subscription"],
-  default: "Annual Licence",
-},
-
-licenceKey: {
-  type: String,
-  default: "",
-  trim: true,
-},
-
-activeUsers: {
-  type: Number,
-  default: 0,
-  min: 0,
-},
-
-serverType: {
-  type: String,
-  default: "",
-  trim: true,
-},
-
-database: {
-  type: String,
-  default: "",
-  trim: true,
-},
-
-assignedEngineer: {
-  type: String,
-  default: "Support Team",
-  trim: true,
-},
-
-modules: {
-  type: [String],
-  default: [],
-},
-
-documents: {
-  type: [
-    {
-      name: { type: String, default: "" },
-      url: { type: String, default: "" },
-    },
-  ],
-  default: [],
-},
-
-      notes: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-    },
-    {
-      _id: true,
-      timestamps: true,
-    }
-    
-  );
-
-const clientSchema =
-  new mongoose.Schema(
-    {
-      clientCode: {
-        type: String,
-        required: [
-          true,
-          "Client code is required.",
-        ],
-        unique: true,
-        trim: true,
-        uppercase: true,
-        index: true,
-      },
-
-      companyName: {
-        type: String,
-        required: [
-          true,
-          "Company name is required.",
-        ],
-        trim: true,
-        index: true,
-      },
-
-      contactPerson: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      email: {
-        type: String,
-        default: "",
-        trim: true,
-        lowercase: true,
-      },
-      userId: {
-        type:
-          mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        default: null,
-        index: true,
-      },
-
-      loginEnabled: {
-        type: Boolean,
-        default: true,
-      },
-
-      loginCreatedAt: {
-        type: Date,
-        default: null,
-      },
-
-      mobile: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      city: {
-        type: String,
-        default: "",
-        trim: true,
-        index: true,
-      },
-
-      products: {
-        type: [clientProductSchema],
-        default: [],
-      },
-
-      amcStatus: {
-        type: String,
-        enum: [
-          "Not Started",
-          "Pending",
-          "Paid",
-          "Partially Paid",
-          "Overdue",
-        ],
-        default: "Not Started",
-        index: true,
-      },
-      gstNo: { type: String, default: "", trim: true },
-panNo: { type: String, default: "", trim: true },
-
-addressLine1: { type: String, default: "", trim: true },
-addressLine2: { type: String, default: "", trim: true },
-state: { type: String, default: "", trim: true },
-pinCode: { type: String, default: "", trim: true },
-country: { type: String, default: "India", trim: true },
-
-billingContact: { type: String, default: "", trim: true },
-billingEmail: { type: String, default: "", trim: true },
-
-preferredContact: {
-  type: String,
-  enum: ["Phone", "Email", "WhatsApp"],
-  default: "Phone",
-},
-
-supportLanguage: {
-  type: String,
-  enum: ["English", "Hindi", "Marathi"],
-  default: "English",
-},
-
-      nextRenewal: {
-        type: String,
-        default: "",
-      },
-
-      openTickets: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-assignedEmployeeId: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "Employee",
-  default: null,
-  index: true,
-},
-
-assignedEmployeeCode: {
-  type: String,
-  default: "",
-  trim: true,
-  uppercase: true,
-},
-
-assignedEmployeeName: {
-  type: String,
-  default: "",
-  trim: true,
-},
-
-
-      status: {
-        type: String,
-        enum: [
-          "Active",
-          "Inactive",
-          "Suspended",
-        ],
-        default: "Active",
-        index: true,
-      },
-
-      createdBy: {
-        type:
-          mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        default: null,
-      },
-
-      createdByName: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      updatedBy: {
-        type:
-          mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        default: null,
-      },
-
-      updatedByName: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      isDeleted: {
-        type: Boolean,
-        default: false,
-        index: true,
-      },
-
-      deletedAt: {
-        type: Date,
-        default: null,
-      },
-
-      deletedBy: {
-        type:
-          mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        default: null,
-      },
-
-      deletedByName: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-    },
-    {
-      timestamps: true,
-      collection: "clients",
-    }
-  );
-clientSchema.index({
-  clientCode: "text",
-  companyName: "text",
-  contactPerson: "text",
-  email: "text",
-  mobile: "text",
-  city: "text",
-  assignedEmployeeCode: "text",
-  assignedEmployeeName: "text",
-  "products.productName": "text",
-  "products.productCode": "text",
-});
-
-const Client =
-  mongoose.models.Client ||
-  mongoose.model(
-    "Client",
-    clientSchema
-  );
+const Client = require("./models/Client");
 
   /* =====================================================
    PRODUCT SALE / INITIAL PRODUCT INVOICE
@@ -2884,893 +1428,7 @@ const Client =
  * They are intentionally separate financial records.
  */
 
-const productSaleItemSchema =
-  new mongoose.Schema(
-    {
-      /*
-       * Product Master reference.
-       */
-      productId: {
-        type:
-          mongoose.Schema.Types.ObjectId,
-
-        ref:
-          "Product",
-
-        required: [
-          true,
-          "Product is required.",
-        ],
-
-        index:
-          true,
-      },
-
-      /*
-       * Snapshot fields.
-       *
-       * Product Master may change later, but an old
-       * invoice must always keep the original name/code.
-       */
-      productCode: {
-        type:
-          String,
-
-        required:
-          true,
-
-        trim:
-          true,
-
-        uppercase:
-          true,
-      },
-
-      productName: {
-        type:
-          String,
-
-        required:
-          true,
-
-        trim:
-          true,
-      },
-
-      version: {
-        type:
-          String,
-
-        default:
-          "",
-
-        trim:
-          true,
-      },
-
-      /*
-       * This will be populated after the sale creates
-       * the corresponding entry inside client.products[].
-       */
-      clientProductId: {
-        type:
-          mongoose.Schema.Types.ObjectId,
-
-        default:
-          null,
-
-        index:
-          true,
-      },
-
-      licenceType: {
-        type:
-          String,
-
-        enum: [
-          "Perpetual Licence",
-          "Annual Licence",
-          "Monthly Subscription",
-        ],
-
-        default:
-          "Perpetual Licence",
-      },
-
-      licensedUsers: {
-        type:
-          Number,
-
-        default:
-          1,
-
-        min:
-          1,
-      },
-
-      quantity: {
-        type:
-          Number,
-
-        default:
-          1,
-
-        min:
-          1,
-      },
-
-      /*
-       * COMMERCIAL VALUE
-       */
-      rate: {
-        type:
-          Number,
-
-        default:
-          0,
-
-        min:
-          0,
-      },
-
-      grossAmount: {
-        type:
-          Number,
-
-        default:
-          0,
-
-        min:
-          0,
-      },
-
-      discountAmount: {
-        type:
-          Number,
-
-        default:
-          0,
-
-        min:
-          0,
-      },
-
-      taxableAmount: {
-        type:
-          Number,
-
-        default:
-          0,
-
-        min:
-          0,
-      },
-
-      gstRate: {
-        type:
-          Number,
-
-        default:
-          18,
-
-        min:
-          0,
-      },
-
-      cgstAmount: {
-        type:
-          Number,
-
-        default:
-          0,
-
-        min:
-          0,
-      },
-
-      sgstAmount: {
-        type:
-          Number,
-
-        default:
-          0,
-
-        min:
-          0,
-      },
-
-      igstAmount: {
-        type:
-          Number,
-
-        default:
-          0,
-
-        min:
-          0,
-      },
-
-      totalAmount: {
-        type:
-          Number,
-
-        default:
-          0,
-
-        min:
-          0,
-      },
-
-      /*
-       * IMPLEMENTATION / SUPPORT
-       */
-
-      purchaseDate: {
-        type:
-          Date,
-
-        default:
-          null,
-      },
-
-      installationDate: {
-        type:
-          Date,
-
-        default:
-          null,
-      },
-
-      warrantyMonths: {
-        type:
-          Number,
-
-        default:
-          12,
-
-        min:
-          0,
-      },
-
-      warrantyStartDate: {
-        type:
-          Date,
-
-        default:
-          null,
-      },
-
-      warrantyEndDate: {
-        type:
-          Date,
-
-        default:
-          null,
-      },
-
-      supportType: {
-        type:
-          String,
-
-        enum: [
-          "Basic",
-          "Standard",
-          "Premium",
-        ],
-
-        default:
-          "Standard",
-      },
-
-      installationStatus: {
-        type:
-          String,
-
-        enum: [
-          "Not Installed",
-          "Installation Pending",
-          "Installed",
-          "Inactive",
-        ],
-
-        default:
-          "Not Installed",
-      },
-
-      /*
-       * AMC configuration for this product.
-       *
-       * This does NOT create an AMC invoice yet.
-       * It only remembers what should happen after
-       * warranty/free-support ends.
-       */
-      amcApplicable: {
-        type:
-          Boolean,
-
-        default:
-          true,
-      },
-
-      proposedAmcAmount: {
-        type:
-          Number,
-
-        default:
-          0,
-
-        min:
-          0,
-      },
-
-      notes: {
-        type:
-          String,
-
-        default:
-          "",
-
-        trim:
-          true,
-      },
-    },
-    {
-      _id:
-        true,
-
-      timestamps:
-        true,
-    }
-  );
-
-
-const productSaleSchema =
-  new mongoose.Schema(
-    {
-      /*
-       * Internal sale number.
-       *
-       * Example:
-       * SAL-2026-0001
-       */
-      saleCode: {
-        type:
-          String,
-
-        required:
-          true,
-
-        unique:
-          true,
-
-        trim:
-          true,
-
-        uppercase:
-          true,
-
-        index:
-          true,
-      },
-
-      /*
-       * Numeric running sequence.
-       */
-      saleNumber: {
-        type:
-          Number,
-
-        required:
-          true,
-
-        min:
-          1,
-
-        index:
-          true,
-      },
-
-      /*
-       * Your actual invoice/reference number.
-       */
-      invoiceNo: {
-        type:
-          String,
-
-        default:
-          "",
-
-        trim:
-          true,
-
-        uppercase:
-          true,
-
-        index:
-          true,
-      },
-
-      saleDate: {
-        type:
-          Date,
-
-        required: [
-          true,
-          "Sale date is required.",
-        ],
-
-        default:
-          Date.now,
-
-        index:
-          true,
-      },
-
-      invoiceDate: {
-        type:
-          Date,
-
-        default:
-          Date.now,
-
-        index:
-          true,
-      },
-
-      dueDate: {
-        type:
-          Date,
-
-        default:
-          null,
-
-        index:
-          true,
-      },
-
-      /* =================================================
-         CLIENT SNAPSHOT
-      ================================================= */
-
-      clientId: {
-        type:
-          mongoose.Schema.Types.ObjectId,
-
-        ref:
-          "Client",
-
-        required: [
-          true,
-          "Client is required.",
-        ],
-
-        index:
-          true,
-      },
-
-      clientCode: {
-        type:
-          String,
-
-        required:
-          true,
-
-        trim:
-          true,
-
-        uppercase:
-          true,
-
-        index:
-          true,
-      },
-
-      clientName: {
-        type:
-          String,
-
-        required:
-          true,
-
-        trim:
-          true,
-
-        index:
-          true,
-      },
-
-      contactPerson: {
-        type:
-          String,
-
-        default:
-          "",
-
-        trim:
-          true,
-      },
-
-      mobile: {
-        type:
-          String,
-
-        default:
-          "",
-
-        trim:
-          true,
-      },
-
-      email: {
-        type:
-          String,
-
-        default:
-          "",
-
-        trim:
-          true,
-
-        lowercase:
-          true,
-      },
-
-      gstNo: {
-        type:
-          String,
-
-        default:
-          "",
-
-        trim:
-          true,
-
-        uppercase:
-          true,
-      },
-
-      state: {
-        type:
-          String,
-
-        default:
-          "",
-
-        trim:
-          true,
-      },
-
-      billingAddress: {
-        type:
-          String,
-
-        default:
-          "",
-
-        trim:
-          true,
-      },
-
-      /* =================================================
-         PRODUCTS
-      ================================================= */
-
-      items: {
-        type: [
-          productSaleItemSchema
-        ],
-
-        validate: {
-          validator:
-            function (
-              value
-            ) {
-              return (
-                Array.isArray(
-                  value
-                ) &&
-                value.length >
-                  0
-              );
-            },
-
-          message:
-            "At least one product is required.",
-        },
-      },
-
-      /* =================================================
-         INVOICE TOTALS
-      ================================================= */
-
-      grossAmount: {
-        type:
-          Number,
-
-        default:
-          0,
-
-        min:
-          0,
-      },
-
-      discountAmount: {
-        type:
-          Number,
-
-        default:
-          0,
-
-        min:
-          0,
-      },
-
-      taxableAmount: {
-        type:
-          Number,
-
-        default:
-          0,
-
-        min:
-          0,
-      },
-
-      cgstAmount: {
-        type:
-          Number,
-
-        default:
-          0,
-
-        min:
-          0,
-      },
-
-      sgstAmount: {
-        type:
-          Number,
-
-        default:
-          0,
-
-        min:
-          0,
-      },
-
-      igstAmount: {
-        type:
-          Number,
-
-        default:
-          0,
-
-        min:
-          0,
-      },
-
-      roundOff: {
-        type:
-          Number,
-
-        default:
-          0,
-      },
-
-      totalAmount: {
-        type:
-          Number,
-
-        default:
-          0,
-
-        min:
-          0,
-      },
-
-      paidAmount: {
-        type:
-          Number,
-
-        default:
-          0,
-
-        min:
-          0,
-      },
-
-      pendingAmount: {
-        type:
-          Number,
-
-        default:
-          0,
-
-        min:
-          0,
-      },
-
-      paymentStatus: {
-        type:
-          String,
-
-        enum: [
-          "Unpaid",
-          "Partially Paid",
-          "Paid",
-          "Overdue",
-        ],
-
-        default:
-          "Unpaid",
-
-        index:
-          true,
-      },
-
-      status: {
-        type:
-          String,
-
-        enum: [
-          "Draft",
-          "Confirmed",
-          "Cancelled",
-        ],
-
-        default:
-          "Confirmed",
-
-        index:
-          true,
-      },
-
-      notes: {
-        type:
-          String,
-
-        default:
-          "",
-
-        trim:
-          true,
-      },
-
-      /* =================================================
-         AUDIT
-      ================================================= */
-
-      createdBy: {
-        type:
-          mongoose.Schema.Types.ObjectId,
-
-        ref:
-          "User",
-
-        default:
-          null,
-      },
-
-      createdByName: {
-        type:
-          String,
-
-        default:
-          "",
-
-        trim:
-          true,
-      },
-
-      updatedBy: {
-        type:
-          mongoose.Schema.Types.ObjectId,
-
-        ref:
-          "User",
-
-        default:
-          null,
-      },
-
-      updatedByName: {
-        type:
-          String,
-
-        default:
-          "",
-
-        trim:
-          true,
-      },
-
-      isDeleted: {
-        type:
-          Boolean,
-
-        default:
-          false,
-
-        index:
-          true,
-      },
-
-      deletedAt: {
-        type:
-          Date,
-
-        default:
-          null,
-      },
-
-      deletedBy: {
-        type:
-          mongoose.Schema.Types.ObjectId,
-
-        ref:
-          "User",
-
-        default:
-          null,
-      },
-
-      deletedByName: {
-        type:
-          String,
-
-        default:
-          "",
-
-        trim:
-          true,
-      },
-    },
-    {
-      timestamps:
-        true,
-
-      collection:
-        "productsales",
-    }
-  );
-
-
-productSaleSchema.index({
-  saleCode:
-    "text",
-
-  invoiceNo:
-    "text",
-
-  clientCode:
-    "text",
-
-  clientName:
-    "text",
-
-  "items.productCode":
-    "text",
-
-  "items.productName":
-    "text",
-});
-
-
-productSaleSchema.index({
-  clientId:
-    1,
-
-  saleDate:
-    -1,
-});
-
-
-const ProductSale =
-  mongoose.models.ProductSale ||
-  mongoose.model(
-    "ProductSale",
-    productSaleSchema
-  );
+const ProductSale = require("./models/ProductSale");
 
 
 /* =====================================================
@@ -3784,663 +1442,12 @@ const ProductSale =
  * Every receipt/payment should have its own record.
  */
 
-const productSalePaymentSchema =
-  new mongoose.Schema(
-    {
-      paymentCode: {
-        type:
-          String,
-
-        required:
-          true,
-
-        unique:
-          true,
-
-        uppercase:
-          true,
-
-        trim:
-          true,
-
-        index:
-          true,
-      },
-
-      paymentNumber: {
-        type:
-          Number,
-
-        required:
-          true,
-
-        min:
-          1,
-      },
-
-      productSaleId: {
-        type:
-          mongoose.Schema.Types.ObjectId,
-
-        ref:
-          "ProductSale",
-
-        required:
-          true,
-
-        index:
-          true,
-      },
-
-      saleCode: {
-        type:
-          String,
-
-        required:
-          true,
-
-        uppercase:
-          true,
-
-        trim:
-          true,
-
-        index:
-          true,
-      },
-
-      clientId: {
-        type:
-          mongoose.Schema.Types.ObjectId,
-
-        ref:
-          "Client",
-
-        required:
-          true,
-
-        index:
-          true,
-      },
-
-      clientCode: {
-        type:
-          String,
-
-        required:
-          true,
-
-        uppercase:
-          true,
-
-        trim:
-          true,
-      },
-
-      clientName: {
-        type:
-          String,
-
-        required:
-          true,
-
-        trim:
-          true,
-      },
-
-      amount: {
-        type:
-          Number,
-
-        required:
-          true,
-
-        min:
-          0.01,
-      },
-
-      paymentDate: {
-        type:
-          Date,
-
-        required:
-          true,
-
-        default:
-          Date.now,
-
-        index:
-          true,
-      },
-
-      mode: {
-        type:
-          String,
-
-        enum: [
-          "Cash",
-          "Bank Transfer",
-          "UPI",
-          "Cheque",
-          "Card",
-          "Other",
-        ],
-
-        default:
-          "Bank Transfer",
-      },
-
-      referenceNo: {
-        type:
-          String,
-
-        default:
-          "",
-
-        trim:
-          true,
-      },
-
-      notes: {
-        type:
-          String,
-
-        default:
-          "",
-
-        trim:
-          true,
-      },
-
-      createdBy: {
-        type:
-          mongoose.Schema.Types.ObjectId,
-
-        ref:
-          "User",
-
-        default:
-          null,
-      },
-
-      createdByName: {
-        type:
-          String,
-
-        default:
-          "",
-
-        trim:
-          true,
-      },
-
-      isDeleted: {
-        type:
-          Boolean,
-
-        default:
-          false,
-
-        index:
-          true,
-      },
-
-      deletedAt: {
-        type:
-          Date,
-
-        default:
-          null,
-      },
-    },
-    {
-      timestamps:
-        true,
-
-      collection:
-        "productsalepayments",
-    }
-  );
-
-
-productSalePaymentSchema.index({
-  productSaleId:
-    1,
-
-  paymentDate:
-    -1,
-});
-
-
-const ProductSalePayment =
-  mongoose.models
-    .ProductSalePayment ||
-  mongoose.model(
-    "ProductSalePayment",
-    productSalePaymentSchema
-  );
+const ProductSalePayment = require("./models/ProductSalePayment");
 /* =====================================================
  TASK SCHEMA
 ===================================================== */
 
-const taskChecklistItemSchema = new mongoose.Schema(
-  {
-    text: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    completed: {
-      type: Boolean,
-      default: false,
-    },
-    completedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
-    completedByName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    completedAt: {
-      type: Date,
-      default: null,
-    },
-  },
-  {
-    _id: true,
-  }
-);
-
-const taskTimelineSchema = new mongoose.Schema(
-  {
-    action: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    description: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    performedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
-
-    performedByName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    performedByRole: {
-      type: String,
-      enum: ["admin", "employee", "client", "system"],
-      default: "system",
-    },
-
-    createdAt: {
-      type: Date,
-      default: Date.now,
-    },
-  },
-  {
-    _id: true,
-  }
-);
-
-const taskCommentSchema = new mongoose.Schema(
-  {
-    message: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    authorId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
-
-    authorName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    authorRole: {
-      type: String,
-      enum: ["admin", "employee", "client"],
-      default: "admin",
-    },
-
-    createdAt: {
-      type: Date,
-      default: Date.now,
-    },
-  },
-  {
-    _id: true,
-  }
-);
-
-const taskAttachmentSchema = new mongoose.Schema(
-  {
-    fileName: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    fileUrl: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    fileType: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    fileSize: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-
-    uploadedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
-
-    uploadedByName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    uploadedAt: {
-      type: Date,
-      default: Date.now,
-    },
-  },
-  {
-    _id: true,
-  }
-);
-
-const taskSchema = new mongoose.Schema(
-  {
-    taskCode: {
-      type: String,
-      required: true,
-      unique: true,
-      trim: true,
-      uppercase: true,
-      index: true,
-    },
-
-    title: {
-      type: String,
-      required: [true, "Task title is required."],
-      trim: true,
-    },
-
-    description: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    workType: {
-      type: String,
-      enum: [
-        "Client Support",
-        "Internal Development",
-        "Development",
-        "Testing",
-        "Installation",
-        "Training",
-        "Documentation",
-        "Internal Work",
-        "Follow-up",
-        "Other",
-      ],
-      default: "Client Support",
-    },
-
-    taskFor: {
-      type: String,
-      enum: [
-        "Project",
-        "Product",
-        "General",
-      ],
-      default: "Project",
-      index: true,
-    },
-    generalTaskFor: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    clientId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Client",
-      default: null,
-    },
-
-    clientName: {
-      type: String,
-      default: "Internal Development",
-      trim: true,
-    },
-
-    productId: {
-      type: mongoose.Schema.Types.ObjectId,
-      default: null,
-    },
-    productCode: {
-      type: String,
-      default: "",
-      trim: true,
-      uppercase: true,
-    },
-
-    productName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-projectId: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "Project",
-  default: null,
-  index: true,
-},
-
-projectCode: {
-  type: String,
-  default: "",
-  trim: true,
-  uppercase: true,
-},
-
-projectName: {
-  type: String,
-  default: "",
-  trim: true,
-},
-
-    ticketId: {
-      type: mongoose.Schema.Types.ObjectId,
-      default: null,
-    },
-
-    ticketCode: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    assignedEmployeeId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Employee",
-      required: [true, "Assigned employee is required."],
-      index: true,
-    },
-
-    assignedEmployeeName: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    assignedEmployeeCode: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    assignedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-    },
-
-    assignedByName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    priority: {
-      type: String,
-      default: "Medium",
-      trim: true,
-      index: true,
-    },
-
-    status: {
-      type: String,
-      default: "Assigned",
-      trim: true,
-      index: true,
-    },
-
-    progress: {
-      type: Number,
-      default: 0,
-      min: 0,
-      max: 100,
-    },
-
-    startDate: {
-      type: Date,
-      default: null,
-    },
-
-    dueDate: {
-      type: Date,
-      required: [true, "Due date is required."],
-      index: true,
-    },
-
-    completedAt: {
-      type: Date,
-      default: null,
-    },
-
-    estimatedMinutes: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-
-    spentMinutes: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-
-    startedAt: { type: Date, default: null },
-    pausedAt: { type: Date, default: null },
-    totalPausedMinutes: { type: Number, default: 0, min: 0 },
-    elapsedMinutes: { type: Number, default: 0, min: 0 },
-    elapsedSeconds: { type: Number, default: 0, min: 0 },
-    lastUpdated: { type: Date, default: null },
-
-    resolutionNote: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    checklist: {
-      type: [taskChecklistItemSchema],
-      default: [],
-    },
-
-    blockerReason: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    waitingFor: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    expectedResolutionDate: {
-      type: Date,
-      default: null,
-    },
-
-    timeline: {
-      type: [taskTimelineSchema],
-      default: [],
-    },
-
-    comments: {
-      type: [taskCommentSchema],
-      default: [],
-    },
-
-    attachments: {
-      type: [taskAttachmentSchema],
-      default: [],
-    },
-
-    isDeleted: {
-      type: Boolean,
-      default: false,
-      index: true,
-    },
-  },
-  {
-    timestamps: true,
-    collection: "tasks",
-  }
-);
-
-const Task =
-  mongoose.models.Task ||
-  mongoose.model("Task", taskSchema);
- // module.exports.Task = Task;
+const Task = require("./models/Task");
 
  /* =====================================================
    PROJECT TASK SUMMARY / AUTO PROGRESS
@@ -4581,2588 +1588,85 @@ const overdueTasks =
   };
 }
 /* =====================================================
- ACTIVITY LOG SCHEMA
+   ACTIVITY LOG MODEL
 ===================================================== */
-
-const activityLogSchema = new mongoose.Schema(
-  {
-    action: {
-      type: String,
-      required: true,
-      trim: true,
-      index: true,
-    },
-
-    category: {
-      type: String,
-      enum: [
-        "Client",
-        "Product",
-        "Project",
-        "Task",
-        "Ticket",
-        "Employee",
-        "Attendance",
-        "AMC",
-        "Payment",
-        "System",
-      ],
-      default: "System",
-      index: true,
-    },
-
-    description: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    entityType: {
-      type: String,
-      enum: [
-        "client",
-        "product",
-        "project",
-        "task",
-        "ticket",
-        "employee",
-        "attendance",
-        "amc",
-        "payment",
-        "system",
-      ],
-      default: "system",
-      index: true,
-    },
-
-    entityId: {
-      type: mongoose.Schema.Types.ObjectId,
-      default: null,
-      index: true,
-    },
-
-    entityCode: {
-      type: String,
-      default: "",
-      trim: true,
-      index: true,
-    },
-
-    entityName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    clientId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Client",
-      default: null,
-      index: true,
-    },
-
-    clientName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    employeeId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Employee",
-      default: null,
-      index: true,
-    },
-
-    employeeName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    performedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-      index: true,
-    },
-
-    performedByName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    performedByRole: {
-      type: String,
-      enum: ["admin", "employee", "client", "system"],
-      default: "system",
-      index: true,
-    },
-
-    metadata: {
-      type: mongoose.Schema.Types.Mixed,
-      default: {},
-    },
-
-    isDeleted: {
-      type: Boolean,
-      default: false,
-      index: true,
-    },
-  },
-  {
-    timestamps: true,
-    collection: "activitylogs",
-  }
-);
-
-const ActivityLog =
-  mongoose.models.ActivityLog ||
-  mongoose.model(
-    "ActivityLog",
-    activityLogSchema
-  );
+const ActivityLog = require("./models/ActivityLog");
 
 /* =====================================================
 SUPPORT TICKET SCHEMAS
 ===================================================== */
-
-const ticketTimelineSchema =
-  new mongoose.Schema(
-    {
-      type: {
-        type: String,
-        enum: [
-          "created",
-          "assigned",
-          "status",
-          "reply",
-          "attachment",
-              "call",
-          "resolved",
-          "closed",
-          "reopened",
-          "task",
-          "updated",
-          "deleted",
-          "feedback",
-        ],
-        default: "updated",
-      },
-
-      title: {
-        type: String,
-        required: true,
-        trim: true,
-      },
-
-      description: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      performedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        default: null,
-      },
-
-      performedByName: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      performedByRole: {
-        type: String,
-        enum: [
-          "admin",
-          "employee",
-          "client",
-          "system",
-        ],
-        default: "system",
-      },
-
-      createdAt: {
-        type: Date,
-        default: Date.now,
-      },
-    },
-    {
-      _id: true,
-    }
-  );
-
-  const ticketInternalNoteSchema =
-  new mongoose.Schema(
-    {
-      note: {
-        type: String,
-        required: true,
-        trim: true,
-      },
-
-      authorId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        default: null,
-      },
-
-      authorName: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      authorRole: {
-        type: String,
-        enum: [
-          "admin",
-          "employee",
-        ],
-        default: "employee",
-      },
-
-      createdAt: {
-        type: Date,
-        default: Date.now,
-      },
-    },
-    {
-      _id: true,
-    }
-  );
-const ticketReplySchema =
-  new mongoose.Schema(
-    {
-      message: {
-        type: String,
-        required: true,
-        trim: true,
-      },
-
-      replyType: {
-        type: String,
-        enum: [
-          "Public",
-          "Internal",
-        ],
-        default: "Public",
-      },
-
-      authorId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        default: null,
-      },
-
-      authorName: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      authorRole: {
-        type: String,
-        enum: [
-          "admin",
-          "employee",
-          "client",
-        ],
-        default: "admin",
-      },
-
-      createdAt: {
-        type: Date,
-        default: Date.now,
-      },
-    },
-    {
-      _id: true,
-    }
-  );
-
-const ticketAttachmentSchema =
-  new mongoose.Schema(
-    {
-      fileName: {
-        type: String,
-        required: true,
-        trim: true,
-      },
-
-      fileUrl: {
-        type: String,
-        required: true,
-        trim: true,
-      },
-
-      fileType: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      fileSize: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      uploadedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        default: null,
-      },
-
-      uploadedByName: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      uploadedByRole: {
-        type: String,
-        enum: [
-          "admin",
-          "employee",
-          "client",
-        ],
-        default: "admin",
-      },
-
-      uploadedAt: {
-        type: Date,
-        default: Date.now,
-      },
-    },
-    {
-      _id: true,
-    }
-  );
-
-  const ticketCallLogSchema =
-  new mongoose.Schema(
-    {
-      callType: { type: String, enum: ["Incoming", "Outgoing"], default: "Outgoing" },
-      contactPerson: { type: String, default: "", trim: true },
-      mobile: { type: String, default: "", trim: true },
-      duration: { type: String, default: "", trim: true },
-      summary: { type: String, required: true, trim: true },
-      loggedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
-      loggedByName: { type: String, default: "", trim: true },
-      loggedByRole: { type: String, enum: ["admin", "employee"], default: "employee" },
-      createdAt: { type: Date, default: Date.now },
-    },
-    { _id: true }
-  );
-
-const ticketClientFeedbackSchema = new mongoose.Schema(
-  {
-    rating: {
-      type: Number,
-      required: true,
-      min: 1,
-      max: 5,
-    },
-    comment: {
-      type: String,
-      default: "",
-      trim: true,
-      maxlength: 1000,
-    },
-    submittedAt: {
-      type: Date,
-      default: Date.now,
-    },
-    submittedByClientId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Client",
-      default: null,
-    },
-    submittedByName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-  },
-  { _id: false }
-);
-
-const supportTicketSchema =
-  new mongoose.Schema(
-    {
-      ticketCode: {
-        type: String,
-        required: true,
-        unique: true,
-        uppercase: true,
-        trim: true,
-        index: true,
-      },
-
-      title: {
-        type: String,
-        required: [
-          true,
-          "Ticket title is required.",
-        ],
-        trim: true,
-      },
-
-      description: {
-        type: String,
-        required: [
-          true,
-          "Problem description is required.",
-        ],
-        trim: true,
-      },
-
-      clientId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Client",
-        required: true,
-        index: true,
-      },
-
-      clientCode: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      clientName: {
-        type: String,
-        required: true,
-        trim: true,
-      },
-
-      contactPerson: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      contactMobile: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      contactEmail: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      productId: {
-        type: mongoose.Schema.Types.ObjectId,
-        default: null,
-      },
-
-      productName: {
-        type: String,
-        required: [
-          true,
-          "Product is required.",
-        ],
-        trim: true,
-        index: true,
-      },
-
-      productVersion: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      module: {
-        type: String,
-        default: "General",
-        trim: true,
-      },
-
-    category: {
-  type: String,
-  enum: [
-    "Billing",
-    "Reports",
-    "Inventory",
-    "Accounts",
-    "GST",
-    "Backup",
-    "Login",
-    "Bug",
-    "Configuration",
-    "Data Issue",
-    "Feature Request",
-    "Installation",
-    "Training",
-    "Permission",
-    "Performance",
-    "Report",
-    "Other",
-  ],
-  default: "Other",
-},
-
-      source: {
-        type: String,
-        enum: [
-          "Client Portal",
-          "Phone Call",
-          "WhatsApp",
-          "Email",
-          "Admin",
-        ],
-        default: "Admin",
-        index: true,
-      },
-
-      priority: {
-        type: String,
-        default: "Medium",
-        trim: true,
-        index: true,
-      },
-
-      status: {
-        type: String,
-        enum: [
-          "New",
-          "Assigned",
-          "In Progress",
-          "Waiting for Client",
-          "Testing",
-          "Resolved",
-          "Verified",
-          "Closed",
-          "Cancelled",
-        ],
-        default: "New",
-        index: true,
-      },
-
-      assignedEmployeeId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Employee",
-        default: null,
-        index: true,
-      },
-
-      assignedEmployeeName: {
-        type: String,
-        default: "Unassigned",
-        trim: true,
-      },
-
-      assignedEmployeeCode: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      assignedAt: {
-        type: Date,
-        default: null,
-      },
-
-      assignedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        default: null,
-      },
-
-      assignedByName: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      dueDate: {
-        type: Date,
-        default: null,
-        index: true,
-      },
-
-      firstResponseAt: {
-        type: Date,
-        default: null,
-      },
-
-      resolvedAt: {
-        type: Date,
-        default: null,
-      },
-
-      verifiedAt: {
-        type: Date,
-        default: null,
-      },
-
-      closedAt: {
-        type: Date,
-        default: null,
-      },
-
-      // SLA Snapshot & Milestone Fields (Enhancement 4)
-      slaFirstResponseMinutes: {
-        type: Number,
-        default: null,
-      },
-
-      slaResolutionMinutes: {
-        type: Number,
-        default: null,
-      },
-
-      firstResponseDueAt: {
-        type: Date,
-        default: null,
-        index: true,
-      },
-
-      resolutionDueAt: {
-        type: Date,
-        default: null,
-        index: true,
-      },
-
-      firstResolvedAt: {
-        type: Date,
-        default: null,
-      },
-
-      slaPolicyVersion: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      resolutionNote: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      rootCause: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      linkedTaskId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Task",
-        default: null,
-        index: true,
-      },
-
-      linkedTaskCode: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      spentMinutes: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      replies: {
-        type: [ticketReplySchema],
-        default: [],
-      },
-      internalNotes: {
-    type: [ticketInternalNoteSchema],
-    default: [],
-},
-
-      attachments: {
-        type: [ticketAttachmentSchema],
-        default: [],
-      },
-      callLogs: {
-  type: [ticketCallLogSchema],
-  default: [],
-},
-
-      timeline: {
-        type: [ticketTimelineSchema],
-        default: [],
-      },
-
-      clientFeedback: {
-        type: ticketClientFeedbackSchema,
-        default: null,
-      },
-
-      createdBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        default: null,
-      },
-
-      createdByName: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      createdByRole: {
-        type: String,
-        enum: [
-          "admin",
-          "employee",
-          "client",
-          "system",
-        ],
-        default: "admin",
-      },
-
-      isDeleted: {
-        type: Boolean,
-        default: false,
-        index: true,
-      },
-    },
-    {
-      timestamps: true,
-      collection: "supporttickets",
-    }
-  );
-
-supportTicketSchema.index({
-  clientId: 1,
-  status: 1,
-  createdAt: -1,
-});
-
-supportTicketSchema.index({
-  assignedEmployeeId: 1,
-  status: 1,
-});
-
-supportTicketSchema.index({
-  title: "text",
-  description: "text",
-  clientName: "text",
-  productName: "text",
-  module: "text",
-});
-
-const SupportTicket =
-  mongoose.models.SupportTicket ||
-  mongoose.model(
-    "SupportTicket",
-    supportTicketSchema
-  );
+const SupportTicket = require("./models/SupportTicket");
 
 /* =====================================================
    AMC CONTRACT SCHEMAS
 ===================================================== */
 
-const amcTimelineSchema =
-  new mongoose.Schema(
-    {
-      type: {
-        type: String,
-    enum: [
-      "created",
-      "updated",
-      "update",
-      "invoice",
-      "payment",
-      "reminder",
-      "renewal",
-      "assignment",
-      "status",
-      "document",
-      "deleted",
-    ],
-        default: "updated",
-      },
+const AmcContract = require("./models/AmcContract");
 
-      title: {
-        type: String,
-        required: true,
-        trim: true,
-      },
+const AmcInvoice = require("./models/AmcInvoice");
 
-      description: {
-        type: String,
-        default: "",
-        trim: true,
-      },
+const IdempotencyLog = require("./models/IdempotencyLog");
 
-      performedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        default: null,
-      },
-
-      performedByName: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      performedByRole: {
-        type: String,
-        enum: [
-          "admin",
-          "employee",
-          "client",
-          "system",
-        ],
-        default: "system",
-      },
-
-      createdAt: {
-        type: Date,
-        default: Date.now,
-      },
-    },
-    {
-      _id: true,
-    }
-  );
-
-  /* =====================================================
-   AMC DOCUMENT SCHEMA
-===================================================== */
-
-const amcDocumentSchema =
-  new mongoose.Schema(
-    {
-      documentType: {
-        type: String,
-
-        enum: [
-          "AMC Agreement",
-          "Own Invoice / Bill",
-          "Payment Receipt",
-          "Quotation",
-          "Purchase Order",
-          "Other Document",
-        ],
-
-        default:
-          "Other Document",
-      },
-
-      fileName: {
-        type: String,
-        required: true,
-        trim: true,
-      },
-
-      storedFileName: {
-        type: String,
-        required: true,
-        trim: true,
-      },
-
-      mimeType: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      fileSize: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      relativePath: {
-        type: String,
-        required: true,
-        trim: true,
-      },
-
-      source: {
-        type: String,
-
-        enum: [
-          "Uploaded",
-          "Own Invoice",
-          "System",
-        ],
-
-        default:
-          "Uploaded",
-      },
-
-      status: {
-        type: String,
-
-        enum: [
-          "Available",
-          "Archived",
-        ],
-
-        default:
-          "Available",
-      },
-
-      uploadedBy: {
-        type:
-          mongoose.Schema.Types.ObjectId,
-
-        ref:
-          "User",
-
-        default:
-          null,
-      },
-
-      uploadedByName: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      uploadedAt: {
-        type: Date,
-        default:
-          Date.now,
-      },
-
-      isDeleted: {
-        type: Boolean,
-        default:
-          false,
-      },
-
-      deletedAt: {
-        type: Date,
-        default:
-          null,
-      },
-
-      deletedBy: {
-        type:
-          mongoose.Schema.Types.ObjectId,
-
-        ref:
-          "User",
-
-        default:
-          null,
-      },
-
-      deletedByName: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-    },
-    {
-      _id:
-        true,
-    }
-  );
-
-const amcRenewalHistorySchema =
-  new mongoose.Schema(
-    {
-      contractCode: {
-        type: String,
-        default: "",
-        trim: true,
-        uppercase: true,
-      },
-
-      invoiceCode: {
-        type: String,
-        default: "",
-        trim: true,
-        uppercase: true,
-      },
-
-      invoiceDate: {
-        type: Date,
-        default: null,
-      },
-
-      startDate: {
-        type: Date,
-        default: null,
-      },
-
-      expiryDate: {
-        type: Date,
-        default: null,
-      },
-
-      dueDate: {
-        type: Date,
-        default: null,
-      },
-
-      plan: {
-        type: String,
-        default: "Standard",
-        trim: true,
-      },
-
-      licensedUsers: {
-        type: Number,
-        default: 1,
-        min: 1,
-      },
-
-      taxableAmount: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      cgstRate: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      cgstAmount: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      sgstRate: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      sgstAmount: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      igstRate: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      igstAmount: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      totalAmount: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      paidAmount: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      pendingAmount: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      status: {
-        type: String,
-        default: "Pending",
-        trim: true,
-      },
-
-      notes: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      archivedAt: {
-        type: Date,
-        default: Date.now,
-      },
-
-      archivedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        default: null,
-      },
-
-      archivedByName: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-    },
-    {
-      _id: true,
-    }
-  );
-
-const amcContractSchema =
-  new mongoose.Schema(
-    {
-      contractCode: {
-        type: String,
-        required: true,
-        unique: true,
-        trim: true,
-        uppercase: true,
-        index: true,
-      },
-            /*
-       * Current active invoice for this AMC contract.
-       *
-       * Historical invoices remain permanently stored
-       * inside the amcinvoices collection.
-       */
-      currentInvoiceId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "AmcInvoice",
-        default: null,
-        index: true,
-      },
-
-      currentInvoiceCode: {
-        type: String,
-        default: "",
-        trim: true,
-        uppercase: true,
-        index: true,
-      },
-
-      invoiceCode: {
-        type: String,
-        default: "",
-        trim: true,
-        uppercase: true,
-        index: true,
-      },
-
-      invoiceDate: {
-        type: Date,
-        default: null,
-      },
-
-      clientId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Client",
-        required: [
-          true,
-          "Client is required.",
-        ],
-        index: true,
-      },
-
-      clientCode: {
-        type: String,
-        required: true,
-        trim: true,
-        uppercase: true,
-      },
-
-      clientName: {
-        type: String,
-        required: true,
-        trim: true,
-        index: true,
-      },
-
-      contactPerson: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      contactMobile: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      contactEmail: {
-        type: String,
-        default: "",
-        trim: true,
-        lowercase: true,
-      },
-
-      /*
-       * This is the _id of the selected product entry
-       * inside client.products.
-       */
-      clientProductId: {
-        type: mongoose.Schema.Types.ObjectId,
-        required: [
-          true,
-          "Client product is required.",
-        ],
-        index: true,
-      },
-
-      /*
-       * This is the Product Master _id stored inside
-       * the selected client product.
-       */
-      productId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Product",
-        required: [
-          true,
-          "Product is required.",
-        ],
-        index: true,
-      },
-
-      productCode: {
-        type: String,
-        required: true,
-        trim: true,
-        uppercase: true,
-      },
-
-      productName: {
-        type: String,
-        required: true,
-        trim: true,
-        index: true,
-      },
-
-      productVersion: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      plan: {
-        type: String,
-        enum: [
-          "Basic",
-          "Standard",
-          "Premium",
-          "Custom",
-        ],
-        default: "Standard",
-        index: true,
-      },
-
-      licensedUsers: {
-        type: Number,
-        default: 1,
-        min: 1,
-      },
-
-      startDate: {
-        type: Date,
-        required: [
-          true,
-          "AMC start date is required.",
-        ],
-        index: true,
-      },
-
-      expiryDate: {
-        type: Date,
-        required: [
-          true,
-          "AMC expiry date is required.",
-        ],
-        index: true,
-      },
-
-      dueDate: {
-        type: Date,
-        required: [
-          true,
-          "Payment due date is required.",
-        ],
-        index: true,
-      },
-
-      taxableAmount: {
-        type: Number,
-        required: [
-          true,
-          "AMC taxable amount is required.",
-        ],
-        min: 0,
-      },
-
-      cgstRate: {
-        type: Number,
-        default: 9,
-        min: 0,
-      },
-
-      cgstAmount: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      sgstRate: {
-        type: Number,
-        default: 9,
-        min: 0,
-      },
-
-      sgstAmount: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      igstRate: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      igstAmount: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      totalTaxAmount: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      totalAmount: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      paidAmount: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      pendingAmount: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      status: {
-        type: String,
-        enum: [
-          "Upcoming",
-          "Pending",
-          "Partially Paid",
-          "Paid",
-          "Overdue",
-          "Cancelled",
-        ],
-        default: "Pending",
-        index: true,
-      },
-
-      assignedEmployeeId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Employee",
-        default: null,
-        index: true,
-      },
-
-      assignedEmployeeCode: {
-        type: String,
-        default: "",
-        trim: true,
-        uppercase: true,
-      },
-
-      assignedEmployeeName: {
-        type: String,
-        default: "Unassigned",
-        trim: true,
-      },
-
-      reminderStatus: {
-        type: String,
-        enum: [
-          "Not Sent",
-          "Sent",
-          "Call Logged",
-          "Not Required",
-        ],
-        default: "Not Sent",
-      },
-
-      lastReminderAt: {
-        type: Date,
-        default: null,
-      },
-
-      nextFollowUpDate: {
-        type: Date,
-        default: null,
-      },
-
-      notes: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
- renewalHistory: {
-  type: [
-    amcRenewalHistorySchema
-  ],
-
-  default: [],
-},
-
-documents: {
-  type: [
-    amcDocumentSchema
-  ],
-
-  default: [],
-},
-
-timeline: {
-  type: [
-    amcTimelineSchema
-  ],
-
-  default: [],
-},
-
-      createdBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        default: null,
-      },
-
-      createdByName: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      updatedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        default: null,
-      },
-
-      updatedByName: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      isDeleted: {
-        type: Boolean,
-        default: false,
-        index: true,
-      },
-
-      deletedAt: {
-        type: Date,
-        default: null,
-      },
-
-      deletedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        default: null,
-      },
-
-      deletedByName: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-    },
-    {
-      timestamps: true,
-      collection: "amccontracts",
-    }
-  );
-
-amcContractSchema.index({
-  contractCode: "text",
-  invoiceCode: "text",
-  clientCode: "text",
-  clientName: "text",
-  productCode: "text",
-  productName: "text",
-  assignedEmployeeCode: "text",
-  assignedEmployeeName: "text",
-});
-
-amcContractSchema.index({
-  clientId: 1,
-  productId: 1,
-  expiryDate: 1,
-});
-
-const AmcContract =
-  mongoose.models.AmcContract ||
-  mongoose.model(
-    "AmcContract",
-
-    amcContractSchema
-  );
-
-  /* =====================================================
-   AMC INVOICE SCHEMA
-
-   This is the permanent financial invoice collection.
-
-   Client Master can be archived or soft-deleted without
-   affecting AMC invoices or payments.
-===================================================== */
-
-const amcInvoiceSchema =
-  new mongoose.Schema(
-    {
-      invoiceCode: {
-        type: String,
-        required: [
-          true,
-          "AMC invoice code is required.",
-        ],
-        unique: true,
-        trim: true,
-        uppercase: true,
-        index: true,
-      },
-
-      invoiceNumber: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      invoiceDate: {
-        type: Date,
-        required: [
-          true,
-          "Invoice date is required.",
-        ],
-        default: Date.now,
-        index: true,
-      },
-
-      invoiceType: {
-        type: String,
-        enum: [
-          "Initial",
-          "Renewal",
-          "Adjustment",
-        ],
-        default: "Initial",
-        index: true,
-      },
-
-      /*
-       * Contract reference.
-       */
-      amcContractId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "AmcContract",
-        required: [
-          true,
-          "AMC contract is required.",
-        ],
-        index: true,
-      },
-
-      contractCode: {
-        type: String,
-        required: true,
-        trim: true,
-        uppercase: true,
-        index: true,
-      },
-
-      /*
-       * Contract period represented by this invoice.
-       */
-      contractStartDate: {
-        type: Date,
-        required: true,
-      },
-
-      contractExpiryDate: {
-        type: Date,
-        required: true,
-      },
-
-      dueDate: {
-        type: Date,
-        required: [
-          true,
-          "Invoice due date is required.",
-        ],
-        index: true,
-      },
-
-      /*
-       * Client reference plus permanent snapshot.
-       *
-       * Even when Client Master is later archived,
-       * these values remain inside the invoice.
-       */
-      clientId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Client",
-        default: null,
-        index: true,
-      },
-
-      clientCode: {
-        type: String,
-        required: true,
-        trim: true,
-        uppercase: true,
-        index: true,
-      },
-
-      clientName: {
-        type: String,
-        required: true,
-        trim: true,
-        index: true,
-      },
-
-      contactPerson: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      contactMobile: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      contactEmail: {
-        type: String,
-        default: "",
-        trim: true,
-        lowercase: true,
-      },
-
-      /*
-       * Product reference plus permanent snapshot.
-       */
-      clientProductId: {
-        type: mongoose.Schema.Types.ObjectId,
-        default: null,
-        index: true,
-      },
-
-      productId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Product",
-        default: null,
-        index: true,
-      },
-
-      productCode: {
-        type: String,
-        required: true,
-        trim: true,
-        uppercase: true,
-        index: true,
-      },
-
-      productName: {
-        type: String,
-        required: true,
-        trim: true,
-        index: true,
-      },
-
-      productVersion: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      plan: {
-        type: String,
-        enum: [
-          "Basic",
-          "Standard",
-          "Premium",
-          "Custom",
-        ],
-        default: "Standard",
-      },
-
-      licensedUsers: {
-        type: Number,
-        default: 1,
-        min: 1,
-      },
-
-      description: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      /*
-       * GST and invoice totals.
-       */
-      taxableAmount: {
-        type: Number,
-        required: true,
-        min: 0,
-      },
-
-      cgstRate: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      cgstAmount: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      sgstRate: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      sgstAmount: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      igstRate: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      igstAmount: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      totalTaxAmount: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      totalAmount: {
-        type: Number,
-        required: true,
-        min: 0,
-      },
-
-      /*
-       * Payment summary is maintained from
-       * permanent amcpayments records.
-       */
-      paidAmount: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      pendingAmount: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      paymentStatus: {
-        type: String,
-        enum: [
-          "Pending",
-          "Partially Paid",
-          "Paid",
-          "Overdue",
-          "Cancelled",
-        ],
-        default: "Pending",
-        index: true,
-      },
-
-      status: {
-        type: String,
-        enum: [
-          "Draft",
-          "Issued",
-          "Cancelled",
-        ],
-        default: "Issued",
-        index: true,
-      },
-
-      notes: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      createdBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        default: null,
-      },
-
-      createdByName: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      updatedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        default: null,
-      },
-
-      updatedByName: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      /*
-       * Financial records should normally be cancelled,
-       * not physically removed.
-       */
-      isDeleted: {
-        type: Boolean,
-        default: false,
-        index: true,
-      },
-
-      deletedAt: {
-        type: Date,
-        default: null,
-      },
-
-      deletedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        default: null,
-      },
-
-      deletedByName: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-    },
-    {
-      timestamps: true,
-      collection: "amcinvoices",
-    }
-  );
-
-amcInvoiceSchema.index({
-  amcContractId: 1,
-  invoiceDate: -1,
-});
-
-amcInvoiceSchema.index({
-  clientId: 1,
-  invoiceDate: -1,
-});
-
-amcInvoiceSchema.index({
-  productId: 1,
-  invoiceDate: -1,
-});
-
-amcInvoiceSchema.index({
-  invoiceCode: "text",
-  contractCode: "text",
-  clientCode: "text",
-  clientName: "text",
-  productCode: "text",
-  productName: "text",
-});
-
-const AmcInvoice =
-  mongoose.models.AmcInvoice ||
-  mongoose.model(
-    "AmcInvoice",
-    amcInvoiceSchema
-  );
-
-  async function getNextAmcInvoiceIdentity() {
-  const now =
-    new Date();
-
-  const year =
-    now.getFullYear();
+async function getNextAmcInvoiceIdentity(options = {}) {
+  const now = new Date();
+  const year = now.getFullYear();
+  const session = options?.session || null;
 
   /*
    * Get the highest invoiceNumber currently stored.
    */
-  const lastInvoice =
-    await AmcInvoice.findOne({
-      isDeleted: {
-        $ne: true,
-      },
+  const lastInvoiceQuery = AmcInvoice.findOne({
+    isDeleted: {
+      $ne: true,
+    },
+  })
+    .sort({
+      invoiceNumber: -1,
+      createdAt: -1,
     })
-      .sort({
-        invoiceNumber: -1,
-        createdAt: -1,
-      })
-      .select(
-        "invoiceNumber invoiceCode"
-      )
-      .lean();
+    .select("invoiceNumber invoiceCode")
+    .lean();
 
-  const nextNumber =
-    Math.max(
-      Number(
-        lastInvoice?.invoiceNumber ||
-        0
-      ) + 1,
-      1
-    );
+  if (session) {
+    lastInvoiceQuery.session(session);
+  }
 
-  const invoiceCode =
-    `AMC-INV-${year}-${String(
-      nextNumber
-    ).padStart(
-      4,
-      "0"
-    )}`;
+  const lastInvoice = await lastInvoiceQuery;
+
+  const nextNumber = Math.max(
+    Number(lastInvoice?.invoiceNumber || 0) + 1,
+    1
+  );
+
+  const invoiceCode = `AMC-INV-${year}-${String(nextNumber).padStart(4, "0")}`;
 
   return {
-    invoiceNumber:
-      nextNumber,
-
+    invoiceNumber: nextNumber,
     invoiceCode,
   };
 }
-/* =====================================================
-   AMC PAYMENT SCHEMA
-===================================================== */
-
-const amcPaymentSchema =
-  new mongoose.Schema(
-    {
-      paymentCode: {
-        type: String,
-        required: true,
-        unique: true,
-        trim: true,
-        uppercase: true,
-        index: true,
-      },
-
-      amcContractId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "AmcContract",
-        required: true,
-        index: true,
-      },
-            /*
-       * Every payment belongs to one permanent invoice.
-       */
-      amcInvoiceId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "AmcInvoice",
-        required: [
-          true,
-          "AMC invoice is required.",
-        ],
-        index: true,
-      },
-
-      contractCode: {
-        type: String,
-        required: true,
-        trim: true,
-        uppercase: true,
-      },
-
-      invoiceCode: {
-        type: String,
-        default: "",
-        trim: true,
-        uppercase: true,
-      },
-
-      clientId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Client",
-        required: true,
-        index: true,
-      },
-
-      clientCode: {
-        type: String,
-        default: "",
-        trim: true,
-        uppercase: true,
-      },
-
-      clientName: {
-        type: String,
-        required: true,
-        trim: true,
-      },
-
-      productId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Product",
-        default: null,
-      },
-
-      productCode: {
-        type: String,
-        default: "",
-        trim: true,
-        uppercase: true,
-      },
-
-      productName: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      amount: {
-        type: Number,
-        required: [
-          true,
-          "Payment amount is required.",
-        ],
-        min: 0.01,
-      },
-
-      paymentDate: {
-        type: Date,
-        required: [
-          true,
-          "Payment date is required.",
-        ],
-        index: true,
-      },
-
-      mode: {
-        type: String,
-        enum: [
-          "Cash",
-          "Bank Transfer",
-          "UPI",
-          "Cheque",
-          "Card",
-          "Other",
-        ],
-        default: "Bank Transfer",
-      },
-
-      referenceNo: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      notes: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      receivedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        default: null,
-      },
-
-      receivedByName: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      isDeleted: {
-        type: Boolean,
-        default: false,
-        index: true,
-      },
-    },
-    {
-      timestamps: true,
-      collection: "amcpayments",
-    }
-  );
-
-amcPaymentSchema.index({
-  amcContractId: 1,
-  paymentDate: -1,
-});
-
-const AmcPayment =
-  mongoose.models.AmcPayment ||
-  mongoose.model(
-    "AmcPayment",
-    amcPaymentSchema
-  );
+const AmcPayment = require("./models/AmcPayment");
 
 /* =====================================================
-   AMC REMINDER SCHEMA
+   AMC REMINDER MODEL
 ===================================================== */
-
-const amcReminderSchema =
-  new mongoose.Schema(
-    {
-      amcContractId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "AmcContract",
-        required: true,
-        index: true,
-      },
-
-      contractCode: {
-        type: String,
-        required: true,
-        trim: true,
-        uppercase: true,
-      },
-
-      clientId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Client",
-        required: true,
-        index: true,
-      },
-
-      clientCode: {
-        type: String,
-        default: "",
-        trim: true,
-        uppercase: true,
-      },
-
-      clientName: {
-        type: String,
-        required: true,
-        trim: true,
-      },
-
-      channel: {
-        type: String,
-        enum: [
-          "WhatsApp",
-          "Email",
-          "SMS",
-          "Phone Call",
-        ],
-        required: true,
-      },
-
-      message: {
-        type: String,
-        required: [
-          true,
-          "Reminder message is required.",
-        ],
-        trim: true,
-      },
-
-      assignedEmployeeId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Employee",
-        default: null,
-        index: true,
-      },
-
-      assignedEmployeeCode: {
-        type: String,
-        default: "",
-        trim: true,
-        uppercase: true,
-      },
-
-      assignedEmployeeName: {
-        type: String,
-        default: "Unassigned",
-        trim: true,
-      },
-
-      followUpDate: {
-        type: Date,
-        default: null,
-      },
-
-      notes: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      sentAt: {
-        type: Date,
-        default: Date.now,
-      },
-
-      sentBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        default: null,
-      },
-
-      sentByName: {
-        type: String,
-        default: "",
-        trim: true,
-      },
-
-      status: {
-        type: String,
-        enum: [
-          "Sent",
-          "Call Logged",
-          "Failed",
-        ],
-        default: "Sent",
-      },
-
-      isDeleted: {
-        type: Boolean,
-        default: false,
-        index: true,
-      },
-    },
-    {
-      timestamps: true,
-      collection: "amcreminders",
-    }
-  );
-
-amcReminderSchema.index({
-  amcContractId: 1,
-  sentAt: -1,
-});
-
-const AmcReminder =
-  mongoose.models.AmcReminder ||
-  mongoose.model(
-    "AmcReminder",
-    amcReminderSchema
-  );
+const AmcReminder = require("./models/AmcReminder");
 
 /* =====================================================
-   APP COUNTER SCHEMA (Atomic Sequence Generator)
+   APP COUNTER MODEL (Atomic Sequence Generator)
 ===================================================== */
-const appCounterSchema = new mongoose.Schema({
-  _id: { type: String, required: true },
-  seq: { type: Number, default: 0 },
-});
-
-const AppCounter =
-  mongoose.models.AppCounter ||
-  mongoose.model("AppCounter", appCounterSchema);
+const AppCounter = require("./models/AppCounter");
 
 /* =====================================================
    CLIENT AMC REQUEST SCHEMA (Renewal & Quotation Requests)
 ===================================================== */
-const clientAmcRequestSchema = new mongoose.Schema(
-  {
-    requestCode: {
-      type: String,
-      required: true,
-      unique: true,
-      trim: true,
-      uppercase: true,
-      index: true,
-    },
-    activeRequestKey: {
-      type: String,
-      default: null,
-    },
-    clientId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Client",
-      required: true,
-      index: true,
-    },
-    clientCode: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    clientName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    contractId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "AmcContract",
-      required: true,
-      index: true,
-    },
-    contractCode: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    productId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Product",
-      default: null,
-    },
-    productName: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    currentExpiryDate: {
-      type: Date,
-      default: null,
-    },
-    requestType: {
-      type: String,
-      enum: ["AMC Renewal", "Quotation Request"],
-      required: true,
-      index: true,
-    },
-    renewalPeriod: {
-      type: String,
-      enum: ["1 Year"],
-      default: "1 Year",
-    },
-    preferredStartDate: {
-      type: Date,
-      default: null,
-    },
-    remarks: {
-      type: String,
-      default: "",
-      trim: true,
-      maxlength: 1000,
-    },
-    status: {
-      type: String,
-      enum: [
-        "Submitted",
-        "Under Review",
-        "Quotation Ready",
-        "Completed",
-        "Rejected",
-        "Cancelled",
-      ],
-      default: "Submitted",
-      index: true,
-    },
-    quotationAmount: {
-      type: Number,
-      default: 0,
-    },
-    quotationDetails: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    quotationDocument: {
-      fileName: { type: String, default: "" },
-      fileUrl: { type: String, default: "" },
-      filePath: { type: String, default: "" },
-      fileSize: { type: Number, default: 0 },
-      mimeType: { type: String, default: "" },
-      uploadedAt: { type: Date, default: null },
-    },
-    adminNotes: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    reviewedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
-    reviewedByName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    reviewedAt: {
-      type: Date,
-      default: null,
-    },
-    assignedEmployeeId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Employee",
-      default: null,
-    },
-    assignedEmployeeCode: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    assignedEmployeeName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    timeline: [
-      {
-        action: { type: String, required: true },
-        status: { type: String, required: true },
-        remarks: { type: String, default: "" },
-        performedBy: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "User",
-          default: null,
-        },
-        performedByName: { type: String, default: "" },
-        performedByRole: { type: String, default: "client" },
-        timestamp: { type: Date, default: Date.now },
-      },
-    ],
-    isDeleted: {
-      type: Boolean,
-      default: false,
-      index: true,
-    },
-  },
-  {
-    timestamps: true,
-    collection: "clientamcrequests",
-  }
-);
-
-clientAmcRequestSchema.index(
-  { activeRequestKey: 1 },
-  {
-    unique: true,
-    sparse: true,
-    partialFilterExpression: { activeRequestKey: { $type: "string" } },
-  }
-);
-clientAmcRequestSchema.index({ clientId: 1, createdAt: -1 });
-clientAmcRequestSchema.index({ contractId: 1, createdAt: -1 });
-clientAmcRequestSchema.index({ status: 1, createdAt: -1 });
-
-const ClientAmcRequest =
-  mongoose.models.ClientAmcRequest ||
-  mongoose.model("ClientAmcRequest", clientAmcRequestSchema);
+const ClientAmcRequest = require("./models/ClientAmcRequest");
 
 /* =====================================================
-   CLIENT DOCUMENT SCHEMA (metadata only, no file storage)
+   CLIENT DOCUMENT MODEL
 ===================================================== */
 
-const clientDocumentSchema = new mongoose.Schema(
-  {
-    clientId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Client",
-      required: true,
-      index: true,
-    },
-
-    clientCode: {
-      type: String,
-      default: "",
-      trim: true,
-      uppercase: true,
-    },
-
-    clientName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    name: {
-      type: String,
-      required: [true, "Document name is required."],
-      trim: true,
-    },
-
-    type: {
-      type: String,
-      enum: ["PDF", "Excel", "Word", "Image", "ZIP", "Other"],
-      default: "Other",
-    },
-
-    category: {
-      type: String,
-      enum: [
-        "Agreement",
-        "Legal",
-        "Quotation",
-        "Invoice",
-        "Installation",
-        "Other",
-      ],
-      default: "Other",
-    },
-
-    size: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    uploadedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
-
-    uploadedByName: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    notes: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    isDeleted: {
-      type: Boolean,
-      default: false,
-      index: true,
-    },
-  },
-  {
-    timestamps: true,
-    collection: "clientdocuments",
-  }
-);
-
-const ClientDocument =
-  mongoose.models.ClientDocument ||
-  mongoose.model("ClientDocument", clientDocumentSchema);
+const ClientDocument = require("./models/ClientDocument");
 
 
 
@@ -7768,6 +2272,11 @@ function amcInvoiceResponse(
 
     notes:
       invoice.notes,
+    taxClassification:
+      invoice.taxClassification || "",
+
+    idempotencyKey:
+      invoice.idempotencyKey || null,
 
     createdAt:
       invoice.createdAt,
@@ -8328,9 +2837,9 @@ async function createActivityLog({
   performedByName = "",
   performedByRole = "system",
   metadata = {},
-}) {
+}, options = {}) {
   try {
-    return await ActivityLog.create({
+    const logData = {
       action: String(action || "").trim(),
 
       category,
@@ -8372,7 +2881,14 @@ async function createActivityLog({
           typeof metadata === "object"
           ? metadata
           : {},
-    });
+    };
+
+    if (options?.session) {
+      const logDoc = new ActivityLog(logData);
+      return await logDoc.save({ session: options.session });
+    }
+
+    return await ActivityLog.create(logData);
   } catch (error) {
     /*
      * Activity logging must never break the main API.
@@ -14364,6 +8880,7 @@ router.delete(
 
 router.post(
   "/client",
+  validate(clientCreateSchema),
   async (req, res) => {
     let createdClient = null;
     let createdUser = null;
@@ -19955,7 +14472,7 @@ message: "Server error.",
    POST /api/admin/task
 ===================================================== */
 
-router.post("/task", async (req, res) => {
+router.post("/task", validate(taskCreateSchema), async (req, res) => {
   try {
     const {
       title,
@@ -22179,7 +16696,7 @@ router.get(
    POST /api/admin/ticket
 ===================================================== */
 
-router.post("/ticket", async (req, res) => {
+router.post("/ticket", validate(ticketCreateSchema), async (req, res) => {
   try {
     const {
       title,
@@ -24454,6 +18971,7 @@ router.use(
 
 router.post(
   "/amc/contract",
+  validate(amcContractCreateZodSchema),
   async (req, res) => {
     let createdContract =
       null;
@@ -24831,281 +19349,308 @@ router.post(
        *
        * Legacy invoice amount fields are temporarily kept
        * for frontend compatibility. Financial truth is now
+       * stor
+... [truncated for diff preview]
        * stored inside AmcInvoice.
        */
-      createdContract =
-        await AmcContract.create({
-          contractCode,
+      /*
+       * Create contract, initial invoice, and update client master
+       * atomically inside a MongoDB transaction session.
+       */
+      const session = await mongoose.startSession();
+      try {
+        await session.withTransaction(async () => {
+          const createdContracts =
+            await AmcContract.create(
+              [
+                {
+                  contractCode,
 
-          currentInvoiceCode:
-            invoiceCode,
+                  currentInvoiceCode:
+                    invoiceCode,
 
-          invoiceCode,
+                  invoiceCode,
 
-          invoiceDate:
-            now,
+                  invoiceDate:
+                    now,
 
-          clientId:
-            client._id,
+                  clientId:
+                    client._id,
 
-          clientCode:
-            client.clientCode,
+                  clientCode:
+                    client.clientCode,
 
-          clientName:
-            client.companyName,
+                  clientName:
+                    client.companyName,
 
-          contactPerson:
-            client.contactPerson ||
-            "",
+                  contactPerson:
+                    client.contactPerson ||
+                    "",
 
-          contactMobile:
-            client.mobile ||
-            "",
+                  contactMobile:
+                    client.mobile ||
+                    "",
 
-          contactEmail:
-            client.email ||
-            "",
+                  contactEmail:
+                    client.email ||
+                    "",
 
-          clientProductId:
-            clientProduct._id,
+                  clientProductId:
+                    clientProduct._id,
 
-          productId:
-            clientProduct.productId,
+                  productId:
+                    clientProduct.productId,
 
-          productCode:
-            clientProduct.productCode,
+                  productCode:
+                    clientProduct.productCode,
 
-          productName:
-            clientProduct.productName,
+                  productName:
+                    clientProduct.productName,
 
-          productVersion:
-            clientProduct.version ||
-            "",
+                  productVersion:
+                    clientProduct.version ||
+                    "",
 
-          plan:
-            normalizedPlan,
+                  plan:
+                    normalizedPlan,
 
-          licensedUsers:
-            normalizedUsers,
+                  licensedUsers:
+                    normalizedUsers,
 
-          startDate:
-            parsedStartDate,
+                  startDate:
+                    parsedStartDate,
 
-          expiryDate:
-            parsedExpiryDate,
+                  expiryDate:
+                    parsedExpiryDate,
 
-          dueDate:
-            parsedDueDate,
+                  dueDate:
+                    parsedDueDate,
 
-          ...calculatedAmounts,
+                  ...calculatedAmounts,
 
-          paidAmount:
-            0,
+                  paidAmount:
+                    0,
 
-          pendingAmount:
-            calculatedAmounts
-              .totalAmount,
+                  pendingAmount:
+                    calculatedAmounts
+                      .totalAmount,
 
-          status:
-            contractStatus,
+                  status:
+                    contractStatus,
 
-          assignedEmployeeId:
-            resolvedEmployee
-              .assignedEmployeeId,
+                  assignedEmployeeId:
+                    resolvedEmployee
+                      .assignedEmployeeId,
 
-          assignedEmployeeCode:
-            resolvedEmployee
-              .assignedEmployeeCode,
+                  assignedEmployeeCode:
+                    resolvedEmployee
+                      .assignedEmployeeCode,
 
-          assignedEmployeeName:
-            resolvedEmployee
-              .assignedEmployeeName,
+                  assignedEmployeeName:
+                    resolvedEmployee
+                      .assignedEmployeeName,
 
-          reminderStatus:
+                  reminderStatus:
+                    contractStatus ===
+                    "Paid"
+                      ? "Not Required"
+                      : "Not Sent",
+
+                  notes:
+                    normalizedNotes,
+
+                  timeline,
+
+                  createdBy:
+                    req.user._id,
+
+                  createdByName:
+                    req.user.name ||
+                    "Admin",
+
+                  updatedBy:
+                    req.user._id,
+
+                  updatedByName:
+                    req.user.name ||
+                    "Admin",
+                },
+              ],
+              { session }
+            );
+
+          createdContract = createdContracts[0];
+
+          /*
+           * Create the first permanent invoice using snapshots.
+           */
+          const createdInvoices =
+            await AmcInvoice.create(
+              [
+                {
+                  invoiceCode,
+
+                  invoiceDate:
+                    now,
+
+                  invoiceType:
+                    "Initial",
+
+                  amcContractId:
+                    createdContract._id,
+
+                  contractCode:
+                    createdContract
+                      .contractCode,
+
+                  contractStartDate:
+                    parsedStartDate,
+
+                  contractExpiryDate:
+                    parsedExpiryDate,
+
+                  dueDate:
+                    parsedDueDate,
+
+                  clientId:
+                    client._id,
+
+                  clientCode:
+                    client.clientCode,
+
+                  clientName:
+                    client.companyName,
+
+                  contactPerson:
+                    client.contactPerson ||
+                    "",
+
+                  contactMobile:
+                    client.mobile ||
+                    "",
+
+                  contactEmail:
+                    client.email ||
+                    "",
+
+                  clientProductId:
+                    clientProduct._id,
+
+                  productId:
+                    clientProduct.productId,
+
+                  productCode:
+                    clientProduct.productCode,
+
+                  productName:
+                    clientProduct.productName,
+
+                  productVersion:
+                    clientProduct.version ||
+                    "",
+
+                  plan:
+                    normalizedPlan,
+
+                  licensedUsers:
+                    normalizedUsers,
+
+                  description:
+                    `${normalizedPlan} Annual Maintenance Contract for ${clientProduct.productName}.`,
+
+                  ...calculatedAmounts,
+
+                  paidAmount:
+                    0,
+
+                  pendingAmount:
+                    calculatedAmounts
+                      .totalAmount,
+
+                  paymentStatus:
+                    invoicePaymentStatus,
+
+                  status:
+                    "Issued",
+
+                  notes:
+                    normalizedNotes,
+
+                  createdBy:
+                    req.user._id,
+
+                  createdByName:
+                    req.user.name ||
+                    "Admin",
+
+                  updatedBy:
+                    req.user._id,
+
+                  updatedByName:
+                    req.user.name ||
+                    "Admin",
+                },
+              ],
+              { session }
+            );
+
+          createdInvoice = createdInvoices[0];
+
+          /*
+           * Link contract to the permanent current invoice.
+           */
+          createdContract.currentInvoiceId =
+            createdInvoice._id;
+
+          createdContract.currentInvoiceCode =
+            createdInvoice.invoiceCode;
+
+          await createdContract.save({ session });
+
+          /*
+           * Client Master receives only current status values.
+           * No invoice or payment history is saved in Client.
+           */
+          clientProduct.supportType =
+            normalizedPlan ===
+            "Custom"
+              ? clientProduct
+                  .supportType
+              : normalizedPlan;
+
+          clientProduct.amcStatus =
             contractStatus ===
-            "Paid"
-              ? "Not Required"
-              : "Not Sent",
+            "Upcoming"
+              ? "Not Started"
+              : contractStatus;
 
-          notes:
-            normalizedNotes,
+          clientProduct.expiryDate =
+            parsedExpiryDate
+              .toISOString()
+              .slice(
+                0,
+                10
+              );
 
-          timeline,
+          client.amcStatus =
+            contractStatus ===
+            "Upcoming"
+              ? "Not Started"
+              : contractStatus;
 
-          createdBy:
-            req.user._id,
+          client.nextRenewal =
+            parsedExpiryDate
+              .toISOString()
+              .slice(
+                0,
+                10
+              );
 
-          createdByName:
-            req.user.name ||
-            "Admin",
-
-          updatedBy:
-            req.user._id,
-
-          updatedByName:
-            req.user.name ||
-            "Admin",
+          await client.save({ session });
         });
-
-      /*
-       * Create the first permanent invoice using snapshots.
-       */
-      createdInvoice =
-        await AmcInvoice.create({
-          invoiceCode,
-
-          invoiceDate:
-            now,
-
-          invoiceType:
-            "Initial",
-
-          amcContractId:
-            createdContract._id,
-
-          contractCode:
-            createdContract
-              .contractCode,
-
-          contractStartDate:
-            parsedStartDate,
-
-          contractExpiryDate:
-            parsedExpiryDate,
-
-          dueDate:
-            parsedDueDate,
-
-          clientId:
-            client._id,
-
-          clientCode:
-            client.clientCode,
-
-          clientName:
-            client.companyName,
-
-          contactPerson:
-            client.contactPerson ||
-            "",
-
-          contactMobile:
-            client.mobile ||
-            "",
-
-          contactEmail:
-            client.email ||
-            "",
-
-          clientProductId:
-            clientProduct._id,
-
-          productId:
-            clientProduct.productId,
-
-          productCode:
-            clientProduct.productCode,
-
-          productName:
-            clientProduct.productName,
-
-          productVersion:
-            clientProduct.version ||
-            "",
-
-          plan:
-            normalizedPlan,
-
-          licensedUsers:
-            normalizedUsers,
-
-          description:
-            `${normalizedPlan} Annual Maintenance Contract for ${clientProduct.productName}.`,
-
-          ...calculatedAmounts,
-
-          paidAmount:
-            0,
-
-          pendingAmount:
-            calculatedAmounts
-              .totalAmount,
-
-          paymentStatus:
-            invoicePaymentStatus,
-
-          status:
-            "Issued",
-
-          notes:
-            normalizedNotes,
-
-          createdBy:
-            req.user._id,
-
-          createdByName:
-            req.user.name ||
-            "Admin",
-
-          updatedBy:
-            req.user._id,
-
-          updatedByName:
-            req.user.name ||
-            "Admin",
-        });
-
-      /*
-       * Link contract to the permanent current invoice.
-       */
-      createdContract.currentInvoiceId =
-        createdInvoice._id;
-
-      createdContract.currentInvoiceCode =
-        createdInvoice.invoiceCode;
-
-      await createdContract.save();
-
-      /*
-       * Client Master receives only current status values.
-       * No invoice or payment history is saved in Client.
-       */
-      clientProduct.supportType =
-        normalizedPlan ===
-        "Custom"
-          ? clientProduct
-              .supportType
-          : normalizedPlan;
-
-      clientProduct.amcStatus =
-        contractStatus ===
-        "Upcoming"
-          ? "Not Started"
-          : contractStatus;
-
-      clientProduct.expiryDate =
-        parsedExpiryDate
-          .toISOString()
-          .slice(
-            0,
-            10
-          );
-
-      client.amcStatus =
-        contractStatus ===
-        "Upcoming"
-          ? "Not Started"
-          : contractStatus;
-
-      client.nextRenewal =
-        parsedExpiryDate
-          .toISOString()
-          .slice(
-            0,
-            10
-          );
-
-      await client.save();
+      } finally {
+        await session.endSession();
+      }
 
       await createActivityLog({
         action:
@@ -26513,6 +21058,12 @@ router.put(
       contract.pendingAmount = Math.max(0, calculatedAmounts.totalAmount - currentPaid);
 
       if (status && ["Active", "Pending", "Upcoming", "Overdue", "Paid", "Cancelled"].includes(status)) {
+        if (status === "Cancelled" && currentPaid > 0) {
+          return res.status(400).json({
+            success: false,
+            message: "Cannot cancel an AMC contract that already has recorded payments. Reverse or adjust the payments first.",
+          });
+        }
         contract.status = status;
       } else {
         if (currentPaid >= calculatedAmounts.totalAmount) {
@@ -26685,6 +21236,19 @@ router.delete(
         return res.status(404).json({
           success: false,
           message: "AMC contract was not found.",
+        });
+      }
+
+      const paymentCount = await AmcPayment.countDocuments({
+        amcContractId: contract._id,
+        isDeleted: false,
+      });
+
+      if (paymentCount > 0) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Cannot delete an AMC contract that already has recorded payments. Retain historical financial records for audit integrity.",
         });
       }
 
@@ -27412,83 +21976,41 @@ router.get(
 );
 router.post(
   "/amc/payment",
+  validate(amcPaymentZodSchema),
   async (req, res) => {
-    const session =
-      await mongoose.startSession();
-
-    let savedPayment =
-      null;
-
-    let savedInvoice =
-      null;
-
-    let savedContract =
-      null;
-
     try {
       const {
         amcInvoiceId,
         amcContractId,
-
         amount,
         paymentDate,
+        mode = "Bank Transfer",
+        referenceNo = "",
+        notes = "",
+      } = req.body || {};
 
-        mode =
-          "Bank Transfer",
+      const normalizedAmount = roundAmcAmount(amount);
 
-        referenceNo =
-          "",
-
-        notes =
-          "",
-      } = req.body;
-
-      const normalizedAmount =
-        roundAmcAmount(
-          amount
-        );
-
-      if (
-        !Number.isFinite(
-          normalizedAmount
-        ) ||
-        normalizedAmount <= 0
-      ) {
+      if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
         return res.status(400).json({
-          success:
-            false,
-
-          message:
-            "Enter a valid payment amount.",
+          success: false,
+          message: "Enter a valid payment amount.",
         });
       }
 
       if (!paymentDate) {
         return res.status(400).json({
-          success:
-            false,
-
-          message:
-            "Payment date is required.",
+          success: false,
+          message: "Payment date is required.",
         });
       }
 
-      const parsedPaymentDate =
-        new Date(
-          `${paymentDate}T00:00:00`
-        );
+      const parsedPaymentDate = new Date(`${paymentDate}T00:00:00`);
 
-      if (
-        Number.isNaN(
-          parsedPaymentDate.getTime()
-        )
-      ) {
+      if (Number.isNaN(parsedPaymentDate.getTime())) {
         return res.status(400).json({
-          success:
-            false,
-
-          message:
-            "Invalid payment date.",
+          success: false,
+          message: "Invalid payment date.",
         });
       }
 
@@ -27501,382 +22023,296 @@ router.post(
         "Other",
       ];
 
-      const normalizedMode =
-        allowedModes.includes(
-          mode
-        )
-          ? mode
-          : "Other";
+      const normalizedMode = allowedModes.includes(mode) ? mode : "Other";
 
-      /*
-       * Bank/UPI/Cheque/Card payments should preferably
-       * contain a reference number.
-       */
-      const normalizedReferenceNo =
-        String(
-          referenceNo ||
-          ""
-        ).trim();
-
-      const normalizedNotes =
-        String(
-          notes ||
-          ""
-        ).trim();
+      const normalizedReferenceNo = String(referenceNo || "").trim();
+      const normalizedNotes = String(notes || "").trim();
 
       if (
-        [
-          "Bank Transfer",
-          "UPI",
-          "Cheque",
-          "Card",
-        ].includes(
-          normalizedMode
-        ) &&
+        ["Bank Transfer", "UPI", "Cheque", "Card"].includes(normalizedMode) &&
         !normalizedReferenceNo
       ) {
         return res.status(400).json({
-          success:
-            false,
-
-          message:
-            `Reference number is required for ${normalizedMode}.`,
+          success: false,
+          message: `Reference number is required for ${normalizedMode}.`,
         });
       }
 
-      /*
-       * At least invoice ID or contract ID is required.
-       */
       const validInvoiceId =
-        amcInvoiceId &&
-        mongoose.Types.ObjectId.isValid(
-          amcInvoiceId
-        );
-
+        amcInvoiceId && mongoose.Types.ObjectId.isValid(amcInvoiceId);
       const validContractId =
-        amcContractId &&
-        mongoose.Types.ObjectId.isValid(
-          amcContractId
-        );
+        amcContractId && mongoose.Types.ObjectId.isValid(amcContractId);
 
-      if (
-        !validInvoiceId &&
-        !validContractId
-      ) {
+      if (!validInvoiceId && !validContractId) {
         return res.status(400).json({
-          success:
-            false,
-
-          message:
-            "A valid AMC invoice ID is required.",
+          success: false,
+          message: "A valid AMC invoice ID is required.",
         });
       }
 
-      await session.withTransaction(
-        async () => {
-          let invoice =
-            null;
+      /* =================================================
+         IDEMPOTENCY HANDLING (Tier 1 & Tier 2)
+      ================================================= */
+      const idempotencyKey =
+        req.headers["idempotency-key"] ||
+        req.headers["x-idempotency-key"] ||
+        req.body?.idempotencyKey ||
+        null;
+      const normalizedIdempotencyKey = idempotencyKey
+        ? String(idempotencyKey).trim()
+        : null;
 
-          /*
-           * Preferred method:
-           * direct permanent invoice selection.
-           */
-          if (validInvoiceId) {
-            invoice =
-              await AmcInvoice.findOne({
-                _id:
-                  amcInvoiceId,
+      const payloadHash = crypto
+        .createHash("sha256")
+        .update(
+          JSON.stringify({
+            amcInvoiceId: amcInvoiceId || "",
+            amcContractId: amcContractId || "",
+            amount: normalizedAmount,
+            paymentDate,
+            mode: normalizedMode,
+            referenceNo: normalizedReferenceNo,
+          })
+        )
+        .digest("hex");
 
-                isDeleted:
-                  false,
-              }).session(
-                session
-              );
+      if (normalizedIdempotencyKey) {
+        // Tier 1: In-Flight / Fast Cache Check
+        const existingLog = await IdempotencyLog.findOne({
+          idempotencyKey: normalizedIdempotencyKey,
+        });
+
+        if (existingLog) {
+          if (existingLog.payloadHash === payloadHash) {
+            return res.status(200).json({
+              ...(existingLog.responseBody || {}),
+              isReplay: true,
+            });
+          } else {
+            return res.status(422).json({
+              success: false,
+              message:
+                "Idempotency key conflict: Request parameters do not match original transaction.",
+            });
           }
+        }
 
-          /*
-           * Compatibility fallback:
-           * resolve current invoice through contract.
-           */
-          if (
-            !invoice &&
-            validContractId
-          ) {
-            const fallbackContract =
-              await AmcContract.findOne({
-                _id:
-                  amcContractId,
+        // Tier 2: Durable Ledger Check by Idempotency Key
+        const existingPaymentByKey = await AmcPayment.findOne({
+          idempotencyKey: normalizedIdempotencyKey,
+          isDeleted: false,
+        });
 
-                isDeleted:
-                  false,
-              }).session(
-                session
-              );
+        if (existingPaymentByKey) {
+          const inv = await AmcInvoice.findOne({
+            _id: existingPaymentByKey.amcInvoiceId,
+            isDeleted: false,
+          });
+          const cont = await AmcContract.findOne({
+            _id: existingPaymentByKey.amcContractId,
+            isDeleted: false,
+          });
+          const contractData = cont && inv ? mergeAmcContractWithInvoice(cont, inv) : null;
+          return res.status(200).json({
+            success: true,
+            isReplay: true,
+            message: "AMC payment already recorded.",
+            data: {
+              payment: amcPaymentResponse(existingPaymentByKey),
+              invoice: inv ? amcInvoiceResponse(inv) : null,
+              contract: contractData,
+            },
+            payment: amcPaymentResponse(existingPaymentByKey),
+            invoice: inv ? amcInvoiceResponse(inv) : null,
+            contract: contractData,
+          });
+        }
+      }
 
-            if (
-              fallbackContract
-                ?.currentInvoiceId
-            ) {
-              invoice =
-                await AmcInvoice.findOne({
-                  _id:
-                    fallbackContract
-                      .currentInvoiceId,
+      /* =================================================
+         TRANSACTION EXECUTION WITH RETRY HANDLING
+      ================================================= */
+      let savedPayment = null;
+      let savedInvoice = null;
+      let savedContract = null;
 
-                  isDeleted:
-                    false,
-                }).session(
-                  session
-                );
+      const maxRetries = 3;
+      let attempt = 0;
+      let transactionSuccess = false;
+
+      while (attempt < maxRetries && !transactionSuccess) {
+        attempt++;
+
+        // Fast-path recovery on retry
+        if (normalizedIdempotencyKey && attempt > 1) {
+          const replayLog = await IdempotencyLog.findOne({
+            idempotencyKey: normalizedIdempotencyKey,
+            status: "COMPLETED",
+          });
+          if (replayLog && replayLog.responseBody) {
+            return res.status(200).json({
+              ...(replayLog.responseBody || {}),
+              isReplay: true,
+            });
+          }
+        }
+
+        const session = await mongoose.startSession();
+
+        try {
+          await session.withTransaction(async () => {
+            let invoice = null;
+
+            if (validInvoiceId) {
+              invoice = await AmcInvoice.findOne({
+                _id: amcInvoiceId,
+                isDeleted: false,
+              }).session(session);
             }
 
-            if (
-              !invoice &&
-              (
-                fallbackContract
-                  ?.currentInvoiceCode ||
-                fallbackContract
-                  ?.invoiceCode
-              )
-            ) {
-              invoice =
-                await AmcInvoice.findOne({
+            if (!invoice && validContractId) {
+              const fallbackContract = await AmcContract.findOne({
+                _id: amcContractId,
+                isDeleted: false,
+              }).session(session);
+
+              if (fallbackContract?.currentInvoiceId) {
+                invoice = await AmcInvoice.findOne({
+                  _id: fallbackContract.currentInvoiceId,
+                  isDeleted: false,
+                }).session(session);
+              }
+
+              if (
+                !invoice &&
+                (fallbackContract?.currentInvoiceCode ||
+                  fallbackContract?.invoiceCode)
+              ) {
+                invoice = await AmcInvoice.findOne({
                   invoiceCode:
-                    fallbackContract
-                      .currentInvoiceCode ||
-                    fallbackContract
-                      .invoiceCode,
-
-                  isDeleted:
-                    false,
-                }).session(
-                  session
-                );
+                    fallbackContract.currentInvoiceCode ||
+                    fallbackContract.invoiceCode,
+                  isDeleted: false,
+                }).session(session);
+              }
             }
-          }
 
-          if (!invoice) {
-            const error =
-              new Error(
-                "AMC invoice was not found."
-              );
+            if (!invoice) {
+              const error = new Error("AMC invoice was not found.");
+              error.statusCode = 404;
+              throw error;
+            }
 
-            error.statusCode =
-              404;
-
-            throw error;
-          }
-
-          if (
-            invoice.status ===
-            "Cancelled"
-          ) {
-            const error =
-              new Error(
+            if (invoice.status === "Cancelled") {
+              const error = new Error(
                 "Payment cannot be recorded against a cancelled invoice."
               );
+              error.statusCode = 400;
+              throw error;
+            }
 
-            error.statusCode =
-              400;
+            const contract = await AmcContract.findOne({
+              _id: invoice.amcContractId,
+              isDeleted: false,
+            }).session(session);
 
-            throw error;
-          }
-
-          const contract =
-            await AmcContract.findOne({
-              _id:
-                invoice.amcContractId,
-
-              isDeleted:
-                false,
-            }).session(
-              session
-            );
-
-          if (!contract) {
-            const error =
-              new Error(
+            if (!contract) {
+              const error = new Error(
                 "The AMC contract linked to this invoice was not found."
               );
+              error.statusCode = 404;
+              throw error;
+            }
 
-            error.statusCode =
-              404;
-
-            throw error;
-          }
-
-          if (
-            contract.status ===
-            "Cancelled"
-          ) {
-            const error =
-              new Error(
+            if (contract.status === "Cancelled") {
+              const error = new Error(
                 "Payment cannot be recorded against a cancelled AMC contract."
               );
+              error.statusCode = 400;
+              throw error;
+            }
 
-            error.statusCode =
-              400;
-
-            throw error;
-          }
-
-          const invoiceTotal =
-            roundAmcAmount(
-              invoice.totalAmount
+            // ATOMIC WRITE LOCK on AmcInvoice document
+            const lockedInvoice = await AmcInvoice.findOneAndUpdate(
+              { _id: invoice._id, isDeleted: false },
+              { $inc: { paymentVersion: 1 } },
+              { session, new: true }
             );
 
-          /*
-           * Recalculate paid amount from permanent payment
-           * records instead of trusting copied totals.
-           */
-          const existingPaymentTotals =
-            await AmcPayment.aggregate([
+            const invoiceTotal = roundAmcAmount(lockedInvoice.totalAmount);
+
+            // Recalculate paid amount from permanent payment records within this session
+            const existingPaymentTotals = await AmcPayment.aggregate([
               {
                 $match: {
-                  amcInvoiceId:
-                    invoice._id,
-
-                  isDeleted:
-                    false,
+                  amcInvoiceId: lockedInvoice._id,
+                  isDeleted: false,
                 },
               },
-
               {
                 $group: {
-                  _id:
-                    null,
-
+                  _id: null,
                   paidAmount: {
-                    $sum:
-                      "$amount",
+                    $sum: "$amount",
                   },
                 },
               },
-            ]).session(
-              session
+            ]).session(session);
+
+            const existingPaidAmount = roundAmcAmount(
+              existingPaymentTotals[0]?.paidAmount || 0
             );
 
-          const existingPaidAmount =
-            roundAmcAmount(
-              existingPaymentTotals[0]
-                ?.paidAmount ||
+            const actualPendingAmount = Math.max(
+              roundAmcAmount(invoiceTotal - existingPaidAmount),
               0
             );
 
-          const actualPendingAmount =
-            Math.max(
-              roundAmcAmount(
-                invoiceTotal -
-                existingPaidAmount
-              ),
-              0
-            );
+            if (actualPendingAmount <= 0) {
+              const error = new Error("This invoice is already fully paid.");
+              error.statusCode = 400;
+              throw error;
+            }
 
-          if (
-            actualPendingAmount <= 0
-          ) {
-            const error =
-              new Error(
-                "This invoice is already fully paid."
-              );
-
-            error.statusCode =
-              400;
-
-            throw error;
-          }
-
-          if (
-            normalizedAmount >
-            actualPendingAmount
-          ) {
-            const error =
-              new Error(
+            if (normalizedAmount > actualPendingAmount) {
+              const error = new Error(
                 `Payment cannot exceed the pending amount of ₹${actualPendingAmount.toLocaleString(
                   "en-IN",
                   {
-                    minimumFractionDigits:
-                      2,
-
-                    maximumFractionDigits:
-                      2,
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
                   }
                 )}.`
               );
+              error.statusCode = 400;
+              throw error;
+            }
 
-            error.statusCode =
-              400;
+            const paymentCode = generateAmcPaymentCode();
 
-            throw error;
-          }
-
-          const paymentCode =
-            generateAmcPaymentCode();
-
-          const createdPayments =
-            await AmcPayment.create(
+            const createdPayments = await AmcPayment.create(
               [
                 {
                   paymentCode,
-
-                  amcContractId:
-                    contract._id,
-
-                  amcInvoiceId:
-                    invoice._id,
-
-                  contractCode:
-                    contract.contractCode,
-
-                  invoiceCode:
-                    invoice.invoiceCode,
-
-                  /*
-                   * Snapshot fields make payment history
-                   * independent of Client Master.
-                   */
-                  clientId:
-                    invoice.clientId,
-
-                  clientCode:
-                    invoice.clientCode,
-
-                  clientName:
-                    invoice.clientName,
-
-                  productId:
-                    invoice.productId,
-
-                  productCode:
-                    invoice.productCode,
-
-                  productName:
-                    invoice.productName,
-
-                  amount:
-                    normalizedAmount,
-
-                  paymentDate:
-                    parsedPaymentDate,
-
-                  mode:
-                    normalizedMode,
-
-                  referenceNo:
-                    normalizedReferenceNo,
-
-                  notes:
-                    normalizedNotes,
-
-                  receivedBy:
-                    req.user._id,
-
-                  receivedByName:
-                    req.user.name ||
-                    "Admin",
-
-                  isDeleted:
-                    false,
+                  idempotencyKey: normalizedIdempotencyKey,
+                  amcContractId: contract._id,
+                  amcInvoiceId: lockedInvoice._id,
+                  contractCode: contract.contractCode,
+                  invoiceCode: lockedInvoice.invoiceCode,
+                  clientId: lockedInvoice.clientId,
+                  clientCode: lockedInvoice.clientCode,
+                  clientName: lockedInvoice.clientName,
+                  productId: lockedInvoice.productId,
+                  productCode: lockedInvoice.productCode,
+                  productName: lockedInvoice.productName,
+                  amount: normalizedAmount,
+                  paymentDate: parsedPaymentDate,
+                  mode: normalizedMode,
+                  referenceNo: normalizedReferenceNo,
+                  notes: normalizedNotes,
+                  receivedBy: req.user._id,
+                  receivedByName: req.user.name || "Admin",
+                  isDeleted: false,
                 },
               ],
               {
@@ -27884,404 +22320,251 @@ router.post(
               }
             );
 
-          const payment =
-            createdPayments[0];
+            const payment = createdPayments[0];
 
-          const updatedPaidAmount =
-            roundAmcAmount(
-              existingPaidAmount +
-              normalizedAmount
+            const updatedPaidAmount = roundAmcAmount(
+              existingPaidAmount + normalizedAmount
             );
 
-          const updatedPendingAmount =
-            Math.max(
-              roundAmcAmount(
-                invoiceTotal -
-                updatedPaidAmount
-              ),
+            const updatedPendingAmount = Math.max(
+              roundAmcAmount(invoiceTotal - updatedPaidAmount),
               0
             );
 
-          const paymentStatus =
-            updatedPendingAmount <= 0
-              ? "Paid"
-              : "Partially Paid";
+            const paymentStatus =
+              updatedPendingAmount <= 0 ? "Paid" : "Partially Paid";
 
-          /*
-           * Update permanent invoice balance.
-           */
-          invoice.paidAmount =
-            updatedPaidAmount;
+            lockedInvoice.paidAmount = updatedPaidAmount;
+            lockedInvoice.pendingAmount = updatedPendingAmount;
+            lockedInvoice.paymentStatus = paymentStatus;
+            lockedInvoice.updatedBy = req.user._id;
+            lockedInvoice.updatedByName = req.user.name || "Admin";
 
-          invoice.pendingAmount =
-            updatedPendingAmount;
+            await lockedInvoice.save({
+              session,
+            });
 
-          invoice.paymentStatus =
-            paymentStatus;
+            contract.currentInvoiceId = lockedInvoice._id;
+            contract.currentInvoiceCode = lockedInvoice.invoiceCode;
+            contract.invoiceCode = lockedInvoice.invoiceCode;
+            contract.invoiceDate = lockedInvoice.invoiceDate;
+            contract.taxableAmount = lockedInvoice.taxableAmount;
+            contract.cgstRate = lockedInvoice.cgstRate;
+            contract.cgstAmount = lockedInvoice.cgstAmount;
+            contract.sgstRate = lockedInvoice.sgstRate;
+            contract.sgstAmount = lockedInvoice.sgstAmount;
+            contract.igstRate = lockedInvoice.igstRate;
+            contract.igstAmount = lockedInvoice.igstAmount;
+            contract.totalTaxAmount = lockedInvoice.totalTaxAmount;
+            contract.totalAmount = lockedInvoice.totalAmount;
+            contract.paidAmount = updatedPaidAmount;
+            contract.pendingAmount = updatedPendingAmount;
+            contract.status = paymentStatus;
+            contract.reminderStatus =
+              paymentStatus === "Paid"
+                ? "Not Required"
+                : contract.reminderStatus;
 
-          invoice.updatedBy =
-            req.user._id;
+            if (paymentStatus === "Paid") {
+              contract.nextFollowUpDate = null;
+            }
 
-          invoice.updatedByName =
-            req.user.name ||
-            "Admin";
-
-          await invoice.save({
-            session,
-          });
-
-          /*
-           * Keep compatibility values in the contract.
-           * Invoice remains the source of truth.
-           */
-          contract.currentInvoiceId =
-            invoice._id;
-
-          contract.currentInvoiceCode =
-            invoice.invoiceCode;
-
-          contract.invoiceCode =
-            invoice.invoiceCode;
-
-          contract.invoiceDate =
-            invoice.invoiceDate;
-
-          contract.taxableAmount =
-            invoice.taxableAmount;
-
-          contract.cgstRate =
-            invoice.cgstRate;
-
-          contract.cgstAmount =
-            invoice.cgstAmount;
-
-          contract.sgstRate =
-            invoice.sgstRate;
-
-          contract.sgstAmount =
-            invoice.sgstAmount;
-
-          contract.igstRate =
-            invoice.igstRate;
-
-          contract.igstAmount =
-            invoice.igstAmount;
-
-          contract.totalTaxAmount =
-            invoice.totalTaxAmount;
-
-          contract.totalAmount =
-            invoice.totalAmount;
-
-          contract.paidAmount =
-            updatedPaidAmount;
-
-          contract.pendingAmount =
-            updatedPendingAmount;
-
-          contract.status =
-            paymentStatus;
-
-          contract.reminderStatus =
-            paymentStatus ===
-            "Paid"
-              ? "Not Required"
-              : contract.reminderStatus;
-
-          if (
-            paymentStatus ===
-            "Paid"
-          ) {
-            contract.nextFollowUpDate =
-              null;
-          }
-
-          contract.timeline.push({
-            type:
-              "payment",
-
-            title:
-              paymentStatus ===
-              "Paid"
-                ? "AMC invoice fully paid"
-                : "AMC payment received",
-
-            description:
-              `₹${normalizedAmount.toLocaleString(
-                "en-IN",
-                {
-                  minimumFractionDigits:
-                    2,
-
-                  maximumFractionDigits:
-                    2,
-                }
-              )} received through ${normalizedMode} against invoice ${invoice.invoiceCode}${
-                normalizedReferenceNo
-                  ? ` · Reference ${normalizedReferenceNo}`
-                  : ""
+            contract.timeline.push({
+              type: "payment",
+              title:
+                paymentStatus === "Paid"
+                  ? "AMC invoice fully paid"
+                  : "AMC payment received",
+              description: `₹${normalizedAmount.toLocaleString("en-IN", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })} received through ${normalizedMode} against invoice ${lockedInvoice.invoiceCode}${
+                normalizedReferenceNo ? ` · Reference ${normalizedReferenceNo}` : ""
               }. Pending amount: ₹${updatedPendingAmount.toLocaleString(
                 "en-IN",
                 {
-                  minimumFractionDigits:
-                    2,
-
-                  maximumFractionDigits:
-                    2,
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
                 }
               )}.`,
+              performedBy: req.user._id,
+              performedByName: req.user.name || "Admin",
+              performedByRole: req.user.role || "admin",
+            });
 
-            performedBy:
-              req.user._id,
+            contract.updatedBy = req.user._id;
+            contract.updatedByName = req.user.name || "Admin";
 
-            performedByName:
-              req.user.name ||
-              "Admin",
+            await contract.save({
+              session,
+            });
 
-            performedByRole:
-              req.user.role ||
-              "admin",
+            // Update Client Master INSIDE the transaction session
+            if (lockedInvoice.clientId) {
+              const client = await Client.findOne({
+                _id: lockedInvoice.clientId,
+                isDeleted: { $ne: true },
+              }).session(session);
+
+              if (client) {
+                if (Array.isArray(client.products)) {
+                  const clientProduct = client.products.id
+                    ? client.products.id(lockedInvoice.clientProductId)
+                    : client.products.find(
+                        (p) =>
+                          String(p._id) ===
+                          String(lockedInvoice.clientProductId)
+                      );
+                  if (clientProduct) {
+                    clientProduct.amcStatus = paymentStatus;
+                  }
+                }
+
+                client.amcStatus = paymentStatus;
+                client.updatedBy = req.user._id;
+                client.updatedByName = req.user.name || "Admin";
+
+                await client.save({ session });
+              }
+            }
+
+            savedPayment = payment;
+            savedInvoice = lockedInvoice;
+            savedContract = contract;
+
+            if (normalizedIdempotencyKey) {
+              const contractData = mergeAmcContractWithInvoice(
+                savedContract,
+                savedInvoice
+              );
+              await IdempotencyLog.create(
+                [
+                  {
+                    idempotencyKey: normalizedIdempotencyKey,
+                    endpoint: "/api/admin/amc/payment",
+                    contractId: contract._id,
+                    entityId: lockedInvoice._id,
+                    payloadHash,
+                    status: "COMPLETED",
+                    responseStatus: 201,
+                    responseBody: {
+                      success: true,
+                      message:
+                        savedInvoice.paymentStatus === "Paid"
+                          ? "Payment recorded successfully. The invoice is now fully paid."
+                          : "Payment recorded successfully.",
+                      data: {
+                        payment: amcPaymentResponse(savedPayment),
+                        invoice: amcInvoiceResponse(savedInvoice),
+                        contract: contractData,
+                      },
+                      payment: amcPaymentResponse(savedPayment),
+                      invoice: amcInvoiceResponse(savedInvoice),
+                      contract: contractData,
+                    },
+                  },
+                ],
+                { session }
+              );
+            }
           });
 
-          contract.updatedBy =
-            req.user._id;
+          transactionSuccess = true;
+        } catch (error) {
+          const isTransient =
+            error.hasErrorLabel &&
+            (error.hasErrorLabel("TransientTransactionError") ||
+              error.hasErrorLabel("UnknownTransactionCommitResult"));
 
-          contract.updatedByName =
-            req.user.name ||
-            "Admin";
-
-          await contract.save({
-            session,
-          });
-
-          savedPayment =
-            payment;
-
-          savedInvoice =
-            invoice;
-
-          savedContract =
-            contract;
-        }
-      );
-
-      /*
-       * Update Client Master only when it still exists.
-       *
-       * Payment records remain safe even when the Client
-       * Master was archived or deleted.
-       */
-      if (
-        savedInvoice?.clientId
-      ) {
-        const client =
-          await Client.findOne({
-            _id:
-              savedInvoice.clientId,
-
-            isDeleted:
-              false,
-          });
-
-        if (client) {
-          const clientProduct =
-            client.products.id(
-              savedInvoice.clientProductId
+          if (isTransient && attempt < maxRetries) {
+            console.warn(
+              `Transient error during AMC payment (attempt ${attempt}):`,
+              error.message
             );
-
-          const masterAmcStatus =
-            savedInvoice.paymentStatus ===
-            "Paid"
-              ? "Paid"
-              : "Partially Paid";
-
-          if (clientProduct) {
-            clientProduct.amcStatus =
-              masterAmcStatus;
+            continue;
           }
 
-          client.amcStatus =
-            masterAmcStatus;
+          if (error.statusCode) {
+            return res.status(error.statusCode).json({
+              success: false,
+              message: error.message,
+            });
+          }
 
-          client.updatedBy =
-            req.user._id;
-
-          client.updatedByName =
-            req.user.name ||
-            "Admin";
-
-          await client.save();
+          throw error;
+        } finally {
+          await session.endSession();
         }
       }
 
-      await createActivityLog({
-        action:
-          "AMC Payment Received",
-
-        category:
-          "Payment",
-
-        description:
-          `Payment ${savedPayment.paymentCode} of ₹${savedPayment.amount.toLocaleString(
+      // Activity log outside transaction
+      try {
+        await createActivityLog({
+          action: "AMC Payment Received",
+          category: "Payment",
+          description: `Payment ${savedPayment.paymentCode} of ₹${savedPayment.amount.toLocaleString(
             "en-IN",
             {
-              minimumFractionDigits:
-                2,
-
-              maximumFractionDigits:
-                2,
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
             }
           )} was received against invoice ${savedInvoice.invoiceCode}.`,
+          entityType: "payment",
+          entityId: savedPayment._id,
+          entityCode: savedPayment.paymentCode,
+          entityName: savedInvoice.invoiceCode,
+          clientId: savedInvoice.clientId,
+          clientName: savedInvoice.clientName,
+          employeeId: savedContract.assignedEmployeeId,
+          employeeName: savedContract.assignedEmployeeName,
+          performedBy: req.user._id,
+          performedByName: req.user.name || "Admin",
+          performedByRole: req.user.role || "admin",
+          metadata: {
+            amcContractId: savedContract._id,
+            contractCode: savedContract.contractCode,
+            amcInvoiceId: savedInvoice._id,
+            invoiceCode: savedInvoice.invoiceCode,
+            paymentCode: savedPayment.paymentCode,
+            paymentDate: savedPayment.paymentDate,
+            amount: savedPayment.amount,
+            mode: savedPayment.mode,
+            referenceNo: savedPayment.referenceNo,
+            paidAmount: savedInvoice.paidAmount,
+            pendingAmount: savedInvoice.pendingAmount,
+            paymentStatus: savedInvoice.paymentStatus,
+          },
+        });
+      } catch (logErr) {
+        console.error("AMC Payment ActivityLog error:", logErr.message);
+      }
 
-        entityType:
-          "payment",
-
-        entityId:
-          savedPayment._id,
-
-        entityCode:
-          savedPayment.paymentCode,
-
-        entityName:
-          savedInvoice.invoiceCode,
-
-        clientId:
-          savedInvoice.clientId,
-
-        clientName:
-          savedInvoice.clientName,
-
-        employeeId:
-          savedContract
-            .assignedEmployeeId,
-
-        employeeName:
-          savedContract
-            .assignedEmployeeName,
-
-        performedBy:
-          req.user._id,
-
-        performedByName:
-          req.user.name ||
-          "Admin",
-
-        performedByRole:
-          req.user.role ||
-          "admin",
-
-        metadata: {
-          amcContractId:
-            savedContract._id,
-
-          contractCode:
-            savedContract
-              .contractCode,
-
-          amcInvoiceId:
-            savedInvoice._id,
-
-          invoiceCode:
-            savedInvoice
-              .invoiceCode,
-
-          paymentCode:
-            savedPayment
-              .paymentCode,
-
-          paymentDate:
-            savedPayment
-              .paymentDate,
-
-          amount:
-            savedPayment.amount,
-
-          mode:
-            savedPayment.mode,
-
-          referenceNo:
-            savedPayment
-              .referenceNo,
-
-          paidAmount:
-            savedInvoice
-              .paidAmount,
-
-          pendingAmount:
-            savedInvoice
-              .pendingAmount,
-
-          paymentStatus:
-            savedInvoice
-              .paymentStatus,
-        },
-      });
-
-      const contractData =
-        mergeAmcContractWithInvoice(
-          savedContract,
-          savedInvoice
-        );
-
-      return res.status(201).json({
-        success:
-          true,
-
-        message:
-          savedInvoice.paymentStatus ===
-          "Paid"
-            ? "Payment recorded successfully. The invoice is now fully paid."
-            : "Payment recorded successfully.",
-
-        data: {
-          payment:
-            amcPaymentResponse(
-              savedPayment
-            ),
-
-          invoice:
-            amcInvoiceResponse(
-              savedInvoice
-            ),
-
-          contract:
-            contractData,
-        },
-
-        payment:
-          amcPaymentResponse(
-            savedPayment
-          ),
-
-        invoice:
-          amcInvoiceResponse(
-            savedInvoice
-          ),
-
-        contract:
-          contractData,
-      });
-    } catch (error) {
-      console.error(
-        "Record AMC invoice payment error:",
-        error
+      const contractData = mergeAmcContractWithInvoice(
+        savedContract,
+        savedInvoice
       );
 
-      return res
-        .status(
-          error.statusCode ||
-          500
-        )
-        .json({
-          success:
-            false,
-
-          message:
-            error.message ||
-            "Unable to record AMC payment.",
-        });
-    } finally {
-      await session.endSession();
+      return res.status(201).json({
+        success: true,
+        message:
+          savedInvoice.paymentStatus === "Paid"
+            ? "Payment recorded successfully. The invoice is now fully paid."
+            : "Payment recorded successfully.",
+        data: {
+          payment: amcPaymentResponse(savedPayment),
+          invoice: amcInvoiceResponse(savedInvoice),
+          contract: contractData,
+        },
+        payment: amcPaymentResponse(savedPayment),
+        invoice: amcInvoiceResponse(savedInvoice),
+        contract: contractData,
+      });
+    } catch (error) {
+      console.error("Record AMC invoice payment error:", error);
+      return res.status(error.statusCode || 500).json({
+        success: false,
+        message: error.message || "Unable to record AMC payment.",
+      });
     }
   }
 );
@@ -30032,7 +24315,7 @@ router.get("/team/:employeeCode/overview", async (req, res) => {
 
     const Employee = mongoose.models.Employee;
     const Task = mongoose.models.Task;
-    const Attendance = mongoose.models.Attendance;
+    const Attendance = mongoose.models.Attendance || require("./models/Attendance");
     const SupportTicket = mongoose.models.SupportTicket;
 
     const employee = await Employee.findOne({
@@ -30137,7 +24420,7 @@ router.get("/team/:employeeCode/attendance", async (req, res) => {
     const { employeeCode } = req.params;
 
     const Employee = mongoose.models.Employee;
-    const Attendance = mongoose.models.Attendance;
+    const Attendance = mongoose.models.Attendance || require("./models/Attendance");
 
     const employee = await Employee.findOne({
       employeeCode: employeeCode.toUpperCase(),
@@ -30775,287 +25058,301 @@ router.post(
         await generateProductSaleCode();
 
       /* ============================================
-         CREATE SALE
+         CREATE SALE & ATOMIC CLIENT PRODUCT SYNC
       ============================================ */
 
-      const sale =
-        await ProductSale.create({
-          saleCode,
-          saleNumber,
-
-          invoiceNo:
-            String(
-              invoiceNo || saleCode
-            )
-              .trim()
-              .toUpperCase(),
-
-          saleDate:
-            saleDate ||
-            new Date(),
-
-          invoiceDate:
-            invoiceDate ||
-            saleDate ||
-            new Date(),
-
-          dueDate:
-            dueDate ||
-            null,
-
-          clientId:
-            client._id,
-
-          clientCode:
-            client.clientCode,
-
-          clientName:
-            client.companyName,
-
-          contactPerson:
-            client.contactPerson ||
-            "",
-
-          mobile:
-            client.mobile ||
-            "",
-
-          email:
-            client.email ||
-            "",
-
-          gstNo:
-            client.gstNo ||
-            "",
-
-          state:
-            client.state ||
-            "",
-
-          billingAddress:
+      let sale = null;
+      const session = await mongoose.startSession();
+      try {
+        await session.withTransaction(async () => {
+          const createdSales = await ProductSale.create(
             [
-              client.addressLine1,
-              client.addressLine2,
-              client.city,
-              client.state,
-              client.pinCode,
-            ]
-              .filter(Boolean)
-              .join(", "),
+              {
+                saleCode,
+                saleNumber,
 
-          items:
-            normalizedItems,
+                invoiceNo:
+                  String(
+                    invoiceNo || saleCode
+                  )
+                    .trim()
+                    .toUpperCase(),
 
-          grossAmount:
-            Number(
-              grossTotal.toFixed(2)
-            ),
+                saleDate:
+                  saleDate ||
+                  new Date(),
 
-          discountAmount:
-            Number(
-              (
-                itemDiscountTotal +
-                headerDiscount
-              ).toFixed(2)
-            ),
+                invoiceDate:
+                  invoiceDate ||
+                  saleDate ||
+                  new Date(),
 
-          taxableAmount:
-            Number(
-              taxableTotal.toFixed(2)
-            ),
+                dueDate:
+                  dueDate ||
+                  null,
 
-          cgstAmount:
-            Number(
-              cgstTotal.toFixed(2)
-            ),
+                clientId:
+                  client._id,
 
-          sgstAmount:
-            Number(
-              sgstTotal.toFixed(2)
-            ),
+                clientCode:
+                  client.clientCode,
 
-          igstAmount:
-            Number(
-              igstTotal.toFixed(2)
-            ),
+                clientName:
+                  client.companyName,
 
-          roundOff:
-            normalizedRoundOff,
+                contactPerson:
+                  client.contactPerson ||
+                  "",
 
-          totalAmount:
-            Number(
-              invoiceTotal.toFixed(2)
-            ),
+                mobile:
+                  client.mobile ||
+                  "",
 
-          paidAmount:
-            0,
+                email:
+                  client.email ||
+                  "",
 
-          pendingAmount:
-            Number(
-              invoiceTotal.toFixed(2)
-            ),
+                gstNo:
+                  client.gstNo ||
+                  "",
 
-          paymentStatus:
-            "Unpaid",
+                state:
+                  client.state ||
+                  "",
 
-          status:
-            "Confirmed",
+                billingAddress:
+                  [
+                    client.addressLine1,
+                    client.addressLine2,
+                    client.city,
+                    client.state,
+                    client.pinCode,
+                  ]
+                    .filter(Boolean)
+                    .join(", "),
 
-          notes:
-            String(
-              notes || ""
-            ).trim(),
+                items:
+                  normalizedItems,
 
-          createdBy:
-            req.user?._id ||
-            null,
+                grossAmount:
+                  Number(
+                    grossTotal.toFixed(2)
+                  ),
 
-          createdByName:
-            req.user?.name ||
-            "Admin",
+                discountAmount:
+                  Number(
+                    (
+                      itemDiscountTotal +
+                      headerDiscount
+                    ).toFixed(2)
+                  ),
 
-          updatedBy:
-            req.user?._id ||
-            null,
+                taxableAmount:
+                  Number(
+                    taxableTotal.toFixed(2)
+                  ),
 
-          updatedByName:
-            req.user?.name ||
-            "Admin",
-        });
+                cgstAmount:
+                  Number(
+                    cgstTotal.toFixed(2)
+                  ),
 
-      /* ============================================
-         AUTO-ASSIGN PRODUCTS TO CLIENT
-      ============================================ */
+                sgstAmount:
+                  Number(
+                    sgstTotal.toFixed(2)
+                  ),
 
-      for (
-        const saleItem of
-        sale.items
-      ) {
-        const alreadyAssigned =
-          client.products.find(
-            (clientProduct) =>
-              String(
-                clientProduct.productId
-              ) ===
-              String(
-                saleItem.productId
-              )
+                igstAmount:
+                  Number(
+                    igstTotal.toFixed(2)
+                  ),
+
+                roundOff:
+                  normalizedRoundOff,
+
+                totalAmount:
+                  Number(
+                    invoiceTotal.toFixed(2)
+                  ),
+
+                paidAmount:
+                  0,
+
+                pendingAmount:
+                  Number(
+                    invoiceTotal.toFixed(2)
+                  ),
+
+                paymentStatus:
+                  "Unpaid",
+
+                status:
+                  "Confirmed",
+
+                notes:
+                  String(
+                    notes || ""
+                  ).trim(),
+
+                createdBy:
+                  req.user?._id ||
+                  null,
+
+                createdByName:
+                  req.user?.name ||
+                  "Admin",
+
+                updatedBy:
+                  req.user?._id ||
+                  null,
+
+                updatedByName:
+                  req.user?.name ||
+                  "Admin",
+              },
+            ],
+            { session }
           );
 
-        let clientProduct;
+          sale = createdSales[0];
 
-        if (alreadyAssigned) {
-          clientProduct =
-            alreadyAssigned;
-        } else {
-          client.products.push({
-  productId:
-    saleItem.productId,
+          /* ============================================
+             AUTO-ASSIGN PRODUCTS TO CLIENT
+          ============================================ */
 
-  productCode:
-    saleItem.productCode,
+          for (
+            const saleItem of
+            sale.items
+          ) {
+            const alreadyAssigned =
+              client.products.find(
+                (clientProduct) =>
+                  String(
+                    clientProduct.productId
+                  ) ===
+                  String(
+                    saleItem.productId
+                  )
+              );
 
-  productName:
-    saleItem.productName,
+            let clientProduct;
 
-  version:
-    saleItem.version,
+            if (alreadyAssigned) {
+              clientProduct =
+                alreadyAssigned;
+            } else {
+              client.products.push({
+                productId:
+                  saleItem.productId,
 
-  /* =========================================
-     PRODUCT ORIGIN
-  ========================================= */
+                productCode:
+                  saleItem.productCode,
 
-  acquisitionType:
-    "Product Sale",
+                productName:
+                  saleItem.productName,
 
-  productSaleId:
-    sale._id,
+                version:
+                  saleItem.version,
 
-  productSaleCode:
-    sale.saleCode,
+                /* =========================================
+                   PRODUCT ORIGIN
+                ========================================= */
 
-  originalInvoiceNo:
-    sale.invoiceNo ||
-    sale.saleCode,
+                acquisitionType:
+                  "Product Sale",
 
-  originalPurchaseAmount:
-    Number(
-      saleItem.totalAmount ||
-      0
-    ),
+                productSaleId:
+                  sale._id,
 
-  historicalDataComplete:
-    true,
+                productSaleCode:
+                  sale.saleCode,
 
-  /* =========================================
-     PRODUCT / INSTALLATION DETAILS
-  ========================================= */
+                originalInvoiceNo:
+                  sale.invoiceNo ||
+                  sale.saleCode,
 
-  purchaseDate:
-    saleItem.purchaseDate
-      ? new Date(
-          saleItem.purchaseDate
-        )
-          .toISOString()
-          .slice(0, 10)
-      : "",
+                originalPurchaseAmount:
+                  Number(
+                    saleItem.totalAmount ||
+                    0
+                  ),
 
-  installationDate:
-    saleItem.installationDate
-      ? new Date(
-          saleItem.installationDate
-        )
-          .toISOString()
-          .slice(0, 10)
-      : "",
+                historicalDataComplete:
+                  true,
 
-  licensedUsers:
-    saleItem.licensedUsers,
+                /* =========================================
+                   PRODUCT / INSTALLATION DETAILS
+                ========================================= */
 
-  supportType:
-    saleItem.supportType,
+                purchaseDate:
+                  saleItem.purchaseDate
+                    ? new Date(
+                        saleItem.purchaseDate
+                      )
+                        .toISOString()
+                        .slice(0, 10)
+                    : "",
 
-  amcStatus:
-    "Not Started",
+                installationDate:
+                  saleItem.installationDate
+                    ? new Date(
+                        saleItem.installationDate
+                      )
+                        .toISOString()
+                        .slice(0, 10)
+                    : "",
 
-  expiryDate:
-    saleItem.warrantyEndDate
-      ? new Date(
-          saleItem.warrantyEndDate
-        )
-          .toISOString()
-          .slice(0, 10)
-      : "",
+                licensedUsers:
+                  saleItem.licensedUsers,
 
-  installationStatus:
-    saleItem.installationStatus,
+                supportType:
+                  saleItem.supportType,
 
-  licenceType:
-    saleItem.licenceType,
+                amcStatus:
+                  "Not Started",
 
-  notes:
-    saleItem.notes ||
-    "",
-});
+                expiryDate:
+                  saleItem.warrantyEndDate
+                    ? new Date(
+                        saleItem.warrantyEndDate
+                      )
+                        .toISOString()
+                        .slice(0, 10)
+                    : "",
 
-          clientProduct =
-            client.products[
-              client.products.length -
-                1
-            ];
-        }
+                installationStatus:
+                  saleItem.installationStatus,
 
-        saleItem.clientProductId =
-          clientProduct._id;
+                licenceType:
+                  saleItem.licenceType,
+
+                notes:
+                  saleItem.notes ||
+                  "",
+              });
+
+              clientProduct =
+                client.products[
+                  client.products.length -
+                    1
+                ];
+            }
+
+            saleItem.clientProductId =
+              clientProduct._id;
+          }
+
+          await client.save({ session });
+
+          /*
+           * Save generated clientProductId values
+           * back into the permanent ProductSale.
+           */
+          await sale.save({ session });
+        });
+      } finally {
+        await session.endSession();
       }
-
-      await client.save();
-
-      /*
-       * Save generated clientProductId values
-       * back into the permanent ProductSale.
-       */
-      await sale.save();
 
       /* ============================================
          ACTIVITY LOG
@@ -31665,12 +25962,10 @@ router.get(
 
 router.post(
   "/product-sales/:id/payment",
+  validate(productSalePaymentZodSchema),
   async (req, res) => {
     try {
-      const {
-        id,
-      } = req.params;
-
+      const { id } = req.params;
       const {
         amount,
         paymentDate,
@@ -31682,452 +25977,401 @@ router.post(
       /* ============================================
          VALIDATE SALE ID
       ============================================ */
-
-      if (
-        !mongoose.Types.ObjectId.isValid(
-          id
-        )
-      ) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message:
-              "Invalid product sale ID.",
-          });
-      }
-
-      /* ============================================
-         LOAD PRODUCT SALE
-      ============================================ */
-
-      const sale =
-        await ProductSale.findOne({
-          _id: id,
-
-          isDeleted: {
-            $ne: true,
-          },
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid product sale ID.",
         });
-
-      if (!sale) {
-        return res
-          .status(404)
-          .json({
-            success: false,
-            message:
-              "Product sale not found.",
-          });
-      }
-
-      /* ============================================
-         CANCELLED SALES CANNOT RECEIVE PAYMENT
-      ============================================ */
-
-      if (
-        sale.status ===
-        "Cancelled"
-      ) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message:
-              "Payment cannot be received against a cancelled product sale.",
-          });
       }
 
       /* ============================================
          VALIDATE PAYMENT AMOUNT
       ============================================ */
+      const paymentAmount = Number(amount);
 
-      const paymentAmount =
-        Number(amount);
-
-      if (
-        !Number.isFinite(
-          paymentAmount
-        ) ||
-        paymentAmount <= 0
-      ) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message:
-              "Enter a valid payment amount greater than zero.",
-          });
+      if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Enter a valid payment amount greater than zero.",
+        });
       }
 
-      const totalAmount =
-        Number(
-          sale.totalAmount ||
-          0
-        );
-
-      /*
-       * Calculate existing payments from permanent
-       * payment records instead of trusting only
-       * ProductSale.paidAmount.
-       */
-      const existingPayments =
-        await ProductSalePayment.aggregate([
-          {
-            $match: {
-              productSaleId:
-                sale._id,
-
-              isDeleted: {
-                $ne: true,
-              },
-            },
-          },
-
-          {
-            $group: {
-              _id: null,
-
-              totalPaid: {
-                $sum:
-                  "$amount",
-              },
-            },
-          },
-        ]);
-
-      const alreadyPaid =
-        Number(
-          existingPayments?.[0]
-            ?.totalPaid ||
-          0
-        );
-
-      const currentPending =
-        Math.max(
-          totalAmount -
-            alreadyPaid,
-          0
-        );
+      const normalizedMode = mode || "Bank Transfer";
+      const normalizedReferenceNo = String(referenceNo || "").trim();
+      const normalizedNotes = String(notes || "").trim();
 
       /* ============================================
-         PREVENT OVERPAYMENT
+         IDEMPOTENCY HANDLING (Tier 1 & Tier 2)
       ============================================ */
+      const idempotencyKey =
+        req.headers["idempotency-key"] ||
+        req.headers["x-idempotency-key"] ||
+        req.body?.idempotencyKey ||
+        null;
+      const normalizedIdempotencyKey = idempotencyKey
+        ? String(idempotencyKey).trim()
+        : null;
 
-      if (
-        paymentAmount >
-        currentPending +
-          0.01
-      ) {
-        return res
-          .status(400)
-          .json({
-            success: false,
+      const payloadHash = crypto
+        .createHash("sha256")
+        .update(
+          JSON.stringify({
+            saleId: id,
+            amount: Number(paymentAmount.toFixed(2)),
+            paymentDate: paymentDate || "",
+            mode: normalizedMode,
+            referenceNo: normalizedReferenceNo,
+          })
+        )
+        .digest("hex");
 
-            message:
-              `Payment cannot exceed pending amount ₹${currentPending.toFixed(
-                2
-              )}.`,
-          });
-      }
-
-      /* ============================================
-         GENERATE PAYMENT CODE
-      ============================================ */
-
-      const {
-        paymentNumber,
-        paymentCode,
-      } =
-        await generateProductSalePaymentCode();
-
-      /* ============================================
-         CREATE PERMANENT PAYMENT RECORD
-      ============================================ */
-
-      const payment =
-        await ProductSalePayment.create({
-          paymentCode,
-
-          paymentNumber,
-
-          productSaleId:
-            sale._id,
-
-          saleCode:
-            sale.saleCode,
-
-          clientId:
-            sale.clientId,
-
-          clientCode:
-            sale.clientCode,
-
-          clientName:
-            sale.clientName,
-
-          amount:
-            Number(
-              paymentAmount.toFixed(
-                2
-              )
-            ),
-
-          paymentDate:
-            paymentDate ||
-            new Date(),
-
-          mode:
-            mode ||
-            "Bank Transfer",
-
-          referenceNo:
-            String(
-              referenceNo ||
-              ""
-            ).trim(),
-
-          notes:
-            String(
-              notes ||
-              ""
-            ).trim(),
-
-          createdBy:
-            req.user?._id ||
-            null,
-
-          createdByName:
-            req.user?.name ||
-            "Admin",
+      if (normalizedIdempotencyKey) {
+        // Tier 1: In-Flight / Fast Cache Check
+        const existingLog = await IdempotencyLog.findOne({
+          idempotencyKey: normalizedIdempotencyKey,
         });
 
-      /* ============================================
-         RECALCULATE SALE BALANCE
-      ============================================ */
+        if (existingLog) {
+          if (existingLog.payloadHash === payloadHash) {
+            return res.status(200).json({
+              ...(existingLog.responseBody || {}),
+              isReplay: true,
+            });
+          } else {
+            return res.status(422).json({
+              success: false,
+              message:
+                "Idempotency key conflict: Request parameters do not match original transaction.",
+            });
+          }
+        }
 
-      const newPaidAmount =
-        Number(
-          (
-            alreadyPaid +
-            paymentAmount
-          ).toFixed(2)
-        );
+        // Tier 2: Durable Ledger Check
+        const existingPaymentByKey = await ProductSalePayment.findOne({
+          idempotencyKey: normalizedIdempotencyKey,
+          isDeleted: { $ne: true },
+        });
 
-      const newPendingAmount =
-        Number(
-          Math.max(
-            totalAmount -
-              newPaidAmount,
-            0
-          ).toFixed(2)
-        );
+        if (existingPaymentByKey) {
+          const replaySale = await ProductSale.findOne({
+            _id: existingPaymentByKey.productSaleId,
+            isDeleted: { $ne: true },
+          });
 
-      let paymentStatus =
-        "Unpaid";
-
-      if (
-        newPendingAmount <=
-        0.01
-      ) {
-        paymentStatus =
-          "Paid";
-      } else if (
-        newPaidAmount > 0
-      ) {
-        paymentStatus =
-          "Partially Paid";
+          return res.status(200).json({
+            success: true,
+            isReplay: true,
+            message: "Product sale payment already recorded.",
+            data: {
+              payment: existingPaymentByKey,
+              sale: replaySale
+                ? {
+                    id: replaySale._id,
+                    saleCode: replaySale.saleCode,
+                    totalAmount: replaySale.totalAmount,
+                    paidAmount: replaySale.paidAmount,
+                    pendingAmount: replaySale.pendingAmount,
+                    paymentStatus: replaySale.paymentStatus,
+                  }
+                : null,
+            },
+          });
+        }
       }
 
-      sale.paidAmount =
-        newPaidAmount;
+      /* ============================================
+         TRANSACTION EXECUTION WITH RETRY HANDLING
+      ============================================ */
+      let savedPayment = null;
+      let savedSale = null;
 
-      sale.pendingAmount =
-        newPendingAmount;
+      const maxRetries = 3;
+      let attempt = 0;
+      let transactionSuccess = false;
 
-      sale.paymentStatus =
-        paymentStatus;
+      while (attempt < maxRetries && !transactionSuccess) {
+        attempt++;
 
-      sale.updatedBy =
-        req.user?._id ||
-        null;
+        // Fast-path recovery on retry
+        if (normalizedIdempotencyKey && attempt > 1) {
+          const replayLog = await IdempotencyLog.findOne({
+            idempotencyKey: normalizedIdempotencyKey,
+            status: "COMPLETED",
+          });
+          if (replayLog && replayLog.responseBody) {
+            return res.status(200).json({
+              ...(replayLog.responseBody || {}),
+              isReplay: true,
+            });
+          }
+        }
 
-      sale.updatedByName =
-        req.user?.name ||
-        "Admin";
+        const session = await mongoose.startSession();
 
-      await sale.save();
+        try {
+          await session.withTransaction(async () => {
+            const sale = await ProductSale.findOne({
+              _id: id,
+              isDeleted: { $ne: true },
+            }).session(session);
+
+            if (!sale) {
+              const err = new Error("Product sale not found.");
+              err.statusCode = 404;
+              throw err;
+            }
+
+            if (sale.status === "Cancelled") {
+              const err = new Error(
+                "Payment cannot be received against a cancelled product sale."
+              );
+              err.statusCode = 400;
+              throw err;
+            }
+
+            // ATOMIC WRITE LOCK on ProductSale document
+            const lockedSale = await ProductSale.findOneAndUpdate(
+              { _id: sale._id, isDeleted: { $ne: true } },
+              { $inc: { paymentVersion: 1 } },
+              { session, new: true }
+            );
+
+            const totalAmount = Number(lockedSale.totalAmount || 0);
+
+            // Recalculate existing payments within transaction session
+            const existingPayments = await ProductSalePayment.aggregate([
+              {
+                $match: {
+                  productSaleId: lockedSale._id,
+                  isDeleted: { $ne: true },
+                },
+              },
+              {
+                $group: {
+                  _id: null,
+                  totalPaid: {
+                    $sum: "$amount",
+                  },
+                },
+              },
+            ]).session(session);
+
+            const alreadyPaid = Number(
+              existingPayments?.[0]?.totalPaid || 0
+            );
+
+            const currentPending = Math.max(
+              Number((totalAmount - alreadyPaid).toFixed(2)),
+              0
+            );
+
+            if (currentPending <= 0) {
+              const err = new Error("This product sale is already fully paid.");
+              err.statusCode = 400;
+              throw err;
+            }
+
+            if (paymentAmount > currentPending + 0.01) {
+              const err = new Error(
+                `Payment cannot exceed pending amount ₹${currentPending.toFixed(2)}.`
+              );
+              err.statusCode = 400;
+              throw err;
+            }
+
+            const { paymentNumber, paymentCode } =
+              await generateProductSalePaymentCode();
+
+            const createdPayments = await ProductSalePayment.create(
+              [
+                {
+                  paymentCode,
+                  paymentNumber,
+                  idempotencyKey: normalizedIdempotencyKey,
+                  productSaleId: lockedSale._id,
+                  saleCode: lockedSale.saleCode,
+                  clientId: lockedSale.clientId,
+                  clientCode: lockedSale.clientCode,
+                  clientName: lockedSale.clientName,
+                  amount: Number(paymentAmount.toFixed(2)),
+                  paymentDate: paymentDate || new Date(),
+                  mode: normalizedMode,
+                  referenceNo: normalizedReferenceNo,
+                  notes: normalizedNotes,
+                  createdBy: req.user?._id || null,
+                  createdByName: req.user?.name || "Admin",
+                },
+              ],
+              { session }
+            );
+
+            const payment = createdPayments[0];
+
+            const newPaidAmount = Number(
+              (alreadyPaid + paymentAmount).toFixed(2)
+            );
+
+            const newPendingAmount = Number(
+              Math.max(totalAmount - newPaidAmount, 0).toFixed(2)
+            );
+
+            let paymentStatus = "Unpaid";
+
+            if (newPendingAmount <= 0.01) {
+              paymentStatus = "Paid";
+            } else if (newPaidAmount > 0) {
+              paymentStatus = "Partially Paid";
+            }
+
+            lockedSale.paidAmount = newPaidAmount;
+            lockedSale.pendingAmount = newPendingAmount;
+            lockedSale.paymentStatus = paymentStatus;
+            lockedSale.updatedBy = req.user?._id || null;
+            lockedSale.updatedByName = req.user?.name || "Admin";
+
+            await lockedSale.save({ session });
+
+            savedPayment = payment;
+            savedSale = lockedSale;
+
+            if (normalizedIdempotencyKey) {
+              await IdempotencyLog.create(
+                [
+                  {
+                    idempotencyKey: normalizedIdempotencyKey,
+                    endpoint: "/api/admin/product-sales/:id/payment",
+                    entityId: lockedSale._id,
+                    payloadHash,
+                    status: "COMPLETED",
+                    responseStatus: 201,
+                    responseBody: {
+                      success: true,
+                      message: "Product sale payment recorded successfully.",
+                      data: {
+                        payment,
+                        sale: {
+                          id: lockedSale._id,
+                          saleCode: lockedSale.saleCode,
+                          totalAmount: lockedSale.totalAmount,
+                          paidAmount: lockedSale.paidAmount,
+                          pendingAmount: lockedSale.pendingAmount,
+                          paymentStatus: lockedSale.paymentStatus,
+                        },
+                      },
+                    },
+                  },
+                ],
+                { session }
+              );
+            }
+          });
+
+          transactionSuccess = true;
+        } catch (error) {
+          const isTransient =
+            error.hasErrorLabel &&
+            (error.hasErrorLabel("TransientTransactionError") ||
+              error.hasErrorLabel("UnknownTransactionCommitResult"));
+
+          if (isTransient && attempt < maxRetries) {
+            console.warn(
+              `Transient error during product sale payment (attempt ${attempt}):`,
+              error.message
+            );
+            continue;
+          }
+
+          if (error.statusCode) {
+            return res.status(error.statusCode).json({
+              success: false,
+              message: error.message,
+            });
+          }
+
+          throw error;
+        } finally {
+          await session.endSession();
+        }
+      }
 
       /* ============================================
          ACTIVITY LOG
       ============================================ */
-
       try {
         await ActivityLog.create({
-          action:
-            "Product Sale Payment Received",
-
-          category:
-            "Payment",
-
-          description:
-            `${payment.paymentCode} - ₹${payment.amount.toFixed(
-              2
-            )} received against ${sale.saleCode}.`,
-
-          entityType:
-            "product",
-
-          entityId:
-            sale._id,
-
-          entityCode:
-            sale.saleCode,
-
-          entityName:
-            sale.clientName,
-
-          clientId:
-            sale.clientId,
-
-          clientName:
-            sale.clientName,
-
-          performedBy:
-            req.user?._id ||
-            null,
-
-          performedByName:
-            req.user?.name ||
-            "Admin",
-
-          performedByRole:
-            "admin",
-
+          action: "Product Sale Payment Received",
+          category: "Payment",
+          description: `${savedPayment.paymentCode} - ₹${savedPayment.amount.toFixed(
+            2
+          )} received against ${savedSale.saleCode}.`,
+          entityType: "product",
+          entityId: savedSale._id,
+          entityCode: savedSale.saleCode,
+          entityName: savedSale.clientName,
+          clientId: savedSale.clientId,
+          clientName: savedSale.clientName,
+          performedBy: req.user?._id || null,
+          performedByName: req.user?.name || "Admin",
+          performedByRole: "admin",
           metadata: {
-            paymentId:
-              payment._id,
-
-            paymentCode:
-              payment.paymentCode,
-
-            paymentAmount:
-              payment.amount,
-
-            totalAmount:
-              sale.totalAmount,
-
-            paidAmount:
-              sale.paidAmount,
-
-            pendingAmount:
-              sale.pendingAmount,
-
-            paymentStatus:
-              sale.paymentStatus,
-
-            paymentMode:
-              payment.mode,
-
-            referenceNo:
-              payment.referenceNo,
+            paymentId: savedPayment._id,
+            paymentCode: savedPayment.paymentCode,
+            paymentAmount: savedPayment.amount,
+            totalAmount: savedSale.totalAmount,
+            paidAmount: savedSale.paidAmount,
+            pendingAmount: savedSale.pendingAmount,
+            paymentStatus: savedSale.paymentStatus,
+            paymentMode: savedPayment.mode,
+            referenceNo: savedPayment.referenceNo,
           },
         });
-      } catch (
-        activityError
-      ) {
+      } catch (activityError) {
         console.error(
           "Product Sale Payment Activity Error:",
-          activityError
+          activityError.message
         );
       }
 
       /* ============================================
          RESPONSE
       ============================================ */
-
-      return res
-        .status(201)
-        .json({
-          success: true,
-
-          message:
-            "Product sale payment recorded successfully.",
-
-          data: {
-            payment,
-
-            sale: {
-              id:
-                sale._id,
-
-              saleCode:
-                sale.saleCode,
-
-              totalAmount:
-                sale.totalAmount,
-
-              paidAmount:
-                sale.paidAmount,
-
-              pendingAmount:
-                sale.pendingAmount,
-
-              paymentStatus:
-                sale.paymentStatus,
-            },
+      return res.status(201).json({
+        success: true,
+        message: "Product sale payment recorded successfully.",
+        data: {
+          payment: savedPayment,
+          sale: {
+            id: savedSale._id,
+            saleCode: savedSale.saleCode,
+            totalAmount: savedSale.totalAmount,
+            paidAmount: savedSale.paidAmount,
+            pendingAmount: savedSale.pendingAmount,
+            paymentStatus: savedSale.paymentStatus,
           },
-        });
+        },
+      });
     } catch (error) {
-      console.error(
-        "Product Sale Payment Error:",
-        error
-      );
+      console.error("Product Sale Payment Error:", error);
 
-      if (
-        error instanceof
-        mongoose.Error
-          .ValidationError
-      ) {
-        const firstError =
-          Object.values(
-            error.errors
-          )[0];
-
-        return res
-          .status(400)
-          .json({
-            success: false,
-
-            message:
-              firstError
-                ?.message ||
-              "Payment validation failed.",
-          });
-      }
-
-      if (
-        error?.code ===
-        11000
-      ) {
-        return res
-          .status(409)
-          .json({
-            success: false,
-
-            message:
-              "Payment number conflict. Please try again.",
-          });
-      }
-
-      return res
-        .status(500)
-        .json({
+      if (error instanceof mongoose.Error.ValidationError) {
+        const firstError = Object.values(error.errors)[0];
+        return res.status(400).json({
           success: false,
-
-          message:
-            error.message ||
-            "Unable to record product sale payment.",
+          message: firstError?.message || "Payment validation failed.",
         });
+      }
+
+      if (error?.code === 11000) {
+        return res.status(409).json({
+          success: false,
+          message: "Payment number conflict. Please try again.",
+        });
+      }
+
+      return res.status(error.statusCode || 500).json({
+        success: false,
+        message: error.message || "Unable to record product sale payment.",
+      });
     }
   }
 );
@@ -32542,799 +26786,983 @@ router.get(
   }
 );
 /* =====================================================
+/* =====================================================
    RENEW AMC CONTRACT + CREATE NEW PERMANENT INVOICE
    POST /api/admin/amc/contract/:id/renew
 
-   IMPORTANT:
-   - Existing invoice is NEVER overwritten.
-   - Existing payments are NEVER changed.
-   - Same AMC contract continues.
-   - A NEW permanent AmcInvoice is created.
+   PRODUCTION-GRADE WORKFLOW:
+   - ACID MongoDB Session Transaction with Concurrency Write-Lock
+   - Multi-Tier Persistent Idempotency (IdempotencyLog + Ledger Check)
+   - Dual-Period Architecture (upcomingRenewal for Early Renewals)
+   - Authoritative GST & Place of Supply (POS) Calculation
+   - Immutable Historical Invoices & Receipts Guaranteed
 ===================================================== */
 
 router.post(
   "/amc/contract/:id/renew",
+  authenticateUser,
+  validate(amcRenewZodSchema),
   async (req, res) => {
-    let createdInvoice = null;
-
     try {
       const { id } = req.params;
 
       /* =================================================
-         VALIDATE CONTRACT ID
+         AUTHORIZATION CHECK
       ================================================= */
-
-      if (
-        !mongoose.Types.ObjectId.isValid(
-          id
-        )
-      ) {
-        return res.status(400).json({
+      const userRole = String(req.user?.role || "").toLowerCase();
+      if (!req.user || !["admin", "superadmin", "super_admin"].includes(userRole)) {
+        return res.status(403).json({
           success: false,
-          message:
-            "Invalid AMC contract ID.",
+          message: "Unauthorized. Administrator privileges required to renew AMC contracts.",
         });
       }
 
       /* =================================================
-         LOAD CONTRACT
+         VALIDATE CONTRACT ID
       ================================================= */
-
-      const contract =
-        await AmcContract.findOne({
-          _id: id,
-          isDeleted: false,
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid AMC contract ID.",
         });
+      }
+
+      /* =================================================
+         LOAD CONTRACT & CLIENT
+      ================================================= */
+      const contract = await AmcContract.findOne({
+        _id: id,
+        isDeleted: false,
+      });
 
       if (!contract) {
         return res.status(404).json({
           success: false,
-          message:
-            "AMC contract was not found.",
+          message: "AMC contract was not found.",
         });
       }
 
-      if (
-        contract.status ===
-        "Cancelled"
-      ) {
+      if (contract.status === "Cancelled") {
         return res.status(400).json({
           success: false,
-          message:
-            "A cancelled AMC contract cannot be renewed.",
+          message: "A cancelled AMC contract cannot be renewed.",
         });
       }
+
+      const client = await Client.findById(contract.clientId).lean();
 
       /* =================================================
-         FIND CURRENT / LATEST INVOICE
+         PARSE & NORMALIZE INPUTS
       ================================================= */
-
-      let previousInvoice =
-        await AmcInvoice.findOne({
-          amcContractId:
-            contract._id,
-
-          isDeleted:
-            false,
-
-          status: {
-            $ne: "Cancelled",
-          },
-        }).sort({
-          contractExpiryDate: -1,
-          invoiceDate: -1,
-          createdAt: -1,
-        });
-
-      if (!previousInvoice && contract.currentInvoiceId) {
-        previousInvoice = await AmcInvoice.findOne({
-          _id: contract.currentInvoiceId,
-          isDeleted: false,
-        });
-      }
-
-      if (!previousInvoice) {
-        previousInvoice = {
-          invoiceCode: contract.currentInvoiceCode || contract.contractCode || "PREV",
-          taxableAmount: contract.taxableAmount || 0,
-          cgstRate: contract.cgstRate || 0,
-          sgstRate: contract.sgstRate || 0,
-          igstRate: contract.igstRate || 0,
-          contractExpiryDate: contract.expiryDate,
-        };
-      }
-
-      /* =================================================
-         OPTIONAL VALUES FROM FRONTEND
-
-         If frontend does not send them, values are copied
-         from the previous AMC invoice.
-      ================================================= */
-
       const {
         startDate,
         expiryDate,
         dueDate,
-
         taxableAmount,
-
         cgstRate,
         sgstRate,
         igstRate,
-
         plan,
         licensedUsers,
-
+        gstApplicable = "YES",
+        taxType,
+        gstRate = 18,
+        taxClassification,
+        idempotencyKey,
         notes,
       } = req.body || {};
+
+      const normalizedGstApplicable = String(gstApplicable || "YES").toUpperCase() === "NO" ? "NO" : "YES";
+      const allowedGstRates = [0, 5, 12, 18, 28];
+      const parsedGstRate = Number(gstRate !== undefined ? gstRate : 18);
+      const authorizedGstRate = allowedGstRates.includes(parsedGstRate) ? parsedGstRate : 18;
+
+      // Determine Place of Supply (POS)
+      const clientState = String(client?.billingAddress?.state || client?.state || "").trim().toLowerCase();
+      const isClientMaharashtra = clientState === "maharashtra" || clientState === "mh" || clientState === "27";
+      const derivedTaxType = isClientMaharashtra ? "intra" : "inter";
+      const normalizedTaxType = ["intra", "inter"].includes(String(taxType).toLowerCase())
+        ? String(taxType).toLowerCase()
+        : derivedTaxType;
+
+      // Statutory Tax Classification & Eligibility Validation
+      const validZeroGstReasons = [
+        "Commercial Invoice (Zero-GST / Non-Taxable Supply)",
+        "SEZ Unit / Developer (Supply under LUT without IGST)",
+        "Export of Services (Zero-Rated under LUT)",
+        "Tax Exempt Supply as per Statutory Notification",
+        "Custom Commercial Agreement (Zero-Tax)",
+      ];
+
+      let resolvedTaxClassification = "";
+
+      if (normalizedGstApplicable === "NO") {
+        const suppliedReason = String(taxClassification || "").trim();
+        if (suppliedReason && !validZeroGstReasons.includes(suppliedReason)) {
+          return res.status(400).json({
+            success: false,
+            message: `Invalid statutory zero-tax reason. Must be one of: ${validZeroGstReasons.join(", ")}`,
+          });
+        }
+        resolvedTaxClassification = suppliedReason || "Commercial Invoice (Zero-GST / Non-Taxable Supply)";
+
+        // Enforce statutory eligibility for specific tax concessions
+        if (resolvedTaxClassification === "SEZ Unit / Developer (Supply under LUT without IGST)") {
+          const clientGstin = String(client?.gstNumber || client?.gstin || "").trim();
+          if (!clientGstin && !client?.isSez) {
+            return res.status(400).json({
+              success: false,
+              message: "SEZ zero-tax supply requires a valid recipient GSTIN or registered SEZ unit designation.",
+            });
+          }
+        }
+
+        if (resolvedTaxClassification === "Export of Services (Zero-Rated under LUT)") {
+          const clientCountry = String(client?.billingAddress?.country || client?.country || "India").trim().toLowerCase();
+          const isIndia = clientCountry === "india" || clientCountry === "in" || clientCountry === "";
+          if (isIndia && !req.body.isExportSupply) {
+            return res.status(400).json({
+              success: false,
+              message: "Export of Services (Zero-Rated under LUT) requires foreign place of supply or certified export declaration.",
+            });
+          }
+        }
+      } else {
+        if (normalizedTaxType === "intra") {
+          resolvedTaxClassification = `Intra-State Taxable Supply (${authorizedGstRate}% GST)`;
+        } else {
+          resolvedTaxClassification = `Inter-State Taxable Supply (${authorizedGstRate}% IGST)`;
+        }
+      }
 
       /* =================================================
          CALCULATE NEW AMC PERIOD
       ================================================= */
-
       let newStartDate;
-
       if (startDate) {
-        newStartDate =
-          new Date(startDate);
+        newStartDate = new Date(startDate);
       } else {
-        /*
-         * New AMC starts the day after previous expiry.
-         */
-        newStartDate =
-          new Date(
-            previousInvoice
-              .contractExpiryDate ||
-            contract.expiryDate
-          );
-
-        newStartDate.setDate(
-          newStartDate.getDate() + 1
-        );
+        const baseExpiry = contract.expiryDate ? new Date(contract.expiryDate) : new Date();
+        newStartDate = new Date(baseExpiry);
+        newStartDate.setDate(newStartDate.getDate() + 1);
       }
 
-      if (
-        Number.isNaN(
-          newStartDate.getTime()
-        )
-      ) {
+      if (Number.isNaN(newStartDate.getTime())) {
         return res.status(400).json({
           success: false,
-          message:
-            "Unable to determine the new AMC start date.",
+          message: "Unable to determine a valid AMC start date.",
         });
       }
 
       let newExpiryDate;
-
       if (expiryDate) {
-        newExpiryDate =
-          new Date(expiryDate);
+        newExpiryDate = new Date(expiryDate);
       } else {
-        /*
-         * Example:
-         *
-         * Previous:
-         * 01-Apr-2026 → 31-Mar-2027
-         *
-         * New:
-         * 01-Apr-2027 → 31-Mar-2028
-         */
-
-        newExpiryDate =
-          new Date(newStartDate);
-
-        newExpiryDate.setFullYear(
-          newExpiryDate.getFullYear() + 1
-        );
-
-        newExpiryDate.setDate(
-          newExpiryDate.getDate() - 1
-        );
+        newExpiryDate = new Date(newStartDate);
+        newExpiryDate.setFullYear(newExpiryDate.getFullYear() + 1);
+        newExpiryDate.setDate(newExpiryDate.getDate() - 1);
       }
 
-      if (
-        Number.isNaN(
-          newExpiryDate.getTime()
-        )
-      ) {
+      if (Number.isNaN(newExpiryDate.getTime())) {
         return res.status(400).json({
           success: false,
-          message:
-            "Unable to determine the new AMC expiry date.",
+          message: "Unable to determine a valid AMC expiry date.",
         });
       }
 
-      if (
-        newExpiryDate <=
-        newStartDate
-      ) {
+      if (newExpiryDate <= newStartDate) {
         return res.status(400).json({
           success: false,
-          message:
-            "AMC expiry date must be after the start date.",
+          message: "AMC expiry date must be strictly after the start date.",
         });
       }
-
-      /* =================================================
-         PREVENT DUPLICATE RENEWAL
-
-         Prevents double-click from creating two invoices
-         for exactly the same AMC period.
-      ================================================= */
-
-      const duplicateInvoice =
-        await AmcInvoice.findOne({
-          amcContractId:
-            contract._id,
-
-          contractStartDate:
-            newStartDate,
-
-          contractExpiryDate:
-            newExpiryDate,
-
-          isDeleted:
-            false,
-
-          status: {
-            $ne: "Cancelled",
-          },
-        });
-
-      if (duplicateInvoice) {
-        return res.status(409).json({
-          success: false,
-          message:
-            `AMC renewal already exists for this period (${duplicateInvoice.invoiceCode}).`,
-        });
-      }
-
-      /* =================================================
-         PAYMENT DUE DATE
-      ================================================= */
 
       let newDueDate;
-
       if (dueDate) {
-        newDueDate =
-          new Date(dueDate);
+        newDueDate = new Date(dueDate);
       } else {
-        /*
-         * By default payment becomes due on AMC start.
-         *
-         * You can change this later to +7 / +15 / +30 days
-         * if required.
-         */
-        newDueDate =
-          new Date(newStartDate);
+        newDueDate = new Date(newStartDate);
       }
 
-      if (
-        Number.isNaN(
-          newDueDate.getTime()
-        )
-      ) {
+      if (Number.isNaN(newDueDate.getTime())) {
         return res.status(400).json({
           success: false,
-          message:
-            "Invalid AMC payment due date.",
+          message: "Invalid AMC payment due date.",
         });
       }
 
       /* =================================================
-         COMMERCIAL VALUE
+         COMMERCIAL & TAX AMOUNTS
       ================================================= */
+      const newTaxableAmount = roundAmcAmount(
+        taxableAmount !== undefined
+          ? taxableAmount
+          : contract.taxableAmount || 0
+      );
 
-      const newTaxableAmount =
-        roundAmcAmount(
-          taxableAmount !==
-            undefined
-            ? taxableAmount
-            : previousInvoice
-                .taxableAmount
-        );
-
-      if (
-        !Number.isFinite(
-          newTaxableAmount
-        ) ||
-        newTaxableAmount <= 0
-      ) {
+      if (!Number.isFinite(newTaxableAmount) || newTaxableAmount <= 0) {
         return res.status(400).json({
           success: false,
-          message:
-            "Enter a valid AMC taxable amount.",
+          message: "Enter a valid positive AMC basic/taxable amount.",
         });
       }
 
-      const newCgstRate =
-        Number(
-          cgstRate !== undefined
-            ? cgstRate
-            : previousInvoice
-                .cgstRate || 0
-        );
-
-      const newSgstRate =
-        Number(
-          sgstRate !== undefined
-            ? sgstRate
-            : previousInvoice
-                .sgstRate || 0
-        );
-
-      const newIgstRate =
-        Number(
-          igstRate !== undefined
-            ? igstRate
-            : previousInvoice
-                .igstRate || 0
-        );
+      const normalizedPlan = String(plan || contract.plan || "Standard").trim();
+      const normalizedUsers = Math.max(Number(licensedUsers || contract.licensedUsers || 1), 1);
+      const normalizedIdempotencyKey = idempotencyKey ? String(idempotencyKey).trim() : null;
 
       /* =================================================
-         CALCULATE GST
+         CANONICAL PAYLOAD HASH FOR IDEMPOTENCY
       ================================================= */
+      const canonicalPayload = {
+        contractId: contract._id.toString(),
+        startDate: newStartDate.toISOString().slice(0, 10),
+        expiryDate: newExpiryDate.toISOString().slice(0, 10),
+        dueDate: newDueDate.toISOString().slice(0, 10),
+        taxableAmount: newTaxableAmount,
+        gstApplicable: normalizedGstApplicable,
+        taxType: normalizedTaxType,
+        gstRate: authorizedGstRate,
+        plan: normalizedPlan,
+      };
 
-      const cgstAmount =
-        roundAmcAmount(
-          newTaxableAmount *
-            newCgstRate /
-            100
-        );
-
-      const sgstAmount =
-        roundAmcAmount(
-          newTaxableAmount *
-            newSgstRate /
-            100
-        );
-
-      const igstAmount =
-        roundAmcAmount(
-          newTaxableAmount *
-            newIgstRate /
-            100
-        );
-
-      const totalAmount =
-        roundAmcAmount(
-          newTaxableAmount +
-          cgstAmount +
-          sgstAmount +
-          igstAmount
-        );
+      const payloadHash = crypto
+        .createHash("sha256")
+        .update(JSON.stringify(canonicalPayload))
+        .digest("hex");
 
       /* =================================================
-         GENERATE NEXT AMC INVOICE NUMBER
-
-         Uses your existing helper.
+         MULTI-TIER IDEMPOTENCY & DUPLICATE CHECKS
       ================================================= */
-
-      const invoiceIdentity =
-        await getNextAmcInvoiceIdentity();
-
-      /*
-       * Your helper may return:
-       *
-       * {
-       *   invoiceNumber,
-       *   invoiceCode
-       * }
-       *
-       * This is the same helper already used by your
-       * AMC creation logic.
-       */
-
-      /* =================================================
-         CREATE PERMANENT RENEWAL INVOICE
-      ================================================= */
-
-      createdInvoice =
-        await AmcInvoice.create({
-          invoiceCode:
-            invoiceIdentity.invoiceCode,
-
-          invoiceNumber:
-            invoiceIdentity.invoiceNumber,
-
-        invoiceType:
-            "Renewal",
-
-          amcContractId:
-            contract._id,
-
-          contractCode:
-            contract.contractCode,
-
-          clientId:
-            contract.clientId,
-
-          clientCode:
-            contract.clientCode,
-
-          clientName:
-            contract.clientName,
-
-          productId:
-            contract.productId,
-
-          productCode:
-            contract.productCode,
-
-          productName:
-            contract.productName,
-
-          clientProductId:
-            contract.clientProductId,
-
-          plan:
-            plan ||
-            previousInvoice.plan ||
-            contract.plan,
-
-          licensedUsers:
-            Math.max(
-              Number(
-                licensedUsers ||
-                previousInvoice
-                  .licensedUsers ||
-                contract.licensedUsers ||
-                1
-              ),
-              1
-            ),
-
-          contractStartDate:
-            newStartDate,
-
-          contractExpiryDate:
-            newExpiryDate,
-
-          invoiceDate:
-            new Date(),
-
-          dueDate:
-            newDueDate,
-
-          taxableAmount:
-            newTaxableAmount,
-
-          cgstRate:
-            newCgstRate,
-
-          sgstRate:
-            newSgstRate,
-
-          igstRate:
-            newIgstRate,
-
-          cgstAmount,
-
-          sgstAmount,
-
-          igstAmount,
-
-          totalAmount,
-
-          /*
-           * NEW invoice = no payment yet.
-           */
-
-          paidAmount:
-            0,
-
-          pendingAmount:
-            totalAmount,
-
-          paymentStatus:
-            "Pending",
-
-          status:
-            "Issued",
-
-          notes:
-            String(
-              notes ||
-              `AMC renewal after ${previousInvoice.invoiceCode}`
-            ).trim(),
-
-          createdBy:
-            req.user._id,
-
-          createdByName:
-            req.user.name ||
-            "Admin",
-
-          updatedBy:
-            req.user._id,
-
-          updatedByName:
-            req.user.name ||
-            "Admin",
-
-          isDeleted:
-            false,
+      if (normalizedIdempotencyKey) {
+        // Tier 1: In-Flight / Fast Cache Check
+        const existingLog = await IdempotencyLog.findOne({
+          idempotencyKey: normalizedIdempotencyKey,
         });
 
-      /* =================================================
-         UPDATE CURRENT CONTRACT PERIOD
-
-         Contract represents CURRENT AMC state.
-
-         Old invoice remains untouched in amcinvoices.
-      ================================================= */
-
-      contract.currentInvoiceId =
-    createdInvoice._id;
-
-contract.currentInvoiceCode =
-    createdInvoice.invoiceCode;
-
-contract.invoiceCode =
-    createdInvoice.invoiceCode;
-
-contract.invoiceDate =
-    createdInvoice.invoiceDate;
-      contract.startDate =
-        newStartDate;
-
-      contract.expiryDate =
-        newExpiryDate;
-
-      contract.plan =
-        plan ||
-        contract.plan;
-
-      contract.licensedUsers =
-        Math.max(
-          Number(
-            licensedUsers ||
-            contract.licensedUsers ||
-            1
-          ),
-          1
-        );
-
-      /*
-       * Current financial state now belongs to the
-       * newly generated renewal invoice.
-       */
-
-      contract.totalAmount =
-        totalAmount;
-
-      contract.paidAmount =
-        0;
-
-      contract.pendingAmount =
-        totalAmount;
-
-      contract.status =
-        "Pending";
-
-      contract.updatedBy =
-        req.user._id;
-
-      contract.updatedByName =
-        req.user.name ||
-        "Admin";
-
-      contract.timeline = contract.timeline || [];
-      contract.timeline.push({
-        type: "renewal",
-        title: "AMC Contract Renewed",
-        description: `Contract ${contract.contractCode} renewed. New invoice ${createdInvoice.invoiceCode} generated.`,
-        performedBy: req.user._id,
-        performedByName: req.user.name || "Admin",
-        performedByRole: req.user.role || "admin",
-      });
-
-      await contract.save();
-
-      /* =================================================
-         SYNCHRONIZE CLIENT PRODUCT
-      ================================================= */
-
-      const client =
-        await Client.findById(
-          contract.clientId
-        );
-
-      if (client) {
-        const clientProduct =
-          client.products.id(
-            contract.clientProductId
-          );
-
-        if (clientProduct) {
-          clientProduct.amcStatus =
-            "Pending";
-
-          clientProduct.expiryDate =
-            newExpiryDate
-              .toISOString()
-              .slice(0, 10);
+        if (existingLog) {
+          if (existingLog.payloadHash === payloadHash) {
+            return res.status(200).json({
+              ...(existingLog.responseBody || {}),
+              isReplay: true,
+            });
+          } else {
+            return res.status(422).json({
+              success: false,
+              message: "Idempotency key conflict: Request parameters do not match the original transaction.",
+            });
+          }
         }
 
-        /*
-         * Find nearest active AMC renewal for client.
-         */
+        // Tier 2: Durable Ledger Check by Idempotency Key
+        const existingInvoiceByKey = await AmcInvoice.findOne({
+          idempotencyKey: normalizedIdempotencyKey,
+          isDeleted: false,
+        });
 
-        client.amcStatus =
-          "Pending";
+        if (existingInvoiceByKey) {
+          const contractData = mergeAmcContractWithInvoice(contract, existingInvoiceByKey);
+          const invoiceData = amcInvoiceResponse(existingInvoiceByKey);
+          return res.status(200).json({
+            success: true,
+            isReplay: true,
+            message: `AMC renewal invoice already generated (${existingInvoiceByKey.invoiceCode}).`,
+            data: {
+              contract: contractData,
+              invoice: invoiceData,
+            },
+            contract: contractData,
+            invoice: invoiceData,
+          });
+        }
+      }
 
-        client.nextRenewal =
-          newExpiryDate
-            .toISOString()
-            .slice(0, 10);
+      // Durable Period Check (Exact Match)
+      const existingExactInvoice = await AmcInvoice.findOne({
+        amcContractId: contract._id,
+        contractStartDate: newStartDate,
+        contractExpiryDate: newExpiryDate,
+        isDeleted: false,
+        status: { $in: ["Issued", "Draft"] },
+      });
 
-        client.updatedBy =
-          req.user._id;
-
-        client.updatedByName =
-          req.user.name ||
-          "Admin";
-
-        await client.save();
+      if (existingExactInvoice) {
+        return res.status(409).json({
+          success: false,
+          message: `AMC renewal already exists for this exact coverage period (${existingExactInvoice.invoiceCode}).`,
+        });
       }
 
       /* =================================================
-         ACTIVITY LOG
+         TRANSACTION EXECUTION WITH RETRY HANDLING
       ================================================= */
+      let createdInvoice = null;
+      let isEarlyRenewal = false;
+      let finalContract = null;
 
-      await createActivityLog({
-        action:
-          "AMC Renewed",
+      const maxRetries = 3;
+      let attempt = 0;
+      let transactionSuccess = false;
 
-        category:
-          "AMC",
+      while (attempt < maxRetries && !transactionSuccess) {
+        attempt++;
 
-        description:
-          `${contract.contractCode} was renewed and invoice ${createdInvoice.invoiceCode} was generated.`,
+        // Fast-path recovery on retry: If a concurrent identical transaction committed while we were waiting on lock
+        if (normalizedIdempotencyKey && attempt > 1) {
+          const replayLog = await IdempotencyLog.findOne({
+            idempotencyKey: normalizedIdempotencyKey,
+            status: "COMPLETED",
+          });
+          if (replayLog && replayLog.responseBody) {
+            return res.status(replayLog.responseStatus || 200).json({
+              ...(replayLog.responseBody || {}),
+              isReplay: true,
+            });
+          }
+        }
 
-        entityType:
-          "amc",
+        const session = await mongoose.startSession();
 
-        entityId:
-          contract._id,
+        try {
+          await session.withTransaction(async () => {
+            // 1. Atomic Per-Contract Concurrency Lock
+            const lockedContract = await AmcContract.findOneAndUpdate(
+              { _id: contract._id, isDeleted: false },
+              {
+                $set: { renewalLockAt: new Date() },
+                $inc: { renewalVersion: 1 },
+              },
+              { session, new: true }
+            );
 
-        entityCode:
-          contract.contractCode,
+            if (!lockedContract) {
+              const err = new Error("AMC contract lock acquisition failed.");
+              err.statusCode = 409;
+              throw err;
+            }
 
-        entityName:
-          `${contract.clientName} - ${contract.productName}`,
+            // 2. Transactional Period Overlap Check
+            const overlappingInvoice = await AmcInvoice.findOne({
+              amcContractId: contract._id,
+              isDeleted: false,
+              status: { $in: ["Issued", "Draft"] },
+              contractStartDate: { $lte: newExpiryDate },
+              contractExpiryDate: { $gte: newStartDate },
+            }).session(session);
 
-        clientId:
-          contract.clientId,
+            if (overlappingInvoice) {
+              const err = new Error(
+                `AMC renewal overlaps with existing active invoice (${overlappingInvoice.invoiceCode} for ${overlappingInvoice.contractStartDate.toISOString().slice(0, 10)} to ${overlappingInvoice.contractExpiryDate.toISOString().slice(0, 10)}).`
+              );
+              err.statusCode = 409;
+              throw err;
+            }
 
-        clientName:
-          contract.clientName,
+            // 3. Authoritative Tax & Financial Calculation
+            let calculatedCgstRate = 0;
+            let calculatedSgstRate = 0;
+            let calculatedIgstRate = 0;
 
-        employeeId:
-          contract.assignedEmployeeId,
+            if (normalizedGstApplicable === "YES") {
+              if (normalizedTaxType === "intra") {
+                calculatedCgstRate = authorizedGstRate / 2;
+                calculatedSgstRate = authorizedGstRate / 2;
+              } else {
+                calculatedIgstRate = authorizedGstRate;
+              }
+            }
 
-        employeeName:
-          contract.assignedEmployeeName,
+            const authoritativeAmounts = calculateAmcAmounts({
+              taxableAmount: newTaxableAmount,
+              cgstRate: calculatedCgstRate,
+              sgstRate: calculatedSgstRate,
+              igstRate: calculatedIgstRate,
+            });
 
-        performedBy:
-          req.user._id,
+            // 4. Sequential Invoice Number Reservation
+            const invoiceIdentity = await getNextAmcInvoiceIdentity({ session });
 
-        performedByName:
-          req.user.name ||
-          "Admin",
+            // 5. Create Permanent AmcInvoice
+            createdInvoice = new AmcInvoice({
+              invoiceCode: invoiceIdentity.invoiceCode,
+              invoiceNumber: invoiceIdentity.invoiceNumber,
+              invoiceType: "Renewal",
+              amcContractId: contract._id,
+              contractCode: contract.contractCode,
+              clientId: contract.clientId,
+              clientCode: contract.clientCode,
+              clientName: contract.clientName,
+              productId: contract.productId,
+              productCode: contract.productCode,
+              productName: contract.productName,
+              clientProductId: contract.clientProductId,
+              plan: normalizedPlan,
+              licensedUsers: normalizedUsers,
+              contractStartDate: newStartDate,
+              contractExpiryDate: newExpiryDate,
+              invoiceDate: new Date(),
+              dueDate: newDueDate,
+              taxableAmount: authoritativeAmounts.taxableAmount,
+              cgstRate: authoritativeAmounts.cgstRate,
+              cgstAmount: authoritativeAmounts.cgstAmount,
+              sgstRate: authoritativeAmounts.sgstRate,
+              sgstAmount: authoritativeAmounts.sgstAmount,
+              igstRate: authoritativeAmounts.igstRate,
+              igstAmount: authoritativeAmounts.igstAmount,
+              totalTaxAmount: authoritativeAmounts.totalTaxAmount,
+              totalAmount: authoritativeAmounts.totalAmount,
+              paidAmount: 0,
+              pendingAmount: authoritativeAmounts.totalAmount,
+              paymentStatus: "Pending",
+              status: "Issued",
+              taxClassification: resolvedTaxClassification,
+              idempotencyKey: normalizedIdempotencyKey,
+              notes: String(
+                notes ||
+                `AMC renewal after ${contract.currentInvoiceCode || contract.contractCode}`
+              ).trim(),
+              createdBy: req.user?._id || null,
+              createdByName: req.user?.name || "Admin",
+              updatedBy: req.user?._id || null,
+              updatedByName: req.user?.name || "Admin",
+              isDeleted: false,
+            });
 
-        performedByRole:
-          req.user.role ||
-          "admin",
+            await createdInvoice.save({ session });
 
-        metadata: {
-          previousInvoiceId:
-            previousInvoice._id,
+            // 6. Early Renewal vs Immediate Lifecycle Transition
+            const today = new Date();
+            const existingExpiry = contract.expiryDate ? new Date(contract.expiryDate) : null;
+            isEarlyRenewal =
+              contract.status !== "Cancelled" &&
+              existingExpiry &&
+              newStartDate > existingExpiry &&
+              today <= existingExpiry;
 
-          previousInvoiceCode:
-            previousInvoice.invoiceCode,
+            if (isEarlyRenewal) {
+              // Store as upcomingRenewal: ongoing active coverage stays untouched!
+              lockedContract.upcomingRenewal = {
+                invoiceId: createdInvoice._id,
+                invoiceCode: createdInvoice.invoiceCode,
+                startDate: newStartDate,
+                expiryDate: newExpiryDate,
+                dueDate: newDueDate,
+                plan: normalizedPlan,
+                licensedUsers: normalizedUsers,
+                taxableAmount: authoritativeAmounts.taxableAmount,
+                cgstRate: authoritativeAmounts.cgstRate,
+                cgstAmount: authoritativeAmounts.cgstAmount,
+                sgstRate: authoritativeAmounts.sgstRate,
+                sgstAmount: authoritativeAmounts.sgstAmount,
+                igstRate: authoritativeAmounts.igstRate,
+                igstAmount: authoritativeAmounts.igstAmount,
+                totalTaxAmount: authoritativeAmounts.totalTaxAmount,
+                totalAmount: authoritativeAmounts.totalAmount,
+                gstApplicable: normalizedGstApplicable,
+                taxType: normalizedTaxType,
+                taxClassification: resolvedTaxClassification,
+                paymentStatus: "Pending",
+                notes: createdInvoice.notes,
+                createdAt: new Date(),
+              };
 
-          newInvoiceId:
-            createdInvoice._id,
+              lockedContract.timeline = lockedContract.timeline || [];
+              lockedContract.timeline.push({
+                type: "renewal",
+                title: "AMC Future Renewal Scheduled",
+                description: `Renewal invoice ${createdInvoice.invoiceCode} generated for future period ${newStartDate.toISOString().slice(0, 10)} to ${newExpiryDate.toISOString().slice(0, 10)}. Ongoing coverage remains active until ${existingExpiry.toISOString().slice(0, 10)}.`,
+                performedBy: req.user?._id || null,
+                performedByName: req.user?.name || "Admin",
+                performedByRole: req.user?.role || "admin",
+              });
+            } else {
+              // Standard / Post-expiry Renewal: Archive prior cycle and transition contract
+              lockedContract.renewalHistory = lockedContract.renewalHistory || [];
+              lockedContract.renewalHistory.push({
+                cycleNumber: (lockedContract.renewalHistory?.length || 0) + 1,
+                previousInvoiceId: lockedContract.currentInvoiceId || null,
+                previousInvoiceCode: lockedContract.currentInvoiceCode || lockedContract.invoiceCode || "",
+                startDate: lockedContract.startDate,
+                expiryDate: lockedContract.expiryDate,
+                dueDate: lockedContract.dueDate,
+                plan: lockedContract.plan,
+                licensedUsers: lockedContract.licensedUsers,
+                taxableAmount: lockedContract.taxableAmount,
+                cgstRate: lockedContract.cgstRate,
+                cgstAmount: lockedContract.cgstAmount,
+                sgstRate: lockedContract.sgstRate,
+                sgstAmount: lockedContract.sgstAmount,
+                igstRate: lockedContract.igstRate,
+                igstAmount: lockedContract.igstAmount,
+                totalTaxAmount: lockedContract.totalTaxAmount,
+                totalAmount: lockedContract.totalAmount,
+                paidAmount: lockedContract.paidAmount,
+                pendingAmount: lockedContract.pendingAmount,
+                status: lockedContract.status,
+                gstApplicable: lockedContract.gstApplicable || "YES",
+                taxType: lockedContract.taxType || "intra",
+                taxClassification: lockedContract.taxClassification || "Standard Rate (18%)",
+                notes: lockedContract.notes,
+                archivedAt: new Date(),
+                archivedBy: req.user?._id || null,
+                archivedByName: req.user?.name || "Admin",
+              });
 
-          newInvoiceCode:
-            createdInvoice.invoiceCode,
+              lockedContract.startDate = newStartDate;
+              lockedContract.expiryDate = newExpiryDate;
+              lockedContract.dueDate = newDueDate;
+              lockedContract.plan = normalizedPlan;
+              lockedContract.licensedUsers = normalizedUsers;
+              lockedContract.taxableAmount = authoritativeAmounts.taxableAmount;
+              lockedContract.cgstRate = authoritativeAmounts.cgstRate;
+              lockedContract.cgstAmount = authoritativeAmounts.cgstAmount;
+              lockedContract.sgstRate = authoritativeAmounts.sgstRate;
+              lockedContract.sgstAmount = authoritativeAmounts.sgstAmount;
+              lockedContract.igstRate = authoritativeAmounts.igstRate;
+              lockedContract.igstAmount = authoritativeAmounts.igstAmount;
+              lockedContract.totalTaxAmount = authoritativeAmounts.totalTaxAmount;
+              lockedContract.totalAmount = authoritativeAmounts.totalAmount;
+              lockedContract.paidAmount = 0;
+              lockedContract.pendingAmount = authoritativeAmounts.totalAmount;
+              lockedContract.gstApplicable = normalizedGstApplicable;
+              lockedContract.taxType = normalizedTaxType;
+              lockedContract.taxClassification = resolvedTaxClassification;
+              lockedContract.currentInvoiceId = createdInvoice._id;
+              lockedContract.currentInvoiceCode = createdInvoice.invoiceCode;
+              lockedContract.invoiceCode = createdInvoice.invoiceCode;
+              lockedContract.invoiceDate = createdInvoice.invoiceDate;
+              lockedContract.status = "Pending";
+              lockedContract.upcomingRenewal = {
+                invoiceId: null,
+                invoiceCode: "",
+                startDate: null,
+                expiryDate: null,
+                dueDate: null,
+                plan: "Standard",
+                licensedUsers: 1,
+                taxableAmount: 0,
+                cgstRate: 0,
+                cgstAmount: 0,
+                sgstRate: 0,
+                sgstAmount: 0,
+                igstRate: 0,
+                igstAmount: 0,
+                totalTaxAmount: 0,
+                totalAmount: 0,
+                gstApplicable: "YES",
+                taxType: "intra",
+                taxClassification: "Standard Rate (18%)",
+                paymentStatus: "Pending",
+                notes: "",
+                createdAt: null,
+              };
 
-          startDate:
-            newStartDate,
+              // Synchronize Client Document
+              const clientDoc = await Client.findById(contract.clientId).session(session);
+              if (clientDoc) {
+                const clientProduct = clientDoc.products?.id
+                  ? clientDoc.products.id(contract.clientProductId)
+                  : (clientDoc.products || []).find((p) => String(p._id) === String(contract.clientProductId));
+                if (clientProduct) {
+                  clientProduct.amcStatus = "Pending";
+                  clientProduct.expiryDate = newExpiryDate.toISOString().slice(0, 10);
+                }
+                clientDoc.amcStatus = "Pending";
+                clientDoc.nextRenewal = newExpiryDate.toISOString().slice(0, 10);
+                clientDoc.updatedBy = req.user?._id || null;
+                clientDoc.updatedByName = req.user?.name || "Admin";
+                await clientDoc.save({ session });
+              }
 
-          expiryDate:
-            newExpiryDate,
+              lockedContract.timeline = lockedContract.timeline || [];
+              lockedContract.timeline.push({
+                type: "renewal",
+                title: "AMC Contract Renewed",
+                description: `Contract ${contract.contractCode} renewed. New invoice ${createdInvoice.invoiceCode} generated.`,
+                performedBy: req.user?._id || null,
+                performedByName: req.user?.name || "Admin",
+                performedByRole: req.user?.role || "admin",
+              });
+            }
 
-          taxableAmount:
-            newTaxableAmount,
+            lockedContract.updatedBy = req.user?._id || null;
+            lockedContract.updatedByName = req.user?.name || "Admin";
+            await lockedContract.save({ session });
+            finalContract = lockedContract;
 
-          totalAmount,
-        },
-      });
+            // 7. Activity Log (Session-bound for atomic rollback safety)
+            await createActivityLog(
+              {
+                action: isEarlyRenewal ? "AMC Future Renewal Scheduled" : "AMC Renewed",
+                category: "AMC",
+                description: `${contract.contractCode} renewal invoice ${createdInvoice.invoiceCode} was generated.`,
+                entityType: "amc",
+                entityId: contract._id,
+                entityCode: contract.contractCode,
+                entityName: `${contract.clientName} - ${contract.productName}`,
+                clientId: contract.clientId,
+                clientName: contract.clientName,
+                employeeId: contract.assignedEmployeeId,
+                employeeName: contract.assignedEmployeeName,
+                performedBy: req.user?._id || null,
+                performedByName: req.user?.name || "Admin",
+                performedByRole: req.user?.role || "admin",
+                metadata: {
+                  isEarlyRenewal,
+                  newInvoiceId: createdInvoice._id,
+                  newInvoiceCode: createdInvoice.invoiceCode,
+                  startDate: newStartDate,
+                  expiryDate: newExpiryDate,
+                  taxableAmount: authoritativeAmounts.taxableAmount,
+                  totalAmount: authoritativeAmounts.totalAmount,
+                  gstApplicable: normalizedGstApplicable,
+                },
+              },
+              { session }
+            );
+
+            // 8. Record Idempotency Log
+            if (normalizedIdempotencyKey) {
+              await IdempotencyLog.create(
+                [
+                  {
+                    idempotencyKey: normalizedIdempotencyKey,
+                    endpoint: "/api/admin/amc/contract/:id/renew",
+                    contractId: contract._id,
+                    payloadHash,
+                    status: "COMPLETED",
+                    responseStatus: 201,
+                    responseBody: {
+                      success: true,
+                      message: isEarlyRenewal
+                        ? `AMC future renewal scheduled successfully. Invoice ${createdInvoice.invoiceCode} generated.`
+                        : `AMC renewed successfully. Invoice ${createdInvoice.invoiceCode} has been generated.`,
+                      data: {
+                        isEarlyRenewal,
+                        contract: mergeAmcContractWithInvoice(lockedContract, createdInvoice),
+                        invoice: amcInvoiceResponse(createdInvoice),
+                      },
+                      contract: mergeAmcContractWithInvoice(lockedContract, createdInvoice),
+                      invoice: amcInvoiceResponse(createdInvoice),
+                    },
+                  },
+                ],
+                { session }
+              );
+            }
+          });
+
+          transactionSuccess = true;
+        } catch (error) {
+          const isTransient =
+            error.hasErrorLabel &&
+            (error.hasErrorLabel("TransientTransactionError") ||
+              error.hasErrorLabel("UnknownTransactionCommitResult"));
+
+          if (isTransient && attempt < maxRetries) {
+            console.warn(`Transient error during AMC renewal (attempt ${attempt}):`, error.message);
+            continue;
+          }
+
+          if (error.statusCode) {
+            // If overlapping invoice was detected but was committed concurrently by our own idempotency key
+            if (error.statusCode === 409 && normalizedIdempotencyKey) {
+              const replayLog = await IdempotencyLog.findOne({
+                idempotencyKey: normalizedIdempotencyKey,
+                status: "COMPLETED",
+              });
+              if (replayLog && replayLog.responseBody) {
+                return res.status(replayLog.responseStatus || 200).json({
+                  ...(replayLog.responseBody || {}),
+                  isReplay: true,
+                });
+              }
+            }
+
+            return res.status(error.statusCode).json({
+              success: false,
+              message: error.message,
+            });
+          }
+
+          if (error.code === 11000) {
+            if (normalizedIdempotencyKey) {
+              const replayLog = await IdempotencyLog.findOne({
+                idempotencyKey: normalizedIdempotencyKey,
+                status: "COMPLETED",
+              });
+              if (replayLog && replayLog.responseBody) {
+                return res.status(replayLog.responseStatus || 200).json({
+                  ...(replayLog.responseBody || {}),
+                  isReplay: true,
+                });
+              }
+            }
+
+            // If collision occurred on invoice code/number during concurrent generation, retry with next sequence
+            const isInvoiceCollision =
+              (error.message && (error.message.includes("invoiceCode") || error.message.includes("invoiceNumber"))) ||
+              (error.keyPattern && (error.keyPattern.invoiceCode || error.keyPattern.invoiceNumber));
+
+            if (isInvoiceCollision && attempt < maxRetries) {
+              console.warn(
+                `Invoice identity sequence collision during renewal (attempt ${attempt}), retrying with next sequence...`
+              );
+              continue;
+            }
+
+            return res.status(409).json({
+              success: false,
+              message: "AMC renewal invoice or unique constraint collision. Please try again.",
+            });
+          }
+
+          console.error("AMC renewal transaction failed:", error);
+          return res.status(500).json({
+            success: false,
+            message: error.message || "Failed to complete AMC renewal transaction.",
+          });
+        } finally {
+          await session.endSession();
+        }
+      }
 
       /* =================================================
-         RESPONSE
+         FINAL RESPONSE
       ================================================= */
-
-      const contractData =
-        mergeAmcContractWithInvoice(
-          contract,
-          createdInvoice
-        );
+      const contractData = mergeAmcContractWithInvoice(finalContract, createdInvoice);
+      const invoiceData = amcInvoiceResponse(createdInvoice);
 
       return res.status(201).json({
         success: true,
-
-        message:
-          `AMC renewed successfully. Invoice ${createdInvoice.invoiceCode} has been generated.`,
-
+        isEarlyRenewal,
+        message: isEarlyRenewal
+          ? `AMC future renewal scheduled successfully. Invoice ${createdInvoice.invoiceCode} generated.`
+          : `AMC renewed successfully. Invoice ${createdInvoice.invoiceCode} has been generated.`,
         data: {
-          contract:
-            contractData,
-
-          invoice:
-            amcInvoiceResponse(
-              createdInvoice
-            ),
-
-          previousInvoice:
-            amcInvoiceResponse(
-              previousInvoice
-            ),
+          isEarlyRenewal,
+          contract: contractData,
+          invoice: invoiceData,
         },
-
-        contract:
-          contractData,
-
-        invoice:
-          amcInvoiceResponse(
-            createdInvoice
-          ),
+        contract: contractData,
+        invoice: invoiceData,
       });
     } catch (error) {
-      console.error(
-        "AMC renewal error:",
-        error
-      );
-
-      /*
-       * If invoice was created but something after that
-       * failed, remove ONLY the new invoice.
-       *
-       * Old invoices/payments remain untouched.
-       */
-
-      if (
-        createdInvoice?._id
-      ) {
-        await AmcInvoice.deleteOne({
-          _id:
-            createdInvoice._id,
-        }).catch(() => {});
-      }
-
-      if (
-        error.code === 11000
-      ) {
-        return res.status(409).json({
-          success: false,
-          message:
-            "AMC renewal invoice number already exists. Please try again.",
-        });
-      }
-
+      console.error("AMC renewal root error:", error);
       return res.status(500).json({
         success: false,
-
-        message:
-          error.message ||
-          "Unable to renew AMC contract.",
+        message: error.message || "Unable to renew AMC contract.",
       });
     }
   }
 );
+
+/* =====================================================
+   AUTONOMOUS FUTURE AMC ACTIVATION WORKER
+   syncUpcomingAmcRenewals()
+===================================================== */
+async function syncUpcomingAmcRenewals() {
+  const now = new Date();
+  const dueContracts = await AmcContract.find({
+    isDeleted: false,
+    "upcomingRenewal.startDate": { $lte: now },
+    "upcomingRenewal.invoiceId": { $ne: null },
+  });
+
+  if (!dueContracts || dueContracts.length === 0) {
+    return { activatedCount: 0 };
+  }
+
+  let activatedCount = 0;
+
+  for (const contract of dueContracts) {
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        const freshContract = await AmcContract.findById(contract._id).session(session);
+        if (
+          !freshContract ||
+          !freshContract.upcomingRenewal?.startDate ||
+          freshContract.upcomingRenewal.startDate > now
+        ) {
+          return;
+        }
+
+        const upcoming = freshContract.upcomingRenewal;
+
+        // 1. Archive previous active cycle
+        freshContract.renewalHistory = freshContract.renewalHistory || [];
+        freshContract.renewalHistory.push({
+          cycleNumber: (freshContract.renewalHistory?.length || 0) + 1,
+          previousInvoiceId: freshContract.currentInvoiceId || null,
+          previousInvoiceCode: freshContract.currentInvoiceCode || freshContract.invoiceCode || "",
+          startDate: freshContract.startDate,
+          expiryDate: freshContract.expiryDate,
+          dueDate: freshContract.dueDate,
+          plan: freshContract.plan,
+          licensedUsers: freshContract.licensedUsers,
+          taxableAmount: freshContract.taxableAmount,
+          cgstRate: freshContract.cgstRate,
+          cgstAmount: freshContract.cgstAmount,
+          sgstRate: freshContract.sgstRate,
+          sgstAmount: freshContract.sgstAmount,
+          igstRate: freshContract.igstRate,
+          igstAmount: freshContract.igstAmount,
+          totalTaxAmount: freshContract.totalTaxAmount,
+          totalAmount: freshContract.totalAmount,
+          paidAmount: freshContract.paidAmount,
+          pendingAmount: freshContract.pendingAmount,
+          status: freshContract.status,
+          gstApplicable: freshContract.gstApplicable || "YES",
+          taxType: freshContract.taxType || "intra",
+          taxClassification: freshContract.taxClassification || "Standard Rate (18%)",
+          notes: freshContract.notes,
+          archivedAt: now,
+          archivedBy: null,
+          archivedByName: "Autonomous AMC Scheduler",
+        });
+
+        // 2. Transition active cycle to the upcoming renewal
+        freshContract.startDate = upcoming.startDate;
+        freshContract.expiryDate = upcoming.expiryDate;
+        freshContract.dueDate = upcoming.dueDate;
+        freshContract.plan = upcoming.plan;
+        freshContract.licensedUsers = upcoming.licensedUsers;
+        freshContract.taxableAmount = upcoming.taxableAmount;
+        freshContract.cgstRate = upcoming.cgstRate;
+        freshContract.cgstAmount = upcoming.cgstAmount;
+        freshContract.sgstRate = upcoming.sgstRate;
+        freshContract.sgstAmount = upcoming.sgstAmount;
+        freshContract.igstRate = upcoming.igstRate;
+        freshContract.igstAmount = upcoming.igstAmount;
+        freshContract.totalTaxAmount = upcoming.totalTaxAmount;
+        freshContract.totalAmount = upcoming.totalAmount;
+        freshContract.gstApplicable = upcoming.gstApplicable;
+        freshContract.taxType = upcoming.taxType;
+        freshContract.taxClassification = upcoming.taxClassification;
+        freshContract.currentInvoiceId = upcoming.invoiceId;
+        freshContract.currentInvoiceCode = upcoming.invoiceCode;
+        freshContract.invoiceCode = upcoming.invoiceCode;
+        freshContract.invoiceDate = upcoming.createdAt || now;
+
+        const linkedInvoice = await AmcInvoice.findById(upcoming.invoiceId).session(session);
+        freshContract.paidAmount = linkedInvoice?.paidAmount || 0;
+        freshContract.pendingAmount = linkedInvoice?.pendingAmount || upcoming.totalAmount;
+        freshContract.status = linkedInvoice?.paymentStatus === "Paid" ? "Paid" : "Pending";
+
+        // 3. Clear upcomingRenewal
+        freshContract.upcomingRenewal = {
+          invoiceId: null,
+          invoiceCode: "",
+          startDate: null,
+          expiryDate: null,
+          dueDate: null,
+          plan: "Standard",
+          licensedUsers: 1,
+          taxableAmount: 0,
+          cgstRate: 0,
+          cgstAmount: 0,
+          sgstRate: 0,
+          sgstAmount: 0,
+          igstRate: 0,
+          igstAmount: 0,
+          totalTaxAmount: 0,
+          totalAmount: 0,
+          gstApplicable: "YES",
+          taxType: "intra",
+          taxClassification: "Standard Rate (18%)",
+          paymentStatus: "Pending",
+          notes: "",
+          createdAt: null,
+        };
+
+        // 4. Update Client Product Status
+        const client = await Client.findById(freshContract.clientId).session(session);
+        if (client) {
+          const clientProd = client.products?.id
+            ? client.products.id(freshContract.clientProductId)
+            : (client.products || []).find((p) => String(p._id) === String(freshContract.clientProductId));
+          if (clientProd) {
+            clientProd.expiryDate = freshContract.expiryDate.toISOString().slice(0, 10);
+            clientProd.amcStatus = freshContract.status;
+          }
+          client.nextRenewal = freshContract.expiryDate.toISOString().slice(0, 10);
+          client.amcStatus = freshContract.status;
+          await client.save({ session });
+        }
+
+        freshContract.timeline = freshContract.timeline || [];
+        freshContract.timeline.push({
+          type: "renewal",
+          title: "Scheduled AMC Renewal Activated",
+          description: `Upcoming AMC cycle for ${freshContract.startDate.toISOString().slice(0, 10)} to ${freshContract.expiryDate.toISOString().slice(0, 10)} transitioned automatically.`,
+          performedByName: "Autonomous Scheduler",
+        });
+
+        await freshContract.save({ session });
+        activatedCount++;
+      });
+    } catch (err) {
+      console.error(`Autonomous renewal activation failed for contract ${contract.contractCode}:`, err);
+    } finally {
+      await session.endSession();
+    }
+  }
+
+  return { activatedCount };
+}
+
+/* =====================================================
+   SECURED CRON / WEBHOOK ENDPOINT FOR SCHEDULER
+   POST /api/admin/amc/cron/sync-renewals
+===================================================== */
+router.post("/amc/cron/sync-renewals", async (req, res) => {
+  try {
+    const cronSecret = process.env.CRON_SECRET;
+    const providedSecret = req.headers["x-cron-secret"] || req.query.secret;
+
+    let isAuthorized = false;
+    if (cronSecret && providedSecret && providedSecret === cronSecret) {
+      isAuthorized = true;
+    } else {
+      // Fallback to standard Bearer token authentication
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        try {
+          const jwt = require("jsonwebtoken");
+          const token = authHeader.split(" ")[1];
+          const decoded = jwt.verify(token, process.env.JWT_SECRET);
+          const role = String(decoded?.role || "").toLowerCase();
+          if (["admin", "superadmin", "super_admin"].includes(role)) {
+            isAuthorized = true;
+          }
+        } catch (jwtErr) {
+          isAuthorized = false;
+        }
+      }
+    }
+
+    if (!isAuthorized) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized. Valid cron secret or administrator credentials required.",
+      });
+    }
+
+    const result = await syncUpcomingAmcRenewals();
+    return res.status(200).json({
+      success: true,
+      message: `Autonomous AMC renewal sync completed successfully. Activated ${result.activatedCount} contract(s).`,
+      data: result,
+    });
+  } catch (error) {
+    console.error("Cron sync-renewals error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to execute autonomous AMC renewal sync.",
+    });
+  }
+});
 
 /* =========================================================
    OMNI GLOBAL SEARCH (Cross-Entity Unified Search)
@@ -33809,4 +28237,5 @@ router.get(
   }
 );
 
+router.syncUpcomingAmcRenewals = syncUpcomingAmcRenewals;
 module.exports = router;

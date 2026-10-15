@@ -15,6 +15,7 @@ import {
     Keyboard,
     Laptop,
     ListTodo,
+    Loader2,
     Monitor,
     MousePointer2,
     Pause,
@@ -384,24 +385,6 @@ const initialIdleSessions = [
     },
 ];
 
-const initialDailyNotes = [
-    {
-        id: 1,
-        text: "GST report taxable-value issue identified.",
-        completed: true,
-    },
-    {
-        id: 2,
-        text: "Corrected query tested with three sample invoices.",
-        completed: true,
-    },
-    {
-        id: 3,
-        text: "Waiting for client confirmation before closing ticket.",
-        completed: false,
-    },
-];
-
 function formatSeconds(totalSeconds) {
     const seconds = Math.max(Number(totalSeconds || 0), 0);
     const hours = Math.floor(seconds / 3600);
@@ -435,6 +418,201 @@ function formatAgentTime(value) {
         hour: "2-digit",
         minute: "2-digit",
     });
+}
+
+const PRODUCTIVE_CATEGORIES = [
+    "Development",
+    "Database",
+    "Remote Support",
+    "Design",
+    "Documentation",
+    "Office",
+    "File Management",
+    "Communication",
+    "Utility",
+];
+
+const UNPRODUCTIVE_CATEGORIES = [
+    "Entertainment",
+    "Social Media",
+    "Games",
+];
+
+export function resolveApplicationCategoryAndProductivity(appInput, windowTitleInput, explicitCategory) {
+    const app = String(appInput || "").trim().toLowerCase();
+    const title = String(windowTitleInput || "").trim().toLowerCase();
+    const cat = String(explicitCategory || "").trim();
+
+    // 1. Remote Support tools (UltraViewer, AnyDesk, TeamViewer, RustDesk, RDP, etc.)
+    if (
+        app.includes("ultraviewer") ||
+        app.includes("anydesk") ||
+        app.includes("teamviewer") ||
+        app.includes("rustdesk") ||
+        app.includes("mstsc") ||
+        app.includes("remote desktop") ||
+        app.includes("zoho assist") ||
+        app.includes("supremo") ||
+        app.includes("ammyy") ||
+        app.includes("vnc") ||
+        title.includes("ultraviewer") ||
+        title.includes("anydesk") ||
+        title.includes("teamviewer") ||
+        title.includes("rustdesk")
+    ) {
+        return { category: "Remote Support", productivity: "Productive" };
+    }
+
+    // 2. Database tools (SSMS, SQL Server Management Studio, DBeaver, pgAdmin, MySQL Workbench, etc.)
+    if (
+        app.includes("ssms") ||
+        app.includes("sql server management studio") ||
+        app.includes("dbeaver") ||
+        app.includes("pgadmin") ||
+        app.includes("mysql") ||
+        app.includes("navicat") ||
+        app.includes("datagrip") ||
+        app.includes("heidisql") ||
+        app.includes("tableplus") ||
+        app.includes("compass") ||
+        app.includes("studio 3t") ||
+        app.includes("robo 3t") ||
+        app.includes("redis") ||
+        app.includes("sql") ||
+        title.includes("management studio") ||
+        title.includes("ssms") ||
+        title.includes(".sql") ||
+        title.includes("database")
+    ) {
+        return { category: "Database", productivity: "Productive" };
+    }
+
+    // 3. File Explorer / Windows Explorer / File Managers
+    if (
+        app === "explorer" ||
+        app === "explorer.exe" ||
+        app.includes("file explorer") ||
+        app.includes("windows explorer") ||
+        app.includes("total commander") ||
+        app.includes("7-zip") ||
+        app.includes("winrar") ||
+        app.includes("everything") ||
+        title.includes("file explorer")
+    ) {
+        return { category: "File Management", productivity: "Productive" };
+    }
+
+    // 4. Code Editors, IDEs & Developer Terminals
+    if (
+        app.includes("code") ||
+        app.includes("visual studio") ||
+        app.includes("devenv") ||
+        app.includes("cursor") ||
+        app.includes("sublime") ||
+        app.includes("notepad++") ||
+        app.includes("idea") ||
+        app.includes("webstorm") ||
+        app.includes("pycharm") ||
+        app.includes("phpstorm") ||
+        app.includes("android studio") ||
+        app.includes("eclipse") ||
+        app.includes("terminal") ||
+        app.includes("powershell") ||
+        app.includes("cmd") ||
+        app.includes("git") ||
+        app.includes("postman") ||
+        app.includes("insomnia") ||
+        app.includes("docker") ||
+        title.includes("visual studio code") ||
+        title.includes("cursor")
+    ) {
+        return { category: "Development", productivity: "Productive" };
+    }
+
+    // 5. Office, Documents & Design
+    if (
+        app.includes("winword") ||
+        app.includes("word") ||
+        app.includes("excel") ||
+        app.includes("powerpnt") ||
+        app.includes("powerpoint") ||
+        app.includes("onenote") ||
+        app.includes("acrobat") ||
+        app.includes("pdf") ||
+        app.includes("figma") ||
+        app.includes("photoshop") ||
+        app.includes("illustrator") ||
+        app.includes("canva")
+    ) {
+        return { category: "Office", productivity: "Productive" };
+    }
+
+    // 6. Collaboration & Communication
+    if (
+        app.includes("teams") ||
+        app.includes("slack") ||
+        app.includes("zoom") ||
+        app.includes("skype") ||
+        app.includes("meet")
+    ) {
+        return { category: "Communication", productivity: "Productive" };
+    }
+
+    // 7. Entertainment, Social Media & Games (Unproductive)
+    if (
+        app.includes("netflix") ||
+        app.includes("spotify") ||
+        app.includes("steam") ||
+        app.includes("game") ||
+        title.includes("youtube") ||
+        title.includes("facebook") ||
+        title.includes("instagram") ||
+        title.includes("twitter") ||
+        title.includes("tiktok") ||
+        title.includes("netflix")
+    ) {
+        return { category: "Entertainment", productivity: "Unproductive" };
+    }
+
+    // 8. Explicit category fallback
+    if (cat && cat !== "Other" && cat !== "General") {
+        const isProd = PRODUCTIVE_CATEGORIES.includes(cat);
+        const isUnprod = UNPRODUCTIVE_CATEGORIES.includes(cat);
+        return {
+            category: cat,
+            productivity: isProd ? "Productive" : isUnprod ? "Unproductive" : "Neutral",
+        };
+    }
+
+    // Default fallback
+    return { category: "Office", productivity: "Productive" };
+}
+
+function getCategoryColor(category) {
+    switch (category) {
+        case "Development":
+            return "bg-emerald-500";
+        case "Database":
+            return "bg-cyan-500";
+        case "Remote Support":
+            return "bg-violet-600";
+        case "File Management":
+            return "bg-blue-500";
+        case "Office":
+            return "bg-amber-500";
+        case "Design":
+            return "bg-pink-500";
+        case "Communication":
+            return "bg-indigo-500";
+        case "Documentation":
+            return "bg-teal-500";
+        case "Entertainment":
+        case "Social Media":
+        case "Games":
+            return "bg-rose-500";
+        default:
+            return "bg-slate-400";
+    }
 }
 
 function getProductivityClasses(productivity) {
@@ -502,6 +680,8 @@ export default function TimeLog() {
 
     const [selectedTaskId, setSelectedTaskId] = useState("TSK-2084");
     const [manualTaskId, setManualTaskId] = useState("");
+    const [isStartingSession, setIsStartingSession] = useState(false);
+    const [isEndingSession, setIsEndingSession] = useState(false);
     const [timerRunning, setTimerRunning] = useState(true);
     const [currentSessionSeconds, setCurrentSessionSeconds] = useState(0);
     const [agentEvents, setAgentEvents] = useState([]);
@@ -520,103 +700,100 @@ export default function TimeLog() {
     const [taskSessions, setTaskSessions] = useState([]);
 
     const applicationUsage = useMemo(() => {
-    const applicationMap = new Map();
+        const applicationMap = new Map();
 
-    for (const app of apiApplications) {
-        const applicationName =
-            app.applicationName ||
-            app.application ||
-            "Unknown Application";
+        for (const app of apiApplications) {
+            const applicationName =
+                app.applicationName ||
+                app.application ||
+                "Unknown Application";
 
-        // Normalize name so "Google Chrome" and "google chrome"
-        // are treated as the same application.
-        const key = applicationName.trim().toLowerCase();
+            const key = applicationName.trim().toLowerCase();
 
-        if (!applicationMap.has(key)) {
-            applicationMap.set(key, {
-                ...app,
+            const resolved = resolveApplicationCategoryAndProductivity(
                 applicationName,
-                totalSeconds: 0,
-                sessionCount: 0,
-            });
+                app.lastWindowTitle,
+                app.category
+            );
+
+            if (!applicationMap.has(key)) {
+                applicationMap.set(key, {
+                    ...app,
+                    applicationName,
+                    category: resolved.category,
+                    productivity: resolved.productivity,
+                    totalSeconds: 0,
+                    sessionCount: 0,
+                });
+            }
+
+            const merged = applicationMap.get(key);
+
+            merged.totalSeconds += Number(app.totalSeconds || 0);
+            merged.sessionCount += Number(app.sessionCount || 0);
+
+            // Keep most recent application/window information.
+            const oldTime = merged.lastSeen
+                ? new Date(merged.lastSeen).getTime()
+                : 0;
+
+            const newTime = app.lastSeen
+                ? new Date(app.lastSeen).getTime()
+                : 0;
+
+            if (newTime >= oldTime) {
+                merged.lastSeen = app.lastSeen || merged.lastSeen;
+
+                merged.lastWindowTitle =
+                    app.lastWindowTitle ||
+                    merged.lastWindowTitle;
+
+                merged.category = resolved.category;
+                merged.productivity = resolved.productivity;
+            }
         }
 
-        const merged = applicationMap.get(key);
-
-        merged.totalSeconds += Number(app.totalSeconds || 0);
-        merged.sessionCount += Number(app.sessionCount || 0);
-
-        // Keep most recent application/window information.
-        const oldTime = merged.lastSeen
-            ? new Date(merged.lastSeen).getTime()
-            : 0;
-
-        const newTime = app.lastSeen
-            ? new Date(app.lastSeen).getTime()
-            : 0;
-
-        if (newTime >= oldTime) {
-            merged.lastSeen = app.lastSeen || merged.lastSeen;
-
-            merged.lastWindowTitle =
-                app.lastWindowTitle ||
-                merged.lastWindowTitle;
-
-            merged.category =
-                app.category ||
-                merged.category;
-        }
-
-        // Productive takes priority if application has mixed task records.
-        if (app.productivity === "Productive") {
-            merged.productivity = "Productive";
-        } else if (
-            app.productivity === "Unproductive" &&
-            merged.productivity !== "Productive"
-        ) {
-            merged.productivity = "Unproductive";
-        } else if (!merged.productivity) {
-            merged.productivity = "Neutral";
-        }
-    }
-
-    const mergedApplications = Array.from(
-        applicationMap.values()
-    );
-
-    const totalSeconds = mergedApplications.reduce(
-        (sum, app) =>
-            sum + Number(app.totalSeconds || 0),
-        0
-    );
-
-    return mergedApplications
-        .map((app) => ({
-            ...app,
-
-            percentage:
-                totalSeconds > 0
-                    ? Math.round(
-                          (Number(app.totalSeconds || 0) /
-                              totalSeconds) *
-                              100
-                      )
-                    : 0,
-        }))
-        .sort(
-            (a, b) =>
-                Number(b.totalSeconds || 0) -
-                Number(a.totalSeconds || 0)
+        const mergedApplications = Array.from(
+            applicationMap.values()
         );
-}, [apiApplications]);
+
+        const totalSeconds = mergedApplications.reduce(
+            (sum, app) =>
+                sum + Number(app.totalSeconds || 0),
+            0
+        );
+
+        return mergedApplications
+            .map((app) => ({
+                ...app,
+
+                percentage:
+                    totalSeconds > 0
+                        ? Math.round(
+                              (Number(app.totalSeconds || 0) /
+                                  totalSeconds) *
+                                  100
+                          )
+                        : 0,
+            }))
+            .sort(
+                (a, b) =>
+                    Number(b.totalSeconds || 0) -
+                    Number(a.totalSeconds || 0)
+            );
+    }, [apiApplications]);
 
     const timeDistribution = useMemo(() => {
         const categoryMap = new Map();
         let total = 0;
 
         for (const app of apiApplications) {
-            const rawCategory = (app.category || "Other").trim();
-            const category = rawCategory || "Other";
+            const resolved = resolveApplicationCategoryAndProductivity(
+                app.applicationName || app.application,
+                app.lastWindowTitle,
+                app.category
+            );
+            const category = resolved.category || "Office";
             const seconds = Number(app.totalSeconds || 0);
             total += seconds;
 
@@ -633,7 +810,8 @@ export default function TimeLog() {
             .sort((a, b) => b.seconds - a.seconds);
     }, [apiApplications]);
     const [idleSessions] = useState(initialIdleSessions);
-    const [dailyNotes, setDailyNotes] = useState(initialDailyNotes);
+    const [dailyNotes, setDailyNotes] = useState([]);
+    const [isSubmittingNote, setIsSubmittingNote] = useState(false);
 
     const [noteText, setNoteText] = useState("");
     const [searchValue, setSearchValue] = useState("");
@@ -648,7 +826,7 @@ export default function TimeLog() {
 
             if (!token) return;
 
-            const [timeRes, dashboardRes, sessionsRes, activityRes] =
+            const [timeRes, dashboardRes, sessionsRes, activityRes, notesRes] =
                 await Promise.all([
                     fetch(`${API_BASE_URL}/api/employee/time-log/today`, {
                         headers: { Authorization: `Bearer ${token}` },
@@ -662,12 +840,27 @@ export default function TimeLog() {
                     fetch(`${API_BASE_URL}/api/employee/time-log/activity`, {
                         headers: { Authorization: `Bearer ${token}` },
                     }),
+                    fetch(`${API_BASE_URL}/api/employee/time-log/notes`, {
+                        headers: { Authorization: `Bearer ${token}` },
+                    }),
                 ]);
 
             const timeResult = await timeRes.json();
             const dashboardResult = await dashboardRes.json();
             const sessionsResult = await sessionsRes.json();
             const activityResult = await activityRes.json();
+            let notesResult = null;
+            try {
+                notesResult = await notesRes.json();
+            } catch {
+                notesResult = null;
+            }
+
+            if (notesResult && notesResult.success && Array.isArray(notesResult.data)) {
+                setDailyNotes(notesResult.data);
+            } else if (timeResult?.data?.notes && Array.isArray(timeResult.data.notes)) {
+                setDailyNotes(timeResult.data.notes);
+            }
 
 
             if (sessionsResult.success) {
@@ -675,20 +868,11 @@ export default function TimeLog() {
             }
             if (activityResult.success) {
                 const mappedEvents = (activityResult.data || []).map((log) => {
-                    const category = log.category || "Other";
-                    const productivity =
-                        log.productivity ||
-                        (category === "Development" ||
-                        category === "Database" ||
-                        category === "Design" ||
-                        category === "Documentation" ||
-                        category === "Office"
-                            ? "Productive"
-                            : category === "Entertainment" ||
-                              category === "Social Media" ||
-                              category === "Games"
-                            ? "Unproductive"
-                            : "Neutral");
+                    const resolved = resolveApplicationCategoryAndProductivity(
+                        log.applicationName || log.application,
+                        log.windowTitle || log.lastWindowTitle,
+                        log.category
+                    );
 
                     return {
                         id: log.id || log._id,
@@ -700,9 +884,9 @@ export default function TimeLog() {
                             "Unknown Application",
                         windowTitle:
                             log.windowTitle || log.lastWindowTitle || "",
-                        category,
-                        productivity,
-                        activityStatus: log.activity || "Active",
+                        category: resolved.category,
+                        productivity: resolved.productivity,
+                        activityStatus: log.activity || (resolved.productivity === "Unproductive" ? "Idle" : "Active"),
                         durationSeconds: Number(
                             log.durationSeconds ?? log.totalSeconds ?? 0
                         ),
@@ -769,17 +953,47 @@ export default function TimeLog() {
         return () => window.clearInterval(refreshId);
     }, []);
 
-    const activeTask =
-        dashboardData?.activeTask ||
-        dashboardData?.tasks?.[0] ||
-        null;
+    const allTasks = useMemo(() => dashboardData?.tasks || [], [dashboardData?.tasks]);
+
+    const activeTasks = useMemo(
+        () => allTasks.filter((t) => !["Completed", "Cancelled", "Closed", "Resolved", "Done"].includes(t.status)),
+        [allTasks]
+    );
+
+    const completedTasks = useMemo(
+        () => allTasks.filter((t) => ["Completed", "Cancelled", "Closed", "Resolved", "Done"].includes(t.status)),
+        [allTasks]
+    );
+
+    const activeTask = dashboardData?.activeTimer || null;
+
+    const currentSelectedTask = useMemo(() => {
+        if (dashboardData?.activeTimer) {
+            return dashboardData.activeTimer;
+        }
+        if (manualTaskId) {
+            const found = allTasks.find((t) => String(t._id) === String(manualTaskId));
+            if (found) return found;
+        }
+        return activeTasks[0] || null;
+    }, [dashboardData?.activeTimer, manualTaskId, allTasks, activeTasks]);
 
     const totalTrackedSeconds =
         apiSummary?.totalTrackedSeconds || 0;
 
-    const productiveSeconds = apiApplications
-        .filter((app) => app.productivity === "Productive")
-        .reduce((total, app) => total + (app.totalSeconds || 0), 0);
+    const productiveSeconds = useMemo(() => {
+        return apiApplications.reduce((sum, app) => {
+            const resolved = resolveApplicationCategoryAndProductivity(
+                app.applicationName || app.application,
+                app.lastWindowTitle,
+                app.category
+            );
+            return resolved.productivity === "Productive"
+                ? sum + Number(app.totalSeconds || 0)
+                : sum;
+        }, 0);
+    }, [apiApplications]);
+
     const selectedTask =
         tasks.find((task) => task.id === selectedTaskId) || tasks[0] || {
             id: "",
@@ -789,22 +1003,33 @@ export default function TimeLog() {
             description: "",
         };
 
-    const unproductiveSeconds = apiApplications
-        .filter((app) => app.productivity === "Unproductive")
-        .reduce((total, app) => total + (app.totalSeconds || 0), 0);
+    const unproductiveSeconds = useMemo(() => {
+        return apiApplications.reduce((sum, app) => {
+            const resolved = resolveApplicationCategoryAndProductivity(
+                app.applicationName || app.application,
+                app.lastWindowTitle,
+                app.category
+            );
+            return resolved.productivity === "Unproductive"
+                ? sum + Number(app.totalSeconds || 0)
+                : sum;
+        }, 0);
+    }, [apiApplications]);
 
     // Real idle time from agent data
-    const idleSeconds = Math.max(
-        totalTrackedSeconds - productiveSeconds - unproductiveSeconds,
-        0
-    );
+    const idleSeconds = useMemo(() => {
+        return Math.max(
+            totalTrackedSeconds - productiveSeconds - unproductiveSeconds,
+            0
+        );
+    }, [totalTrackedSeconds, productiveSeconds, unproductiveSeconds]);
 
     // Real productivity score
-
-    const productivityScore =
-        totalTrackedSeconds > 0
+    const productivityScore = useMemo(() => {
+        return totalTrackedSeconds > 0
             ? Math.round((productiveSeconds / totalTrackedSeconds) * 100)
             : 0;
+    }, [totalTrackedSeconds, productiveSeconds]);
 
     const filteredEvents = useMemo(() => {
         return agentEvents.filter((event) => {
@@ -923,14 +1148,17 @@ useEffect(() => {
     dashboardData?.activeTimer?.elapsedSeconds,
 ]);
     const endCurrentSession = async () => {
-        if (!dashboardData?.activeTimer) return;
+        if (!dashboardData?.activeTimer || isEndingSession) return;
 
+        const taskIdentifier =
+            dashboardData.activeTimer.taskCode || dashboardData.activeTimer.title || "active task";
         const confirmed = window.confirm(
-            `End the active session for ${dashboardData.activeTimer.taskCode}?`
+            `End the active work session for ${taskIdentifier}?`
         );
 
         if (!confirmed) return;
 
+        setIsEndingSession(true);
         const token =
             localStorage.getItem("client-connect-token") ||
             sessionStorage.getItem("client-connect-token");
@@ -949,20 +1177,37 @@ useEffect(() => {
             const result = await response.json();
 
             if (result.success) {
+                setManualTaskId("");
                 await fetchTimeLog();
+            } else {
+                alert(result.message || "Failed to end session");
             }
         } catch (error) {
             console.error("Failed to end session:", error);
+            alert("Failed to end session");
+        } finally {
+            setIsEndingSession(false);
         }
     };
 
-    const startSession = async (taskId) => {
-        const idToStart = taskId || manualTaskId || (dashboardData?.tasks?.[0]?._id);
+    const startSession = async (taskIdToRun) => {
+        if (isStartingSession) return;
+
+        const idToStart = taskIdToRun || manualTaskId || activeTasks[0]?._id;
         if (!idToStart) {
             alert("Please select a task to start tracking.");
             return;
         }
 
+        const taskObj = allTasks.find((t) => String(t._id) === String(idToStart));
+        if (taskObj && ["Completed", "Cancelled", "Closed"].includes(taskObj.status)) {
+            const confirmReopen = window.confirm(
+                `Task "${taskObj.taskCode || ""} ${taskObj.title}" is currently marked as ${taskObj.status}. Do you want to reopen it and start work?`
+            );
+            if (!confirmReopen) return;
+        }
+
+        setIsStartingSession(true);
         const token =
             localStorage.getItem("client-connect-token") ||
             sessionStorage.getItem("client-connect-token");
@@ -982,6 +1227,7 @@ useEffect(() => {
             const result = await response.json();
 
             if (result.success) {
+                setManualTaskId("");
                 await fetchTimeLog();
             } else {
                 alert(result.message || "Unable to start session");
@@ -989,6 +1235,8 @@ useEffect(() => {
         } catch (error) {
             console.error("Failed to start session:", error);
             alert("Failed to start session");
+        } finally {
+            setIsStartingSession(false);
         }
     };
 
@@ -998,6 +1246,17 @@ useEffect(() => {
         if (!nextTaskId) return;
 
         if (dashboardData?.activeTimer) {
+            const taskObj = allTasks.find((t) => String(t._id) === String(nextTaskId));
+            if (taskObj && ["Completed", "Cancelled", "Closed"].includes(taskObj.status)) {
+                const confirmReopen = window.confirm(
+                    `Task "${taskObj.taskCode || ""} ${taskObj.title}" is currently marked as ${taskObj.status}. Do you want to reopen it and switch your timer?`
+                );
+                if (!confirmReopen) {
+                    setManualTaskId(dashboardData.activeTimer._id);
+                    return;
+                }
+            }
+
             const token =
                 localStorage.getItem("client-connect-token") ||
                 sessionStorage.getItem("client-connect-token");
@@ -1017,6 +1276,7 @@ useEffect(() => {
                 const result = await response.json();
 
                 if (result.success) {
+                    setManualTaskId("");
                     await fetchTimeLog();
                 } else {
                     alert(result.message || "Unable to switch task");
@@ -1028,40 +1288,143 @@ useEffect(() => {
         }
     };
 
-    const addDailyNote = (event) => {
+    const addDailyNote = async (event) => {
         event.preventDefault();
 
-        if (!noteText.trim()) return;
+        const trimmedText = noteText.trim();
+        if (!trimmedText || isSubmittingNote) return;
 
-        setDailyNotes((current) => [
-            ...current,
-            {
-                id: Date.now(),
-                text: noteText.trim(),
-                completed: false,
-            },
-        ]);
+        try {
+            setIsSubmittingNote(true);
+            const token =
+                localStorage.getItem("client-connect-token") ||
+                sessionStorage.getItem("client-connect-token");
 
-        setNoteText("");
+            if (!token) {
+                alert("Authentication session expired. Please log in again.");
+                return;
+            }
+
+            const response = await fetch(`${API_BASE_URL}/api/employee/time-log/notes`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ text: trimmedText }),
+            });
+
+            const result = await response.json();
+            if (result.success && result.data) {
+                setDailyNotes((current) => [...current, result.data]);
+                setNoteText("");
+            } else {
+                alert(result.message || "Unable to save work note.");
+            }
+        } catch (error) {
+            console.error("Failed to add daily note:", error);
+            alert("Failed to save note to server.");
+        } finally {
+            setIsSubmittingNote(false);
+        }
     };
 
-    const toggleNote = (noteId) => {
+    const toggleNote = async (noteId) => {
+        const targetNote = dailyNotes.find(
+            (note) => String(note.id || note._id) === String(noteId)
+        );
+        if (!targetNote) return;
+
+        const nextCompletedState = !targetNote.completed;
+
+        // Optimistic UI Update
         setDailyNotes((current) =>
             current.map((note) =>
-                note.id === noteId
-                    ? {
-                        ...note,
-                        completed: !note.completed,
-                    }
+                String(note.id || note._id) === String(noteId)
+                    ? { ...note, completed: nextCompletedState }
                     : note
             )
         );
+
+        try {
+            const token =
+                localStorage.getItem("client-connect-token") ||
+                sessionStorage.getItem("client-connect-token");
+
+            if (!token) return;
+
+            const response = await fetch(
+                `${API_BASE_URL}/api/employee/time-log/notes/${noteId}`,
+                {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({ completed: nextCompletedState }),
+                }
+            );
+
+            const result = await response.json();
+            if (!result.success) {
+                // Rollback on failure
+                setDailyNotes((current) =>
+                    current.map((note) =>
+                        String(note.id || note._id) === String(noteId)
+                            ? { ...note, completed: !nextCompletedState }
+                            : note
+                    )
+                );
+                alert(result.message || "Failed to update note status.");
+            }
+        } catch (error) {
+            console.error("Failed to toggle note status:", error);
+            // Rollback on error
+            setDailyNotes((current) =>
+                current.map((note) =>
+                    String(note.id || note._id) === String(noteId)
+                        ? { ...note, completed: !nextCompletedState }
+                        : note
+                )
+            );
+        }
     };
 
-    const removeNote = (noteId) => {
+    const removeNote = async (noteId) => {
+        const previousNotes = [...dailyNotes];
+
+        // Optimistic UI removal
         setDailyNotes((current) =>
-            current.filter((note) => note.id !== noteId)
+            current.filter((note) => String(note.id || note._id) !== String(noteId))
         );
+
+        try {
+            const token =
+                localStorage.getItem("client-connect-token") ||
+                sessionStorage.getItem("client-connect-token");
+
+            if (!token) return;
+
+            const response = await fetch(
+                `${API_BASE_URL}/api/employee/time-log/notes/${noteId}`,
+                {
+                    method: "DELETE",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+
+            const result = await response.json();
+            if (!result.success) {
+                setDailyNotes(previousNotes);
+                alert(result.message || "Failed to delete note.");
+            }
+        } catch (error) {
+            console.error("Failed to delete daily note:", error);
+            setDailyNotes(previousNotes);
+            alert("Failed to delete note from server.");
+        }
     };
 
     const simulateAgentSync = () => {
@@ -1197,15 +1560,7 @@ useEffect(() => {
 
                 <MetricCard
                     label="Productivity"
-                    value={`${(apiSummary?.totalTrackedSeconds || 0) > 0
-                        ? Math.round(
-                            (apiApplications
-                                .filter((a) => a.productivity === "Productive")
-                                .reduce((sum, a) => sum + (a.totalSeconds || 0), 0) /
-                                apiSummary.totalTrackedSeconds) * 100
-                        )
-                        : 0
-                        }%`}
+                    value={`${productivityScore}%`}
                     description="Calculated from agent activity"
                     icon={BarChart3}
                     iconClass="bg-cyan-100 text-cyan-700"
@@ -1278,18 +1633,35 @@ useEffect(() => {
 
                                         <div className="relative">
                                             <select
-                                                value={dashboardData?.activeTimer?._id || manualTaskId || (dashboardData?.tasks?.[0]?._id || "")}
+                                                value={dashboardData?.activeTimer?._id || manualTaskId || (activeTasks[0]?._id || "")}
                                                 onChange={changeTask}
-                                                className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 pr-10 text-xs font-medium text-slate-800 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/10"
+                                                disabled={isStartingSession || isEndingSession}
+                                                className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 pr-10 text-xs font-medium text-slate-800 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/10 disabled:bg-slate-50 disabled:cursor-not-allowed"
                                             >
-                                                {(dashboardData?.tasks || []).length > 0 ? (
-                                                    (dashboardData.tasks || []).map((task) => (
-                                                        <option key={task._id} value={task._id}>
-                                                            {task.taskCode || "TSK"} — {task.title} {task.status ? `(${task.status})` : ""}
-                                                        </option>
-                                                    ))
-                                                ) : (
+                                                {allTasks.length === 0 ? (
                                                     <option value="">No tasks assigned</option>
+                                                ) : (
+                                                    <>
+                                                        <option value="">— Select an Active Task to Start —</option>
+                                                        {activeTasks.length > 0 && (
+                                                            <optgroup label="Active Tasks">
+                                                                {activeTasks.map((task) => (
+                                                                    <option key={task._id} value={task._id}>
+                                                                        {task.taskCode || "TSK"} — {task.title} {task.status ? `(${task.status})` : ""}
+                                                                    </option>
+                                                                ))}
+                                                            </optgroup>
+                                                        )}
+                                                        {completedTasks.length > 0 && (
+                                                            <optgroup label="Completed Tasks (Will Reopen on Start)">
+                                                                {completedTasks.map((task) => (
+                                                                    <option key={task._id} value={task._id}>
+                                                                        {task.taskCode || "TSK"} — {task.title} ({task.status})
+                                                                    </option>
+                                                                ))}
+                                                            </optgroup>
+                                                        )}
+                                                    </>
                                                 )}
                                             </select>
 
@@ -1301,27 +1673,43 @@ useEffect(() => {
                                     </div>
 
                                     <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50/80 p-3.5">
-                                        <p className="text-xs font-semibold text-slate-900 line-clamp-1">
-                                            {dashboardData?.activeTimer?.title ||
-                                                (dashboardData?.tasks?.find((t) => t._id === (manualTaskId || dashboardData?.tasks?.[0]?._id))?.title) ||
-                                                "No active task"}
-                                        </p>
+                                        <div className="flex items-center justify-between gap-2">
+                                            <p className="text-xs font-semibold text-slate-900 line-clamp-1">
+                                                {currentSelectedTask ? (
+                                                    <>
+                                                        {currentSelectedTask.taskCode ? `${currentSelectedTask.taskCode} — ` : ""}
+                                                        {currentSelectedTask.title}
+                                                    </>
+                                                ) : (
+                                                    "No active task selected"
+                                                )}
+                                            </p>
+                                            {currentSelectedTask?.status && (
+                                                <span
+                                                    className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold ring-1 ring-inset ${
+                                                        currentSelectedTask.status === "In Progress"
+                                                            ? "bg-violet-50 text-violet-700 ring-violet-600/20"
+                                                            : currentSelectedTask.status === "Paused"
+                                                            ? "bg-amber-50 text-amber-700 ring-amber-600/20"
+                                                            : currentSelectedTask.status === "Completed"
+                                                            ? "bg-emerald-50 text-emerald-700 ring-emerald-600/20"
+                                                            : "bg-slate-100 text-slate-600 ring-slate-400/20"
+                                                    }`}
+                                                >
+                                                    {currentSelectedTask.status}
+                                                </span>
+                                            )}
+                                        </div>
 
                                         <p className="mt-1 text-[11px] text-slate-500">
-                                            {dashboardData?.activeTimer?.clientName ||
-                                                (dashboardData?.tasks?.find((t) => t._id === (manualTaskId || dashboardData?.tasks?.[0]?._id))?.clientName) ||
-                                                "Internal"}
+                                            {currentSelectedTask?.clientName || "Internal"}
                                             {" · "}
-                                            {dashboardData?.activeTimer?.project ||
-                                                (dashboardData?.tasks?.find((t) => t._id === (manualTaskId || dashboardData?.tasks?.[0]?._id))?.project) ||
-                                                "General"}
+                                            {currentSelectedTask?.project || "General"}
                                         </p>
 
-                                        {(dashboardData?.activeTimer?.ticketCode ||
-                                            dashboardData?.tasks?.find((t) => t._id === (manualTaskId || dashboardData?.tasks?.[0]?._id))?.ticketCode) && (
+                                        {currentSelectedTask?.ticketCode && (
                                             <p className="mt-2 text-[10px] font-semibold text-violet-600">
-                                                Related ticket: {dashboardData?.activeTimer?.ticketCode ||
-                                                    dashboardData?.tasks?.find((t) => t._id === (manualTaskId || dashboardData?.tasks?.[0]?._id))?.ticketCode}
+                                                Related ticket: {currentSelectedTask.ticketCode}
                                             </p>
                                         )}
                                     </div>
@@ -1330,7 +1718,7 @@ useEffect(() => {
                                         <p className="font-mono text-3xl font-semibold tracking-tight text-slate-950">
                                             {dashboardData?.activeTimer
                                                 ? formatTimer(activeTaskSeconds)
-                                                : "00:00:00"}
+                                                : formatTimer(currentSelectedTask?.elapsedSeconds || 0)}
                                         </p>
 
                                         <div className="mt-1.5 flex items-center gap-2">
@@ -1346,6 +1734,8 @@ useEffect(() => {
                                             <span className="text-[11px] font-medium text-slate-500">
                                                 {dashboardData?.activeTimer
                                                     ? `Session is ${dashboardData.activeTimer.status === "Paused" ? "paused" : "running"}`
+                                                    : currentSelectedTask
+                                                    ? `Ready to track · ${currentSelectedTask.status || "Idle"}`
                                                     : "No active session"}
                                             </span>
                                         </div>
@@ -1356,11 +1746,12 @@ useEffect(() => {
                                             <button
                                                 type="button"
                                                 onClick={toggleTimer}
+                                                disabled={isEndingSession}
                                                 className={`flex h-10 items-center justify-center gap-2 rounded-lg text-xs font-semibold transition ${
                                                     dashboardData.activeTimer.status === "Paused"
                                                         ? "bg-violet-600 text-white hover:bg-violet-700"
                                                         : "bg-amber-500 text-white hover:bg-amber-600"
-                                                }`}
+                                                } disabled:opacity-50`}
                                             >
                                                 {dashboardData.activeTimer.status === "Paused" ? (
                                                     <>
@@ -1378,10 +1769,20 @@ useEffect(() => {
                                             <button
                                                 type="button"
                                                 onClick={endCurrentSession}
-                                                className="flex h-10 items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
+                                                disabled={isEndingSession}
+                                                className="flex h-10 items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
                                             >
-                                                <Square size={13} />
-                                                End Session
+                                                {isEndingSession ? (
+                                                    <>
+                                                        <Loader2 size={13} className="animate-spin" />
+                                                        Ending...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Square size={13} />
+                                                        End Session
+                                                    </>
+                                                )}
                                             </button>
                                         </div>
                                     ) : (
@@ -1389,11 +1790,22 @@ useEffect(() => {
                                             <button
                                                 type="button"
                                                 onClick={() => startSession()}
-                                                disabled={!dashboardData?.tasks?.length}
-                                                className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-violet-600 text-xs font-semibold text-white shadow-xs transition hover:bg-violet-700 disabled:opacity-50"
+                                                disabled={isStartingSession || !currentSelectedTask}
+                                                className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-violet-600 text-xs font-semibold text-white shadow-xs transition hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed"
                                             >
-                                                <Play size={14} />
-                                                Start Session
+                                                {isStartingSession ? (
+                                                    <>
+                                                        <Loader2 size={14} className="animate-spin" />
+                                                        Starting Session...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Play size={14} />
+                                                        {currentSelectedTask && ["Completed", "Cancelled", "Closed"].includes(currentSelectedTask.status)
+                                                            ? "Reopen & Start Task"
+                                                            : "Start Session"}
+                                                    </>
+                                                )}
                                             </button>
                                         </div>
                                     )}
@@ -1420,9 +1832,12 @@ useEffect(() => {
                                         timeDistribution.map((item) => (
                                             <div key={item.id} className="group">
                                                 <div className="flex items-center justify-between text-xs">
-                                                    <span className="font-medium text-slate-800">
-                                                        {item.category}
-                                                    </span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`h-2 w-2 rounded-full ${getCategoryColor(item.category)}`} />
+                                                        <span className="font-medium text-slate-800">
+                                                            {item.category}
+                                                        </span>
+                                                    </div>
 
                                                     <div className="flex items-center gap-2.5">
                                                         <span className="text-[11px] text-slate-400">
@@ -1436,7 +1851,7 @@ useEffect(() => {
 
                                                 <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
                                                     <div
-                                                        className="h-full rounded-full bg-violet-600 transition-all duration-300"
+                                                        className={`h-full rounded-full ${getCategoryColor(item.category)} transition-all duration-300`}
                                                         style={{
                                                             width: `${item.percentage}%`,
                                                         }}
@@ -1519,58 +1934,76 @@ useEffect(() => {
                                                     event.target.value
                                                 )
                                             }
+                                            disabled={isSubmittingNote}
                                             placeholder="Add work note..."
-                                            className="h-10 flex-1 rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                            className="h-10 flex-1 rounded-xl border border-slate-200 px-3 text-xs outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100 disabled:bg-slate-50"
                                         />
 
                                         <button
                                             type="submit"
-                                            className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white"
+                                            disabled={isSubmittingNote || !noteText.trim()}
+                                            className="flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-semibold text-white transition hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
-                                            <Save size={14} />
-                                            Add
+                                            {isSubmittingNote ? (
+                                                <Loader2 size={14} className="animate-spin" />
+                                            ) : (
+                                                <Save size={14} />
+                                            )}
+                                            <span>{isSubmittingNote ? "Saving..." : "Add"}</span>
                                         </button>
                                     </form>
 
                                     <div className="mt-4 space-y-2">
-                                        {dailyNotes.map((note) => (
-                                            <div
-                                                key={note.id}
-                                                className="group flex items-center gap-3 rounded-xl border border-slate-200 px-4 py-3"
-                                            >
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        toggleNote(note.id)
-                                                    }
-                                                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${note.completed
-                                                        ? "border-emerald-500 bg-emerald-500 text-white"
-                                                        : "border-slate-300 text-transparent"
-                                                        }`}
-                                                >
-                                                    <Check size={12} />
-                                                </button>
-
-                                                <p
-                                                    className={`flex-1 text-xs ${note.completed
-                                                        ? "text-slate-400 line-through"
-                                                        : "text-slate-700"
-                                                        }`}
-                                                >
-                                                    {note.text}
-                                                </p>
-
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        removeNote(note.id)
-                                                    }
-                                                    className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 opacity-0 transition hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100"
-                                                >
-                                                    <X size={14} />
-                                                </button>
+                                        {dailyNotes.length === 0 ? (
+                                            <div className="rounded-xl border border-dashed border-slate-200 py-6 text-center">
+                                                <FileText className="mx-auto h-5 w-5 text-slate-300" />
+                                                <p className="mt-1.5 text-xs font-medium text-slate-600">No notes added for today yet</p>
+                                                <p className="text-[10px] text-slate-400">Add work notes or reminders above</p>
                                             </div>
-                                        ))}
+                                        ) : (
+                                            dailyNotes.map((note) => {
+                                                const noteIdentifier = note._id || note.id;
+                                                return (
+                                                    <div
+                                                        key={noteIdentifier}
+                                                        className="group flex items-center gap-3 rounded-xl border border-slate-200 px-4 py-3 transition hover:border-slate-300 hover:shadow-xs"
+                                                    >
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                toggleNote(noteIdentifier)
+                                                            }
+                                                            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition ${note.completed
+                                                                ? "border-emerald-500 bg-emerald-500 text-white"
+                                                                : "border-slate-300 text-transparent hover:border-violet-400"
+                                                                }`}
+                                                        >
+                                                            <Check size={12} />
+                                                        </button>
+
+                                                        <p
+                                                            className={`flex-1 text-xs transition ${note.completed
+                                                                ? "text-slate-400 line-through"
+                                                                : "text-slate-700"
+                                                                }`}
+                                                        >
+                                                            {note.text}
+                                                        </p>
+
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                removeNote(noteIdentifier)
+                                                            }
+                                                            title="Delete note"
+                                                            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 opacity-0 transition hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100"
+                                                        >
+                                                            <X size={14} />
+                                                        </button>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
                                     </div>
                                 </div>
                             </section>
@@ -1765,317 +2198,295 @@ useEffect(() => {
                                 </div>
 
                             <div className="divide-y divide-slate-100">
-    {applicationUsage.map((application, index) => (
-        <div
-            key={application.applicationName || index}
-            className="px-5 py-4"
-        >
-                                            <div className="flex items-center gap-3">
-                                                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
-                                                    <AppWindow size={17} />
-                                                </div>
-
-                                                <div className="min-w-0 flex-1">
-                                                    <div className="flex flex-wrap items-center justify-between gap-2">
-                                                        <div>
-                                                            <p className="text-xs font-semibold text-slate-900">
-                                                                {
-                                                                    application.applicationName
-                                                                }
-                                                            </p>
-
-                                                            <p className="mt-1 text-[10px] text-slate-500">
-                                                                {
-                                                                    application.category
-                                                                }
-                                                            </p>
-                                                        </div>
-
-                                                        <div className="text-right">
-                                                            <p className="text-xs font-semibold text-slate-900">
-                                                                {formatSeconds(
-                                                                    application.totalSeconds
-                                                                )}
-                                                            </p>
-
-                                                            <p className="mt-1 text-[10px] text-slate-400">
-                                                                {
-                                                                    application.percentage
-                                                                }
-                                                                %
-                                                            </p>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
-                                                        <div
-                                                            className="h-full rounded-full bg-blue-500"
-                                                            style={{
-                                                                width: `${application.percentage}%`,
-                                                            }}
-                                                        />
-                                                    </div>
-                                                </div>
-
-                                                <span
-                                                    className={`rounded-full px-2.5 py-1 text-[9px] font-semibold ring-1 ring-inset ${getProductivityClasses(
-                                                        application.productivity
-                                                    )}`}
-                                                >
-                                                    {
-                                                        application.productivity
-                                                    }
-                                                </span>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </section>
-
-                            <section className="rounded-2xl border border-slate-200 p-5">
-                                <div className="flex h-52 items-center justify-center">
-                                    <div className="relative flex h-44 w-44 items-center justify-center rounded-full bg-[conic-gradient(#7c3aed_var(--score),#e2e8f0_0)]"
-                                        style={{
-                                            "--score": `${productivityScore}%`,
-                                        }}
+                                {applicationUsage.map((application, index) => (
+                                    <div
+                                        key={application.applicationName || index}
+                                        className="px-5 py-4"
                                     >
-                                        <div className="flex h-32 w-32 flex-col items-center justify-center rounded-full bg-white">
-                                            <p className="text-3xl font-semibold text-slate-950">
-                                                {productivityScore}%
-                                            </p>
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
+                                                <AppWindow size={17} />
+                                            </div>
 
-                                            <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                                Productivity
-                                            </p>
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                    <div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`h-2 w-2 rounded-full ${getCategoryColor(application.category)}`} />
+                                                            <p className="text-xs font-semibold text-slate-900">
+                                                                {application.applicationName}
+                                                            </p>
+                                                        </div>
+
+                                                        <p className="mt-1 text-[10px] text-slate-500">
+                                                            {application.category}
+                                                            {application.lastWindowTitle ? ` · ${application.lastWindowTitle}` : ""}
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="text-right">
+                                                        <p className="text-xs font-semibold text-slate-900">
+                                                            {formatSeconds(application.totalSeconds)}
+                                                        </p>
+
+                                                        <p className="mt-1 text-[10px] text-slate-400">
+                                                            {application.percentage}%
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                                                    <div
+                                                        className={`h-full rounded-full ${getCategoryColor(application.category)} transition-all duration-300`}
+                                                        style={{
+                                                            width: `${application.percentage}%`,
+                                                        }}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <span
+                                                className={`rounded-full px-2.5 py-1 text-[9px] font-semibold ring-1 ring-inset ${getProductivityClasses(
+                                                    application.productivity
+                                                )}`}
+                                            >
+                                                {application.productivity}
+                                            </span>
                                         </div>
                                     </div>
-                                </div>
+                                ))}
+                            </div>
+                        </section>
 
-                                <div className="mt-5 rounded-xl bg-emerald-50 p-4 text-center">
-                                    <p className="text-sm font-semibold text-emerald-800">
-                                        Excellent
-                                    </p>
+                        <section className="rounded-2xl border border-slate-200 p-5">
+                            <div className="flex h-52 items-center justify-center">
+                                <div
+                                    className="relative flex h-44 w-44 items-center justify-center rounded-full bg-[conic-gradient(#7c3aed_var(--score),#e2e8f0_0)]"
+                                    style={{
+                                        "--score": `${productivityScore}%`,
+                                    }}
+                                >
+                                    <div className="flex h-32 w-32 flex-col items-center justify-center rounded-full bg-white">
+                                        <p className="text-3xl font-semibold text-slate-950">
+                                            {productivityScore}%
+                                        </p>
 
-                                    <p className="mt-1 text-[10px] text-emerald-600">
-                                        +6% compared with yesterday
-                                    </p>
+                                        <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                            Productivity
+                                        </p>
+                                    </div>
                                 </div>
-                            </section>
-                        </div>
+                            </div>
+
+                            <div className="mt-5 rounded-xl bg-emerald-50 p-4 text-center">
+                                <p className="text-sm font-semibold text-emerald-800">
+                                    {productivityScore >= 75 ? "Excellent" : productivityScore >= 50 ? "Good" : "Needs Attention"}
+                                </p>
+
+                                <p className="mt-1 text-[10px] text-emerald-600">
+                                    {productivityScore}% productive time recorded today
+                                </p>
+                            </div>
+                        </section>
                     </div>
-                )}
+                </div>
+            )}
 
-                {activeTab === "sessions" && (
-                    <div className="overflow-x-auto">
-                        <table className="w-full min-w-[1050px]">
-                            <thead>
-                                <tr className="border-b border-slate-200 bg-slate-50/80">
-                                    <th className="px-5 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        Session
-                                    </th>
+            {activeTab === "sessions" && (
+                <div className="overflow-x-auto">
+                    <table className="w-full min-w-[1050px]">
+                        <thead>
+                            <tr className="border-b border-slate-200 bg-slate-50/80">
+                                <th className="px-5 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                    Session
+                                </th>
 
-                                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        Task
-                                    </th>
+                                <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                    Task
+                                </th>
 
-                                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        Application
-                                    </th>
+                                <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                    Application
+                                </th>
 
-                                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                      First Seen
-                                    </th>
+                                <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                  First Seen
+                                </th>
 
-                                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        Last Seen
-                                    </th>
+                                <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                    Last Seen
+                                </th>
 
-                                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        Duration
-                                    </th>
+                                <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                    Duration
+                                </th>
 
-                                    <th className="px-5 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                        Status
-                                    </th>
+                                <th className="px-5 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                    Status
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {taskSessions.length === 0 ? (
+                                <tr>
+                                    <td colSpan={7} className="px-6 py-10 text-center text-sm text-slate-500">
+                                        No task sessions recorded today.
+                                    </td>
                                 </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {taskSessions.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={7} className="px-6 py-10 text-center text-sm text-slate-500">
-                                            No task sessions recorded today.
+                            ) : (
+                                taskSessions.map((session) => (
+                                    <tr key={session.id} className="transition hover:bg-slate-50/70">
+                                        <td className="px-5 py-4">
+                                            <p className="text-xs font-semibold text-slate-900">
+                                                {session.applicationName || "Unknown"}
+                                            </p>
+                                            <p className="mt-1 text-[10px] text-slate-500 truncate max-w-[280px]">
+                                                {session.lastWindowTitle || "No active window"}
+                                            </p>
+                                        </td>
+
+                                        {/* Task */}
+                                        <td className="px-4 py-4">
+                                            {session.taskTitle ? (
+                                                <div className="inline-flex flex-col rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
+                                                    <span className="text-xs font-semibold text-violet-800">
+                                                        {session.taskTitle}
+                                                    </span>
+                                                    {session.taskCode && (
+                                                        <span className="text-[10px] text-violet-600 mt-0.5">
+                                                            {session.taskCode}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <span className="text-xs text-slate-400">No task assigned</span>
+                                            )}
+                                        </td>
+
+                                        {/* Application */}
+                                        <td className="px-4 py-4 text-xs text-slate-600">
+                                            {session.applicationName || "—"}
+                                        </td>
+
+                                        {/* Start */}
+                                        <td className="px-4 py-4 text-xs text-slate-700">
+                                            {session.startedAt ? formatAgentTime(session.startedAt) : "--"}
+                                        </td>
+
+                                        {/* End */}
+                                        <td className="px-4 py-4 text-xs text-slate-700">
+                                            {session.endedAt ? formatAgentTime(session.endedAt) : "Running"}
+                                        </td>
+
+                                        {/* Duration */}
+                                        <td className="px-4 py-4 text-xs font-semibold text-slate-900">
+                                            {formatSeconds(session.durationSeconds || 0)}
+                                        </td>
+
+                                        {/* Status */}
+                                        <td className="px-5 py-4">
+                                            <span
+                                                className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ring-1 ring-inset ${session.status === "Running"
+                                                        ? "bg-violet-50 text-violet-700 ring-violet-600/10"
+                                                        : "bg-emerald-50 text-emerald-700 ring-emerald-600/10"
+                                                    }`}
+                                            >
+                                                {session.status}
+                                            </span>
                                         </td>
                                     </tr>
-                                ) : (
-                                    taskSessions.map((session) => (
-                                        <tr key={session.id} className="transition hover:bg-slate-50/70">
-                                      
-<td className="px-5 py-4">
-    <p className="text-xs font-semibold text-slate-900">
-        {session.applicationName || "Unknown"}
-    </p>
-    <p className="mt-1 text-[10px] text-slate-500 truncate max-w-[280px]">
-        {session.lastWindowTitle || "No active window"}
-    </p>
-</td>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            )}
 
-                                            {/* Task */}
-                                      
-<td className="px-4 py-4">
-  {session.taskTitle ? (
-    <div className="inline-flex flex-col rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
-      <span className="text-xs font-semibold text-violet-800">
-        {session.taskTitle}
-      </span>
-      {session.taskCode && (
-        <span className="text-[10px] text-violet-600 mt-0.5">
-          {session.taskCode}
-        </span>
-      )}
-    </div>
-  ) : (
-    <span className="text-xs text-slate-400">No task assigned</span>
-  )}
-</td>
+            {activeTab === "summary" && (
+                <div className="p-5">
+                    <div className="grid gap-5 lg:grid-cols-3">
+                        <div className="rounded-2xl border border-slate-200 p-5">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                Tasks completed
+                            </p>
+                            <p className="mt-3 text-3xl font-semibold text-slate-950">
+                                {dashboardMetrics?.tasksCompleted ?? 0}
+                            </p>
+                        </div>
 
-                                            {/* Application */}
-                                            <td className="px-4 py-4 text-xs text-slate-600">
-                                                {session.applicationName || "—"}
-                                            </td>
+                        <div className="rounded-2xl border border-slate-200 p-5">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                Tickets solved
+                            </p>
+                            <p className="mt-3 text-3xl font-semibold text-slate-950">
+                                {dashboardMetrics?.ticketsSolved ?? 0}
+                            </p>
+                        </div>
 
-                                            {/* Start */}
-                                            <td className="px-4 py-4 text-xs text-slate-700">
-                                                {session.startedAt ? formatAgentTime(session.startedAt) : "--"}
-                                            </td>
-
-                                            {/* End */}
-                                            <td className="px-4 py-4 text-xs text-slate-700">
-                                                {session.endedAt ? formatAgentTime(session.endedAt) : "Running"}
-                                            </td>
-
-                                            {/* Duration */}
-                                            <td className="px-4 py-4 text-xs font-semibold text-slate-900">
-                                                {formatSeconds(session.durationSeconds || 0)}
-                                            </td>
-
-                                            {/* Status */}
-                                            <td className="px-5 py-4">
-                                                <span
-                                                    className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ring-1 ring-inset ${session.status === "Running"
-                                                            ? "bg-violet-50 text-violet-700 ring-violet-600/10"
-                                                            : "bg-emerald-50 text-emerald-700 ring-emerald-600/10"
-                                                        }`}
-                                                >
-                                                    {session.status}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
-                            </tbody>
-
-                        </table>
+                        <div className="rounded-2xl border border-slate-200 p-5">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                Support calls
+                            </p>
+                            <p className="mt-3 text-3xl font-semibold text-slate-950">
+                                {dashboardMetrics?.supportCalls ?? 0}
+                            </p>
+                        </div>
                     </div>
-                )}
 
-                {activeTab === "summary" && (
-                    <div className="p-5">
-                        <div className="grid gap-5 lg:grid-cols-3">
-                            <div className="rounded-2xl border border-slate-200 p-5">
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                    Tasks completed
-                                </p>
-                                <p className="mt-3 text-3xl font-semibold text-slate-950">
-                                    {dashboardMetrics?.tasksCompleted ?? 0}
-                                </p>
+                    <div className="mt-5 rounded-2xl border border-slate-200 p-6">
+                        <div className="flex items-center gap-3">
+                            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
+                                <FileText size={18} />
                             </div>
 
-                            <div className="rounded-2xl border border-slate-200 p-5">
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                    Tickets solved
-                                </p>
-                                <p className="mt-3 text-3xl font-semibold text-slate-950">
-                                    {dashboardMetrics?.ticketsSolved ?? 0}
-                                </p>
-                            </div>
+                            <div>
+                                <h3 className="text-sm font-semibold text-slate-950">
+                                    End-of-Day Report
+                                </h3>
 
-                            <div className="rounded-2xl border border-slate-200 p-5">
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                    Support calls
-                                </p>
-                                <p className="mt-3 text-3xl font-semibold text-slate-950">
-                                    {dashboardMetrics?.supportCalls ?? 0}
+                                <p className="mt-1 text-[10px] text-slate-500">
+                                    Generated from tasks, tickets,
+                                    attendance and agent activity.
                                 </p>
                             </div>
                         </div>
 
-                        <div className="mt-5 rounded-2xl border border-slate-200 p-6">
-                            <div className="flex items-center gap-3">
-                                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
-                                    <FileText size={18} />
-                                </div>
-
-                                <div>
-                                    <h3 className="text-sm font-semibold text-slate-950">
-                                        End-of-Day Report
-                                    </h3>
-
-                                    <p className="mt-1 text-[10px] text-slate-500">
-                                        Generated from tasks, tickets,
-                                        attendance and agent activity.
-                                    </p>
-                                </div>
-                            </div>
-
                             <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-                                `{[
-  {
-    label: "Worked",
-    value: formatSeconds(apiSummary?.totalTrackedSeconds || 0),
-  },
-  {
-    label: "Productive",
-    value: formatSeconds(
-      apiApplications
-        .filter((a) => a.productivity === "Productive")
-        .reduce((sum, a) => sum + (a.totalSeconds || 0), 0)
-    ),
-  },
-  {
-    label: "Idle",
-    value: formatSeconds(idleSeconds),
-  },
-  {
-    label: "Productivity",
-    value: `${
-      (apiSummary?.totalTrackedSeconds || 0) > 0
-        ? Math.round(
-            (apiApplications
-              .filter((a) => a.productivity === "Productive")
-              .reduce((sum, a) => sum + (a.totalSeconds || 0), 0) /
-              apiSummary.totalTrackedSeconds) * 100
-          )
-        : 0
-    }%`,
-  },
-  {
-    label: "Attendance",
-    value: attendanceStatus,
-  },
-].map((item) => (
-  <div
-    key={item.label}
-    className="rounded-xl bg-slate-50 p-4"
-  >
-    <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-      {item.label}
-    </p>
+                                {[
+                                    {
+                                        label: "Worked",
+                                        value: formatSeconds(totalTrackedSeconds),
+                                    },
+                                    {
+                                        label: "Productive",
+                                        value: formatSeconds(productiveSeconds),
+                                    },
+                                    {
+                                        label: "Idle",
+                                        value: formatSeconds(idleSeconds),
+                                    },
+                                    {
+                                        label: "Productivity",
+                                        value: `${productivityScore}%`,
+                                    },
+                                    {
+                                        label: "Attendance",
+                                        value: attendanceStatus,
+                                    },
+                                ].map((item) => (
+                                    <div
+                                        key={item.label}
+                                        className="rounded-xl bg-slate-50 p-4"
+                                    >
+                                        <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                            {item.label}
+                                        </p>
 
-    <p className="mt-2 text-sm font-semibold text-slate-900">
-      {item.value}
-    </p>
-  </div>
-))}`
+                                        <p className="mt-2 text-sm font-semibold text-slate-900">
+                                            {item.value}
+                                        </p>
+                                    </div>
+                                ))}
                             </div>
                         </div>
 

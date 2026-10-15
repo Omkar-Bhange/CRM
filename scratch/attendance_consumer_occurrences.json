@@ -1,0 +1,5472 @@
+[
+  {
+    "file": "admin.js",
+    "lineNum": 17,
+    "line": "const AttendanceApprovalRequest = require(\"./models/AttendanceApprovalRequest\");"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 925,
+    "line": "\"/attendance-approval-requests\","
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 928,
+    "line": "const AttendanceApprovalRequest ="
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 929,
+    "line": "mongoose.models.AttendanceApprovalRequest;"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 931,
+    "line": "if (!AttendanceApprovalRequest) {"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 935,
+    "line": "\"Attendance approval model is not available.\","
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 955,
+    "line": "await AttendanceApprovalRequest.find("
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 970,
+    "line": "\"Attendance approval list error:\","
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 977,
+    "line": "\"Unable to load attendance approval requests.\","
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 989,
+    "line": "\"/attendance-approval-requests/:id/approve\","
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 992,
+    "line": "const AttendanceApprovalRequest ="
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 993,
+    "line": "mongoose.models.AttendanceApprovalRequest;"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 995,
+    "line": "const Attendance ="
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 996,
+    "line": "mongoose.models.AttendanceV2;"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1002,
+    "line": "!AttendanceApprovalRequest ||"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1003,
+    "line": "!Attendance ||"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1009,
+    "line": "\"Attendance models are not available.\","
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1029,
+    "line": "await AttendanceApprovalRequest.findById("
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1037,
+    "line": "\"Attendance approval request not found.\","
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1091,
+    "line": "* Never create duplicate attendance."
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1094,
+    "line": "let attendance ="
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1095,
+    "line": "await Attendance.findOne({"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1107,
+    "line": "if (!attendance) {"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1116,
+    "line": "* Attendance should still represent"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1149,
+    "line": "attendance ="
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1150,
+    "line": "await Attendance.create({"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1248,
+    "line": "request.attendanceId ="
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1249,
+    "line": "attendance._id;"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1269,
+    "line": "\"Attendance request approved successfully.\","
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1273,
+    "line": "attendance,"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1277,
+    "line": "\"Attendance approval error:\","
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1284,
+    "line": "\"Unable to approve attendance request.\","
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1296,
+    "line": "\"/attendance-approval-requests/:id/reject\","
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1299,
+    "line": "const AttendanceApprovalRequest ="
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1300,
+    "line": "mongoose.models.AttendanceApprovalRequest;"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1302,
+    "line": "if (!AttendanceApprovalRequest) {"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1306,
+    "line": "\"Attendance approval model is not available.\","
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1326,
+    "line": "await AttendanceApprovalRequest.findById("
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1334,
+    "line": "\"Attendance approval request not found.\","
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1361,
+    "line": "\"Attendance request rejected.\""
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1364,
+    "line": "request.attendanceId ="
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1373,
+    "line": "\"Attendance request rejected.\","
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1379,
+    "line": "\"Attendance rejection error:\","
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 1386,
+    "line": "\"Unable to reject attendance request.\","
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27639,
+    "line": "const Attendance = mongoose.models.Attendance;"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27655,
+    "line": "const [attendance, openTasks, completedToday, openTickets] ="
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27657,
+    "line": "Attendance.findOne({"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27704,
+    "line": "attendance?.workingMinutes ||"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27705,
+    "line": "attendance?.totalWorkedMinutes ||"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27714,
+    "line": "loginTime: formatTime(attendance?.loginTime),"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27736,
+    "line": "GET /api/admin/team/:employeeCode/attendance"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27739,
+    "line": "router.get(\"/team/:employeeCode/attendance\", async (req, res) => {"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27744,
+    "line": "const Attendance = mongoose.models.Attendance;"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27759,
+    "line": "const attendance = await Attendance.findOne({"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27784,
+    "line": "loginTime: formatTime(attendance?.loginTime),"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27785,
+    "line": "logoutTime: attendance?.logoutTime"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27786,
+    "line": "? formatTime(attendance.logoutTime)"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27789,
+    "line": "attendanceStatus: attendance"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27790,
+    "line": "? attendance.status || \"Present\""
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27794,
+    "line": "attendance?.workingMinutes ||"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27795,
+    "line": "attendance?.totalWorkedMinutes ||"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27800,
+    "line": "attendance?.totalBreakMinutes ||"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27801,
+    "line": "attendance?.breakMinutes ||"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27807,
+    "line": "attendance?.workingMinutes ||"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27808,
+    "line": "attendance?.totalWorkedMinutes ||"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27812,
+    "line": "sessions: attendance"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27816,
+    "line": "start: formatTime(attendance.loginTime),"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27817,
+    "line": "end: attendance.logoutTime"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27818,
+    "line": "? formatTime(attendance.logoutTime)"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27821,
+    "line": "attendance?.workingMinutes ||"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27822,
+    "line": "attendance?.totalWorkedMinutes ||"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27825,
+    "line": "status: attendance.logoutTime"
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27835,
+    "line": "\"Employee attendance fetch error:\","
+  },
+  {
+    "file": "admin.js",
+    "lineNum": 27841,
+    "line": "message: \"Unable to load attendance.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7,
+    "line": "const Attendance ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8,
+    "line": "mongoose.models.AttendanceV2 ||"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 10,
+    "line": "\"AttendanceV2\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 165,
+    "line": "collection: \"attendance\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 175,
+    "line": "One employee must have only one attendance document"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 179,
+    "line": "EMP001 + 2026-08-17 = only one attendance record."
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 181,
+    "line": "Attendance.schema.index("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 194,
+    "line": "const AttendanceEvent = require(\"./models/AttendanceEvent\");"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 224,
+    "line": "const AttendanceRegularization = require(\"./models/AttendanceRegularization\");"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 229,
+    "line": "const AttendanceApprovalRequest = require(\"./models/AttendanceApprovalRequest\");"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 484,
+    "line": "\"SystemSettings model is not registered. Make sure the settings route is loaded before attendance-v2.\""
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 493,
+    "line": "async function getAttendancePolicy() {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1103,
+    "line": "await getAttendancePolicy();"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1374,
+    "line": "function parseRequestedAttendanceTime("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1391,
+    "line": "function createAttendanceEvent(attendanceId, employeeId, type, source = \"web\", notes = \"\") {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1392,
+    "line": "return AttendanceEvent.create({"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1393,
+    "line": "attendanceId,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1401,
+    "line": "function formatAttendance(attendance) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1402,
+    "line": "if (!attendance) return null;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1403,
+    "line": "const data = attendance.toObject ? attendance.toObject() : { ...attendance };"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1452,
+    "line": "status: data.status || getAttendanceStatus(data),"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1462,
+    "line": "function getAttendanceStatus(attendance) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1463,
+    "line": "if (!attendance) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1467,
+    "line": "if (attendance.status === \"On Leave\") {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1471,
+    "line": "if (!attendance.loginTime) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1479,
+    "line": "if (!attendance.logoutTime) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1480,
+    "line": "if (Number(attendance.lateMinutes || 0) > 0) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1489,
+    "line": "attendance.totalWorkedMinutes ??"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1490,
+    "line": "attendance.workingMinutes ??"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1495,
+    "line": "attendance.halfDayThresholdMinutes ??"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1508,
+    "line": "attendance.lateMinutes ||"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1518,
+    "line": "function resolveWorkStatus(attendance) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1519,
+    "line": "if (!attendance) return \"Logged Out\";"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1520,
+    "line": "if (attendance.status === \"On Leave\") return \"On Leave\";"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1521,
+    "line": "if (attendance.logoutTime) return \"Logged Out\";"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1522,
+    "line": "if (attendance.breakStartedAt) return \"Break\";"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1523,
+    "line": "if (attendance.loginTime) return \"Working\";"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1527,
+    "line": "async function endActiveBreak(attendance, employee, now = new Date(), source = \"system\") {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1528,
+    "line": "if (!attendance.breakStartedAt) return attendance;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1531,
+    "line": "const breakDuration = Math.max(0, Math.floor((breakEnd.getTime() - new Date(attendance.breakStartedAt).getTime()) / 60000));"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1532,
+    "line": "attendance.breakMinutes = Number(attendance.breakMinutes || 0) + breakDuration;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1533,
+    "line": "attendance.totalBreakMinutes = Number(attendance.totalBreakMinutes || 0) + breakDuration;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1534,
+    "line": "attendance.breakStartedAt = null;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1535,
+    "line": "attendance.workStatus = \"Working\";"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1536,
+    "line": "attendance.updatedBy = attendance.updatedBy || employee._id;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1538,
+    "line": "await attendance.save();"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1539,
+    "line": "await createAttendanceEvent(attendance._id, attendance.employeeId, \"BREAK_END\", source, \"Auto ended break before logout.\");"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1541,
+    "line": "return attendance;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1544,
+    "line": "function calculateAttendanceMetrics(attendance) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1549,
+    "line": "attendance.totalBreakMinutes ||"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1568,
+    "line": "if (!attendance.loginTime) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1574,
+    "line": "attendance.loginTime"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1578,
+    "line": "attendance.logoutTime"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1580,
+    "line": "attendance.logoutTime"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1613,
+    "line": "attendance.date,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1614,
+    "line": "attendance.shiftStart ||"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1639,
+    "line": "attendance.graceMinutes ??"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1658,
+    "line": "attendance.date,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1659,
+    "line": "attendance.shiftEnd ||"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1668,
+    "line": "attendance.logoutTime &&"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1693,
+    "line": "attendance.logoutTime &&"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1759,
+    "line": "async function closeAttendanceRecord(attendance, options = {}) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1760,
+    "line": "if (!attendance || attendance.logoutTime) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1761,
+    "line": "return attendance;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1764,
+    "line": "const endAt = options.logoutAt || parseShiftDate(attendance.date, attendance.shiftEnd || DEFAULT_SHIFT_END) || new Date();"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1766,
+    "line": "if (attendance.breakStartedAt) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1768,
+    "line": "const breakDuration = Math.max(0, Math.floor((breakEndAt.getTime() - new Date(attendance.breakStartedAt).getTime()) / 60000));"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1769,
+    "line": "attendance.breakMinutes = Number(attendance.breakMinutes || 0) + breakDuration;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1770,
+    "line": "attendance.totalBreakMinutes = Number(attendance.totalBreakMinutes || 0) + breakDuration;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1771,
+    "line": "attendance.breakStartedAt = null;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1772,
+    "line": "attendance.workStatus = \"Working\";"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1773,
+    "line": "await attendance.save();"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1774,
+    "line": "await createAttendanceEvent(attendance._id, attendance.employeeId, \"BREAK_END\", \"system\", \"Auto closed break before logout.\");"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1777,
+    "line": "attendance.logoutTime = endAt;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1778,
+    "line": "const metrics = calculateAttendanceMetrics(attendance);"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1779,
+    "line": "attendance.workingMinutes = metrics.totalWorkedMinutes;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1780,
+    "line": "attendance.totalWorkedMinutes = metrics.totalWorkedMinutes;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1781,
+    "line": "attendance.totalBreakMinutes = metrics.totalBreakMinutes;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1782,
+    "line": "attendance.lateMinutes = metrics.lateMinutes;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1783,
+    "line": "attendance.earlyLogoutMinutes = metrics.earlyLogoutMinutes;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1784,
+    "line": "attendance.overtimeMinutes = metrics.overtimeMinutes;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1785,
+    "line": "attendance.workStatus = \"Logged Out\";"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1786,
+    "line": "attendance.isAutoClosed = true;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1787,
+    "line": "attendance.autoClosedReason = options.reason || \"Logout missed\";"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1788,
+    "line": "attendance.status = getAttendanceStatus(attendance);"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1789,
+    "line": "attendance.updatedBy = attendance.updatedBy || attendance.employeeId;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1791,
+    "line": "await attendance.save();"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1792,
+    "line": "await createAttendanceEvent(attendance._id, attendance.employeeId, \"LOGOUT\", \"system\", attendance.autoClosedReason);"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1794,
+    "line": "return attendance;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1797,
+    "line": "async function closeOpenAttendanceForEmployee(employeeId, options = {}) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1809,
+    "line": "const openAttendance = await Attendance.find(query);"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1812,
+    "line": "for (const record of openAttendance) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 1813,
+    "line": "const closedRecord = await closeAttendanceRecord(record, {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2101,
+    "line": "GET /api/attendance/admin/approval-requests"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2135,
+    "line": "await AttendanceApprovalRequest.find("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2174,
+    "line": "await getAttendancePolicy();"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2187,
+    "line": "\"Invalid attendance approval request ID.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2192,
+    "line": "await AttendanceApprovalRequest.findById("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2200,
+    "line": "\"Attendance approval request not found.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2257,
+    "line": "* Never create duplicate attendance."
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2260,
+    "line": "let attendance ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2261,
+    "line": "await Attendance.findOne({"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2273,
+    "line": "if (!attendance) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2309,
+    "line": "attendance ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2310,
+    "line": "await Attendance.create({"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2397,
+    "line": "await createAttendanceEvent("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2398,
+    "line": "attendance._id,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2426,
+    "line": "approvalRequest.attendanceId ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2427,
+    "line": "attendance._id;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2443,
+    "line": "approvalNote: `Approved by ${req.user.name || \"Admin\"} on attendance approval`,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2462,
+    "line": "\"Attendance request approved successfully.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2468,
+    "line": "attendance:"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2469,
+    "line": "formatAttendance("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2470,
+    "line": "attendance"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2501,
+    "line": "\"Invalid attendance approval request ID.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2506,
+    "line": "await AttendanceApprovalRequest.findById("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2514,
+    "line": "\"Attendance approval request not found.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2546,
+    "line": "\"Attendance request rejected by admin.\""
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2549,
+    "line": "approvalRequest.attendanceId ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2576,
+    "line": "* Do NOT create attendance."
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2585,
+    "line": "\"Attendance request rejected.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2599,
+    "line": "GET /api/attendance/approval-status"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2620,
+    "line": "* First check whether attendance already exists."
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2621,
+    "line": "* This covers normal office attendance as well as"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2622,
+    "line": "* admin-approved remote attendance."
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2625,
+    "line": "const attendance ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2626,
+    "line": "await Attendance.findOne({"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2647,
+    "line": "await AttendanceApprovalRequest.findOne({"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2664,
+    "line": "attendance &&"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2665,
+    "line": "attendance.loginTime &&"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2666,
+    "line": "!attendance.logoutTime"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2675,
+    "line": "attendanceActive:"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2691,
+    "line": "? \"Attendance request approved.\""
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2694,
+    "line": "attendance,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2707,
+    "line": "attendance &&"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2708,
+    "line": "attendance.logoutTime"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2716,
+    "line": "attendanceActive:"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2728,
+    "line": "attendance,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2737,
+    "line": "* No attendance yet."
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2747,
+    "line": "attendanceActive:"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2757,
+    "line": "\"No attendance approval request found.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2778,
+    "line": "attendancePending:"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2781,
+    "line": "attendanceActive:"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2791,
+    "line": "\"Attendance approval is pending.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2812,
+    "line": "attendancePending:"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2815,
+    "line": "attendanceActive:"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2826,
+    "line": "\"Attendance request was rejected.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2834,
+    "line": "* Approved request but attendance is missing."
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2837,
+    "line": "* approval creates attendance. Returning false is"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2838,
+    "line": "* safer than starting the agent without attendance."
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2847,
+    "line": "attendanceActive:"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2857,
+    "line": "\"Approval exists but attendance is not active.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2873,
+    "line": "await closeOpenAttendanceForEmployee(employee._id);"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2877,
+    "line": "await getAttendancePolicy();"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2892,
+    "line": "const currentAttendance = await Attendance.findOne({ employeeId: employee._id, date: today });"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2893,
+    "line": "if (currentAttendance) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2901,
+    "line": "if (!currentAttendance.logoutTime) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2910,
+    "line": "formatAttendance("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2911,
+    "line": "currentAttendance"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2920,
+    "line": "Employee may still access CRM, but attendance must NOT"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2927,
+    "line": "\"Today attendance is already completed.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2933,
+    "line": "formatAttendance("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 2934,
+    "line": "currentAttendance"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3066,
+    "line": "* to start office attendance."
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3075,
+    "line": "* admin attendance approval."
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3084,
+    "line": "await AttendanceApprovalRequest.findOne({"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3097,
+    "line": "await AttendanceApprovalRequest.create({"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3159,
+    "line": "attendanceId:"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3168,
+    "line": "attendancePending:"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3178,
+    "line": "\"This PC is not an approved registered workstation for this employee. Attendance approval has been sent to admin.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3226,
+    "line": "const attendance ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3227,
+    "line": "await Attendance.create({"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3270,
+    "line": "await createAttendanceEvent(attendance._id, employee._id, \"LOGIN\", req.body.source || \"web\", req.body.notes || \"\");"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3283,
+    "line": "attendancePending: false,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3284,
+    "line": "attendanceActive: true,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3325,
+    "line": "formatAttendance("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3326,
+    "line": "attendance"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3340,
+    "line": "const attendance = await Attendance.findOne({ employeeId: employee._id, date: today });"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3342,
+    "line": "if (!attendance) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3346,
+    "line": "if (attendance.logoutTime) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3347,
+    "line": "return res.status(200).json({ success: true, message: \"You are already logged out.\", data: formatAttendance(attendance) });"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3351,
+    "line": "if (attendance.breakStartedAt) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3352,
+    "line": "await endActiveBreak(attendance, employee, new Date(), \"web\");"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3356,
+    "line": "attendance.logoutTime = logoutTime;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3357,
+    "line": "const metrics = calculateAttendanceMetrics(attendance);"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3358,
+    "line": "attendance.workingMinutes = metrics.totalWorkedMinutes;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3359,
+    "line": "attendance.totalWorkedMinutes = metrics.totalWorkedMinutes;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3360,
+    "line": "attendance.totalBreakMinutes = metrics.totalBreakMinutes;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3361,
+    "line": "attendance.lateMinutes = metrics.lateMinutes;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3362,
+    "line": "attendance.earlyLogoutMinutes = metrics.earlyLogoutMinutes;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3363,
+    "line": "attendance.overtimeMinutes = metrics.overtimeMinutes;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3364,
+    "line": "attendance.workStatus = \"Logged Out\";"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3365,
+    "line": "attendance.status = getAttendanceStatus(attendance);"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3366,
+    "line": "attendance.updatedBy = req.user._id;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3367,
+    "line": "await attendance.save();"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3369,
+    "line": "await createAttendanceEvent(attendance._id, employee._id, \"LOGOUT\", req.body.source || \"web\", req.body.notes || \"\");"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3404,
+    "line": "return res.status(200).json({ success: true, message: \"Logout recorded successfully.\", data: formatAttendance(attendance) });"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3416,
+    "line": "const attendance = await Attendance.findOne({ employeeId: employee._id, date: today });"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3417,
+    "line": "if (!attendance || !attendance.loginTime) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3421,
+    "line": "if (attendance.logoutTime) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3422,
+    "line": "return res.status(400).json({ success: false, message: \"Today attendance is already completed.\" });"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3425,
+    "line": "if (attendance.breakStartedAt) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3429,
+    "line": "attendance.breakStartedAt = new Date();"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3430,
+    "line": "attendance.workStatus = \"Break\";"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3431,
+    "line": "attendance.updatedBy = req.user._id;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3432,
+    "line": "await attendance.save();"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3434,
+    "line": "await createAttendanceEvent(attendance._id, employee._id, \"BREAK_START\", req.body.source || \"web\", req.body.notes || \"\");"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3437,
+    "line": "return res.status(200).json({ success: true, message: \"Break started.\", data: formatAttendance(attendance) });"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3449,
+    "line": "const attendance = await Attendance.findOne({ employeeId: employee._id, date: today });"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3450,
+    "line": "if (!attendance || !attendance.loginTime) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3451,
+    "line": "return res.status(400).json({ success: false, message: \"No active attendance to end break.\" });"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3454,
+    "line": "if (!attendance.breakStartedAt) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3459,
+    "line": "const breakDuration = Math.max(0, Math.floor((breakEnd.getTime() - new Date(attendance.breakStartedAt).getTime()) / 60000));"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3460,
+    "line": "attendance.breakMinutes = Number(attendance.breakMinutes || 0) + breakDuration;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3461,
+    "line": "attendance.totalBreakMinutes = Number(attendance.totalBreakMinutes || 0) + breakDuration;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3462,
+    "line": "attendance.breakStartedAt = null;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3463,
+    "line": "attendance.workStatus = \"Working\";"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3464,
+    "line": "attendance.updatedBy = req.user._id;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3465,
+    "line": "await attendance.save();"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3467,
+    "line": "await createAttendanceEvent(attendance._id, employee._id, \"BREAK_END\", req.body.source || \"web\", req.body.notes || \"\");"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3470,
+    "line": "return res.status(200).json({ success: true, message: \"Break ended.\", data: formatAttendance(attendance) });"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3486,
+    "line": "await getAttendancePolicy();"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3497,
+    "line": "await closeOpenAttendanceForEmployee("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3508,
+    "line": "const attendance ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3509,
+    "line": "await Attendance.findOne({"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3520,
+    "line": "if (attendance) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3527,
+    "line": "formatAttendance("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3528,
+    "line": "attendance"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3741,
+    "line": "- Attendance"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3753,
+    "line": "await getAttendancePolicy();"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3797,
+    "line": "attendance,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3802,
+    "line": "Attendance.find({"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3842,
+    "line": "const attendanceMap ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3844,
+    "line": "attendance.map("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3943,
+    "line": "attendanceMap.get("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 3949,
+    "line": "formatAttendance("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 4221,
+    "line": "await getAttendancePolicy();"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 4256,
+    "line": "attendance,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 4261,
+    "line": "Attendance.find({"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 4317,
+    "line": "const attendanceMap ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 4319,
+    "line": "attendance.map("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 4425,
+    "line": "attendanceRate:"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 4449,
+    "line": "attendanceMap.get("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 4485,
+    "line": "formatAttendance("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 4721,
+    "line": "summary.attendanceRate ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 5760,
+    "line": "async function applyAttendanceRegularization("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 5765,
+    "line": "await getAttendancePolicy();"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 5777,
+    "line": "let attendance ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 5778,
+    "line": "await Attendance.findOne({"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 5792,
+    "line": "? parseRequestedAttendanceTime("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 5800,
+    "line": "? parseRequestedAttendanceTime("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 5810,
+    "line": "if (!attendance) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 5822,
+    "line": "\"Attendance record does not exist for the requested correction.\""
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 5828,
+    "line": "\"A login time is required to create attendance.\""
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 5832,
+    "line": "attendance ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 5833,
+    "line": "await Attendance.create({"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 5932,
+    "line": "attendance.loginTime ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 5944,
+    "line": "if (!attendance.loginTime) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 5950,
+    "line": "attendance.logoutTime ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 5957,
+    "line": "attendance.loginTime ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 5962,
+    "line": "attendance.logoutTime ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 5977,
+    "line": "attendance.loginTime ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 5981,
+    "line": "attendance.logoutTime ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 5998,
+    "line": "attendance.loginTime &&"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 5999,
+    "line": "attendance.logoutTime &&"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6001,
+    "line": "attendance.logoutTime"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6004,
+    "line": "attendance.loginTime"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6017,
+    "line": "attendance.loginTime"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6021,
+    "line": "attendance.date,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6022,
+    "line": "attendance.shiftStart ||"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6033,
+    "line": "attendance.loginTime"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6042,
+    "line": "attendance.graceMinutes ??"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6053,
+    "line": "attendance.lateMinutes ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6058,
+    "line": "calculateAttendanceMetrics("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6059,
+    "line": "attendance"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6062,
+    "line": "attendance.workingMinutes ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6065,
+    "line": "attendance.totalWorkedMinutes ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6068,
+    "line": "attendance.totalBreakMinutes ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6071,
+    "line": "attendance.lateMinutes ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6074,
+    "line": "attendance.earlyLogoutMinutes ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6077,
+    "line": "attendance.overtimeMinutes ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6080,
+    "line": "attendance.workStatus ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6081,
+    "line": "attendance.logoutTime"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6085,
+    "line": "attendance.status ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6086,
+    "line": "getAttendanceStatus("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6087,
+    "line": "attendance"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6099,
+    "line": "attendance.note = ["
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6100,
+    "line": "attendance.note,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6109,
+    "line": "attendance.updatedBy ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6112,
+    "line": "await attendance.save();"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6114,
+    "line": "return attendance;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6135,
+    "line": "await AttendanceRegularization.find({"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6184,
+    "line": "await AttendanceRegularization.findOne({"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6196,
+    "line": "\"Attendance correction request not found.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6216,
+    "line": "\"Attendance correction request cancelled successfully.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6324,
+    "line": "await AttendanceRegularization.find("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6418,
+    "line": "\"Attendance date must use YYYY-MM-DD format.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6430,
+    "line": "\"Invalid attendance correction type.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6441,
+    "line": "\"Future attendance cannot be corrected.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6453,
+    "line": "\"Attendance before the employee joining date cannot be corrected.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6545,
+    "line": "parseRequestedAttendanceTime("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6551,
+    "line": "parseRequestedAttendanceTime("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6587,
+    "line": "`Attendance regularization is not required because ${date} is a holiday: ${holiday.name}.`,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6592,
+    "line": "await getAttendancePolicy();"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6601,
+    "line": "\"Attendance regularization is not required on a weekly off.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6615,
+    "line": "\"Attendance regularization cannot be requested for an approved leave day.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6623,
+    "line": "const attendance ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6624,
+    "line": "await Attendance.findOne({"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6636,
+    "line": "attendance?.loginTime"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6641,
+    "line": "\"This attendance record already contains a login time.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6648,
+    "line": "!attendance?.loginTime"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6660,
+    "line": "attendance?.logoutTime"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6665,
+    "line": "\"This attendance record already contains a logout time.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6672,
+    "line": "!attendance"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6677,
+    "line": "\"No attendance record exists for this date. Use Absent Correction instead.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6686,
+    "line": "await AttendanceRegularization.findOne({"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6709,
+    "line": "await AttendanceRegularization.create({"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6748,
+    "line": "\"Attendance correction request submitted.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6807,
+    "line": "await AttendanceRegularization.findById("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6815,
+    "line": "\"Attendance correction request not found.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6830,
+    "line": "let attendance ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6841,
+    "line": "attendance ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6842,
+    "line": "await applyAttendanceRegularization("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6847,
+    "line": "request.attendanceId ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6848,
+    "line": "attendance._id;"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6882,
+    "line": "? \"Attendance correction approved and attendance updated successfully.\""
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6883,
+    "line": ": \"Attendance correction rejected.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6888,
+    "line": "attendance:"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6889,
+    "line": "attendance"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6890,
+    "line": "? formatAttendance("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6891,
+    "line": "attendance"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6912,
+    "line": "await getAttendancePolicy();"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6958,
+    "line": "attendanceRecords,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6963,
+    "line": "Attendance.find({"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 6998,
+    "line": "const attendanceMap ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7000,
+    "line": "attendanceRecords.map("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7057,
+    "line": "const attendance ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7058,
+    "line": "attendanceMap.get("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7066,
+    "line": "if (attendance) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7068,
+    "line": "formatAttendance("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7069,
+    "line": "attendance"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7081,
+    "line": "attendanceId:"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7083,
+    "line": "attendance._id"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7086,
+    "line": "attendanceStatus:"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7132,
+    "line": "attendanceId:"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7135,
+    "line": "attendanceStatus:"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7193,
+    "line": "attendanceId:"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7196,
+    "line": "attendanceStatus:"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7253,
+    "line": "attendanceId:"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7256,
+    "line": "attendanceStatus:"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7321,
+    "line": "attendanceId:"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7324,
+    "line": "attendanceStatus:"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7362,
+    "line": "x.attendanceStatus ==="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7369,
+    "line": "x.attendanceStatus ==="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7376,
+    "line": "x.attendanceStatus ==="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7383,
+    "line": "x.attendanceStatus ==="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7390,
+    "line": "x.attendanceStatus ==="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7397,
+    "line": "x.attendanceStatus ==="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7404,
+    "line": "x.attendanceStatus ==="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7411,
+    "line": "x.attendanceStatus ==="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7418,
+    "line": "x.attendanceStatus ==="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7476,
+    "line": "await getAttendancePolicy();"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7539,
+    "line": "attendance,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7544,
+    "line": "Attendance.find({"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7603,
+    "line": "const attendanceSet ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7605,
+    "line": "attendance.map("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7736,
+    "line": "attendanceSet.has("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7979,
+    "line": "\"/admin/attendance/:id\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 7999,
+    "line": "\"Invalid attendance ID.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8003,
+    "line": "const attendance ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8004,
+    "line": "await Attendance.findOne({"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8013,
+    "line": "if (!attendance) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8017,
+    "line": "\"Attendance record not found.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8045,
+    "line": "attendance.loginTime ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8048,
+    "line": "attendance.date,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8071,
+    "line": "attendance.logoutTime ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8074,
+    "line": "attendance.date,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8081,
+    "line": "attendance.loginTime &&"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8082,
+    "line": "attendance.logoutTime &&"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8084,
+    "line": "attendance.logoutTime"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8087,
+    "line": "attendance.loginTime"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8119,
+    "line": "attendance.breakMinutes ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8122,
+    "line": "attendance.totalBreakMinutes ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8125,
+    "line": "attendance.breakStartedAt ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8132,
+    "line": "attendance.note ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8139,
+    "line": "calculateAttendanceMetrics("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8140,
+    "line": "attendance"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8143,
+    "line": "attendance.workingMinutes ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8146,
+    "line": "attendance.totalWorkedMinutes ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8149,
+    "line": "attendance.totalBreakMinutes ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8152,
+    "line": "attendance.lateMinutes ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8155,
+    "line": "attendance.earlyLogoutMinutes ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8158,
+    "line": "attendance.overtimeMinutes ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8161,
+    "line": "attendance.workStatus ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8162,
+    "line": "attendance.logoutTime"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8164,
+    "line": ": attendance.loginTime"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8168,
+    "line": "attendance.status ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8169,
+    "line": "getAttendanceStatus("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8170,
+    "line": "attendance"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8173,
+    "line": "attendance.updatedBy ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8176,
+    "line": "await attendance.save();"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8182,
+    "line": "\"Attendance updated successfully.\","
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8185,
+    "line": "formatAttendance("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8186,
+    "line": "attendance"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8230,
+    "line": "currentMonthAttendance,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8245,
+    "line": "AttendanceRegularization.countDocuments({"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8250,
+    "line": "Attendance.find({"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8280,
+    "line": "currentMonthAttendance.filter("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8315,
+    "line": "currentMonthAttendance.filter("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8324,
+    "line": "currentMonthAttendance.filter("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8343,
+    "line": "attendanceRecords:"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8344,
+    "line": "currentMonthAttendance.length,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8346,
+    "line": "completedAttendance:"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8380,
+    "line": "/api/attendance/admin/day/:employeeId/:date"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8384,
+    "line": "- attendance"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8385,
+    "line": "- attendance events"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8510,
+    "line": "attendance:"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8538,
+    "line": "const attendance ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8539,
+    "line": "await Attendance.findOne({"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8568,
+    "line": "await getAttendancePolicy();"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8609,
+    "line": "await AttendanceRegularization.findOne({"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8627,
+    "line": "attendance?._id"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8630,
+    "line": "await AttendanceEvent.find({"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8631,
+    "line": "attendanceId:"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8632,
+    "line": "attendance._id,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8651,
+    "line": "\"No attendance recorded.\";"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8654,
+    "line": "* Attendance gets first priority."
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8656,
+    "line": "if (attendance) {"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8658,
+    "line": "attendance.status ||"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8659,
+    "line": "getAttendanceStatus("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8660,
+    "line": "attendance"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8664,
+    "line": "attendance.note ||"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8665,
+    "line": "attendance.autoClosedReason ||"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8670,
+    "line": "* Full day leave when attendance"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8723,
+    "line": "const formattedAttendance ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8724,
+    "line": "attendance"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8725,
+    "line": "? formatAttendance("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8726,
+    "line": "attendance"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8986,
+    "line": "attendance:"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 8987,
+    "line": "formattedAttendance,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9148,
+    "line": "await getAttendancePolicy();"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9197,
+    "line": "attendanceRecords,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9202,
+    "line": "Attendance.find({"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9262,
+    "line": "const attendanceByEmployee ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9267,
+    "line": "attendanceRecords"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9275,
+    "line": "!attendanceByEmployee.has("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9279,
+    "line": "attendanceByEmployee.set("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9285,
+    "line": "attendanceByEmployee"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9332,
+    "line": "const attendanceMap ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9333,
+    "line": "attendanceByEmployee.get("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9414,
+    "line": "attendanceRate: 0,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9445,
+    "line": "attendanceMap.get("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9461,
+    "line": "formatAttendance("
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9636,
+    "line": "summary.attendanceRate ="
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9694,
+    "line": "const allAttendance = await Attendance.find({ employeeId: employee._id })"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9698,
+    "line": "const completed = allAttendance.filter((item) => item.logoutTime);"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9707,
+    "line": "totalDays: allAttendance.length,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9708,
+    "line": "present: allAttendance.filter((item) => item.status === \"Present\").length,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9709,
+    "line": "late: allAttendance.filter((item) => item.status === \"Late\").length,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9710,
+    "line": "halfDay: allAttendance.filter((item) => item.status === \"Half Day\").length,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9711,
+    "line": "absent: allAttendance.filter((item) => item.status === \"Absent\").length,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9712,
+    "line": "leave: allAttendance.filter((item) => item.status === \"On Leave\").length,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9713,
+    "line": "working: allAttendance.filter((item) => item.workStatus === \"Working\").length,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9714,
+    "line": "break: allAttendance.filter((item) => item.workStatus === \"Break\").length,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9715,
+    "line": "loggedOut: allAttendance.filter((item) => item.workStatus === \"Logged Out\").length,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9716,
+    "line": "autoClosed: allAttendance.filter((item) => item.isAutoClosed).length,"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9737,
+    "line": "closed = await closeOpenAttendanceForEmployee(employee._id, { includeToday: req.body.includeToday === true });"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9740,
+    "line": "const openRecords = await Attendance.find({ logoutTime: null, date: { $lt: today } });"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9742,
+    "line": "closed.push(await closeAttendanceRecord(record, { logoutAt: parseShiftDate(record.date, record.shiftEnd || DEFAULT_SHIFT_END), reason: \"Logout missed\" }));"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9748,
+    "line": "closed = await closeOpenAttendanceForEmployee(employee._id, { includeToday: req.body.includeToday === true });"
+  },
+  {
+    "file": "attendance-v2.js",
+    "lineNum": 9751,
+    "line": "return res.status(200).json({ success: true, message: \"Open attendance records closed.\", count: closed.length, data: closed.map(formatAttendance) });"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 14,
+    "line": "const attendanceSchema = new mongoose.Schema("
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 130,
+    "line": "collection: \"attendance\","
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 134,
+    "line": "const Attendance ="
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 135,
+    "line": "mongoose.models.Attendance ||"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 137,
+    "line": "\"Attendance\","
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 138,
+    "line": "attendanceSchema"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 153,
+    "line": "function toAttendanceDateTime(value, date) {"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 170,
+    "line": "router.get(\"/attendance/test\", (req, res) => {"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 173,
+    "line": "message: \"Attendance API is working.\","
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 187,
+    "line": "\"/attendance/check-in\","
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 210,
+    "line": "const existingAttendance ="
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 211,
+    "line": "await Attendance.findOne({"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 216,
+    "line": "if (existingAttendance) {"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 220,
+    "line": "data: existingAttendance,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 224,
+    "line": "const attendance ="
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 225,
+    "line": "await Attendance.create({"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 258,
+    "line": "employee.loginTime = attendance.loginTime;"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 272,
+    "line": "data: attendance,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 284,
+    "line": "\"/attendance/today/all\","
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 302,
+    "line": "const attendanceList ="
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 303,
+    "line": "await Attendance.find({"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 316,
+    "line": "const attendanceMap = new Map();"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 318,
+    "line": "attendanceList.forEach((item) => {"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 319,
+    "line": "attendanceMap.set("
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 327,
+    "line": "const attendance ="
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 328,
+    "line": "attendanceMap.get("
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 332,
+    "line": "if (attendance) {"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 348,
+    "line": "attendanceStatus:"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 349,
+    "line": "attendance.status,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 352,
+    "line": "attendance.workStatus,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 355,
+    "line": "attendance.loginTime,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 358,
+    "line": "attendance.logoutTime,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 361,
+    "line": "attendance.workingMinutes ?? 0,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 364,
+    "line": "attendance.breakMinutes ?? 0,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 366,
+    "line": "attendanceId:"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 367,
+    "line": "attendance._id,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 376,
+    "line": "attendanceStatus: \"On Leave\","
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 382,
+    "line": "attendanceId: null,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 400,
+    "line": "attendanceStatus:"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 414,
+    "line": "attendanceId: null,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 423,
+    "line": "x.attendanceStatus"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 428,
+    "line": "(x) => x.attendanceStatus === \"Absent\""
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 432,
+    "line": "(x) => x.attendanceStatus === \"Late\""
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 436,
+    "line": "(x) => x.attendanceStatus === \"Half Day\""
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 440,
+    "line": "(x) => x.attendanceStatus === \"On Leave\""
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 461,
+    "line": "message: \"Today's attendance loaded successfully.\","
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 475,
+    "line": "\"/attendance/check-out\","
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 498,
+    "line": "const attendance ="
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 499,
+    "line": "await Attendance.findOne({"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 504,
+    "line": "if (!attendance) {"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 511,
+    "line": "if (attendance.logoutTime) {"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 515,
+    "line": "data: attendance,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 519,
+    "line": "attendance.logoutTime = new Date();"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 521,
+    "line": "const login = new Date(attendance.loginTime);"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 524,
+    "line": "attendance.logoutTime = logout;"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 526,
+    "line": "attendance.workingMinutes = Math.max("
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 533,
+    "line": "attendance.workStatus = \"Logged Out\";"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 534,
+    "line": "attendance.updatedBy = req.user._id;"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 538,
+    "line": "attendance.logoutTime;"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 541,
+    "line": "attendance.workingMinutes;"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 548,
+    "line": "await attendance.save();"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 553,
+    "line": "data: attendance,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 564,
+    "line": "router.post(\"/attendance/break-start\", async (req, res, next) => {"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 575,
+    "line": "const attendance = await Attendance.findOne({ employeeId: employee._id, date: getTodayDate() });"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 576,
+    "line": "if (!attendance) {"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 580,
+    "line": "if (attendance.workStatus !== \"Working\") {"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 584,
+    "line": "attendance.workStatus = \"Break\";"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 585,
+    "line": "attendance.breakStartedAt = new Date();"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 586,
+    "line": "await attendance.save();"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 591,
+    "line": "return res.status(200).json({ success: true, message: \"Break started.\", data: attendance });"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 601,
+    "line": "router.put(\"/attendance/break-end\", async (req, res, next) => {"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 612,
+    "line": "const attendance = await Attendance.findOne({ employeeId: employee._id, date: getTodayDate() });"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 613,
+    "line": "if (!attendance || attendance.workStatus !== \"Break\" || !attendance.breakStartedAt) {"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 617,
+    "line": "const elapsedMinutes = Math.max(0, Math.floor((Date.now() - new Date(attendance.breakStartedAt).getTime()) / 60000));"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 618,
+    "line": "attendance.breakMinutes = Number(attendance.breakMinutes || 0) + elapsedMinutes;"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 619,
+    "line": "attendance.breakStartedAt = null;"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 620,
+    "line": "attendance.workStatus = \"Working\";"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 621,
+    "line": "await attendance.save();"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 626,
+    "line": "return res.status(200).json({ success: true, message: \"Break ended.\", data: attendance });"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 636,
+    "line": "\"/attendance/today\","
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 657,
+    "line": "const attendance = await Attendance.findOne({"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 662,
+    "line": "if (!attendance) {"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 671,
+    "line": "data: attendance,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 682,
+    "line": "router.get(\"/attendance/me\", async (req, res, next) => {"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 693,
+    "line": "const data = await Attendance.find({ employeeId: employee._id })"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 789,
+    "line": "router.get(\"/attendance\", async (req, res, next) => {"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 791,
+    "line": "const attendance = await Attendance.find()"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 799,
+    "line": "count: attendance.length,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 800,
+    "line": "data: attendance,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 810,
+    "line": "router.post(\"/attendance\", async (req, res, next) => {"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 839,
+    "line": "message: \"Attendance date is required.\","
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 843,
+    "line": "const existingAttendance ="
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 844,
+    "line": "await Attendance.findOne({"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 849,
+    "line": "if (existingAttendance) {"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 853,
+    "line": "\"Attendance already exists for this employee.\","
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 857,
+    "line": "const attendance ="
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 858,
+    "line": "await Attendance.create({"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 912,
+    "line": "\"Attendance saved successfully.\","
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 913,
+    "line": "data: attendance,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 923,
+    "line": "router.put(\"/attendance/:id\", async (req, res, next) => {"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 925,
+    "line": "const attendance = await Attendance.findById(req.params.id);"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 927,
+    "line": "if (!attendance) {"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 930,
+    "line": "message: \"Attendance record not found.\","
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 934,
+    "line": "Object.assign(attendance, {"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 935,
+    "line": "employeeCode: req.body.employeeCode ?? attendance.employeeCode,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 936,
+    "line": "employeeName: req.body.employeeName ?? attendance.employeeName,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 937,
+    "line": "department: req.body.department ?? attendance.department,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 938,
+    "line": "role: req.body.role ?? attendance.role,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 940,
+    "line": "? toAttendanceDateTime(req.body.loginTime, attendance.date)"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 941,
+    "line": ": attendance.loginTime,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 943,
+    "line": "? toAttendanceDateTime(req.body.logoutTime, attendance.date)"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 944,
+    "line": ": attendance.logoutTime,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 946,
+    "line": "req.body.breakMinutes ?? attendance.breakMinutes,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 948,
+    "line": "req.body.workingMinutes ?? attendance.workingMinutes,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 950,
+    "line": "req.body.overtimeMinutes ?? attendance.overtimeMinutes,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 951,
+    "line": "status: req.body.status ?? attendance.status,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 953,
+    "line": "req.body.workStatus ?? attendance.workStatus,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 954,
+    "line": "note: req.body.note ?? attendance.note,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 958,
+    "line": "await attendance.save();"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 962,
+    "line": "message: \"Attendance updated successfully.\","
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 963,
+    "line": "data: attendance,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 973,
+    "line": "router.delete(\"/attendance/:id\", async (req, res, next) => {"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 975,
+    "line": "const attendance = await Attendance.findById(req.params.id);"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 977,
+    "line": "if (!attendance) {"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 980,
+    "line": "message: \"Attendance record not found.\","
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 984,
+    "line": "await attendance.deleteOne();"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 988,
+    "line": "message: \"Attendance deleted successfully.\","
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 998,
+    "line": "router.get(\"/attendance-summary\", async (req, res, next) => {"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 1002,
+    "line": "const attendance = await Attendance.find({"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 1007,
+    "line": "total: attendance.length,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 1019,
+    "line": "attendance.forEach((item) => {"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 1067,
+    "line": "\"/monthly-attendance/:employeeId\","
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 1076,
+    "line": "const attendance = await Attendance.find({"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 1085,
+    "line": "count: attendance.length,"
+  },
+  {
+    "file": "attendance.js",
+    "lineNum": 1086,
+    "line": "data: attendance,"
+  },
+  {
+    "file": "audit_leaverequest_legacy_compatibility.js",
+    "lineNum": 220,
+    "line": "// Mount legacy routes from attendance.js under /api/admin"
+  },
+  {
+    "file": "audit_leaverequest_legacy_compatibility.js",
+    "lineNum": 221,
+    "line": "const attendanceRoutes = require(\"./attendance\");"
+  },
+  {
+    "file": "audit_leaverequest_legacy_compatibility.js",
+    "lineNum": 222,
+    "line": "app.use(\"/api/admin\", attendanceRoutes);"
+  },
+  {
+    "file": "audit_leaverequest_legacy_compatibility.js",
+    "lineNum": 224,
+    "line": "// Mount modern routes from attendance-v2.js under /api/attendance"
+  },
+  {
+    "file": "audit_leaverequest_legacy_compatibility.js",
+    "lineNum": 225,
+    "line": "const attendanceV2Routes = require(\"./attendance-v2\");"
+  },
+  {
+    "file": "audit_leaverequest_legacy_compatibility.js",
+    "lineNum": 226,
+    "line": "app.use(\"/api/attendance\", attendanceV2Routes);"
+  },
+  {
+    "file": "audit_leaverequest_legacy_compatibility.js",
+    "lineNum": 371,
+    "line": "// ── STEP 4: TESTING ADVANCED ENDPOINTS (/api/attendance) ─────────────────"
+  },
+  {
+    "file": "audit_leaverequest_legacy_compatibility.js",
+    "lineNum": 372,
+    "line": "console.log(\"\\n[AUDIT STEP 4] Testing Advanced endpoints (/api/attendance)\");"
+  },
+  {
+    "file": "audit_leaverequest_legacy_compatibility.js",
+    "lineNum": 374,
+    "line": "// Test 4.1: V2 GET /api/attendance/leave/my"
+  },
+  {
+    "file": "audit_leaverequest_legacy_compatibility.js",
+    "lineNum": 375,
+    "line": "console.log(\"  [4.1] V2 GET /api/attendance/leave/my\");"
+  },
+  {
+    "file": "audit_leaverequest_legacy_compatibility.js",
+    "lineNum": 378,
+    "line": "\"/api/attendance/leave/my\","
+  },
+  {
+    "file": "audit_leaverequest_legacy_compatibility.js",
+    "lineNum": 385,
+    "line": "// Test 4.2: V2 GET /api/attendance/admin/leaves (with summary object)"
+  },
+  {
+    "file": "audit_leaverequest_legacy_compatibility.js",
+    "lineNum": 386,
+    "line": "console.log(\"  [4.2] V2 GET /api/attendance/admin/leaves\");"
+  },
+  {
+    "file": "audit_leaverequest_legacy_compatibility.js",
+    "lineNum": 389,
+    "line": "\"/api/attendance/admin/leaves\","
+  },
+  {
+    "file": "audit_leaverequest_legacy_compatibility.js",
+    "lineNum": 402,
+    "line": "`/api/attendance/admin/leaves/${legacyLeaveId}/review`,"
+  },
+  {
+    "file": "audit_leaverequest_legacy_compatibility.js",
+    "lineNum": 427,
+    "line": "`/api/attendance/admin/leaves/${pendingForReviewId}/review`,"
+  },
+  {
+    "file": "audit_leaverequest_legacy_compatibility.js",
+    "lineNum": 440,
+    "line": "`/api/attendance/leave/${legacyLeaveId}/cancel`,"
+  },
+  {
+    "file": "audit_leaverequest_legacy_compatibility.js",
+    "lineNum": 465,
+    "line": "`/api/attendance/leave/${pendingForCancelId}/cancel`,"
+  },
+  {
+    "file": "audit_leaverequest_legacy_compatibility.js",
+    "lineNum": 488,
+    "line": "console.log(\"\\n[AUDIT STEP 6] Attendance & Holiday integration check\");"
+  },
+  {
+    "file": "auth.js",
+    "lineNum": 830,
+    "line": "It does NOT end employee attendance/workday."
+  },
+  {
+    "file": "employee.js",
+    "lineNum": 1067,
+    "line": "const Attendance = mongoose.models.Attendance;"
+  },
+  {
+    "file": "employee.js",
+    "lineNum": 1088,
+    "line": "const [attendance, tasks, tickets, activeTask, activeTaskCount, dueTodayCount, ticketCount, solvedThisWeek, agentSummary] = await Promise.all(["
+  },
+  {
+    "file": "employee.js",
+    "lineNum": 1089,
+    "line": "Attendance ? Attendance.findOne({ employeeId: employee._id, date: today }).lean() : null,"
+  },
+  {
+    "file": "employee.js",
+    "lineNum": 1109,
+    "line": "attendance?.loginTime && {"
+  },
+  {
+    "file": "employee.js",
+    "lineNum": 1110,
+    "line": "id: `login-${attendance._id}`,"
+  },
+  {
+    "file": "employee.js",
+    "lineNum": 1113,
+    "line": "description: \"Attendance login recorded\","
+  },
+  {
+    "file": "employee.js",
+    "lineNum": 1114,
+    "line": "time: attendance.loginTime,"
+  },
+  {
+    "file": "employee.js",
+    "lineNum": 1125,
+    "line": "attendance?.logoutTime && {"
+  },
+  {
+    "file": "employee.js",
+    "lineNum": 1126,
+    "line": "id: `logout-${attendance._id}`,"
+  },
+  {
+    "file": "employee.js",
+    "lineNum": 1129,
+    "line": "description: \"Attendance logout recorded\","
+  },
+  {
+    "file": "employee.js",
+    "lineNum": 1130,
+    "line": "time: attendance.logoutTime,"
+  },
+  {
+    "file": "employee.js",
+    "lineNum": 1144,
+    "line": "if (attendance && !attendance.logoutTime) {"
+  },
+  {
+    "file": "employee.js",
+    "lineNum": 1153,
+    "line": "if (attendance.breakStartedAt && !attendance.breakEndedAt) {"
+  },
+  {
+    "file": "employee.js",
+    "lineNum": 1169,
+    "line": "attendance: attendance"
+  },
+  {
+    "file": "employee.js",
+    "lineNum": 1171,
+    "line": "...attendance,"
+  },
+  {
+    "file": "employee.js",
+    "lineNum": 1925,
+    "line": "const Attendance = mongoose.models.Attendance;"
+  },
+  {
+    "file": "employee.js",
+    "lineNum": 1940,
+    "line": "attendance,"
+  },
+  {
+    "file": "employee.js",
+    "lineNum": 2015,
+    "line": "Attendance"
+  },
+  {
+    "file": "employee.js",
+    "lineNum": 2016,
+    "line": "? Attendance.findOne({"
+  },
+  {
+    "file": "employee.js",
+    "lineNum": 2077,
+    "line": "attendanceStatus: attendance"
+  },
+  {
+    "file": "employee.js",
+    "lineNum": 2078,
+    "line": "? attendance.logoutTime"
+  },
+  {
+    "file": "employee.js",
+    "lineNum": 3969,
+    "line": "} else if (filter === \"attendance\") {"
+  },
+  {
+    "file": "employee.js",
+    "lineNum": 3970,
+    "line": "query.entityType = \"attendance\";"
+  },
+  {
+    "file": "models\\ActivityLog.js",
+    "lineNum": 25,
+    "line": "\"Attendance\","
+  },
+  {
+    "file": "models\\ActivityLog.js",
+    "lineNum": 49,
+    "line": "\"attendance\","
+  },
+  {
+    "file": "models\\AttendanceApprovalRequest.js",
+    "lineNum": 7,
+    "line": "const attendanceApprovalRequestSchema = new mongoose.Schema("
+  },
+  {
+    "file": "models\\AttendanceApprovalRequest.js",
+    "lineNum": 140,
+    "line": "attendanceId: {"
+  },
+  {
+    "file": "models\\AttendanceApprovalRequest.js",
+    "lineNum": 142,
+    "line": "ref: \"AttendanceV2\","
+  },
+  {
+    "file": "models\\AttendanceApprovalRequest.js",
+    "lineNum": 148,
+    "line": "collection: \"attendanceApprovalRequests\","
+  },
+  {
+    "file": "models\\AttendanceApprovalRequest.js",
+    "lineNum": 152,
+    "line": "attendanceApprovalRequestSchema.index({"
+  },
+  {
+    "file": "models\\AttendanceApprovalRequest.js",
+    "lineNum": 158,
+    "line": "const AttendanceApprovalRequest ="
+  },
+  {
+    "file": "models\\AttendanceApprovalRequest.js",
+    "lineNum": 159,
+    "line": "mongoose.models.AttendanceApprovalRequest ||"
+  },
+  {
+    "file": "models\\AttendanceApprovalRequest.js",
+    "lineNum": 160,
+    "line": "mongoose.model(\"AttendanceApprovalRequest\", attendanceApprovalRequestSchema);"
+  },
+  {
+    "file": "models\\AttendanceApprovalRequest.js",
+    "lineNum": 162,
+    "line": "module.exports = AttendanceApprovalRequest;"
+  },
+  {
+    "file": "models\\AttendanceEvent.js",
+    "lineNum": 7,
+    "line": "const attendanceEventSchema = new mongoose.Schema("
+  },
+  {
+    "file": "models\\AttendanceEvent.js",
+    "lineNum": 9,
+    "line": "attendanceId: {"
+  },
+  {
+    "file": "models\\AttendanceEvent.js",
+    "lineNum": 11,
+    "line": "ref: \"Attendance\","
+  },
+  {
+    "file": "models\\AttendanceEvent.js",
+    "lineNum": 46,
+    "line": "collection: \"attendanceevents\","
+  },
+  {
+    "file": "models\\AttendanceEvent.js",
+    "lineNum": 50,
+    "line": "const AttendanceEvent ="
+  },
+  {
+    "file": "models\\AttendanceEvent.js",
+    "lineNum": 51,
+    "line": "mongoose.models.AttendanceEvent ||"
+  },
+  {
+    "file": "models\\AttendanceEvent.js",
+    "lineNum": 52,
+    "line": "mongoose.model(\"AttendanceEvent\", attendanceEventSchema);"
+  },
+  {
+    "file": "models\\AttendanceEvent.js",
+    "lineNum": 54,
+    "line": "module.exports = AttendanceEvent;"
+  },
+  {
+    "file": "models\\AttendanceRegularization.js",
+    "lineNum": 7,
+    "line": "const attendanceRegularizationSchema = new mongoose.Schema("
+  },
+  {
+    "file": "models\\AttendanceRegularization.js",
+    "lineNum": 87,
+    "line": "attendanceId: {"
+  },
+  {
+    "file": "models\\AttendanceRegularization.js",
+    "lineNum": 89,
+    "line": "ref: \"AttendanceV2\","
+  },
+  {
+    "file": "models\\AttendanceRegularization.js",
+    "lineNum": 100,
+    "line": "collection: \"attendanceRegularizations\","
+  },
+  {
+    "file": "models\\AttendanceRegularization.js",
+    "lineNum": 104,
+    "line": "const AttendanceRegularization ="
+  },
+  {
+    "file": "models\\AttendanceRegularization.js",
+    "lineNum": 105,
+    "line": "mongoose.models.AttendanceRegularization ||"
+  },
+  {
+    "file": "models\\AttendanceRegularization.js",
+    "lineNum": 106,
+    "line": "mongoose.model(\"AttendanceRegularization\", attendanceRegularizationSchema);"
+  },
+  {
+    "file": "models\\AttendanceRegularization.js",
+    "lineNum": 108,
+    "line": "module.exports = AttendanceRegularization;"
+  },
+  {
+    "file": "models\\EmployeeNotification.js",
+    "lineNum": 61,
+    "line": "enum: [\"task\", \"ticket\", \"attendance\", \"timelog\", \"system\", \"other\"],"
+  },
+  {
+    "file": "models\\EmployeeNotification.js",
+    "lineNum": 75,
+    "line": "enum: [\"dashboard\", \"tasks\", \"tickets\", \"attendance\", \"time-log\"],"
+  },
+  {
+    "file": "models\\LeaveRequest.js",
+    "lineNum": 8,
+    "line": "approval/rejection workflows, and attendance calculations."
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 36,
+    "line": "attendance-v2.js"
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 174,
+    "line": "const Attendance ="
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 176,
+    "line": "\"AttendanceV2\""
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 381,
+    "line": "let todayAttendance = {"
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 389,
+    "line": "if (Attendance) {"
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 390,
+    "line": "const attendanceSummary ="
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 391,
+    "line": "await Attendance.aggregate(["
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 414,
+    "line": "attendanceSummary"
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 420,
+    "line": "todayAttendance.present ="
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 428,
+    "line": "todayAttendance.late ="
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 436,
+    "line": "todayAttendance.halfDay ="
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 444,
+    "line": "todayAttendance.absent ="
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 452,
+    "line": "todayAttendance.leave ="
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 1073,
+    "line": "attendance:"
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 1074,
+    "line": "todayAttendance,"
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 3877,
+    "line": "const Attendance ="
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 3879,
+    "line": "\"AttendanceV2\""
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 4110,
+    "line": "let attendanceStats ="
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 4113,
+    "line": "if (Attendance) {"
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 4114,
+    "line": "const attendanceMatch = {"
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 4134,
+    "line": "attendanceMatch.date ="
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 4138,
+    "line": "attendanceMatch.date.$gte ="
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 4143,
+    "line": "attendanceMatch.date.$lte ="
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 4148,
+    "line": "attendanceStats ="
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 4149,
+    "line": "await Attendance.aggregate(["
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 4152,
+    "line": "attendanceMatch,"
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 4160,
+    "line": "attendanceDays: {"
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 4242,
+    "line": "const attendanceMap ="
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 4244,
+    "line": "attendanceStats.map("
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 4268,
+    "line": "const attendance ="
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 4269,
+    "line": "attendanceMap.get("
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 4358,
+    "line": "attendanceDays:"
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 4360,
+    "line": "attendance.attendanceDays ||"
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 4366,
+    "line": "attendance.present ||"
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 4372,
+    "line": "attendance.late ||"
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 4378,
+    "line": "attendance.halfDay ||"
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 4384,
+    "line": "attendance.totalWorkedMinutes ||"
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 6197,
+    "line": "\"/attendance\","
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 6200,
+    "line": "const Attendance ="
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 6202,
+    "line": "\"AttendanceV2\""
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 6262,
+    "line": "await Attendance.find("
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 6570,
+    "line": "const attendanceMap ="
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 6582,
+    "line": "attendanceMap.set("
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 6665,
+    "line": "* Real attendance exists."
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 6668,
+    "line": "attendanceMap.has("
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 6842,
+    "line": "\"No attendance recorded\","
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 7013,
+    "line": "attendanceDays: 0,"
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 7035,
+    "line": "employee.attendanceDays += 1;"
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 7129,
+    "line": "const totalAttendanceRecords ="
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 7141,
+    "line": "const attendancePercentage ="
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 7142,
+    "line": "totalAttendanceRecords > 0"
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 7146,
+    "line": "totalAttendanceRecords *"
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 7156,
+    "line": "employee.attendanceDays > 0"
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 7159,
+    "line": "employee.attendanceDays"
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 7164,
+    "line": "employee.attendanceDays > 0"
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 7167,
+    "line": "employee.attendanceDays"
+  },
+  {
+    "file": "reports.js",
+    "lineNum": 7171,
+    "line": "attendancePercentage,"
+  },
+  {
+    "file": "server.js",
+    "lineNum": 64,
+    "line": "const attendanceRoutes = require(\"./attendance\");"
+  },
+  {
+    "file": "server.js",
+    "lineNum": 65,
+    "line": "const attendanceV2Routes = require(\"./attendance-v2\");"
+  },
+  {
+    "file": "server.js",
+    "lineNum": 195,
+    "line": "app.use(\"/api/admin\", attendanceRoutes);"
+  },
+  {
+    "file": "server.js",
+    "lineNum": 224,
+    "line": "* Mount settings before Attendance V2."
+  },
+  {
+    "file": "server.js",
+    "lineNum": 226,
+    "line": "* attendance-v2 reads the SystemSettings model"
+  },
+  {
+    "file": "server.js",
+    "lineNum": 243,
+    "line": "\"/api/attendance\","
+  },
+  {
+    "file": "server.js",
+    "lineNum": 244,
+    "line": "attendanceV2Routes"
+  },
+  {
+    "file": "server.js",
+    "lineNum": 606,
+    "line": "// and finish a few seconds AFTER attendance logoutTime"
+  },
+  {
+    "file": "server.js",
+    "lineNum": 609,
+    "line": "// Backend attendance logout"
+  },
+  {
+    "file": "server.js",
+    "lineNum": 636,
+    "line": "const attendanceRecords ="
+  },
+  {
+    "file": "server.js",
+    "lineNum": 637,
+    "line": "AttendanceV2"
+  },
+  {
+    "file": "server.js",
+    "lineNum": 638,
+    "line": "? await AttendanceV2.find({"
+  },
+  {
+    "file": "server.js",
+    "lineNum": 652,
+    "line": "const attendanceByDate ="
+  },
+  {
+    "file": "server.js",
+    "lineNum": 654,
+    "line": "attendanceRecords.map("
+  },
+  {
+    "file": "server.js",
+    "lineNum": 655,
+    "line": "(attendance) => ["
+  },
+  {
+    "file": "server.js",
+    "lineNum": 656,
+    "line": "attendance.date,"
+  },
+  {
+    "file": "server.js",
+    "lineNum": 657,
+    "line": "attendance,"
+  },
+  {
+    "file": "server.js",
+    "lineNum": 671,
+    "line": "const attendanceDate ="
+  },
+  {
+    "file": "server.js",
+    "lineNum": 676,
+    "line": "const attendance ="
+  },
+  {
+    "file": "server.js",
+    "lineNum": 677,
+    "line": "attendanceByDate.get("
+  },
+  {
+    "file": "server.js",
+    "lineNum": 678,
+    "line": "attendanceDate"
+  },
+  {
+    "file": "server.js",
+    "lineNum": 682,
+    "line": "* No attendance/workday for this date."
+  },
+  {
+    "file": "server.js",
+    "lineNum": 688,
+    "line": "!attendance ||"
+  },
+  {
+    "file": "server.js",
+    "lineNum": 689,
+    "line": "!attendance.loginTime"
+  },
+  {
+    "file": "server.js",
+    "lineNum": 700,
+    "line": "\"No active attendance record.\","
+  },
+  {
+    "file": "server.js",
+    "lineNum": 708,
+    "line": "attendance.loginTime"
+  },
+  {
+    "file": "server.js",
+    "lineNum": 743,
+    "line": "if (attendance.logoutTime) {"
+  },
+  {
+    "file": "server.js",
+    "lineNum": 746,
+    "line": "attendance.logoutTime"
+  },
+  {
+    "file": "server.js",
+    "lineNum": 784,
+    "line": "* If nothing remains after attendance validation,"
+  },
+  {
+    "file": "server.js",
+    "lineNum": 1747,
+    "line": "const AttendanceV2 ="
+  },
+  {
+    "file": "server.js",
+    "lineNum": 1748,
+    "line": "mongoose.models.AttendanceV2;"
+  },
+  {
+    "file": "server.js",
+    "lineNum": 1789,
+    "line": "const todayAttendance ="
+  },
+  {
+    "file": "server.js",
+    "lineNum": 1790,
+    "line": "AttendanceV2"
+  },
+  {
+    "file": "server.js",
+    "lineNum": 1791,
+    "line": "? await AttendanceV2.findOne({"
+  },
+  {
+    "file": "server.js",
+    "lineNum": 1808,
+    "line": "* Normal CRM logout does NOT set attendance"
+  },
+  {
+    "file": "server.js",
+    "lineNum": 1817,
+    "line": "!todayAttendance ||"
+  },
+  {
+    "file": "server.js",
+    "lineNum": 1818,
+    "line": "!todayAttendance.loginTime ||"
+  },
+  {
+    "file": "server.js",
+    "lineNum": 1819,
+    "line": "todayAttendance.logoutTime"
+  },
+  {
+    "file": "settings.js",
+    "lineNum": 15,
+    "line": "* two settings because Attendance uses them."
+  },
+  {
+    "file": "settings.js",
+    "lineNum": 75,
+    "line": "\"Attendance\","
+  },
+  {
+    "file": "settings.js",
+    "lineNum": 78,
+    "line": "\"My Attendance\","
+  },
+  {
+    "file": "settings.js",
+    "lineNum": 178,
+    "line": "\"Attendance\","
+  },
+  {
+    "file": "settings.js",
+    "lineNum": 211,
+    "line": "\"Attendance\","
+  },
+  {
+    "file": "settings.js",
+    "lineNum": 239,
+    "line": "\"My Attendance\","
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 73,
+    "line": "const AttendanceApprovalRequest = require(\"./models/AttendanceApprovalRequest\");"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 75,
+    "line": "assert(\"Model compiles without error\", Boolean(AttendanceApprovalRequest));"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 76,
+    "line": "assert(\"Model name is AttendanceApprovalRequest\", AttendanceApprovalRequest.modelName === \"AttendanceApprovalRequest\");"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 77,
+    "line": "assert(\"Collection name is attendanceApprovalRequests\", AttendanceApprovalRequest.collection.name === \"attendanceApprovalRequests\");"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 79,
+    "line": "await AttendanceApprovalRequest.init();"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 80,
+    "line": "const indexes = await AttendanceApprovalRequest.collection.indexes();"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 93,
+    "line": "const doc1 = await AttendanceApprovalRequest.create({"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 114,
+    "line": "assert(\"attendanceId defaults to null\", doc1.attendanceId === null);"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 122,
+    "line": "await AttendanceApprovalRequest.create(data);"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 150,
+    "line": "const created = await AttendanceApprovalRequest.create({"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 161,
+    "line": "await AttendanceApprovalRequest.create({"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 175,
+    "line": "const deviceDoc = await AttendanceApprovalRequest.create({"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 196,
+    "line": "const foundPending = await AttendanceApprovalRequest.findOne({"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 208,
+    "line": "const attendanceDocId = new mongoose.Types.ObjectId();"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 217,
+    "line": "deviceDoc.attendanceId = attendanceDocId;"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 220,
+    "line": "const verifiedApprove = await AttendanceApprovalRequest.findById(deviceDoc._id);"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 225,
+    "line": "assert(\"attendanceId linked successfully\", verifiedApprove.attendanceId.toString() === attendanceDocId.toString());"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 228,
+    "line": "const rejectDoc = await AttendanceApprovalRequest.create({"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 244,
+    "line": "const verifiedReject = await AttendanceApprovalRequest.findById(rejectDoc._id);"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 246,
+    "line": "assert(\"attendanceId remains null on rejection\", verifiedReject.attendanceId === null);"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 251,
+    "line": "const historicalDoc = await AttendanceApprovalRequest.create({"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 268,
+    "line": "attendanceId: new mongoose.Types.ObjectId(\"6a86a108942bb3e58a6bc045\"),"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 279,
+    "line": "// Load dependencies required by attendance-v2 router"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 285,
+    "line": "const attendanceV2Router = require(\"./attendance-v2\");"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 290,
+    "line": "app.use(\"/api/attendance\", attendanceV2Router);"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 330,
+    "line": "const pendingHttpReq = await AttendanceApprovalRequest.create({"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 345,
+    "line": "path: \"/api/attendance/admin/approval-requests\","
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 348,
+    "line": "assert(\"Unauthenticated GET /api/attendance/admin/approval-requests returns 401\", httpUnauthRes.status === 401);"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 354,
+    "line": "path: \"/api/attendance/admin/approval-requests\","
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 364,
+    "line": "path: \"/api/attendance/admin/approval-requests?status=Pending\","
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 368,
+    "line": "assert(\"Admin GET /api/attendance/admin/approval-requests returns 200\", httpAdminListRes.status === 200);"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 371,
+    "line": "// HTTP Test 4: Admin approves remote attendance request via PATCH /admin/approval-requests/:id/approve"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 376,
+    "line": "path: `/api/attendance/admin/approval-requests/${pendingHttpReq._id}/approve`,"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 399,
+    "line": "path: `/api/attendance/admin/approval-requests/${pendingHttpReq._id}/approve`,"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 411,
+    "line": "const pendingHttpReq2 = await AttendanceApprovalRequest.create({"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 426,
+    "line": "path: `/api/attendance/admin/approval-requests/${pendingHttpReq2._id}/reject`,"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 438,
+    "line": "// HTTP Test 7: Route in backend/admin.js (GET /api/admin/attendance-approval-requests)"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 442,
+    "line": "path: \"/api/admin/attendance-approval-requests?status=Approved\","
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 446,
+    "line": "assert(\"backend/admin.js GET /api/admin/attendance-approval-requests returns 200\", httpAdminRouterListRes.status === 200);"
+  },
+  {
+    "file": "test_attendanceapprovalrequest_isolated.js",
+    "lineNum": 469,
+    "line": "console.log(\"All AttendanceApprovalRequest isolated functional checks passed successfully!\");"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 3,
+    "line": "* test_attendanceevent_isolated.js"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 4,
+    "line": "* Isolated functional, lifecycle, and indexing verification for AttendanceEvent model."
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 12,
+    "line": "const TEST_DB_NAME = `crm_isolated_attendanceevent_test_${Date.now()}`;"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 38,
+    "line": "const AttendanceEvent = require(\"./models/AttendanceEvent\");"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 42,
+    "line": "assert(\"Model compiles without error\", Boolean(AttendanceEvent));"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 43,
+    "line": "assert(\"Model name is AttendanceEvent\", AttendanceEvent.modelName === \"AttendanceEvent\");"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 44,
+    "line": "assert(\"Collection name is attendanceevents\", AttendanceEvent.collection.name === \"attendanceevents\");"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 47,
+    "line": "await AttendanceEvent.init();"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 48,
+    "line": "const dbIndexes = await AttendanceEvent.collection.indexes();"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 49,
+    "line": "const hasAttendanceIdIdx = dbIndexes.some(idx => idx.name === \"attendanceId_1\");"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 51,
+    "line": "assert(\"attendanceId index exists in MongoDB\", hasAttendanceIdIdx);"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 56,
+    "line": "const testAttendanceId1 = new mongoose.Types.ObjectId();"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 59,
+    "line": "const doc1 = await AttendanceEvent.create({"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 60,
+    "line": "attendanceId: testAttendanceId1,"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 75,
+    "line": "await AttendanceEvent.create({"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 79,
+    "line": "assert(\"Missing attendanceId should fail\", false);"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 81,
+    "line": "assert(\"Missing attendanceId throws ValidationError\", err.name === \"ValidationError\" && Boolean(err.errors.attendanceId));"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 85,
+    "line": "await AttendanceEvent.create({"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 86,
+    "line": "attendanceId: testAttendanceId1,"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 95,
+    "line": "await AttendanceEvent.create({"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 96,
+    "line": "attendanceId: testAttendanceId1,"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 108,
+    "line": "const ev = await AttendanceEvent.create({"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 109,
+    "line": "attendanceId: testAttendanceId1,"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 118,
+    "line": "const lowerEv = await AttendanceEvent.create({"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 119,
+    "line": "attendanceId: testAttendanceId1,"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 127,
+    "line": "await AttendanceEvent.create({"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 128,
+    "line": "attendanceId: testAttendanceId1,"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 137,
+    "line": "// [5] Production Helper Simulation: createAttendanceEvent"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 138,
+    "line": "console.log(\"\\n[5] Production Helper Simulation (createAttendanceEvent)\");"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 139,
+    "line": "function createAttendanceEvent(attendanceId, employeeId, type, source = \"web\", notes = \"\") {"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 140,
+    "line": "return AttendanceEvent.create({"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 141,
+    "line": "attendanceId,"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 150,
+    "line": "const testAttendanceId2 = new mongoose.Types.ObjectId();"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 153,
+    "line": "const helperLogin = await createAttendanceEvent(testAttendanceId2, testEmployeeId2, \"LOGIN\", \"mobile\", \"Mobile check-in\");"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 158,
+    "line": "const helperBreakStart = await createAttendanceEvent(testAttendanceId2, testEmployeeId2, \"BREAK_START\", \"web\", \"Tea break\");"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 161,
+    "line": "const helperBreakEnd = await createAttendanceEvent(testAttendanceId2, testEmployeeId2, \"BREAK_END\", \"system\", \"Auto closed break before logout.\");"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 165,
+    "line": "const helperLogout = await createAttendanceEvent(testAttendanceId2, testEmployeeId2, \"LOGOUT\", \"web\", \"End of shift\");"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 170,
+    "line": "const timeline = await AttendanceEvent.find({ attendanceId: testAttendanceId2 }).sort({ timestamp: 1 });"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 171,
+    "line": "assert(\"Found exactly 4 events for attendance record 2\", timeline.length === 4);"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 179,
+    "line": "const emp1Events = await AttendanceEvent.find({ employeeId: testEmployeeId1 });"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 180,
+    "line": "const emp2Events = await AttendanceEvent.find({ employeeId: testEmployeeId2 });"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 187,
+    "line": "const FreshModel = require(\"./models/AttendanceEvent\");"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 188,
+    "line": "assert(\"Fresh require returns identical Mongoose model reference\", FreshModel === AttendanceEvent);"
+  },
+  {
+    "file": "test_attendanceevent_isolated.js",
+    "lineNum": 209,
+    "line": "console.log(\"All AttendanceEvent isolated functional checks passed successfully!\");"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 4,
+    "line": "* test_attendanceregularization_isolated.js"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 5,
+    "line": "* Isolated functional, lifecycle, indexing, and HTTP route integration test for AttendanceRegularization model."
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 50,
+    "line": "const AttendanceRegularization = require(\"./models/AttendanceRegularization\");"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 54,
+    "line": "assert(\"Model compiles without error\", Boolean(AttendanceRegularization));"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 55,
+    "line": "assert(\"Model name is AttendanceRegularization\", AttendanceRegularization.modelName === \"AttendanceRegularization\");"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 56,
+    "line": "assert(\"Collection name is attendanceRegularizations\", AttendanceRegularization.collection.name === \"attendanceRegularizations\");"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 59,
+    "line": "await AttendanceRegularization.init();"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 60,
+    "line": "const dbIndexes = await AttendanceRegularization.collection.indexes();"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 72,
+    "line": "const doc1 = await AttendanceRegularization.create({"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 88,
+    "line": "assert(\"attendanceId defaults to null\", doc1.attendanceId === null);"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 107,
+    "line": "await AttendanceRegularization.create(chk.payload);"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 126,
+    "line": "const typeDoc = await AttendanceRegularization.create({"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 139,
+    "line": "await AttendanceRegularization.create({"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 155,
+    "line": "await AttendanceRegularization.create({"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 165,
+    "line": "const pendingRequests = await AttendanceRegularization.find({ status: \"Pending\" });"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 168,
+    "line": "const emp2Requests = await AttendanceRegularization.find({ employeeId: emp2 });"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 173,
+    "line": "const existing = await AttendanceRegularization.findOne({"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 180,
+    "line": "const nonExisting = await AttendanceRegularization.findOne({"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 196,
+    "line": "doc1.attendanceId = mockAttId;"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 200,
+    "line": "const verifiedApproved = await AttendanceRegularization.findById(doc1._id);"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 202,
+    "line": "assert(\"attendanceId linked successfully\", verifiedApproved.attendanceId.equals(mockAttId));"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 207,
+    "line": "const docToReject = await AttendanceRegularization.findOne({ employeeId: emp1, requestType: \"Missing Logout\" });"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 214,
+    "line": "const verifiedRejected = await AttendanceRegularization.findById(docToReject._id);"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 216,
+    "line": "assert(\"attendanceId remains null for rejected\", verifiedRejected.attendanceId === null);"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 221,
+    "line": "const historicalDoc = await AttendanceRegularization.create({"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 241,
+    "line": "// Route 1: POST /api/v2/attendance/regularizations (Submission with duplicate pending check)"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 242,
+    "line": "app.post(\"/api/v2/attendance/regularizations\", async (req, res) => {"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 249,
+    "line": "const existing = await AttendanceRegularization.findOne({"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 259,
+    "line": "const newReq = await AttendanceRegularization.create({"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 277,
+    "line": "// Route 2: GET /api/v2/attendance/my-regularizations (Employee own requests)"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 278,
+    "line": "app.get(\"/api/v2/attendance/my-regularizations\", async (req, res) => {"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 281,
+    "line": "const data = await AttendanceRegularization.find({ employeeId }).sort({ createdAt: -1 }).lean();"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 288,
+    "line": "// Route 3: GET /api/v2/attendance/regularizations (Admin request list with filters)"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 289,
+    "line": "app.get(\"/api/v2/attendance/regularizations\", async (req, res) => {"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 294,
+    "line": "const data = await AttendanceRegularization.find(filter).sort({ createdAt: -1 }).lean();"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 301,
+    "line": "// Route 4: PUT /api/v2/attendance/admin/regularizations/:id/review (Review / Approve / Reject)"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 302,
+    "line": "app.put(\"/api/v2/attendance/admin/regularizations/:id/review\", async (req, res) => {"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 309,
+    "line": "const request = await AttendanceRegularization.findById(req.params.id);"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 311,
+    "line": "return res.status(404).json({ success: false, message: \"Attendance correction request not found.\" });"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 319,
+    "line": "request.attendanceId = new mongoose.Types.ObjectId();"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 358,
+    "line": "path: \"/api/v2/attendance/regularizations\","
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 381,
+    "line": "path: \"/api/v2/attendance/regularizations\","
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 401,
+    "line": "path: `/api/v2/attendance/my-regularizations?employeeId=${emp1}`,"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 411,
+    "line": "path: \"/api/v2/attendance/regularizations?status=Pending\","
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 422,
+    "line": "path: `/api/v2/attendance/admin/regularizations/${submittedId}/review`,"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 430,
+    "line": "assert(\"attendanceId is populated\", Boolean(httpApproveRes.body.data.attendanceId));"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 438,
+    "line": "path: `/api/v2/attendance/admin/regularizations/${submittedId}/review`,"
+  },
+  {
+    "file": "test_attendanceregularization_isolated.js",
+    "lineNum": 466,
+    "line": "console.log(\"All AttendanceRegularization isolated functional checks passed successfully!\");"
+  },
+  {
+    "file": "test_holiday_isolated.js",
+    "lineNum": 26,
+    "line": "// Simulates findHolidayByDate in backend/attendance-v2.js"
+  },
+  {
+    "file": "test_holiday_isolated.js",
+    "lineNum": 35,
+    "line": "// Simulates attendance day determination logic from backend/attendance-v2.js lines 4570-4610 & 5130-5165"
+  },
+  {
+    "file": "test_holiday_isolated.js",
+    "lineNum": 42,
+    "line": "attendanceStatus: \"HOLIDAY\","
+  },
+  {
+    "file": "test_holiday_isolated.js",
+    "lineNum": 53,
+    "line": "attendanceStatus: \"WEEKLY_OFF\","
+  },
+  {
+    "file": "test_holiday_isolated.js",
+    "lineNum": 63,
+    "line": "attendanceStatus: \"PRESENT\","
+  },
+  {
+    "file": "test_holiday_isolated.js",
+    "lineNum": 204,
+    "line": "// Range query (lines 1150-1200 of attendance-v2.js)"
+  },
+  {
+    "file": "test_holiday_isolated.js",
+    "lineNum": 212,
+    "line": "// Month regex query (lines 1543-1546 of attendance-v2.js)"
+  },
+  {
+    "file": "test_holiday_isolated.js",
+    "lineNum": 249,
+    "line": "// ── 12. Attendance calculation interaction (Holiday vs Working Day) ──────"
+  },
+  {
+    "file": "test_holiday_isolated.js",
+    "lineNum": 250,
+    "line": "console.log(\"\\n[12] Attendance calculation interaction (Holiday vs Working Day)\");"
+  },
+  {
+    "file": "test_holiday_isolated.js",
+    "lineNum": 276,
+    "line": "assert(\"Holiday takes precedence over Sunday/WeeklyOff in attendance display\", holidayOnSundayResult.status === \"Holiday\");"
+  },
+  {
+    "file": "test_leavebalance_isolated.js",
+    "lineNum": 269,
+    "line": "// 10.1 GET /api/v2/attendance/leave-balances"
+  },
+  {
+    "file": "test_leavebalance_isolated.js",
+    "lineNum": 270,
+    "line": "app.get(\"/api/v2/attendance/leave-balances\", async (req, res) => {"
+  },
+  {
+    "file": "test_leavebalance_isolated.js",
+    "lineNum": 280,
+    "line": "// 10.2 POST /api/v2/attendance/leaves (create leave request)"
+  },
+  {
+    "file": "test_leavebalance_isolated.js",
+    "lineNum": 281,
+    "line": "app.post(\"/api/v2/attendance/leaves\", async (req, res) => {"
+  },
+  {
+    "file": "test_leavebalance_isolated.js",
+    "lineNum": 312,
+    "line": "// 10.3 PATCH /api/v2/attendance/leaves/:id/status (approve or reject)"
+  },
+  {
+    "file": "test_leavebalance_isolated.js",
+    "lineNum": 313,
+    "line": "app.patch(\"/api/v2/attendance/leaves/:id/status\", async (req, res) => {"
+  },
+  {
+    "file": "test_leavebalance_isolated.js",
+    "lineNum": 327,
+    "line": "// 10.4 POST /api/v2/attendance/leaves/:id/cancel"
+  },
+  {
+    "file": "test_leavebalance_isolated.js",
+    "lineNum": 328,
+    "line": "app.post(\"/api/v2/attendance/leaves/:id/cancel\", async (req, res) => {"
+  },
+  {
+    "file": "test_leavebalance_isolated.js",
+    "lineNum": 362,
+    "line": "path: `/api/v2/attendance/leave-balances?employeeId=${emp1}&year=2026`,"
+  },
+  {
+    "file": "test_leavebalance_isolated.js",
+    "lineNum": 377,
+    "line": "path: \"/api/v2/attendance/leaves\","
+  },
+  {
+    "file": "test_leavebalance_isolated.js",
+    "lineNum": 399,
+    "line": "path: `/api/v2/attendance/leave-balances?employeeId=${emp1}&year=2026`,"
+  },
+  {
+    "file": "test_leavebalance_isolated.js",
+    "lineNum": 411,
+    "line": "path: \"/api/v2/attendance/leaves\","
+  },
+  {
+    "file": "test_leavebalance_isolated.js",
+    "lineNum": 435,
+    "line": "path: `/api/v2/attendance/leave-balances?employeeId=${emp1}&year=2026`,"
+  },
+  {
+    "file": "test_leavebalance_isolated.js",
+    "lineNum": 447,
+    "line": "path: `/api/v2/attendance/leaves/${fullLeaveId}/status`,"
+  },
+  {
+    "file": "test_leavebalance_isolated.js",
+    "lineNum": 458,
+    "line": "path: `/api/v2/attendance/leave-balances?employeeId=${emp1}&year=2026`,"
+  },
+  {
+    "file": "test_leavebalance_isolated.js",
+    "lineNum": 472,
+    "line": "path: `/api/v2/attendance/leaves/${halfLeaveId}/status`,"
+  },
+  {
+    "file": "test_leavebalance_isolated.js",
+    "lineNum": 483,
+    "line": "path: `/api/v2/attendance/leave-balances?employeeId=${emp1}&year=2026`,"
+  },
+  {
+    "file": "test_leavebalance_isolated.js",
+    "lineNum": 496,
+    "line": "path: `/api/v2/attendance/leaves/${fullLeaveId}/cancel`,"
+  },
+  {
+    "file": "test_leavebalance_isolated.js",
+    "lineNum": 504,
+    "line": "path: `/api/v2/attendance/leave-balances?employeeId=${emp1}&year=2026`,"
+  },
+  {
+    "file": "test_leaverequest_isolated.js",
+    "lineNum": 249,
+    "line": "// ── 13. Date range lookup (Attendance & Reports integration) ─────────────"
+  },
+  {
+    "file": "test_leaverequest_isolated.js",
+    "lineNum": 251,
+    "line": "// Range query used in attendance reports (lines 5384-5396 & 6443)"
+  },
+  {
+    "file": "test_systemsettings_isolated.js",
+    "lineNum": 79,
+    "line": "permissions: [\"Clients\", \"Settings\", \"Tickets\", \"Attendance\"],"
+  },
+  {
+    "file": "test_systemsettings_isolated.js",
+    "lineNum": 128,
+    "line": "// (b) Read via mongoose.models.SystemSettings (as used in attendance-v2.js and client.js)"
+  },
+  {
+    "file": "utils\\dateUtils.js",
+    "lineNum": 14,
+    "line": "// \"day\" field (e.g. Attendance.date)."
+  },
+  {
+    "file": "verify_activitylog_model.js",
+    "lineNum": 139,
+    "line": "\"Attendance\","
+  },
+  {
+    "file": "verify_activitylog_model.js",
+    "lineNum": 157,
+    "line": "\"attendance\","
+  },
+  {
+    "file": "verify_attendanceapprovalrequest_model.js",
+    "lineNum": 25,
+    "line": "const AttendanceApprovalRequest = require(\"./models/AttendanceApprovalRequest\");"
+  },
+  {
+    "file": "verify_attendanceapprovalrequest_model.js",
+    "lineNum": 27,
+    "line": "assert(\"AttendanceApprovalRequest model is loaded\", Boolean(AttendanceApprovalRequest));"
+  },
+  {
+    "file": "verify_attendanceapprovalrequest_model.js",
+    "lineNum": 28,
+    "line": "assert(\"Model name is 'AttendanceApprovalRequest'\", AttendanceApprovalRequest.modelName === \"AttendanceApprovalRequest\");"
+  },
+  {
+    "file": "verify_attendanceapprovalrequest_model.js",
+    "lineNum": 29,
+    "line": "assert(\"mongoose.models.AttendanceApprovalRequest is registered\", mongoose.models.AttendanceApprovalRequest === AttendanceApprovalRequest);"
+  },
+  {
+    "file": "verify_attendanceapprovalrequest_model.js",
+    "lineNum": 31,
+    "line": "const reRequired = require(\"./models/AttendanceApprovalRequest\");"
+  },
+  {
+    "file": "verify_attendanceapprovalrequest_model.js",
+    "lineNum": 32,
+    "line": "assert(\"Re-require returns identical instance\", reRequired === AttendanceApprovalRequest);"
+  },
+  {
+    "file": "verify_attendanceapprovalrequest_model.js",
+    "lineNum": 36,
+    "line": "assert(\"Collection name is 'attendanceApprovalRequests'\", AttendanceApprovalRequest.collection.name === \"attendanceApprovalRequests\");"
+  },
+  {
+    "file": "verify_attendanceapprovalrequest_model.js",
+    "lineNum": 37,
+    "line": "assert(\"Schema options collection is 'attendanceApprovalRequests'\", AttendanceApprovalRequest.schema.options.collection === \"attendanceApprovalRequests\");"
+  },
+  {
+    "file": "verify_attendanceapprovalrequest_model.js",
+    "lineNum": 38,
+    "line": "assert(\"timestamps option is true\", AttendanceApprovalRequest.schema.options.timestamps === true);"
+  },
+  {
+    "file": "verify_attendanceapprovalrequest_model.js",
+    "lineNum": 42,
+    "line": "const schema = AttendanceApprovalRequest.schema;"
+  },
+  {
+    "file": "verify_attendanceapprovalrequest_model.js",
+    "lineNum": 65,
+    "line": "\"attendanceId\","
+  },
+  {
+    "file": "verify_attendanceapprovalrequest_model.js",
+    "lineNum": 142,
+    "line": "assert(\"attendanceId is ObjectId\", paths.attendanceId.instance === \"ObjectId\");"
+  },
+  {
+    "file": "verify_attendanceapprovalrequest_model.js",
+    "lineNum": 143,
+    "line": "assert(\"attendanceId ref is 'AttendanceV2'\", paths.attendanceId.options.ref === \"AttendanceV2\");"
+  },
+  {
+    "file": "verify_attendanceapprovalrequest_model.js",
+    "lineNum": 144,
+    "line": "assert(\"attendanceId default is null\", paths.attendanceId.options.default === null);"
+  },
+  {
+    "file": "verify_attendanceapprovalrequest_model.js",
+    "lineNum": 198,
+    "line": "const doc = new AttendanceApprovalRequest({"
+  },
+  {
+    "file": "verify_attendanceapprovalrequest_model.js",
+    "lineNum": 220,
+    "line": "assert(\"Default attendanceId is null\", doc.attendanceId === null);"
+  },
+  {
+    "file": "verify_attendanceapprovalrequest_model.js",
+    "lineNum": 225,
+    "line": "const emptyDoc = new AttendanceApprovalRequest({});"
+  },
+  {
+    "file": "verify_attendanceapprovalrequest_model.js",
+    "lineNum": 235,
+    "line": "const badEnumDoc = new AttendanceApprovalRequest({"
+  },
+  {
+    "file": "verify_attendanceapprovalrequest_model.js",
+    "lineNum": 253,
+    "line": "delete require.cache[require.resolve(\"./models/AttendanceApprovalRequest\")];"
+  },
+  {
+    "file": "verify_attendanceapprovalrequest_model.js",
+    "lineNum": 254,
+    "line": "const reloadedModel = require(\"./models/AttendanceApprovalRequest\");"
+  },
+  {
+    "file": "verify_attendanceapprovalrequest_model.js",
+    "lineNum": 255,
+    "line": "assert(\"Re-loaded model matches Mongoose registry\", reloadedModel === mongoose.models.AttendanceApprovalRequest);"
+  },
+  {
+    "file": "verify_attendanceapprovalrequest_model.js",
+    "lineNum": 256,
+    "line": "assert(\"Re-loaded collection name matches\", reloadedModel.collection.name === \"attendanceApprovalRequests\");"
+  },
+  {
+    "file": "verify_attendanceapprovalrequest_model.js",
+    "lineNum": 265,
+    "line": "console.log(\"All AttendanceApprovalRequest schema unit checks passed successfully!\");"
+  },
+  {
+    "file": "verify_attendanceevent_model.js",
+    "lineNum": 3,
+    "line": "* verify_attendanceevent_model.js"
+  },
+  {
+    "file": "verify_attendanceevent_model.js",
+    "lineNum": 4,
+    "line": "* Comprehensive offline schema verification suite for the centralized AttendanceEvent model."
+  },
+  {
+    "file": "verify_attendanceevent_model.js",
+    "lineNum": 26,
+    "line": "// Require all 17 previous Issue 8 centralized models + pre-existing models + AttendanceEvent"
+  },
+  {
+    "file": "verify_attendanceevent_model.js",
+    "lineNum": 46,
+    "line": "const AttendanceEvent = require(\"./models/AttendanceEvent\");"
+  },
+  {
+    "file": "verify_attendanceevent_model.js",
+    "lineNum": 69,
+    "line": "assert(\"AttendanceEvent.modelName\", AttendanceEvent.modelName === \"AttendanceEvent\");"
+  },
+  {
+    "file": "verify_attendanceevent_model.js",
+    "lineNum": 92,
+    "line": "assert(\"AttendanceEvent collection\", AttendanceEvent.collection.name === \"attendanceevents\");"
+  },
+  {
+    "file": "verify_attendanceevent_model.js",
+    "lineNum": 96,
+    "line": "assert(\"AttendanceEvent timestamps enabled\", AttendanceEvent.schema.options.timestamps === true);"
+  },
+  {
+    "file": "verify_attendanceevent_model.js",
+    "lineNum": 97,
+    "line": "assert(\"createdAt path exists\", AttendanceEvent.schema.paths.createdAt !== undefined);"
+  },
+  {
+    "file": "verify_attendanceevent_model.js",
+    "lineNum": 98,
+    "line": "assert(\"updatedAt path exists\", AttendanceEvent.schema.paths.updatedAt !== undefined);"
+  },
+  {
+    "file": "verify_attendanceevent_model.js",
+    "lineNum": 102,
+    "line": "const paths = AttendanceEvent.schema.paths;"
+  },
+  {
+    "file": "verify_attendanceevent_model.js",
+    "lineNum": 104,
+    "line": "// attendanceId"
+  },
+  {
+    "file": "verify_attendanceevent_model.js",
+    "lineNum": 105,
+    "line": "assert(\"attendanceId is ObjectId\", paths.attendanceId.instance === \"ObjectID\" || paths.attendanceId.instance === \"ObjectId\");"
+  },
+  {
+    "file": "verify_attendanceevent_model.js",
+    "lineNum": 106,
+    "line": "assert(\"attendanceId ref is Attendance\", paths.attendanceId.options.ref === \"Attendance\");"
+  },
+  {
+    "file": "verify_attendanceevent_model.js",
+    "lineNum": 107,
+    "line": "assert(\"attendanceId required\", paths.attendanceId.isRequired === true);"
+  },
+  {
+    "file": "verify_attendanceevent_model.js",
+    "lineNum": 108,
+    "line": "assert(\"attendanceId indexed\", Boolean(paths.attendanceId.options.index));"
+  },
+  {
+    "file": "verify_attendanceevent_model.js",
+    "lineNum": 146,
+    "line": "assert(\"Expected field count is 9 (_id, attendanceId, employeeId, type, timestamp, source, notes, createdAt, updatedAt)\", userFields.length === 9);"
+  },
+  {
+    "file": "verify_attendanceevent_model.js",
+    "lineNum": 150,
+    "line": "delete require.cache[require.resolve(\"./models/AttendanceEvent\")];"
+  },
+  {
+    "file": "verify_attendanceevent_model.js",
+    "lineNum": 151,
+    "line": "const ReLoadedAttendanceEvent = require(\"./models/AttendanceEvent\");"
+  },
+  {
+    "file": "verify_attendanceevent_model.js",
+    "lineNum": 152,
+    "line": "assert(\"Idempotent export returns same Mongoose model\", ReLoadedAttendanceEvent === AttendanceEvent);"
+  },
+  {
+    "file": "verify_attendanceevent_model.js",
+    "lineNum": 153,
+    "line": "assert(\"mongoose.models.AttendanceEvent === AttendanceEvent\", mongoose.models.AttendanceEvent === AttendanceEvent);"
+  },
+  {
+    "file": "verify_attendanceevent_model.js",
+    "lineNum": 162,
+    "line": "console.log(\"All AttendanceEvent schema unit checks passed successfully!\");"
+  },
+  {
+    "file": "verify_attendanceregularization_model.js",
+    "lineNum": 4,
+    "line": "* verify_attendanceregularization_model.js"
+  },
+  {
+    "file": "verify_attendanceregularization_model.js",
+    "lineNum": 5,
+    "line": "* Offline structural, schema, and registration verification for AttendanceRegularization model."
+  },
+  {
+    "file": "verify_attendanceregularization_model.js",
+    "lineNum": 30,
+    "line": "const AttendanceRegularization = require(\"./models/AttendanceRegularization\");"
+  },
+  {
+    "file": "verify_attendanceregularization_model.js",
+    "lineNum": 31,
+    "line": "assert(\"AttendanceRegularization model is loaded\", Boolean(AttendanceRegularization));"
+  },
+  {
+    "file": "verify_attendanceregularization_model.js",
+    "lineNum": 32,
+    "line": "assert(\"Model name is 'AttendanceRegularization'\", AttendanceRegularization.modelName === \"AttendanceRegularization\");"
+  },
+  {
+    "file": "verify_attendanceregularization_model.js",
+    "lineNum": 33,
+    "line": "assert(\"mongoose.models.AttendanceRegularization is registered\", mongoose.models.AttendanceRegularization === AttendanceRegularization);"
+  },
+  {
+    "file": "verify_attendanceregularization_model.js",
+    "lineNum": 36,
+    "line": "const ReRequired = require(\"./models/AttendanceRegularization\");"
+  },
+  {
+    "file": "verify_attendanceregularization_model.js",
+    "lineNum": 37,
+    "line": "assert(\"Re-require returns identical instance\", ReRequired === AttendanceRegularization);"
+  },
+  {
+    "file": "verify_attendanceregularization_model.js",
+    "lineNum": 41,
+    "line": "assert(\"Collection name is 'attendanceRegularizations'\", AttendanceRegularization.collection.name === \"attendanceRegularizations\");"
+  },
+  {
+    "file": "verify_attendanceregularization_model.js",
+    "lineNum": 42,
+    "line": "assert(\"Schema options collection is 'attendanceRegularizations'\", AttendanceRegularization.schema.options.collection === \"attendanceRegularizations\");"
+  },
+  {
+    "file": "verify_attendanceregularization_model.js",
+    "lineNum": 43,
+    "line": "assert(\"timestamps option is true\", AttendanceRegularization.schema.options.timestamps === true);"
+  },
+  {
+    "file": "verify_attendanceregularization_model.js",
+    "lineNum": 47,
+    "line": "const paths = AttendanceRegularization.schema.paths;"
+  },
+  {
+    "file": "verify_attendanceregularization_model.js",
+    "lineNum": 62,
+    "line": "\"attendanceId\","
+  },
+  {
+    "file": "verify_attendanceregularization_model.js",
+    "lineNum": 111,
+    "line": "assert(\"attendanceId is ObjectId\", paths.attendanceId.instance === \"ObjectId\");"
+  },
+  {
+    "file": "verify_attendanceregularization_model.js",
+    "lineNum": 112,
+    "line": "assert(\"attendanceId ref is 'AttendanceV2'\", paths.attendanceId.options.ref === \"AttendanceV2\");"
+  },
+  {
+    "file": "verify_attendanceregularization_model.js",
+    "lineNum": 113,
+    "line": "assert(\"attendanceId default is null\", paths.attendanceId.defaultValue === null);"
+  },
+  {
+    "file": "verify_attendanceregularization_model.js",
+    "lineNum": 143,
+    "line": "const indexes = AttendanceRegularization.schema.indexes();"
+  },
+  {
+    "file": "verify_attendanceregularization_model.js",
+    "lineNum": 158,
+    "line": "const doc = new AttendanceRegularization({"
+  },
+  {
+    "file": "verify_attendanceregularization_model.js",
+    "lineNum": 173,
+    "line": "assert(\"Default attendanceId is null\", doc.attendanceId === null);"
+  },
+  {
+    "file": "verify_attendanceregularization_model.js",
+    "lineNum": 179,
+    "line": "const emptyDoc = new AttendanceRegularization({});"
+  },
+  {
+    "file": "verify_attendanceregularization_model.js",
+    "lineNum": 191,
+    "line": "const invalidDoc = new AttendanceRegularization({"
+  },
+  {
+    "file": "verify_attendanceregularization_model.js",
+    "lineNum": 206,
+    "line": "delete require.cache[require.resolve(\"./models/AttendanceRegularization\")];"
+  },
+  {
+    "file": "verify_attendanceregularization_model.js",
+    "lineNum": 207,
+    "line": "const FreshModel = require(\"./models/AttendanceRegularization\");"
+  },
+  {
+    "file": "verify_attendanceregularization_model.js",
+    "lineNum": 208,
+    "line": "assert(\"Re-loaded model matches Mongoose registry\", mongoose.models.AttendanceRegularization === FreshModel);"
+  },
+  {
+    "file": "verify_attendanceregularization_model.js",
+    "lineNum": 209,
+    "line": "assert(\"Re-loaded collection name matches\", FreshModel.collection.name === \"attendanceRegularizations\");"
+  },
+  {
+    "file": "verify_attendanceregularization_model.js",
+    "lineNum": 219,
+    "line": "console.log(\"All AttendanceRegularization schema unit checks passed successfully!\");"
+  },
+  {
+    "file": "verify_employeenotification_model.js",
+    "lineNum": 107,
+    "line": "const expectedEntityTypes = [\"task\", \"ticket\", \"attendance\", \"timelog\", \"system\", \"other\"];"
+  },
+  {
+    "file": "verify_employeenotification_model.js",
+    "lineNum": 110,
+    "line": "const expectedNavTargets = [\"dashboard\", \"tasks\", \"tickets\", \"attendance\", \"time-log\"];"
+  }
+]
