@@ -8,7 +8,7 @@ const bcrypt =
 const crypto =
   require("crypto");
 const authenticateUser = require("./authMiddleware");
-const { User } = require("./auth");
+const User = require("./models/User");
 const {
   SystemSettings,
 } = require("./settings");

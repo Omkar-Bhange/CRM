@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
 const AuthSession = require("./models/AuthSession");
+const User = require("./models/User");
 
 /* =========================================================
    AUTHENTICATE USER
@@ -55,26 +56,8 @@ async function authenticateUser(req, res, next) {
     }
 
     /* =====================================================
-       3. GET USER MODEL
-
-       auth.js registers the User mongoose model.
+       3. USER MODEL (Imported canonically)
     ===================================================== */
-
-    const User =
-      mongoose.models.User;
-
-    if (!User) {
-      console.error(
-        "Authentication error: User model is not initialized."
-      );
-
-      return res.status(500).json({
-        success: false,
-        code: "AUTH_CONFIGURATION_ERROR",
-        message:
-          "Authentication service is unavailable.",
-      });
-    }
 
     /* =====================================================
        4. LOAD CURRENT USER

@@ -10,7 +10,7 @@ require("./employee");
 
 const Client = mongoose.models.Client || require("./models/Client");
 const Employee = require("./models/Employee");
-const User = mongoose.model("User");
+const User = require("./models/User");
 
 const documentUploadDirectory = path.join(__dirname, "uploads", "documents");
 if (!fs.existsSync(documentUploadDirectory)) {

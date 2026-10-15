@@ -8,9 +8,7 @@ require("./admin");
 const { calculateTicketSla } = require("./slaConfig");
 const authenticateUser = require("./authMiddleware");
 
-const User =
-  mongoose.models.User ||
-  mongoose.model("User");
+const User = require("./models/User");
 
 const Task = require("./models/Task");
 const { getISTDateBucket, getISTDateString } = require("./utils/dateUtils");
