@@ -1,0 +1,129 @@
+{
+  "totalDocuments": 42,
+  "indexes": [
+    {
+      "v": 2,
+      "key": {
+        "_id": 1
+      },
+      "name": "_id_"
+    },
+    {
+      "v": 2,
+      "key": {
+        "employeeId": 1
+      },
+      "name": "employeeId_1"
+    },
+    {
+      "v": 2,
+      "key": {
+        "date": 1
+      },
+      "name": "date_1"
+    },
+    {
+      "v": 2,
+      "key": {
+        "employeeCode": 1
+      },
+      "name": "employeeCode_1"
+    },
+    {
+      "v": 2,
+      "key": {
+        "employeeName": 1
+      },
+      "name": "employeeName_1"
+    },
+    {
+      "v": 2,
+      "key": {
+        "status": 1
+      },
+      "name": "status_1"
+    },
+    {
+      "v": 2,
+      "key": {
+        "workStatus": 1
+      },
+      "name": "workStatus_1"
+    },
+    {
+      "v": 2,
+      "key": {
+        "isDeleted": 1
+      },
+      "name": "isDeleted_1"
+    }
+  ],
+  "fieldCountsInSample": {
+    "_id": 42,
+    "employeeId": 42,
+    "employeeCode": 42,
+    "employeeName": 42,
+    "department": 42,
+    "role": 42,
+    "date": 42,
+    "loginTime": 42,
+    "logoutTime": 42,
+    "breakMinutes": 42,
+    "workingMinutes": 42,
+    "overtimeMinutes": 42,
+    "status": 42,
+    "workStatus": 42,
+    "note": 42,
+    "createdBy": 42,
+    "updatedBy": 42,
+    "createdAt": 42,
+    "updatedAt": 42,
+    "__v": 42,
+    "breakStartedAt": 41,
+    "autoClosedReason": 41,
+    "earlyLogoutMinutes": 41,
+    "isAutoClosed": 41,
+    "isDeleted": 41,
+    "lateMinutes": 41,
+    "shiftEnd": 41,
+    "shiftStart": 41,
+    "totalBreakMinutes": 41,
+    "totalWorkedMinutes": 41,
+    "fullDayMinutes": 26,
+    "graceMinutes": 26,
+    "halfDayThresholdMinutes": 26
+  },
+  "sampleSize": 42,
+  "workStatusValuesInSample": {
+    "Logged Out": 40,
+    "Working": 2
+  },
+  "statusValuesInSample": {
+    "Present": 21,
+    "Late": 16,
+    "Half Day": 5
+  },
+  "dateFormatsInSample": {
+    "string": 42
+  },
+  "fullStats": {
+    "_id": null,
+    "count": 42,
+    "withTotalWorkedMinutes": 38,
+    "withTotalBreakMinutes": 4,
+    "withIsDeleted": 0,
+    "withShiftStart": 41,
+    "withGraceMinutes": 26,
+    "freeWorkStatusCount": 0
+  },
+  "distinctWorkStatus": [
+    "Logged Out",
+    "Working"
+  ],
+  "distinctStatus": [
+    "Half Day",
+    "Late",
+    "Present"
+  ],
+  "duplicateEmployeeDateGroups": 0
+}

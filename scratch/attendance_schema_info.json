@@ -1,0 +1,660 @@
+{
+  "Attendance": {
+    "paths": {
+      "employeeId": {
+        "instance": "ObjectId",
+        "required": true,
+        "enumValues": null,
+        "ref": "Employee",
+        "index": true,
+        "unique": false,
+        "trim": false,
+        "uppercase": false
+      },
+      "employeeCode": {
+        "instance": "String",
+        "required": true,
+        "enumValues": [],
+        "index": false,
+        "unique": false,
+        "trim": true,
+        "uppercase": true
+      },
+      "employeeName": {
+        "instance": "String",
+        "required": true,
+        "enumValues": [],
+        "index": false,
+        "unique": false,
+        "trim": true,
+        "uppercase": false
+      },
+      "department": {
+        "instance": "String",
+        "required": false,
+        "default": "",
+        "enumValues": [],
+        "index": false,
+        "unique": false,
+        "trim": true,
+        "uppercase": false
+      },
+      "role": {
+        "instance": "String",
+        "required": false,
+        "default": "",
+        "enumValues": [],
+        "index": false,
+        "unique": false,
+        "trim": true,
+        "uppercase": false
+      },
+      "date": {
+        "instance": "String",
+        "required": true,
+        "enumValues": [],
+        "index": true,
+        "unique": false,
+        "trim": false,
+        "uppercase": false
+      },
+      "loginTime": {
+        "instance": "Date",
+        "required": false,
+        "default": null,
+        "enumValues": null,
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false
+      },
+      "logoutTime": {
+        "instance": "Date",
+        "required": false,
+        "default": null,
+        "enumValues": null,
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false
+      },
+      "breakMinutes": {
+        "instance": "Number",
+        "required": false,
+        "default": 0,
+        "enumValues": [],
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false,
+        "min": 0
+      },
+      "breakStartedAt": {
+        "instance": "Date",
+        "required": false,
+        "default": null,
+        "enumValues": null,
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false
+      },
+      "workingMinutes": {
+        "instance": "Number",
+        "required": false,
+        "default": 0,
+        "enumValues": [],
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false,
+        "min": 0
+      },
+      "overtimeMinutes": {
+        "instance": "Number",
+        "required": false,
+        "default": 0,
+        "enumValues": [],
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false,
+        "min": 0
+      },
+      "status": {
+        "instance": "String",
+        "required": false,
+        "default": "Present",
+        "enumValues": [
+          "Present",
+          "Late",
+          "Absent",
+          "Half Day",
+          "On Leave"
+        ],
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false
+      },
+      "workStatus": {
+        "instance": "String",
+        "required": false,
+        "default": "Working",
+        "enumValues": [
+          "Working",
+          "Free",
+          "Break",
+          "Logged Out",
+          "On Leave"
+        ],
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false
+      },
+      "note": {
+        "instance": "String",
+        "required": false,
+        "default": "",
+        "enumValues": [],
+        "index": false,
+        "unique": false,
+        "trim": true,
+        "uppercase": false
+      },
+      "createdBy": {
+        "instance": "ObjectId",
+        "required": false,
+        "default": null,
+        "enumValues": null,
+        "ref": "User",
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false
+      },
+      "updatedBy": {
+        "instance": "ObjectId",
+        "required": false,
+        "default": null,
+        "enumValues": null,
+        "ref": "User",
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false
+      },
+      "_id": {
+        "instance": "ObjectId",
+        "required": false,
+        "default": "FUNCTION",
+        "enumValues": null,
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false
+      },
+      "createdAt": {
+        "instance": "Date",
+        "required": false,
+        "enumValues": null,
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false
+      },
+      "updatedAt": {
+        "instance": "Date",
+        "required": false,
+        "enumValues": null,
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false
+      },
+      "__v": {
+        "instance": "Number",
+        "required": false,
+        "enumValues": [],
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false
+      }
+    },
+    "indexes": [
+      [
+        {
+          "employeeId": 1
+        },
+        {}
+      ],
+      [
+        {
+          "date": 1
+        },
+        {}
+      ]
+    ],
+    "options": {
+      "collection": "attendance",
+      "timestamps": true,
+      "strict": true
+    }
+  },
+  "AttendanceV2": {
+    "paths": {
+      "employeeId": {
+        "instance": "ObjectId",
+        "required": true,
+        "enumValues": null,
+        "ref": "Employee",
+        "index": true,
+        "unique": false,
+        "trim": false,
+        "uppercase": false
+      },
+      "employeeCode": {
+        "instance": "String",
+        "required": true,
+        "enumValues": [],
+        "index": true,
+        "unique": false,
+        "trim": true,
+        "uppercase": true
+      },
+      "employeeName": {
+        "instance": "String",
+        "required": true,
+        "enumValues": [],
+        "index": true,
+        "unique": false,
+        "trim": true,
+        "uppercase": false
+      },
+      "department": {
+        "instance": "String",
+        "required": false,
+        "default": "",
+        "enumValues": [],
+        "index": false,
+        "unique": false,
+        "trim": true,
+        "uppercase": false
+      },
+      "role": {
+        "instance": "String",
+        "required": false,
+        "default": "",
+        "enumValues": [],
+        "index": false,
+        "unique": false,
+        "trim": true,
+        "uppercase": false
+      },
+      "date": {
+        "instance": "String",
+        "required": true,
+        "enumValues": [],
+        "index": true,
+        "unique": false,
+        "trim": false,
+        "uppercase": false
+      },
+      "loginTime": {
+        "instance": "Date",
+        "required": false,
+        "default": null,
+        "enumValues": null,
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false
+      },
+      "logoutTime": {
+        "instance": "Date",
+        "required": false,
+        "default": null,
+        "enumValues": null,
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false
+      },
+      "breakStartedAt": {
+        "instance": "Date",
+        "required": false,
+        "default": null,
+        "enumValues": null,
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false
+      },
+      "breakMinutes": {
+        "instance": "Number",
+        "required": false,
+        "default": 0,
+        "enumValues": [],
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false,
+        "min": 0
+      },
+      "totalBreakMinutes": {
+        "instance": "Number",
+        "required": false,
+        "default": 0,
+        "enumValues": [],
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false,
+        "min": 0
+      },
+      "workingMinutes": {
+        "instance": "Number",
+        "required": false,
+        "default": 0,
+        "enumValues": [],
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false,
+        "min": 0
+      },
+      "totalWorkedMinutes": {
+        "instance": "Number",
+        "required": false,
+        "default": 0,
+        "enumValues": [],
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false,
+        "min": 0
+      },
+      "shiftStart": {
+        "instance": "String",
+        "required": false,
+        "default": "10:00",
+        "enumValues": [],
+        "index": false,
+        "unique": false,
+        "trim": true,
+        "uppercase": false
+      },
+      "shiftEnd": {
+        "instance": "String",
+        "required": false,
+        "default": "18:00",
+        "enumValues": [],
+        "index": false,
+        "unique": false,
+        "trim": true,
+        "uppercase": false
+      },
+      "graceMinutes": {
+        "instance": "Number",
+        "required": false,
+        "default": 15,
+        "enumValues": [],
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false,
+        "min": 0
+      },
+      "fullDayMinutes": {
+        "instance": "Number",
+        "required": false,
+        "default": 480,
+        "enumValues": [],
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false,
+        "min": 0
+      },
+      "halfDayThresholdMinutes": {
+        "instance": "Number",
+        "required": false,
+        "default": 240,
+        "enumValues": [],
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false,
+        "min": 0
+      },
+      "lateMinutes": {
+        "instance": "Number",
+        "required": false,
+        "default": 0,
+        "enumValues": [],
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false,
+        "min": 0
+      },
+      "earlyLogoutMinutes": {
+        "instance": "Number",
+        "required": false,
+        "default": 0,
+        "enumValues": [],
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false,
+        "min": 0
+      },
+      "overtimeMinutes": {
+        "instance": "Number",
+        "required": false,
+        "default": 0,
+        "enumValues": [],
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false,
+        "min": 0
+      },
+      "status": {
+        "instance": "String",
+        "required": false,
+        "default": "Present",
+        "enumValues": [
+          "Present",
+          "Late",
+          "Absent",
+          "Half Day",
+          "On Leave"
+        ],
+        "index": true,
+        "unique": false,
+        "trim": false,
+        "uppercase": false
+      },
+      "workStatus": {
+        "instance": "String",
+        "required": false,
+        "default": "Working",
+        "enumValues": [
+          "Working",
+          "Break",
+          "Logged Out",
+          "On Leave"
+        ],
+        "index": true,
+        "unique": false,
+        "trim": false,
+        "uppercase": false
+      },
+      "isAutoClosed": {
+        "instance": "Boolean",
+        "required": false,
+        "default": false,
+        "enumValues": null,
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false
+      },
+      "autoClosedReason": {
+        "instance": "String",
+        "required": false,
+        "default": "",
+        "enumValues": [],
+        "index": false,
+        "unique": false,
+        "trim": true,
+        "uppercase": false
+      },
+      "note": {
+        "instance": "String",
+        "required": false,
+        "default": "",
+        "enumValues": [],
+        "index": false,
+        "unique": false,
+        "trim": true,
+        "uppercase": false
+      },
+      "createdBy": {
+        "instance": "ObjectId",
+        "required": false,
+        "default": null,
+        "enumValues": null,
+        "ref": "User",
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false
+      },
+      "updatedBy": {
+        "instance": "ObjectId",
+        "required": false,
+        "default": null,
+        "enumValues": null,
+        "ref": "User",
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false
+      },
+      "isDeleted": {
+        "instance": "Boolean",
+        "required": false,
+        "default": false,
+        "enumValues": null,
+        "index": true,
+        "unique": false,
+        "trim": false,
+        "uppercase": false
+      },
+      "_id": {
+        "instance": "ObjectId",
+        "required": false,
+        "default": "FUNCTION",
+        "enumValues": null,
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false
+      },
+      "createdAt": {
+        "instance": "Date",
+        "required": false,
+        "enumValues": null,
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false
+      },
+      "updatedAt": {
+        "instance": "Date",
+        "required": false,
+        "enumValues": null,
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false
+      },
+      "__v": {
+        "instance": "Number",
+        "required": false,
+        "enumValues": [],
+        "index": false,
+        "unique": false,
+        "trim": false,
+        "uppercase": false
+      }
+    },
+    "indexes": [
+      [
+        {
+          "employeeId": 1
+        },
+        {}
+      ],
+      [
+        {
+          "employeeCode": 1
+        },
+        {}
+      ],
+      [
+        {
+          "employeeName": 1
+        },
+        {}
+      ],
+      [
+        {
+          "date": 1
+        },
+        {}
+      ],
+      [
+        {
+          "status": 1
+        },
+        {}
+      ],
+      [
+        {
+          "workStatus": 1
+        },
+        {}
+      ],
+      [
+        {
+          "isDeleted": 1
+        },
+        {}
+      ],
+      [
+        {
+          "employeeId": 1,
+          "date": 1
+        },
+        {
+          "unique": true,
+          "partialFilterExpression": {
+            "isDeleted": {
+              "$ne": true
+            }
+          }
+        }
+      ]
+    ],
+    "options": {
+      "collection": "attendance",
+      "timestamps": true,
+      "strict": true
+    }
+  }
+}

@@ -1,0 +1,124 @@
+<USER_REQUEST>
+# ISSUE 8 — AMCCONTRACT POST-EXTRACTION FINANCIAL AUDIT & AMCINVOICE READINESS
+
+Role: Senior Node.js Architect, Mongoose Specialist, MongoDB Transaction Engineer, AMC Billing and GST Integrity Auditor.
+
+Branch: production-hardening-remediation
+
+Expected HEAD: a467bc4a4d318bd9d5f259448b1876240eb006a4
+
+## OBJECTIVE
+
+Verify the completed AmcContract extraction and establish a reliable, real-production-handler financial regression baseline before centralizing AmcInvoice.
+
+AUDIT AND ISOLATED TEST VERIFICATION ONLY.
+
+Do not extract AmcInvoice yet.
+
+Do not modify business logic, schemas, indexes, invoice numbering, GST, payment posting, or renewal behavior.
+
+Do not begin Issue 9.
+
+## STEP 1 — GIT AND SOURCE VERIFICATION
+
+Confirm the exact branch and expected HEAD.
+
+Compare commit a467bc4 against its parent 103490f.
+
+Verify:
+- All AmcContract schema paths are identical.
+- All subdocument schemas are preserved.
+- All indexes and options are identical.
+- The model still uses collection "amccontracts".
+- Existing AMC routes and calculations are unchanged.
+- The import in backend/client.js does not create circular dependencies.
+- No AmcInvoice, AmcPayment, or IdempotencyLog code was modified.
+
+Report unexpected differences.
+
+## STEP 2 — REVIEW ACTUAL AMC TRANSACTION TESTS
+
+Inspect:
+
+- backend/verify_amccontract_model.js
+- backend/test_amccontract_isolated.js
+- backend/test_amccontract_api.js
+- scratch/test_amccontract_replica_set_transactions.cjs
+- scratch/run_all_amccontract_regressions.cjs
+
+For every AMC financial transaction test, classify it as:
+
+1. REAL PRODUCTION HTTP HANDLER
+2. REAL PRODUCTION HANDLER WITH SYNTHETIC JWT
+3. DIRECT MODEL TRANSACTION
+4. INJECTED-FAILURE TRANSACTION
+5. SIMULATED OR MOCKED TRANSACTION
+6. NOT TESTED
+
+Confirm which tests actually exercise backend/admin.js production routes.
+
+Never present direct model-level transaction checks as complete production API verification.
+
+## STEP 3 — MAP CONTRACT AND INVOICE WRITES
+<truncated 4837 bytes>
+ions separately from runner-parsed output.
+
+Confirm frontend production build and backend module import integrity.
+
+## FINAL REPORT
+
+Provide:
+
+1. Git verification.
+2. AmcContract schema parity.
+3. Real AMC transaction test classification.
+4. AMC creation and renewal transaction boundaries.
+5. Invoice creation and numbering analysis.
+6. Early renewal test outcomes.
+7. Idempotency and concurrency outcomes.
+8. Rollback and partial-failure coverage.
+9. Untested AMC financial scenarios.
+10. Complete AmcInvoice schema and indexes.
+11. Historical Atlas compatibility.
+12. Exact regression totals.
+13. Pre-existing risks versus extraction regressions.
+14. Whether AmcInvoice is ready for a strictly structural extraction.
+15. Recommended next SINGLE action.
+
+## STRICT INSTRUCTIONS
+
+AUDIT ONLY.
+
+Do not extract AmcInvoice.
+
+Do not modify AmcContract, AmcPayment, IdempotencyLog, Client or any identity model.
+
+No financial business-logic changes.
+
+No GST changes.
+
+No index fixes or migrations.
+
+No invoice-numbering changes.
+
+No operational Atlas writes.
+
+Do not begin Issue 9.
+
+Do not commit any source changes.
+
+STOP after the audit and await explicit approval.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-10-14T16:49:20+05:30.
+
+The user's current state is as follows:
+Active Document: c:\Users\Admin\Desktop\CRM\client-connect-track\backend\admin.js (LANGUAGE_UNSPECIFIED)
+Cursor is on line: 28902
+Other open documents:
+- c:\Users\Admin\Desktop\CRM\client-connect-track\src\admin\attendance\Attendance.jsx (LANGUAGE_UNSPECIFIED)
+- c:\Users\Admin\Desktop\CRM\client-connect-track\src\admin\tasks\Tasks.jsx (LANGUAGE_UNSPECIFIED)
+- c:\Users\Admin\Desktop\CRM\client-connect-track\src\admin\tickets\SupportTickets.jsx (LANGUAGE_UNSPECIFIED)
+- c:\Users\Admin\Desktop\CRM\client-connect-track\src\employee\EmployeeDashboard.jsx (LANGUAGE_UNSPECIFIED)
+- c:\Users\Admin\Desktop\CRM\client-connect-track\src\admin\billing\AmcBilling.jsx (LANGUAGE_UNSPECIFIED)
+</ADDITIONAL_METADATA>

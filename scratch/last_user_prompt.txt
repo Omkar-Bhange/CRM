@@ -1,0 +1,295 @@
+<USER_REQUEST>
+# ISSUE 8 — ATTENDANCE AND ATTENDANCEV2 SHARED-COLLECTION COMPATIBILITY AUDIT
+
+Role: Senior Node.js Architect, MongoDB/Mongoose Specialist, Attendance Data Integrity Engineer, and Production Reliability Auditor.
+
+Branch: production-hardening-remediation
+
+Expected HEAD: a6bc1ccbd76adf5c0b571b07d61a2b1a3da105ee
+
+## CONTEXT
+
+Issue 8 model centralization status:
+
+- 35 unique model concepts.
+- 23 centralized models, including 2 pre-existing.
+- 12 remaining inline models.
+- AttendanceApprovalRequest extracted in commit a6bc1cc.
+- Attendance Regularization policy hotfix preserved in commit 30685fb.
+
+The model inventory identified two separate registrations:
+
+- Attendance — backend/attendance.js
+- AttendanceV2 — backend/attendance-v2.js
+
+Both target the existing MongoDB collection:
+
+attendance
+
+These models must not be modified before their compatibility and data-integrity implications are established.
+
+## OBJECTIVE
+
+Perform a comprehensive READ-ONLY audit comparing Attendance and AttendanceV2.
+
+Determine whether they can safely be centralized independently, whether a shared schema is appropriate, or whether the existing dual-model design must be preserved.
+
+Do not implement any extraction, schema reconciliation, or business-logic changes.
+
+## STEP 1 — VERIFY ACTUAL MODEL DEFINITIONS
+
+Inspect both original inline schemas.
+
+Compare:
+
+1. Model names.
+2. Collection name and casing.
+3. Every field and data type.
+4. Defaults.
+5. Required fields.
+6. Validators.
+7. Enums.
+8. Indexes and unique constraints.
+9. Employee references.
+10. Timestamp behavior.
+11. Hooks, virtuals, methods and middleware.
+12. Mongoose strict-mode behavior.
+13. Model registration order.
+
+Produce a field-by-field comparison showing:
+
+- Fields common to both models.
+- Fields exclusive to Attendance.
+- Fields exclusive to AttendanceV2.
+- Same-name fields with conflicting types.
+- Same-name fields with conflicting defaults or validation.
+- Index differences.
+
+Do not assume a schema superset preserves write behavior.
+
+## STEP 2 — MAP EVERY CONSUMER
+
+Inspect the entire backend for references to:
+
+- Attendance
+- AttendanceV2
+- mongoose.models.Attendance
+- mongoose.models.AttendanceV2
+- mongoose.model("Attendance")
+- mongoose.model("AttendanceV2")
+
+Document all readers and writers, including:
+
+- Login and logout.
+- Biometric attendance.
+- Manual attendance.
+- Attendance corrections.
+- Attendance regularization.
+- Attendance approval requests.
+- Leave and holiday calculations.
+- Employee dashboards.
+- Admin dashboards.
+- Attendance reports.
+- PC Agent integration.
+- Background attendance jobs.
+
+Identify whether consumers require distinct model behavior.
+
+## STEP 3 — AUDIT SHARED COLLECTION RISKS
+
+Determine:
+
+1. Whether both models read the same physical documents.
+2. Whether v1 documents are compatible with v2.
+3. Whether v2 documents are compatible with v1.
+4. Whether Mongoose strict-mode writes could discard fields.
+5. Whether save() can overwrite or alter unrelated fields.
+6. Whether updateOne() and findOneAndUpdate() behave differently under each schema.
+7. Whether populate() references resolve correctly.
+8. Whether the models use different date formats.
+9. Whether index declarations can conflict.
+10. Whether import order changes runtime behavior.
+
+Use isolated document fixtures where necessary.
+
+Do not modify operational records.
+
+## STEP 4 — HISTORICAL DATA COMPATIBILITY
+
+Connect to operational Atlas READ-ONLY.
+
+Inspect:
+
+- Existing attendance record count.
+- Actual index definitions.
+- Field distributions.
+- Historical v1 documents.
+- Historical v2 documents.
+- Missing and null fields.
+- Duplicate employee/date records.
+- Timestamp formats.
+- Attendance status values.
+- Work-duration values.
+
+Determine whether current Atlas data depends on preserving both model definitions.
+
+No migrations or production writes.
+
+## STEP 5 — ATTENDANCE BUSINESS-LOGIC SAFETY
+
+Map the current calculations for:
+
+- Working minutes.
+- Total worked minutes.
+- Late arrival.
+- Early logout.
+- Overtime.
+- Break duration.
+- Present, absent, half-day and leave statuses.
+- Weekly offs and holidays.
+- Regularization approvals.
+- Remote login exceptions.
+- Biometric and PC Agent events.
+
+Identify every place where a model change could alter calculations.
+
+Do not modify any formula.
+
+## STEP 6 — ISOLATED COMPATIBILITY TESTS
+
+Use a dedicated local temporary database.
+
+Test:
+
+1. Legacy Attendance model document creation.
+2. AttendanceV2 model document creation.
+3. Reading v1-created documents with v2.
+4. Reading v2-created documents with v1.
+5. Existing update semantics.
+6. Unknown-field handling.
+7. Default application.
+8. Validation differences.
+9. Existing indexes.
+10. Mixed document queries.
+11. Employee/date isolation.
+12. Model registration and import-order behavior.
+
+Test actual production model definitions.
+
+Do not invent a unified schema or modify existing models.
+
+## STEP 7 — REAL ROUTE COVERAGE AUDIT
+
+Identify the real production route handlers and server mount paths.
+
+Compare current test coverage for:
+
+- Punch-in.
+- Punch-out.
+- Break start/end.
+- Biometric ingestion.
+- Attendance regularization approval.
+- Attendance approval requests.
+- Employee attendance history.
+- Admin attendance reports.
+
+Clearly distinguish:
+
+REAL PRODUCTION ROUTE TESTED
+
+MODEL-ONLY TESTED
+
+SIMULATED TEST
+
+NOT TESTED
+
+Do not claim authenticated HTTP coverage from custom mock endpoints.
+
+## STEP 8 — DETERMINE SAFE CENTRALIZATION STRATEGY
+
+Evaluate these possible strategies:
+
+A. Keep two distinct schemas and extract one at a time into separate modules.
+
+B. Keep two separately registered models but share only safe reusable field definitions.
+
+C. Use one canonical schema with backward-compatible model aliases.
+
+D. Preserve current inline definitions until stronger integration tests are available.
+
+For each option, explain:
+
+- Advantages.
+- Compatibility risks.
+- Potential data loss.
+- Required test coverage.
+- Deployment implications.
+- Rollback feasibility.
+
+Recommend the safest approach based on actual source and database evidence.
+
+Do not select a strategy simply to reduce the number of model files.
+
+## STEP 9 — REPORT OTHER OPEN SAFETY BLOCKERS
+
+Include current status of:
+
+- Attendance regularization duplicate-submission race.
+- Attendance regularization partial-save risk.
+- Financial transaction test isolation.
+- AMC renewal rollback test coverage.
+- Identity model extraction prerequisites.
+
+These are informational only.
+
+Do not fix them during this audit.
+
+## FINAL REPORT
+
+Provide:
+
+1. Git status and HEAD.
+2. Exact Attendance schema.
+3. Exact AttendanceV2 schema.
+4. Field-by-field comparison.
+5. Index comparison.
+6. Historical Atlas compatibility.
+7. Consumer dependency map.
+8. Shared-collection read/write risks.
+9. Existing attendance API test coverage.
+10. Isolated compatibility test findings.
+11. Safest model centralization strategy.
+12. Whether either model is ready for extraction.
+13. Blocking issues.
+14. Recommended next SINGLE safe action.
+
+## STRICT INSTRUCTIONS
+
+AUDIT ONLY.
+
+No model extraction.
+No code changes.
+No schema changes.
+No database migrations.
+No new indexes.
+No business-logic modifications.
+No changes to authentication or attendance rules.
+No production Atlas writes.
+No Git commit.
+Do not begin Issue 9.
+
+STOP after presenting the audit report and await explicit approval.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-10-14T10:51:17+05:30.
+
+The user's current state is as follows:
+Active Document: c:\Users\Admin\Desktop\CRM\client-connect-track\backend\admin.js (LANGUAGE_UNSPECIFIED)
+Cursor is on line: 31562
+Other open documents:
+- c:\Users\Admin\Desktop\CRM\client-connect-track\src\admin\attendance\Attendance.jsx (LANGUAGE_UNSPECIFIED)
+- c:\Users\Admin\Desktop\CRM\client-connect-track\src\admin\tasks\Tasks.jsx (LANGUAGE_UNSPECIFIED)
+- c:\Users\Admin\Desktop\CRM\client-connect-track\src\admin\tickets\SupportTickets.jsx (LANGUAGE_UNSPECIFIED)
+- c:\Users\Admin\Desktop\CRM\client-connect-track\src\employee\EmployeeDashboard.jsx (LANGUAGE_UNSPECIFIED)
+- c:\Users\Admin\Desktop\CRM\client-connect-track\src\admin\billing\AmcBilling.jsx (LANGUAGE_UNSPECIFIED)
+</ADDITIONAL_METADATA>

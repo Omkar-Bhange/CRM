@@ -1,0 +1,287 @@
+<USER_REQUEST>
+# ISSUE 8 — AMCCONTRACT POST-EXTRACTION FINANCIAL AUDIT & AMCINVOICE READINESS
+
+Role: Senior Node.js Architect, Mongoose Specialist, MongoDB Transaction Engineer, AMC Billing and GST Integrity Auditor.
+
+Branch: production-hardening-remediation
+
+Expected HEAD: a467bc4a4d318bd9d5f259448b1876240eb006a4
+
+## OBJECTIVE
+
+Verify the completed AmcContract extraction and establish a reliable, real-production-handler financial regression baseline before centralizing AmcInvoice.
+
+AUDIT AND ISOLATED TEST VERIFICATION ONLY.
+
+Do not extract AmcInvoice yet.
+
+Do not modify business logic, schemas, indexes, invoice numbering, GST, payment posting, or renewal behavior.
+
+Do not begin Issue 9.
+
+## STEP 1 — GIT AND SOURCE VERIFICATION
+
+Confirm the exact branch and expected HEAD.
+
+Compare commit a467bc4 against its parent 103490f.
+
+Verify:
+- All AmcContract schema paths are identical.
+- All subdocument schemas are preserved.
+- All indexes and options are identical.
+- The model still uses collection "amccontracts".
+- Existing AMC routes and calculations are unchanged.
+- The import in backend/client.js does not create circular dependencies.
+- No AmcInvoice, AmcPayment, or IdempotencyLog code was modified.
+
+Report unexpected differences.
+
+## STEP 2 — REVIEW ACTUAL AMC TRANSACTION TESTS
+
+Inspect:
+
+- backend/verify_amccontract_model.js
+- backend/test_amccontract_isolated.js
+- backend/test_amccontract_api.js
+- scratch/test_amccontract_replica_set_transactions.cjs
+- scratch/run_all_amccontract_regressions.cjs
+
+For every AMC financial transaction test, classify it as:
+
+1. REAL PRODUCTION HTTP HANDLER
+2. REAL PRODUCTION HANDLER WITH SYNTHETIC JWT
+3. DIRECT MODEL TRANSACTION
+4. INJECTED-FAILURE TRANSACTION
+5. SIMULATED OR MOCKED TRANSACTION
+6. NOT TESTED
+
+Confirm which tests actually exercise backend/admin.js production routes.
+
+Never present direct model-level transaction checks as complete production API verification.
+
+## STEP 3 — MAP CONTRACT AND INVOICE WRITES
+
+Inspect the actual code for:
+
+- AMC contract creation.
+- AMC invoice creation.
+- Standard renewal.
+- Early renewal.
+- upcomingRenewal queue.
+- Renewal-history archival.
+- Existing invoice reference updates.
+- Renewal lock acquisition.
+- renewalVersion increment.
+- IdempotencyLog creation.
+- Duplicate invoice prevention.
+- GST calculations.
+- Payment allocation.
+
+For each operation, document:
+
+- Exact route and method.
+- Collections modified.
+- MongoDB session boundary.
+- Reads outside the transaction.
+- Writes inside the transaction.
+- Writes after transaction commit.
+- Rollback and retry behavior.
+- Potential race conditions.
+
+Do not modify any handler.
+
+## STEP 4 — VERIFY REAL AMC FINANCIAL TRANSACTIONS
+
+Use only the dedicated isolated local MongoDB replica set:
+
+127.0.0.1:27019
+Replica set: rsTest
+
+Use a unique crm_isolated_tx_ test database with synthetic data.
+
+Do not use operational Atlas.
+
+Do not monkey-patch transactions.
+
+Where safe, exercise real existing production routes for:
+
+1. Creating an AMC contract and initial invoice.
+2. Validating invoice totals.
+3. Validating GST place-of-supply rules.
+4. Ensuring client-product relationships remain intact.
+5. Rolling back failed contract creation.
+6. Standard renewal creating the correct coverage period.
+7. Early renewal preserving current coverage.
+8. upcomingRenewal persistence.
+9. Renewal-history archival.
+10. Duplicate renewal prevention.
+11. Idempotency replay.
+12. Idempotency payload conflicts.
+13. Concurrent renewal lock behavior.
+14. Invoice numbering uniqueness.
+15. Failed invoice creation rollback.
+16. Failed contract update rollback.
+17. Payment posting and outstanding balance reconciliation, where supported safely.
+18. No duplicate invoice or contract after a failed or retried request.
+
+Use original production calculations and request handlers.
+
+For every test, inspect actual persisted database state.
+
+If any scenario cannot be safely tested, classify it NOT TESTED and explain why.
+
+Do not run quarantined AMC renewal scripts.
+
+## STEP 5 — AUDIT AMCINVOICE SCHEMA
+
+Inspect the complete inline AmcInvoice model in backend/admin.js.
+
+Document:
+
+- Mongoose model name.
+- Physical collection name.
+- Every field and nested field.
+- Required constraints.
+- Defaults and enums.
+- Unique indexes.
+- Compound indexes.
+- Invoice code and number fields.
+- GSTIN and place-of-supply fields.
+- Taxable amount.
+- CGST, SGST and IGST.
+- Round-off and total.
+- Payment status.
+- Paid and pending balances.
+- Client reference.
+- Contract reference.
+- Current versus future renewal references.
+- Soft-delete rules.
+- Timestamp behavior.
+- Methods, hooks and virtuals.
+
+Verify the exact schema against historical operational Atlas documents READ-ONLY.
+
+No production index creation, migration or modification.
+
+## STEP 6 — REVIEW INVOICE NUMBERING SAFETY
+
+Determine:
+
+1. Where invoice codes and invoice numbers are generated.
+2. Whether numbering occurs inside or outside a transaction.
+3. Whether invoice uniqueness is enforced by an actual database index.
+4. Whether retries may consume or duplicate invoice numbers.
+5. Whether concurrent requests can produce a duplicate.
+6. Whether the current code correctly handles E11000 conflicts.
+7. Whether renewal idempotency prevents duplicate invoices.
+
+Report findings without changing the algorithm.
+
+## STEP 7 — VERIFY EARLY RENEWAL SAFETY
+
+Inspect and test the existing invoice-first early-renewal workflow.
+
+Verify that:
+
+- The current AMC coverage dates are preserved before renewal activation.
+- Future renewal data is stored in upcomingRenewal.
+- The correct invoice is associated with the queued period.
+- Invoice totals and GST are persisted accurately.
+- Renewal history is not prematurely overwritten.
+- Payment status is not silently changed.
+- Future renewal promotion cannot create duplicate financial documents.
+
+Clearly separate tested behavior from code inspection.
+
+Do not execute the background recovery daemon against operational Atlas.
+
+## STEP 8 — REVIEW HISTORICAL DATA
+
+Use operational Atlas strictly READ-ONLY.
+
+Verify:
+
+- amccontracts and amcinvoices collection names.
+- Existing document counts.
+- Actual index catalogs.
+- Relevant reference integrity.
+- Existing and queued renewal data shape.
+- Invoice sequence fields.
+- Financial amount and tax-field distributions.
+
+Do not reveal client personal or confidential billing data.
+
+No writes, index synchronization or migrations.
+
+## STEP 9 — REGRESSION VERIFICATION
+
+Reconcile the existing:
+
+71 passing suites
+3,689 assertions
+
+Verify actual test filenames and execution results.
+
+Run only confirmed-safe suites.
+
+Account for silently executed assertions separately from runner-parsed output.
+
+Confirm frontend production build and backend module import integrity.
+
+## FINAL REPORT
+
+Provide:
+
+1. Git verification.
+2. AmcContract schema parity.
+3. Real AMC transaction test classification.
+4. AMC creation and renewal transaction boundaries.
+5. Invoice creation and numbering analysis.
+6. Early renewal test outcomes.
+7. Idempotency and concurrency outcomes.
+8. Rollback and partial-failure coverage.
+9. Untested AMC financial scenarios.
+10. Complete AmcInvoice schema and indexes.
+11. Historical Atlas compatibility.
+12. Exact regression totals.
+13. Pre-existing risks versus extraction regressions.
+14. Whether AmcInvoice is ready for a strictly structural extraction.
+15. Recommended next SINGLE action.
+
+## STRICT INSTRUCTIONS
+
+AUDIT ONLY.
+
+Do not extract AmcInvoice.
+
+Do not modify AmcContract, AmcPayment, IdempotencyLog, Client or any identity model.
+
+No financial business-logic changes.
+
+No GST changes.
+
+No index fixes or migrations.
+
+No invoice-numbering changes.
+
+No operational Atlas writes.
+
+Do not begin Issue 9.
+
+Do not commit any source changes.
+
+STOP after the audit and await explicit approval.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-10-14T16:49:20+05:30.
+
+The user's current state is as follows:
+Active Document: c:\Users\Admin\Desktop\CRM\client-connect-track\backend\admin.js (LANGUAGE_UNSPECIFIED)
+Cursor is on line: 28902
+Other open documents:
+- c:\Users\Admin\Desktop\CRM\client-connect-track\src\admin\attendance\Attendance.jsx (LANGUAGE_UNSPECIFIED)
+- c:\Users\Admin\Desktop\CRM\client-connect-track\src\admin\tasks\Tasks.jsx (LANGUAGE_UNSPECIFIED)
+- c:\Users\Admin\Desktop\CRM\client-connect-track\src\admin\tickets\SupportTickets.jsx (LANGUAGE_UNSPECIFIED)
+- c:\Users\Admin\Desktop\CRM\client-connect-track\src\employee\EmployeeDashboard.jsx (LANGUAGE_UNSPECIFIED)
+- c:\Users\Admin\Desktop\CRM\client-connect-track\src\admin\billing\AmcBilling.jsx (LANGUAGE_UNSPECIFIED)
+</ADDITIONAL_METADATA>
