@@ -9,7 +9,7 @@ require("./admin");
 require("./employee");
 
 const Client = mongoose.models.Client || require("./models/Client");
-const Employee = mongoose.model("Employee");
+const Employee = require("./models/Employee");
 const User = mongoose.model("User");
 
 const documentUploadDirectory = path.join(__dirname, "uploads", "documents");

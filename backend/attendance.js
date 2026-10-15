@@ -2,9 +2,7 @@ const express = require("express");
 const mongoose = require("mongoose");
 
 const authenticateUser = require("./authMiddleware");
-const Employee =
-  mongoose.models.Employee ||
-  mongoose.model("Employee");
+const Employee = require("./models/Employee");
 const router = express.Router();
 
 const Attendance = require("./models/Attendance");

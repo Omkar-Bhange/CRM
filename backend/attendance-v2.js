@@ -8,7 +8,7 @@ const Attendance = require("./models/AttendanceV2");
 
 const AttendanceEvent = require("./models/AttendanceEvent");
 
-const Employee = mongoose.models.Employee;
+const Employee = require("./models/Employee");
 const Task = mongoose.models.Task;
 
 const AgentDailySummary = require("./models/AgentDailySummary");
