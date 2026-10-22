@@ -319,7 +319,7 @@ const [
         if (Array.isArray(initialEmployees) && initialEmployees.length > 0) {
             setEmployees(initialEmployees);
         } else {
-            fetch(`${API_URL}/api/admin/employees`, {
+            fetch(`${API_URL}/api/employee/employees`, {
                 headers: {
                     Accept: "application/json",
                     Authorization: `Bearer ${getAuthToken()}`,

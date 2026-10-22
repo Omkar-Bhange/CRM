@@ -7455,15 +7455,16 @@ AMC INVOICE / CYCLE DETAIL
                     activeStatusFilter={statusFilter}
                     onStatusFilterChange={setStatusFilter}
                     toolbarActions={
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                             <select
                                 value={productFilter}
                                 onChange={(e) => setProductFilter(e.target.value)}
-                                className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-hidden"
+                                className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 outline-hidden hover:border-slate-300 focus:border-blue-500 transition"
+                                title="Filter by Product"
                             >
                                 {productFilterOptions.map((product) => (
                                     <option key={product} value={product}>
-                                        {product}
+                                        {product === "All" ? "All Products" : product}
                                     </option>
                                 ))}
                             </select>
@@ -7471,11 +7472,12 @@ AMC INVOICE / CYCLE DETAIL
                             <select
                                 value={planFilter}
                                 onChange={(e) => setPlanFilter(e.target.value)}
-                                className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-hidden"
+                                className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 outline-hidden hover:border-slate-300 focus:border-blue-500 transition"
+                                title="Filter by Plan"
                             >
                                 {planOptions.map((plan) => (
                                     <option key={plan} value={plan}>
-                                        {plan}
+                                        {plan === "All" ? "All Plans" : plan}
                                     </option>
                                 ))}
                             </select>
@@ -7484,11 +7486,12 @@ AMC INVOICE / CYCLE DETAIL
                                 type="button"
                                 onClick={loadAmcContracts}
                                 disabled={recordsLoading}
-                                className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition disabled:opacity-50"
+                                title="Refresh AMC Contracts"
+                                className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition disabled:opacity-50"
                             >
                                 <RefreshCw
                                     size={12}
-                                    className={recordsLoading ? "animate-spin text-violet-600" : ""}
+                                    className={recordsLoading ? "animate-spin text-blue-600" : ""}
                                 />
                                 Refresh
                             </button>

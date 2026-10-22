@@ -576,7 +576,7 @@ export default function Tasks({
 
     const loadEmployees = async () => {
         try {
-            const res = await fetch(`${API_URL}/api/admin/employees`, {
+            const res = await fetch(`${API_URL}/api/employee/employees`, {
                 headers: {
                     Accept: "application/json",
                     Authorization: `Bearer ${getAuthToken()}`,
@@ -649,6 +649,18 @@ export default function Tasks({
         loadClients();
         loadProducts();
     }, []);
+
+    useEffect(() => {
+        if (Array.isArray(initialEmployees) && initialEmployees.length > 0) {
+            setEmployees(initialEmployees);
+        }
+    }, [initialEmployees]);
+
+    useEffect(() => {
+        if (Array.isArray(initialProjects) && initialProjects.length > 0) {
+            setProjects(initialProjects);
+        }
+    }, [initialProjects]);
 
     // HANDLE INITIAL PROJECT PROP (FROM PHASE 3)
     useEffect(() => {

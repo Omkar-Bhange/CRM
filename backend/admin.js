@@ -24305,6 +24305,53 @@ const dayEnd = new Date(Date.UTC(year, month - 1, day, 18, 29, 59, 999));
   }
 });
 /* =========================================================
+   GET EMPLOYEES (ALIAS / SAFEGUARD ROUTE)
+   GET /api/admin/employees
+========================================================= */
+router.get("/employees", async (req, res, next) => {
+  try {
+    const Employee = mongoose.models.Employee || require("./models/Employee");
+    const {
+      search = "",
+      status = "All",
+      department = "All",
+    } = req.query;
+
+    const query = {};
+    if (status !== "All") {
+      query.status = status;
+    }
+    if (department !== "All") {
+      query.department = department;
+    }
+
+    const normalizedSearch = String(search || "").trim();
+    if (normalizedSearch) {
+      query.$or = [
+        { employeeCode: { $regex: normalizedSearch, $options: "i" } },
+        { name: { $regex: normalizedSearch, $options: "i" } },
+        { email: { $regex: normalizedSearch, $options: "i" } },
+        { mobile: { $regex: normalizedSearch, $options: "i" } },
+        { role: { $regex: normalizedSearch, $options: "i" } },
+        { department: { $regex: normalizedSearch, $options: "i" } },
+      ];
+    }
+
+    const employees = await Employee.find(query)
+      .sort({ name: 1 })
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      count: employees.length,
+      data: employees,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/* =========================================================
    GET EMPLOYEE OVERVIEW
    GET /api/admin/team/:employeeCode/overview
 ========================================================= */
@@ -28142,7 +28189,7 @@ router.patch(
       if (quotationAmount !== undefined && quotationAmount !== "" && !isNaN(Number(quotationAmount))) {
         request.quotationAmount = Math.max(0, Number(quotationAmount));
       }
-
+      
       if (req.file) {
         request.quotationDocument = {
           fileName: req.file.originalname,

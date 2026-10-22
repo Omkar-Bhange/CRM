@@ -4499,7 +4499,7 @@ export default function Admin({ user: propUser = null, onLogout }) {
                                 moduleName="Client Management"
                                 onNavigateToDashboard={() => setActiveMenu("overview")}
                             >
-                                selectedClient ? (
+                                {selectedClient ? (
                                 <div className="enterprise-page">
                                     <div>
                                         {/* Client Details Header */}
@@ -4517,7 +4517,7 @@ export default function Admin({ user: propUser = null, onLogout }) {
                                                 <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                                                     <div className="flex min-w-0 items-start gap-4">
                                                         <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-violet-100 text-lg font-bold text-violet-700">
-                                                            {selectedClient.companyName
+                                                            {(selectedClient.companyName || "Client")
                                                                 .split(" ")
                                                                 .slice(0, 2)
                                                                 .map((word) => word[0])
@@ -7239,7 +7239,7 @@ export default function Admin({ user: propUser = null, onLogout }) {
                                         />
                                     </div>
                                 </div>
-                            )
+                            )}
                             </ErrorBoundary>
 
                         ) : activeMenu === "requirements" ? (
@@ -7338,6 +7338,7 @@ export default function Admin({ user: propUser = null, onLogout }) {
                                                 null
                                             );
                                         }}
+                                        employees={employees}
                                     />
                                 </div>
                             </ErrorBoundary>

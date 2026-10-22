@@ -320,10 +320,10 @@ export default function DataTable({
 
   return (
     <div className="flex flex-col rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden">
-      {/* 1. Zoho Module Sub-Header - Linear Single-Line Precision */}
-      <div className="flex items-center justify-between gap-2.5 border-b border-slate-200 bg-white px-3 sm:px-4 min-h-[48px] select-none flex-nowrap overflow-x-auto custom-scrollbar">
+      {/* 1. Zoho Module Sub-Header - Linear Precision */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-slate-200 bg-white px-3 sm:px-4 py-2 select-none min-h-[50px]">
         {/* Left: View Selector & View Controls */}
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
           {/* View Selector Dropdown */}
           <div className="relative" ref={viewRef}>
             <button
@@ -499,7 +499,7 @@ export default function DataTable({
         </div>
 
         {/* Right: Quick Search, Status Dropdown/Pills, Custom Actions, Split Create CTA, and More Actions */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 flex-wrap">
           {/* Quick Search */}
           <div className="relative w-32 sm:w-44 md:w-52">
             <Search
@@ -619,59 +619,72 @@ export default function DataTable({
           {headerActions}
           {toolbarActions}
 
-          {/* Zoho Split Primary Button [ + Create [Entity] | ▾ ] */}
+          {/* Primary Action / Create Button */}
           {onCreateClick && (
-            <div className="relative inline-flex rounded-lg shadow-xs" ref={createSplitRef}>
-              <button
-                type="button"
-                onClick={onCreateClick}
-                className="inline-flex items-center gap-1.5 rounded-l-lg bg-[#1B59F8] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#1548D1] active:bg-[#0F3DB8] transition"
-              >
-                <Plus size={14} strokeWidth={2.5} />
-                <span className="hidden sm:inline">
-                  {createButtonLabel || `Create ${moduleName.replace(/s$/, "")}`}
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setCreateSplitOpen((prev) => !prev)}
-                title="More creation options"
-                aria-label="More creation options"
-                className="inline-flex items-center rounded-r-lg border-l border-blue-400/40 bg-[#1B59F8] px-1.5 py-1.5 text-xs text-white hover:bg-[#1548D1] active:bg-[#0F3DB8] transition"
-              >
-                <ChevronDown size={13} />
-              </button>
+            onCreateDropdownItems && onCreateDropdownItems.length > 0 ? (
+              <div className="relative inline-flex rounded-lg shadow-xs shrink-0" ref={createSplitRef}>
+                <button
+                  type="button"
+                  onClick={onCreateClick}
+                  className="inline-flex items-center gap-1.5 rounded-l-lg bg-[#1B59F8] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1548D1] active:bg-[#0F3DB8] transition"
+                >
+                  <Plus size={14} strokeWidth={2.5} />
+                  <span>
+                    {createButtonLabel || `Create ${moduleName.replace(/s$/, "")}`}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCreateSplitOpen((prev) => !prev)}
+                  title="More creation options"
+                  aria-label="More creation options"
+                  className="inline-flex items-center rounded-r-lg border-l border-blue-400/40 bg-[#1B59F8] px-2 py-1.5 text-xs text-white hover:bg-[#1548D1] active:bg-[#0F3DB8] transition"
+                >
+                  <ChevronDown size={13} />
+                </button>
 
-              {createSplitOpen && (
-                <div className="absolute right-0 mt-2 w-52 rounded-xl border border-slate-200 bg-white p-1 shadow-xl shadow-slate-900/10 z-50 animate-in fade-in zoom-in-95 duration-100">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCreateSplitOpen(false);
-                      onCreateClick();
-                    }}
-                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50 text-left"
-                  >
-                    <Plus size={13} className="text-blue-600" />
-                    <span>Create {moduleName.replace(/s$/, "")}</span>
-                  </button>
-                  {onCreateDropdownItems.map((item, idx) => (
+                {createSplitOpen && (
+                  <div className="absolute right-0 top-full mt-1.5 w-52 rounded-xl border border-slate-200 bg-white p-1 shadow-xl shadow-slate-900/10 z-50 animate-in fade-in zoom-in-95 duration-100">
                     <button
-                      key={idx}
                       type="button"
                       onClick={() => {
                         setCreateSplitOpen(false);
-                        item.onClick();
+                        onCreateClick();
                       }}
-                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50 text-left"
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50 text-left"
                     >
-                      {item.icon ? <item.icon size={13} className="text-slate-400" /> : null}
-                      <span>{item.label}</span>
+                      <Plus size={13} className="text-blue-600" />
+                      <span>{createButtonLabel || `Create ${moduleName.replace(/s$/, "")}`}</span>
                     </button>
-                  ))}
-                </div>
-              )}
-            </div>
+                    {onCreateDropdownItems.map((item, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          setCreateSplitOpen(false);
+                          item.onClick();
+                        }}
+                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50 text-left"
+                      >
+                        {item.icon ? <item.icon size={13} className="text-slate-400" /> : null}
+                        <span>{item.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={onCreateClick}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#1B59F8] px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-[#1548D1] active:bg-[#0F3DB8] transition shrink-0 whitespace-nowrap"
+              >
+                <Plus size={14} strokeWidth={2.5} />
+                <span>
+                  {createButtonLabel || `Create ${moduleName.replace(/s$/, "")}`}
+                </span>
+              </button>
+            )
           )}
 
           {/* More Actions [ ... ] Button */}
