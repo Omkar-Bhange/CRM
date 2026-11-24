@@ -319,9 +319,9 @@ export default function DataTable({
         ];
 
   return (
-    <div className="flex flex-col rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden">
+    <div className="flex flex-col rounded-xl border border-slate-200 bg-white shadow-xs">
       {/* 1. Zoho Module Sub-Header - Linear Precision */}
-      <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-slate-200 bg-white px-3 sm:px-4 py-2 select-none min-h-[50px]">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 select-none rounded-t-xl min-h-[56px]">
         {/* Left: View Selector & View Controls */}
         <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
           {/* View Selector Dropdown */}
@@ -622,11 +622,11 @@ export default function DataTable({
           {/* Primary Action / Create Button */}
           {onCreateClick && (
             onCreateDropdownItems && onCreateDropdownItems.length > 0 ? (
-              <div className="relative inline-flex rounded-lg shadow-xs shrink-0" ref={createSplitRef}>
+              <div className="relative inline-flex rounded-lg shadow-sm shrink-0" ref={createSplitRef}>
                 <button
                   type="button"
                   onClick={onCreateClick}
-                  className="inline-flex items-center gap-1.5 rounded-l-lg bg-[#1B59F8] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1548D1] active:bg-[#0F3DB8] transition"
+                  className="inline-flex h-9 items-center gap-1.5 rounded-l-lg bg-[#1B59F8] px-3.5 text-xs font-bold text-white hover:bg-[#1548D1] active:bg-[#0F3DB8] transition"
                 >
                   <Plus size={14} strokeWidth={2.5} />
                   <span>
@@ -638,7 +638,7 @@ export default function DataTable({
                   onClick={() => setCreateSplitOpen((prev) => !prev)}
                   title="More creation options"
                   aria-label="More creation options"
-                  className="inline-flex items-center rounded-r-lg border-l border-blue-400/40 bg-[#1B59F8] px-2 py-1.5 text-xs text-white hover:bg-[#1548D1] active:bg-[#0F3DB8] transition"
+                  className="inline-flex h-9 items-center rounded-r-lg border-l border-blue-400/40 bg-[#1B59F8] px-2 text-xs text-white hover:bg-[#1548D1] active:bg-[#0F3DB8] transition"
                 >
                   <ChevronDown size={13} />
                 </button>
@@ -677,7 +677,7 @@ export default function DataTable({
               <button
                 type="button"
                 onClick={onCreateClick}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-[#1B59F8] px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-[#1548D1] active:bg-[#0F3DB8] transition shrink-0 whitespace-nowrap"
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#1B59F8] px-4 text-xs font-bold text-white shadow-sm hover:bg-[#1548D1] active:bg-[#0F3DB8] transition shrink-0 whitespace-nowrap"
               >
                 <Plus size={14} strokeWidth={2.5} />
                 <span>

@@ -188,9 +188,17 @@ const loginSchema = z.object({
   password: z
     .string({ required_error: "Password is required." })
     .min(1, "Password is required."),
-  role: z.enum(["admin", "employee", "client"], {
+  role: z.enum([
+    "admin",
+    "employee",
+    "client",
+    "sales_manager",
+    "sales_rep",
+    "support_agent",
+    "finance",
+  ], {
     errorMap: () => ({ message: "Please select a valid role." }),
-  }),
+  }).optional(),
 }).passthrough();
 
 const registerAdminSchema = z.object({

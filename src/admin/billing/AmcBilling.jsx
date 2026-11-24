@@ -2717,28 +2717,47 @@ export default function AmcBilling() {
         let defaultExpiryDate = "";
         let defaultDueDate = "";
 
-        if (record.expiryDate) {
-            const expiry = new Date(record.expiryDate);
-            if (!Number.isNaN(expiry.getTime())) {
-                const nextStart = new Date(expiry);
-                nextStart.setDate(nextStart.getDate() + 1);
-                startDate = nextStart.toISOString().slice(0, 10);
+        const expiryRaw = record.expiryDateValue || record.expiryDate;
+        if (expiryRaw) {
+            const ymd = String(expiryRaw).trim().match(/^\d{4}-\d{2}-\d{2}/)
+                ? String(expiryRaw).trim().slice(0, 10)
+                : null;
+            let d;
+            if (ymd) {
+                const [y, m, day] = ymd.split("-").map(Number);
+                d = new Date(y, m - 1, day);
+            } else {
+                d = new Date(expiryRaw);
+            }
 
-                const nextEnd = new Date(nextStart);
-                nextEnd.setFullYear(nextEnd.getFullYear() + 1);
-                nextEnd.setDate(nextEnd.getDate() - 1);
-                defaultExpiryDate = nextEnd.toISOString().slice(0, 10);
+            if (!Number.isNaN(d.getTime())) {
+                const nextStart = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+                const sYear = nextStart.getFullYear();
+                const sMonth = String(nextStart.getMonth() + 1).padStart(2, "0");
+                const sDay = String(nextStart.getDate()).padStart(2, "0");
+                startDate = `${sYear}-${sMonth}-${sDay}`;
+
+                const nextEnd = new Date(sYear + 1, nextStart.getMonth(), nextStart.getDate() - 1);
+                const eYear = nextEnd.getFullYear();
+                const eMonth = String(nextEnd.getMonth() + 1).padStart(2, "0");
+                const eDay = String(nextEnd.getDate()).padStart(2, "0");
+                defaultExpiryDate = `${eYear}-${eMonth}-${eDay}`;
                 defaultDueDate = startDate;
             }
         }
 
         if (!startDate) {
             const today = new Date();
-            startDate = today.toISOString().slice(0, 10);
-            const nextEnd = new Date(today);
-            nextEnd.setFullYear(nextEnd.getFullYear() + 1);
-            nextEnd.setDate(nextEnd.getDate() - 1);
-            defaultExpiryDate = nextEnd.toISOString().slice(0, 10);
+            const sYear = today.getFullYear();
+            const sMonth = String(today.getMonth() + 1).padStart(2, "0");
+            const sDay = String(today.getDate()).padStart(2, "0");
+            startDate = `${sYear}-${sMonth}-${sDay}`;
+
+            const nextEnd = new Date(sYear + 1, today.getMonth(), today.getDate() - 1);
+            const eYear = nextEnd.getFullYear();
+            const eMonth = String(nextEnd.getMonth() + 1).padStart(2, "0");
+            const eDay = String(nextEnd.getDate()).padStart(2, "0");
+            defaultExpiryDate = `${eYear}-${eMonth}-${eDay}`;
             defaultDueDate = startDate;
         }
 
@@ -7200,7 +7219,7 @@ AMC INVOICE / CYCLE DETAIL
                 ) : (
                     <>
                         {/* Statistics - High Density Linear Standard */}
-                        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 mb-6">
                     <button
                         type="button"
                         onClick={() => setActiveSummary("Collected")}
@@ -7455,11 +7474,11 @@ AMC INVOICE / CYCLE DETAIL
                     activeStatusFilter={statusFilter}
                     onStatusFilterChange={setStatusFilter}
                     toolbarActions={
-                        <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap shrink-0">
                             <select
                                 value={productFilter}
                                 onChange={(e) => setProductFilter(e.target.value)}
-                                className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 outline-hidden hover:border-slate-300 focus:border-blue-500 transition"
+                                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none hover:border-slate-300 focus:border-blue-500 transition"
                                 title="Filter by Product"
                             >
                                 {productFilterOptions.map((product) => (
@@ -7472,7 +7491,7 @@ AMC INVOICE / CYCLE DETAIL
                             <select
                                 value={planFilter}
                                 onChange={(e) => setPlanFilter(e.target.value)}
-                                className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 outline-hidden hover:border-slate-300 focus:border-blue-500 transition"
+                                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none hover:border-slate-300 focus:border-blue-500 transition"
                                 title="Filter by Plan"
                             >
                                 {planOptions.map((plan) => (
@@ -7487,10 +7506,10 @@ AMC INVOICE / CYCLE DETAIL
                                 onClick={loadAmcContracts}
                                 disabled={recordsLoading}
                                 title="Refresh AMC Contracts"
-                                className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition disabled:opacity-50"
+                                className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition disabled:opacity-50"
                             >
                                 <RefreshCw
-                                    size={12}
+                                    size={13}
                                     className={recordsLoading ? "animate-spin text-blue-600" : ""}
                                 />
                                 Refresh

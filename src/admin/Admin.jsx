@@ -9,6 +9,9 @@ import AmcBilling from "./billing/AmcBilling";
 import Team from "./team/Team";
 import ProductSales from "./billing/ProductSales";
 import PaymentsCollections from "./billing/PaymentsCollections";
+import Leads from "./sales/Leads";
+import DealsPipeline from "./sales/DealsPipeline";
+import ContactsModal from "./contacts/ContactsModal";
 
 
 import SupportTickets from "./tickets/SupportTickets";
@@ -101,6 +104,8 @@ import {
     TrendingDown,
     TrendingUp,
     Users,
+    Target,
+    Layers,
     X,
 } from "lucide-react";
 import API_URL from "../config/api";
@@ -110,6 +115,16 @@ const menuItems = [
         id: "overview",
         label: "Overview",
         icon: LayoutDashboard,
+    },
+    {
+        id: "leads",
+        label: "Leads & Prospects",
+        icon: Target,
+    },
+    {
+        id: "deals",
+        label: "Deals Pipeline",
+        icon: Layers,
     },
     {
         id: "clients",
@@ -631,6 +646,7 @@ export default function Admin({ user: propUser = null, onLogout }) {
         projectForNewTask,
         setProjectForNewTask,
     ] = useState(null);
+    const [contactsModalOpen, setContactsModalOpen] = useState(false);
 
         /* =====================================================
         CLIENT PAYMENT HISTORY
@@ -4493,6 +4509,28 @@ export default function Admin({ user: propUser = null, onLogout }) {
                                 </div>
                             </ErrorBoundary>
 
+                        ) : activeMenu === "leads" ? (
+                            <ErrorBoundary
+                                level="module"
+                                moduleName="Leads & Prospects"
+                                onNavigateToDashboard={() => setActiveMenu("overview")}
+                            >
+                                <div className="enterprise-page">
+                                    <Leads onNavigateToDeals={() => setActiveMenu("deals")} />
+                                </div>
+                            </ErrorBoundary>
+
+                        ) : activeMenu === "deals" ? (
+                            <ErrorBoundary
+                                level="module"
+                                moduleName="Deals Pipeline"
+                                onNavigateToDashboard={() => setActiveMenu("overview")}
+                            >
+                                <div className="enterprise-page">
+                                    <DealsPipeline clients={clients} employees={employees} />
+                                </div>
+                            </ErrorBoundary>
+
                         ) : activeMenu === "clients" ? (
                             <ErrorBoundary
                                 level="module"
@@ -4586,6 +4624,14 @@ export default function Admin({ user: propUser = null, onLogout }) {
                                                     </div>
 
                                                     <div className="flex flex-wrap gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setContactsModalOpen(true)}
+                                                            className="flex h-10 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-xs font-semibold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100"
+                                                        >
+                                                            <Users size={15} />
+                                                            Stakeholder Contacts
+                                                        </button>
                                                         <button
                                                             type="button"
                                                             onClick={() => openClientDrawer(selectedClient)}
@@ -6494,9 +6540,11 @@ export default function Admin({ user: propUser = null, onLogout }) {
                                                             </table>
                                                         </div>
 
-                                                        {/* =========================================
-            FOOTER
-        ========================================== */}
+                                                
+                                            
+                                {/* =========================================
+                                         FOOTER
+                                    ========================================== */}
 
                                                         <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50/60 px-5 py-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between lg:px-6">
                                                             <p>
@@ -7386,6 +7434,12 @@ export default function Admin({ user: propUser = null, onLogout }) {
                         )}
                     </div>
             </AppShell>
+            {/* Contacts Modal for B2B Account Stakeholders */}
+            <ContactsModal
+                isOpen={contactsModalOpen}
+                onClose={() => setContactsModalOpen(false)}
+                client={selectedClient}
+            />
             {/* Add Client Drawer */}
             {clientDrawerOpen && (
                 <>

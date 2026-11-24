@@ -38,15 +38,38 @@ function formatDate(dateString) {
   });
 }
 
-function addDurationToDate(startDateStr, durationMonths) {
-  if (!startDateStr) return "";
-  const start = new Date(startDateStr);
-  if (Number.isNaN(start.getTime())) return "";
+function getCleanYMD(input) {
+  if (!input) return "";
+  if (typeof input === "string") {
+    const trimmed = input.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+    if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return trimmed.slice(0, 10);
+  }
+  const d = new Date(input);
+  if (Number.isNaN(d.getTime())) return "";
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
-  const expiry = new Date(start);
-  expiry.setMonth(expiry.getMonth() + durationMonths);
-  expiry.setDate(expiry.getDate() - 1);
-  return expiry.toISOString().slice(0, 10);
+function calculateNextRenewalStartDate(expiryInput) {
+  const ymd = getCleanYMD(expiryInput);
+  if (!ymd) {
+    const today = new Date();
+    return getCleanYMD(today);
+  }
+  const [y, m, d] = ymd.split("-").map(Number);
+  const nextDate = new Date(y, m - 1, d + 1);
+  return getCleanYMD(nextDate);
+}
+
+function addDurationToDate(startDateStr, durationMonths) {
+  const ymd = getCleanYMD(startDateStr);
+  if (!ymd) return "";
+  const [y, m, d] = ymd.split("-").map(Number);
+  const expiry = new Date(y, m - 1 + durationMonths, d - 1);
+  return getCleanYMD(expiry);
 }
 
 export default function RenewAmcModal({
@@ -81,12 +104,10 @@ export default function RenewAmcModal({
       setErrorMessage("");
       setSuccessResult(null);
 
-      // Determine next start date (day after current expiry, or today if expired)
-      const baseExpiry = contract.expiryDate ? new Date(contract.expiryDate) : new Date();
-      const nextStart = new Date(baseExpiry);
-      nextStart.setDate(nextStart.getDate() + 1);
-      const formattedStartDate = nextStart.toISOString().slice(0, 10);
-
+      // Determine next start date (day after current expiry, timezone-immune)
+      const formattedStartDate = calculateNextRenewalStartDate(
+        contract.expiryDateValue || contract.expiryDate
+      );
       const formattedExpiryDate = addDurationToDate(formattedStartDate, 12);
       const formattedDueDate = formattedStartDate;
 

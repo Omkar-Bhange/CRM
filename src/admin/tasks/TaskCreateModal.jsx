@@ -98,30 +98,50 @@ export default function TaskCreateModal({
 
   if (!isOpen) return null;
 
+  // Ensure projects array includes initialProject if provided
+  const allProjects = (() => {
+    const list = Array.isArray(projects) ? [...projects] : [];
+    if (initialProject) {
+      const initId = String(initialProject._id || initialProject.id || "");
+      if (initId && !list.some((p) => String(p._id || p.id) === initId)) {
+        list.unshift(initialProject);
+      }
+    }
+    return list;
+  })();
+
   // Selected project resolution
-  const selectedProject = projects.find((p) => String(p._id || p.id) === String(projectId));
+  const selectedProject =
+    allProjects.find((p) => String(p._id || p.id) === String(projectId)) ||
+    (initialProject && String(initialProject._id || initialProject.id) === String(projectId)
+      ? initialProject
+      : null);
 
   // Auto-fill client when project is selected
   const handleProjectChange = (projId) => {
     setProjectId(projId);
-    const proj = projects.find((p) => String(p._id || p.id) === String(projId));
+    const proj = allProjects.find((p) => String(p._id || p.id) === String(projId));
     if (proj?.clientId) {
       setClientId(String(proj.clientId));
     }
   };
 
-  // Identify Project Team members
+  // Safe employees list
+  const safeEmployees = Array.isArray(employees) ? employees.filter(Boolean) : [];
+
+  // Identify Project Team members safely (handling populated object vs string ID)
   const projectTeamMemberIds = new Set(
     (selectedProject?.teamMembers || [])
-      .filter((m) => m.status === "Active" || !m.status)
-      .map((m) => String(m.employeeId))
+      .filter((m) => m && (m.status === "Active" || !m.status))
+      .map((m) => String(m.employeeId?._id || m.employeeId?.id || m.employeeId || ""))
+      .filter(Boolean)
   );
 
-  const projectTeamEmployees = employees.filter((e) =>
-    projectTeamMemberIds.has(String(e.id || e._id))
+  const projectTeamEmployees = safeEmployees.filter((e) =>
+    projectTeamMemberIds.has(String(e.id || e._id || ""))
   );
-  const otherEmployees = employees.filter(
-    (e) => !projectTeamMemberIds.has(String(e.id || e._id))
+  const otherEmployees = safeEmployees.filter(
+    (e) => !projectTeamMemberIds.has(String(e.id || e._id || ""))
   );
 
   const isOutsideTeam =
@@ -281,9 +301,9 @@ export default function TaskCreateModal({
                   required
                 >
                   <option value="">Select a Project</option>
-                  {projects.map((p) => (
+                  {allProjects.map((p) => (
                     <option key={p._id || p.id} value={p._id || p.id}>
-                      {p.name || p.projectName} ({p.projectCode})
+                      {p.name || p.projectName || "Project"} {p.projectCode ? `(${p.projectCode})` : ""}
                     </option>
                   ))}
                 </select>
@@ -376,7 +396,7 @@ export default function TaskCreateModal({
                 <optgroup label="⭐ PROJECT TEAM">
                   {projectTeamEmployees.map((emp) => (
                     <option key={emp.id || emp._id} value={emp.id || emp._id}>
-                      {emp.name} ({emp.employeeCode})
+                      {emp.name || "Employee"} {emp.employeeCode ? `(${emp.employeeCode})` : ""}
                     </option>
                   ))}
                 </optgroup>
@@ -390,10 +410,10 @@ export default function TaskCreateModal({
               >
                 {(taskFor === "Project" && projectId && projectTeamEmployees.length > 0
                   ? otherEmployees
-                  : employees
+                  : safeEmployees
                 ).map((emp) => (
                   <option key={emp.id || emp._id} value={emp.id || emp._id}>
-                    {emp.name} ({emp.employeeCode})
+                    {emp.name || "Employee"} {emp.employeeCode ? `(${emp.employeeCode})` : ""}
                   </option>
                 ))}
               </optgroup>

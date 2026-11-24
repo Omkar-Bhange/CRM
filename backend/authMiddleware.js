@@ -308,5 +308,37 @@ async function authenticateUser(req, res, next) {
   }
 }
 
-module.exports =
-  authenticateUser;
+/* =========================================================
+   ROLE-BASED & PERMISSION-BASED AUTHORIZATION MIDDLEWARE
+========================================================= */
+function authorize(requiredPermission) {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        code: "AUTH_REQUIRED",
+        message: "Authentication required.",
+      });
+    }
+
+    if (req.user.role === "admin") {
+      return next(); // Super admin has universal access
+    }
+
+    const permissions = Array.isArray(req.user.permissions) ? req.user.permissions : [];
+    if (!permissions.includes(requiredPermission)) {
+      return res.status(403).json({
+        success: false,
+        code: "PERMISSION_DENIED",
+        message: `Forbidden: Missing required permission "${requiredPermission}".`,
+      });
+    }
+
+    next();
+  };
+}
+
+authenticateUser.authorize = authorize;
+authenticateUser.authenticateUser = authenticateUser;
+
+module.exports = authenticateUser;

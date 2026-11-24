@@ -4,6 +4,7 @@ import ClientProfile from "./ClientProfile";
 import ClientDocuments from "./ClientDocuments";
 import ClientTickets from "./ClientTickets";
 import ClientBilling from "./ClientBilling";
+import ClientKnowledgeBase from "./ClientKnowledgeBase";
 import MyProducts from "./MyProducts";
 import ClientDashboard from "./ClientDashboard";
 import ZiaAssistantDrawer from "./ZiaAssistantDrawer";
@@ -71,6 +72,12 @@ const clientMenuItems = [
     label: "Documents",
     description: "Agreements, proposals & files",
     icon: FileText,
+  },
+  {
+    id: "kb",
+    label: "Help Center & FAQs",
+    description: "Guides, tutorials & self-service",
+    icon: CircleHelp,
   },
   {
     id: "profile",
@@ -316,7 +323,7 @@ export default function ClientLayout({ onLogout }) {
     if (activeMenu === "billing") {
       return (
         <ErrorBoundary level="module" moduleName="AMC & Billing" onNavigateToDashboard={() => handleNavigation("overview")}>
-          <ClientBilling />
+          <ClientBilling navParams={navParams} onNavigate={handleNavigation} />
         </ErrorBoundary>
       );
     }
@@ -331,6 +338,13 @@ export default function ClientLayout({ onLogout }) {
       return (
         <ErrorBoundary level="module" moduleName="Documents" onNavigateToDashboard={() => handleNavigation("overview")}>
           <ClientDocuments onNavigate={handleNavigation} />
+        </ErrorBoundary>
+      );
+    }
+    if (activeMenu === "kb") {
+      return (
+        <ErrorBoundary level="module" moduleName="Help Center & Knowledge Base" onNavigateToDashboard={() => handleNavigation("overview")}>
+          <ClientKnowledgeBase />
         </ErrorBoundary>
       );
     }

@@ -51,15 +51,23 @@ export default function TaskEditModal({
 
   if (!isOpen || !task) return null;
 
-  const linkedProject = projects.find((p) => String(p._id || p.id) === String(task.projectId));
+  const safeEmployees = Array.isArray(employees) ? employees.filter(Boolean) : [];
+  const linkedProject = (Array.isArray(projects) ? projects : []).find(
+    (p) => String(p._id || p.id) === String(task.projectId)
+  );
   const projectTeamMemberIds = new Set(
     (linkedProject?.teamMembers || [])
-      .filter((m) => m.status === "Active" || !m.status)
-      .map((m) => String(m.employeeId))
+      .filter((m) => m && (m.status === "Active" || !m.status))
+      .map((m) => String(m.employeeId?._id || m.employeeId?.id || m.employeeId || ""))
+      .filter(Boolean)
   );
 
-  const projectTeamEmployees = employees.filter((e) => projectTeamMemberIds.has(String(e.id || e._id)));
-  const otherEmployees = employees.filter((e) => !projectTeamMemberIds.has(String(e.id || e._id)));
+  const projectTeamEmployees = safeEmployees.filter((e) =>
+    projectTeamMemberIds.has(String(e.id || e._id || ""))
+  );
+  const otherEmployees = safeEmployees.filter(
+    (e) => !projectTeamMemberIds.has(String(e.id || e._id || ""))
+  );
 
   const isOutsideTeam =
     task.projectId &&
@@ -169,7 +177,7 @@ export default function TaskEditModal({
                 <optgroup label="⭐ PROJECT TEAM">
                   {projectTeamEmployees.map((emp) => (
                     <option key={emp.id || emp._id} value={emp.id || emp._id}>
-                      {emp.name} ({emp.employeeCode})
+                      {emp.name || "Employee"} {emp.employeeCode ? `(${emp.employeeCode})` : ""}
                     </option>
                   ))}
                 </optgroup>
@@ -177,9 +185,9 @@ export default function TaskEditModal({
               <optgroup
                 label={linkedProject && projectTeamEmployees.length > 0 ? "OTHER EMPLOYEES" : "ACTIVE EMPLOYEES"}
               >
-                {(linkedProject && projectTeamEmployees.length > 0 ? otherEmployees : employees).map((emp) => (
+                {(linkedProject && projectTeamEmployees.length > 0 ? otherEmployees : safeEmployees).map((emp) => (
                   <option key={emp.id || emp._id} value={emp.id || emp._id}>
-                    {emp.name} ({emp.employeeCode})
+                    {emp.name || "Employee"} {emp.employeeCode ? `(${emp.employeeCode})` : ""}
                   </option>
                 ))}
               </optgroup>

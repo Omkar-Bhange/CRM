@@ -2,7 +2,6 @@ import NexoraLogo from "./assets/NexoraLogo.png";
 import { useState } from "react";
 import {
   ArrowRight,
-  Building2,
   CheckCircle2,
   Eye,
   EyeOff,
@@ -11,35 +10,11 @@ import {
   LockKeyhole,
   Mail,
   ShieldCheck,
-  Sparkles,
-  UserRound,
-  Users,
 } from "lucide-react";
 import {
   saveAuthSession,
 } from "./auth/authClient";
 import API_URL from "./config/api";
-
-const roles = [
-  {
-    id: "admin",
-    label: "Admin",
-    description: "Manage clients, billing, tickets and team",
-    icon: ShieldCheck,
-  },
-  {
-    id: "employee",
-    label: "Employee",
-    description: "View tasks, tickets and work activity",
-    icon: Users,
-  },
-  {
-    id: "client",
-    label: "Client",
-    description: "Raise issues and manage your software",
-    icon: Building2,
-  },
-];
 
 const features = [
   "Track client software and AMC renewals",
@@ -48,14 +23,10 @@ const features = [
 ];
 
 export default function Login({ onLogin }) {
-  const [selectedRole, setSelectedRole] = useState("admin");
   const [showPassword, setShowPassword] = useState(false);
 
-  const [email, setEmail] = useState(
-    "admin@totalsolution.com"
-  );
-
-  const [password, setPassword] = useState("Admin@123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [keepSignedIn, setKeepSignedIn] = useState(false);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -76,11 +47,6 @@ export default function Login({ onLogin }) {
       return;
     }
 
-    if (!selectedRole) {
-      setLoginError("Please select your role.");
-      return;
-    }
-
     try {
       setIsSubmitting(true);
       setLoginError("");
@@ -95,7 +61,6 @@ export default function Login({ onLogin }) {
           body: JSON.stringify({
             email: normalizedEmail,
             password,
-            role: selectedRole,
           }),
         }
       );
@@ -596,68 +561,15 @@ onLogin(
               </h2>
 
               <p className="mt-3 text-sm leading-6 text-slate-500">
-                Select your role and enter your account
-                information.
+                Enter your credentials to access your workspace.
               </p>
             </div>
 
             <form
               onSubmit={handleSubmit}
-              className="mt-9"
+              className="mt-8"
             >
               <div>
-                <label className="mb-3 block text-sm font-semibold text-slate-800">
-                  Select role
-                </label>
-
-                <div className="grid gap-3 sm:grid-cols-3">
-                  {roles.map((role) => {
-                    const Icon = role.icon;
-                    const isSelected =
-                      selectedRole === role.id;
-
-                    return (
-                      <button
-                        key={role.id}
-                        type="button"
-                        disabled={isSubmitting}
-                        onClick={() => {
-                          setSelectedRole(role.id);
-                          setLoginError("");
-                        }}
-                        className={`group rounded-2xl border p-4 text-left transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-70 ${isSelected
-                            ? "border-violet-500 bg-violet-50 shadow-[0_8px_25px_rgba(109,40,217,0.10)]"
-                            : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
-                          }`}
-                      >
-                        <div
-                          className={`mb-3 flex h-9 w-9 items-center justify-center rounded-xl ${isSelected
-                              ? "bg-violet-600 text-white"
-                              : "bg-slate-100 text-slate-600 group-hover:bg-slate-200"
-                            }`}
-                        >
-                          <Icon size={18} />
-                        </div>
-
-                        <p
-                          className={`text-sm font-semibold ${isSelected
-                              ? "text-violet-700"
-                              : "text-slate-800"
-                            }`}
-                        >
-                          {role.label}
-                        </p>
-
-                        <p className="mt-1 hidden text-[11px] leading-4 text-slate-500 xl:block">
-                          {role.description}
-                        </p>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="mt-7">
                 <label
                   htmlFor="email"
                   className="mb-2 block text-sm font-semibold text-slate-800"
@@ -797,11 +709,10 @@ onLogin(
             </form>
 
             <div className="mt-8 flex items-center justify-center gap-2 text-xs text-slate-400">
-              <UserRound size={14} />
+              <ShieldCheck size={14} className="text-violet-500" />
 
               <span>
-                Access is controlled according to your
-                selected role.
+                Secure enterprise access. You will be automatically redirected to your assigned workspace.
               </span>
             </div>
           </div>

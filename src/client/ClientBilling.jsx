@@ -5,6 +5,7 @@ import {
     AlertTriangle,
     ArrowRight,
     Banknote,
+    Box,
     CalendarDays,
     CheckCircle2,
     ChevronLeft,
@@ -16,6 +17,7 @@ import {
     FileText,
     Headphones,
     IndianRupee,
+    Layers,
     Loader2,
     Mail,
     Phone,
@@ -32,6 +34,7 @@ import {
 } from "lucide-react";
 
 import API_URL from "../config/api";
+import PayNowModal from "./PayNowModal";
 
 function formatCurrency(amount) {
     return new Intl.NumberFormat("en-IN", {
@@ -176,11 +179,26 @@ function DetailItem({ label, value, icon: Icon, valueClass = "" }) {
     );
 }
 
-export default function ClientBilling() {
+function matchesProduct(item, key) {
+    if (!key || key === "all") return true;
+    if (!item) return false;
+    const itemKey = String(item.productId || item.clientProductId || item.productName || item.product || "").trim();
+    if (itemKey === key) return true;
+    const itemName = String(item.productName || item.product || "").trim().toLowerCase();
+    const keyLower = String(key).trim().toLowerCase();
+    if (itemName && itemName === keyLower) return true;
+    const itemCode = String(item.productCode || "").trim().toLowerCase();
+    if (itemCode && itemCode === keyLower) return true;
+    return false;
+}
+
+export default function ClientBilling({ navParams = {}, onNavigate }) {
+    const [selectedProductKey, setSelectedProductKey] = useState("all");
     const [searchValue, setSearchValue] = useState("");
     const [statusFilter, setStatusFilter] = useState("All");
     const [selectedInvoiceId, setSelectedInvoiceId] = useState(null);
     const [selectedPaymentRecord, setSelectedPaymentRecord] = useState(null);
+    const [payNowInvoice, setPayNowInvoice] = useState(null);
 
     const [paymentSearchValue, setPaymentSearchValue] = useState("");
     const [paymentModeFilter, setPaymentModeFilter] = useState("All Modes");
@@ -314,16 +332,25 @@ export default function ClientBilling() {
     };
 
     const openRequestModal = (type = "AMC Renewal", contract = null) => {
-        const targetContract = contract || dashboardData.currentContract || (allContracts.length > 0 ? allContracts[0] : null);
+        const targetContract =
+            contract ||
+            selectedProductContract ||
+            dashboardData.currentContract ||
+            (allContracts.length > 0 ? allContracts[0] : null);
         setSelectedContractForRequest(targetContract);
         setRequestType(type);
         setRequestError("");
         setRequestSuccess("");
         setRequestRemarks("");
-        if (targetContract && targetContract.endDate) {
-            const exp = new Date(targetContract.endDate);
+        const expVal = targetContract?.endDate || targetContract?.expiryDate;
+        if (expVal) {
+            const exp = new Date(expVal);
             if (!isNaN(exp.getTime())) {
-                setPreferredStartDate(exp.toISOString().split("T")[0]);
+                const nextDate = new Date(exp.getFullYear(), exp.getMonth(), exp.getDate() + 1);
+                const y = nextDate.getFullYear();
+                const m = String(nextDate.getMonth() + 1).padStart(2, "0");
+                const d = String(nextDate.getDate()).padStart(2, "0");
+                setPreferredStartDate(`${y}-${m}-${d}`);
             } else {
                 setPreferredStartDate(new Date().toISOString().split("T")[0]);
             }
@@ -442,13 +469,81 @@ export default function ClientBilling() {
         loadBillingData();
     }, []);
 
+    // Group client products from contracts and invoices
+    const clientProducts = useMemo(() => {
+        const productMap = new Map();
+
+        (allContracts || []).forEach((c) => {
+            const key = String(c.productId || c.clientProductId || c.productName || c.product || "").trim();
+            if (!key) return;
+            if (!productMap.has(key)) {
+                productMap.set(key, {
+                    key,
+                    id: String(c.productId || c._id || key),
+                    name: c.productName || c.product || "Product",
+                    code: c.productCode || "",
+                    version: c.productVersion || "",
+                    contracts: [],
+                    invoices: [],
+                });
+            }
+            productMap.get(key).contracts.push(c);
+        });
+
+        (billingRecords || []).forEach((inv) => {
+            const key = String(inv.productId || inv.clientProductId || inv.productName || inv.product || "").trim();
+            if (!key) return;
+            if (!productMap.has(key)) {
+                productMap.set(key, {
+                    key,
+                    id: String(inv.productId || key),
+                    name: inv.productName || inv.product || "Product",
+                    code: inv.productCode || "",
+                    version: inv.productVersion || "",
+                    contracts: [],
+                    invoices: [],
+                });
+            }
+            productMap.get(key).invoices.push(inv);
+        });
+
+        return Array.from(productMap.values());
+    }, [allContracts, billingRecords]);
+
+    // Deep link product selection if passed from MyProducts or Layout
+    useEffect(() => {
+        if (navParams?.productId && clientProducts.length > 0) {
+            const match = clientProducts.find(
+                (p) =>
+                    String(p.id) === String(navParams.productId) ||
+                    String(p.key) === String(navParams.productId) ||
+                    p.name.toLowerCase() === String(navParams.productName || "").toLowerCase()
+            );
+            if (match) {
+                setSelectedProductKey(match.key);
+            }
+        }
+    }, [navParams, clientProducts]);
+
+    const activeInvoicesList = useMemo(() => {
+        if (selectedProductKey === "all") return billingRecords;
+        return billingRecords.filter((inv) => matchesProduct(inv, selectedProductKey));
+    }, [billingRecords, selectedProductKey]);
+
+    const selectedProductContract = useMemo(() => {
+        if (selectedProductKey === "all") {
+            return dashboardData.currentContract || (allContracts.length > 0 ? allContracts[0] : null);
+        }
+        return allContracts.find((c) => matchesProduct(c, selectedProductKey)) || null;
+    }, [selectedProductKey, allContracts, dashboardData.currentContract]);
+
     // Relevant invoice selection using safe priority cascade:
     // 1. Oldest overdue unpaid invoice
     // 2. Upcoming unpaid invoice
     // 3. Latest current paid invoice
     // 4. Otherwise null
     const relevantInvoice = useMemo(() => {
-        const unpaidInvoices = billingRecords.filter((inv) => {
+        const unpaidInvoices = activeInvoicesList.filter((inv) => {
             const isUnpaid = inv.paymentStatus !== "Paid" && inv.status !== "Cancelled";
             const balance = Number(inv.balanceAmount ?? (inv.totalAmount - (inv.paidAmount || 0)));
             return isUnpaid && balance > 0;
@@ -465,11 +560,11 @@ export default function ClientBilling() {
         if (unpaidInvoices.length > 0) return unpaidInvoices[0];
 
         // 3. Latest paid invoice
-        const paidInvoices = billingRecords.filter((inv) => (inv.paymentStatus || inv.status) === "Paid");
+        const paidInvoices = activeInvoicesList.filter((inv) => (inv.paymentStatus || inv.status) === "Paid");
         if (paidInvoices.length > 0) return paidInvoices[0];
 
-        return dashboardData.latestInvoice || billingRecords[0] || null;
-    }, [billingRecords, dashboardData.latestInvoice]);
+        return activeInvoicesList[0] || (selectedProductKey === "all" ? dashboardData.latestInvoice : null);
+    }, [activeInvoicesList, selectedProductKey, dashboardData.latestInvoice]);
 
     const selectedInvoice = useMemo(() => {
         return billingRecords.find((record) => String(record.id) === String(selectedInvoiceId)) || null;
@@ -485,16 +580,34 @@ export default function ClientBilling() {
         });
     }, [selectedInvoice, paymentRecords]);
 
-    // Reconciled accounting values directly from backend
-    const reconciledTotalBilled = dashboardData.totalBilled;
-    const reconciledTotalPaid = dashboardData.totalPaid;
-    const reconciledPending = dashboardData.pendingAmount;
+    // Reconciled accounting values directly from backend or filtered product
+    const reconciledTotalBilled = useMemo(() => {
+        if (selectedProductKey === "all") return dashboardData.totalBilled;
+        return activeInvoicesList.reduce((sum, inv) => sum + (Number(inv.totalAmount) || 0), 0);
+    }, [selectedProductKey, dashboardData.totalBilled, activeInvoicesList]);
 
-    // Filtered Invoices
+    const reconciledTotalPaid = useMemo(() => {
+        if (selectedProductKey === "all") return dashboardData.totalPaid;
+        return activeInvoicesList.reduce((sum, inv) => sum + (Number(inv.paidAmount) || 0), 0);
+    }, [selectedProductKey, dashboardData.totalPaid, activeInvoicesList]);
+
+    const reconciledPending = useMemo(() => {
+        if (selectedProductKey === "all") return dashboardData.pendingAmount;
+        return activeInvoicesList.reduce((sum, inv) => {
+            const bal = Number(inv.balanceAmount ?? (inv.totalAmount - (inv.paidAmount || 0)));
+            return sum + (bal > 0 ? bal : 0);
+        }, 0);
+    }, [selectedProductKey, dashboardData.pendingAmount, activeInvoicesList]);
+
+    // Filtered Invoices (Product-aware)
     const filteredBillingRecords = useMemo(() => {
         const search = searchValue.trim().toLowerCase();
 
         return billingRecords.filter((record) => {
+            if (selectedProductKey !== "all" && !matchesProduct(record, selectedProductKey)) {
+                return false;
+            }
+
             const invoiceNumber = record.invoiceCode || record.invoiceNo || "";
             const productName = record.productName || record.product || "";
             const text = `${invoiceNumber} ${productName}`.toLowerCase();
@@ -515,13 +628,24 @@ export default function ClientBilling() {
 
             return matchesSearch && matchesStatus;
         });
-    }, [billingRecords, searchValue, statusFilter]);
+    }, [billingRecords, searchValue, statusFilter, selectedProductKey]);
 
-    // Filtered Payments
+    // Filtered Payments (Product-aware)
     const filteredPaymentRecords = useMemo(() => {
         const search = paymentSearchValue.trim().toLowerCase();
 
         return paymentRecords.filter((payment) => {
+            if (selectedProductKey !== "all") {
+                const inv = billingRecords.find(
+                    (b) =>
+                        (payment.invoiceCode && (b.invoiceCode === payment.invoiceCode || b.invoiceNo === payment.invoiceCode)) ||
+                        (payment.invoiceId && String(b.id || b._id) === String(payment.invoiceId))
+                );
+                if (inv && !matchesProduct(inv, selectedProductKey)) {
+                    return false;
+                }
+            }
+
             const receiptCode = payment.paymentCode || "";
             const invoiceCode = payment.invoiceCode || "";
             const mode = payment.paymentMode || payment.mode || "";
@@ -535,7 +659,13 @@ export default function ClientBilling() {
 
             return matchesSearch && matchesMode;
         });
-    }, [paymentRecords, paymentSearchValue, paymentModeFilter]);
+    }, [paymentRecords, paymentSearchValue, paymentModeFilter, selectedProductKey, billingRecords]);
+
+    // Filtered AMC Requests (Product-aware)
+    const filteredAmcRequests = useMemo(() => {
+        if (selectedProductKey === "all") return amcRequests;
+        return amcRequests.filter((r) => matchesProduct(r, selectedProductKey));
+    }, [amcRequests, selectedProductKey]);
 
     // Invoices Pagination
     const [invoicePage, setInvoicePage] = useState(1);
@@ -823,11 +953,11 @@ export default function ClientBilling() {
 
     // Calculate contract progress for AMC Coverage Card
     const contractProgress = useMemo(() => {
-        const contract = dashboardData.currentContract || relevantInvoice;
+        const contract = selectedProductContract || relevantInvoice;
         const start = contract?.startDate || contract?.contractStartDate || contract?.contractStart;
-        const end = contract?.endDate || contract?.contractExpiryDate || contract?.contractEnd || dashboardData.nextDueDate;
+        const end = contract?.endDate || contract?.expiryDate || contract?.contractExpiryDate || contract?.contractEnd || dashboardData.nextDueDate;
         return calculateContractProgress(start, end);
-    }, [dashboardData.currentContract, relevantInvoice, dashboardData.nextDueDate]);
+    }, [selectedProductContract, relevantInvoice, dashboardData.nextDueDate]);
 
     // Check if relevant invoice is overdue
     const isRelevantOverdue = useMemo(() => {
@@ -840,13 +970,14 @@ export default function ClientBilling() {
 
     // Check if current contract has an active renewal or quotation request
     const activeRequestForCurrentContract = useMemo(() => {
-        const contract = dashboardData.currentContract;
+        const contract = selectedProductContract || dashboardData.currentContract;
         if (!contract) return null;
         const contractId = String(contract.id || contract._id || "");
         return amcRequests.find(
-            (r) => String(r.contractId) === contractId && ["Submitted", "Under Review", "Quotation Ready"].includes(r.status)
+            (r) => (String(r.contractId) === contractId || matchesProduct(r, selectedProductKey)) &&
+                ["Submitted", "Under Review", "Quotation Ready"].includes(r.status)
         );
-    }, [dashboardData.currentContract, amcRequests]);
+    }, [selectedProductContract, dashboardData.currentContract, amcRequests, selectedProductKey]);
 
     const getRequestStatusBadge = (status) => {
         switch (status) {
@@ -948,13 +1079,93 @@ export default function ClientBilling() {
                 )}
             </section>
 
+            {/* PRODUCT SELECTOR TABS (MULTI-PRODUCT SUPPORT) */}
+            {clientProducts.length > 1 && (
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 rounded-xl border border-slate-200/90 bg-white p-3 shadow-2xs">
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
+                        <button
+                            type="button"
+                            onClick={() => setSelectedProductKey("all")}
+                            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition shrink-0 ${
+                                selectedProductKey === "all"
+                                    ? "bg-slate-900 text-white shadow-xs"
+                                    : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                            }`}
+                        >
+                            <Layers size={13} />
+                            <span>All Solutions ({clientProducts.length})</span>
+                        </button>
+
+                        {clientProducts.map((p) => {
+                            const isSelected = selectedProductKey === p.key;
+                            const pContract = allContracts.find((c) => matchesProduct(c, p.key)) || null;
+                            const pInvoices = billingRecords.filter((inv) => matchesProduct(inv, p.key));
+                            const pExpiry = pContract?.endDate || pContract?.expiryDate || pInvoices[0]?.contractExpiryDate;
+                            const pDiff = getDaysDiff(pExpiry);
+                            const isExp = pDiff !== null && pDiff < 0;
+                            const isExpSoon = pDiff !== null && pDiff >= 0 && pDiff <= 30;
+
+                            return (
+                                <button
+                                    key={p.key}
+                                    type="button"
+                                    onClick={() => setSelectedProductKey(p.key)}
+                                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition shrink-0 ${
+                                        isSelected
+                                            ? "bg-[#1B59F8] text-white shadow-xs"
+                                            : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                                    }`}
+                                >
+                                    <Box size={13} className={isSelected ? "text-white" : "text-blue-600"} />
+                                    <span>{p.name}</span>
+                                    {p.code && (
+                                        <span className={`rounded px-1 text-[9px] font-mono font-bold ${
+                                            isSelected ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"
+                                        }`}>
+                                            {p.code}
+                                        </span>
+                                    )}
+                                    <span
+                                        className={`h-2 w-2 rounded-full ${
+                                            isExp
+                                                ? isSelected ? "bg-rose-300 ring-2 ring-white/50" : "bg-rose-500"
+                                                : isExpSoon
+                                                ? isSelected ? "bg-amber-300 ring-2 ring-white/50" : "bg-amber-500"
+                                                : isSelected ? "bg-emerald-300 ring-2 ring-white/50" : "bg-emerald-500"
+                                        }`}
+                                        title={isExp ? "Coverage Expired" : isExpSoon ? "Expiring Soon" : "Active Coverage"}
+                                    />
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {selectedProductKey !== "all" && (
+                        <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 self-end sm:self-auto">
+                            <span>Filtering by: <strong className="text-slate-900">{clientProducts.find(p => p.key === selectedProductKey)?.name || selectedProductKey}</strong></span>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedProductKey("all")}
+                                className="text-[11px] text-[#1B59F8] hover:underline"
+                            >
+                                Reset filter
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* TOP 4 SUMMARY CARDS */}
             <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
                 {/* 1. Total Billed */}
                 <SummaryCard
                     label="Total Billed"
                     value={formatCurrency(reconciledTotalBilled)}
-                    description={`${billingRecords.length} AMC invoice${billingRecords.length === 1 ? "" : "s"} generated`}
+                    description={
+                        selectedProductKey === "all"
+                            ? `${billingRecords.length} AMC invoice${billingRecords.length === 1 ? "" : "s"} across all products`
+                            : `${activeInvoicesList.length} invoice${activeInvoicesList.length === 1 ? "" : "s"} for this solution`
+                    }
                     icon={ReceiptText}
                     iconClass="bg-violet-50 text-violet-700"
                 />
@@ -963,13 +1174,17 @@ export default function ClientBilling() {
                 <SummaryCard
                     label="Total Paid"
                     value={formatCurrency(reconciledTotalPaid)}
-                    description={`${billingRecords.filter((r) => (r.paymentStatus || r.status) === "Paid").length} invoice${billingRecords.filter((r) => (r.paymentStatus || r.status) === "Paid").length === 1 ? "" : "s"} settled`}
+                    description={
+                        selectedProductKey === "all"
+                            ? `${billingRecords.filter((r) => (r.paymentStatus || r.status) === "Paid").length} settled invoice${billingRecords.filter((r) => (r.paymentStatus || r.status) === "Paid").length === 1 ? "" : "s"}`
+                            : `${activeInvoicesList.filter((r) => (r.paymentStatus || r.status) === "Paid").length} settled invoice${activeInvoicesList.filter((r) => (r.paymentStatus || r.status) === "Paid").length === 1 ? "" : "s"}`
+                    }
                     icon={CheckCircle2}
                     iconClass="bg-emerald-50 text-emerald-700"
                     descriptionClass="text-emerald-700 font-semibold"
                 />
 
-                {/* 3. Amount Due (Calm ₹0 with NO warning language when all paid) */}
+                {/* 3. Amount Due */}
                 <SummaryCard
                     label="Amount Due"
                     value={formatCurrency(reconciledPending)}
@@ -999,12 +1214,12 @@ export default function ClientBilling() {
 
                 {/* 4. Next Renewal */}
                 <SummaryCard
-                    label="Next Renewal"
+                    label={selectedProductKey === "all" ? "Earliest Renewal" : "Next Renewal"}
                     value={
-                        dashboardData.nextDueDate
+                        selectedProductContract?.endDate || selectedProductContract?.expiryDate
+                            ? formatDate(selectedProductContract.endDate || selectedProductContract.expiryDate)
+                            : dashboardData.nextDueDate
                             ? formatDate(dashboardData.nextDueDate)
-                            : dashboardData.currentContract?.endDate
-                            ? formatDate(dashboardData.currentContract.endDate)
                             : "Not available"
                     }
                     description={
@@ -1018,6 +1233,158 @@ export default function ClientBilling() {
                     iconClass="bg-blue-50 text-[#1B59F8]"
                 />
             </section>
+
+            {/* MULTI-PRODUCT SOLUTIONS PORTFOLIO BREAKDOWN */}
+            {clientProducts.length > 1 && selectedProductKey === "all" && (
+                <section className="space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                        <div>
+                            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                                Product Maintenance & Support Breakdown ({clientProducts.length} Solutions)
+                            </h2>
+                            <p className="text-[11px] text-slate-500">
+                                Individual maintenance coverage and billing status for each registered product
+                            </p>
+                        </div>
+                        <span className="text-[11px] font-medium text-slate-400">
+                            Click any product to filter its invoices & receipts
+                        </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                        {clientProducts.map((p) => {
+                            const pInvoices = billingRecords.filter((inv) => matchesProduct(inv, p.key));
+                            const pContract = allContracts.find((c) => matchesProduct(c, p.key)) || null;
+                            const pTotal = pInvoices.reduce((s, i) => s + (Number(i.totalAmount) || 0), 0);
+                            const pPaid = pInvoices.reduce((s, i) => s + (Number(i.paidAmount) || 0), 0);
+                            const pPending = pInvoices.reduce((s, i) => {
+                                const b = Number(i.balanceAmount ?? (i.totalAmount - (i.paidAmount || 0)));
+                                return s + (b > 0 ? b : 0);
+                            }, 0);
+
+                            const expiryVal = pContract?.endDate || pContract?.expiryDate || pInvoices[0]?.contractExpiryDate;
+                            const startVal = pContract?.startDate || pInvoices[0]?.contractStartDate;
+                            const prog = calculateContractProgress(startVal, expiryVal);
+
+                            return (
+                                <div
+                                    key={p.key}
+                                    className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-2xs hover:border-blue-300 transition-all flex flex-col justify-between"
+                                >
+                                    <div>
+                                        {/* Header */}
+                                        <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-3">
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <Box size={16} className="text-[#1B59F8]" />
+                                                    <h3 className="text-sm font-bold text-slate-900">{p.name}</h3>
+                                                    {p.code && (
+                                                        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-mono font-bold text-slate-600">
+                                                            {p.code}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <p className="mt-0.5 text-[11px] text-slate-500">
+                                                    {pContract?.plan || pContract?.supportLevel || "Standard Plan"} · {pContract?.licensedUsers || 1} Seat{pContract?.licensedUsers === 1 ? "" : "s"}
+                                                </p>
+                                            </div>
+
+                                            <span
+                                                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold ring-1 ring-inset ${
+                                                    prog.isExpired
+                                                        ? "bg-rose-50 text-rose-700 ring-rose-600/20"
+                                                        : prog.daysRemaining !== null && prog.daysRemaining <= 30
+                                                        ? "bg-amber-50 text-amber-700 ring-amber-600/20"
+                                                        : "bg-emerald-50 text-emerald-700 ring-emerald-600/20"
+                                                }`}
+                                            >
+                                                <span
+                                                    className={`h-1.5 w-1.5 rounded-full ${
+                                                        prog.isExpired
+                                                            ? "bg-rose-500"
+                                                            : prog.daysRemaining !== null && prog.daysRemaining <= 30
+                                                            ? "bg-amber-500"
+                                                            : "bg-emerald-500"
+                                                    }`}
+                                                />
+                                                {prog.isExpired
+                                                    ? `Expired ${Math.abs(prog.daysRemaining)}d ago`
+                                                    : prog.daysRemaining !== null && prog.daysRemaining <= 30
+                                                    ? `Expiring Soon (${prog.daysRemaining}d left)`
+                                                    : "Active Coverage"}
+                                            </span>
+                                        </div>
+
+                                        {/* Coverage Timeline */}
+                                        <div className="py-3 border-b border-slate-100 space-y-1.5">
+                                            <div className="flex items-center justify-between text-[11px]">
+                                                <span className="text-slate-500">Coverage Timeline</span>
+                                                <span className="font-semibold text-slate-800">
+                                                    {formatDate(startVal)} — {formatDate(expiryVal)}
+                                                </span>
+                                            </div>
+
+                                            <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                                                <div
+                                                    style={{ width: `${prog.percent}%` }}
+                                                    className={`h-full rounded-full ${
+                                                        prog.isExpired
+                                                            ? "bg-rose-500"
+                                                            : prog.daysRemaining !== null && prog.daysRemaining <= 30
+                                                            ? "bg-amber-500"
+                                                            : "bg-[#1B59F8]"
+                                                    }`}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Financial Mini-Grid */}
+                                        <div className="grid grid-cols-3 gap-2 py-3 text-center text-xs">
+                                            <div className="rounded-lg bg-slate-50 p-2">
+                                                <span className="text-[10px] uppercase font-bold text-slate-400 block">Total Billed</span>
+                                                <span className="font-bold text-slate-800">{formatCurrency(pTotal)}</span>
+                                            </div>
+                                            <div className="rounded-lg bg-emerald-50/60 p-2">
+                                                <span className="text-[10px] uppercase font-bold text-emerald-600 block">Received</span>
+                                                <span className="font-bold text-emerald-700">{formatCurrency(pPaid)}</span>
+                                            </div>
+                                            <div className={`rounded-lg p-2 ${pPending > 0 ? "bg-rose-50/60" : "bg-slate-50"}`}>
+                                                <span className={`text-[10px] uppercase font-bold block ${pPending > 0 ? "text-rose-600" : "text-slate-400"}`}>Pending</span>
+                                                <span className={`font-bold ${pPending > 0 ? "text-rose-700" : "text-slate-800"}`}>{formatCurrency(pPending)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Actions */}
+                                    <div className="pt-2 flex items-center justify-between gap-2 border-t border-slate-100">
+                                        <button
+                                            type="button"
+                                            onClick={() => setSelectedProductKey(p.key)}
+                                            className="inline-flex items-center gap-1.5 text-xs font-bold text-[#1B59F8] hover:underline"
+                                        >
+                                            <span>Filter Invoices & Receipts</span>
+                                            <ArrowRight size={13} />
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => openRequestModal("AMC Renewal", pContract)}
+                                            className={`flex h-7 items-center gap-1 rounded-md px-2.5 text-[11px] font-bold transition shadow-2xs ${
+                                                prog.isExpired
+                                                    ? "bg-rose-600 text-white hover:bg-rose-700"
+                                                    : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                                            }`}
+                                        >
+                                            <RefreshCw size={12} />
+                                            <span>{prog.isExpired ? "Renew AMC" : "Request Renewal"}</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </section>
+            )}
 
             {/* CONDITIONAL ACCOUNT / CONTRACT ACTION CARD */}
             {reconciledPending > 0 && relevantInvoice ? (
@@ -1079,6 +1446,15 @@ export default function ClientBilling() {
                         <div className="flex flex-wrap items-center gap-2 shrink-0">
                             <button
                                 type="button"
+                                onClick={() => setPayNowInvoice(relevantInvoice)}
+                                className="flex h-8 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 text-xs font-bold text-white shadow-xs transition hover:bg-emerald-700 active:scale-98"
+                            >
+                                <CreditCard size={14} />
+                                Pay Online Now
+                            </button>
+
+                            <button
+                                type="button"
                                 onClick={() => setSelectedInvoiceId(relevantInvoice.id)}
                                 className="flex h-8 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50 active:scale-98"
                             >
@@ -1102,21 +1478,38 @@ export default function ClientBilling() {
                 </section>
             ) : relevantInvoice && (relevantInvoice.paymentStatus === "Paid" || relevantInvoice.status === "Paid") ? (
                 /* STATE B — PAYMENT COMPLETED */
-                <section className="overflow-hidden rounded-xl border border-emerald-200/90 bg-emerald-50/40 p-4 sm:p-5 shadow-2xs">
+                <section
+                    className={`overflow-hidden rounded-xl border ${
+                        contractProgress.isExpired
+                            ? "border-amber-200/90 bg-amber-50/40"
+                            : "border-emerald-200/90 bg-emerald-50/40"
+                    } p-4 sm:p-5 shadow-2xs`}
+                >
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div className="space-y-1.5">
                             <div className="flex items-center gap-2">
                                 <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-800 ring-1 ring-inset ring-emerald-300">
                                     Payment Completed
                                 </span>
-                                <span className="text-xs font-semibold text-emerald-700">
-                                    Account Settled
-                                </span>
+                                {contractProgress.isExpired ? (
+                                    <>
+                                        <span className="inline-flex items-center rounded-full bg-rose-100 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-rose-800 ring-1 ring-inset ring-rose-300">
+                                            Coverage Expired
+                                        </span>
+                                        <span className="text-xs font-semibold text-rose-700">
+                                            Renewal Required
+                                        </span>
+                                    </>
+                                ) : (
+                                    <span className="text-xs font-semibold text-emerald-700">
+                                        Account Settled
+                                    </span>
+                                )}
                             </div>
 
                             <div className="flex items-baseline gap-3">
                                 <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
-                                    {formatCurrency(relevantInvoice.totalAmount ?? relevantInvoice.amount ?? 0)} Paid
+                                    {formatCurrency(relevantInvoice.totalAmount ?? relevantInvoice.amount ?? 0)} Settled
                                 </h2>
                                 <span className="text-xs text-slate-500">
                                     {relevantInvoice.productName || "AMC Coverage"}
@@ -1136,11 +1529,24 @@ export default function ClientBilling() {
                             </div>
 
                             <p className="text-[11px] text-slate-600 leading-snug">
-                                Your payment for this billing period has been received. Your support coverage remains active and valid.
+                                {contractProgress.isExpired
+                                    ? `Payment for this previous billing cycle was received. However, your AMC maintenance period expired ${Math.abs(contractProgress.daysRemaining)} days ago. Request renewal to renew your active coverage and technical support.`
+                                    : "Your payment for this billing period has been received. Your support coverage remains active and valid."}
                             </p>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2 shrink-0">
+                            {contractProgress.isExpired && (
+                                <button
+                                    type="button"
+                                    onClick={() => openRequestModal("AMC Renewal", selectedProductContract)}
+                                    className="flex h-8 items-center justify-center gap-1.5 rounded-lg bg-[#1B59F8] px-3.5 text-xs font-bold text-white shadow-xs transition hover:bg-[#1548D1] active:scale-98"
+                                >
+                                    <RefreshCw size={14} />
+                                    Request Renewal
+                                </button>
+                            )}
+
                             <button
                                 type="button"
                                 onClick={() => setSelectedInvoiceId(relevantInvoice.id)}
@@ -1154,7 +1560,7 @@ export default function ClientBilling() {
                                 type="button"
                                 onClick={() => handleDownloadInvoice(relevantInvoice.id)}
                                 disabled={downloadingId === relevantInvoice.id}
-                                className="flex h-8 items-center justify-center gap-1.5 rounded-lg bg-[#1B59F8] px-3.5 text-xs font-semibold text-white shadow-xs transition hover:bg-[#1548D1] active:scale-98 disabled:opacity-50"
+                                className="flex h-8 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50 active:scale-98 disabled:opacity-50"
                             >
                                 <Download size={14} />
                                 {downloadingId === relevantInvoice.id ? "Preparing..." : "Download Invoice"}
@@ -1238,7 +1644,7 @@ export default function ClientBilling() {
                     </div>
 
                     <div className="mt-1.5 flex items-center justify-between text-[10px] text-slate-400">
-                        <span>{invoicePeriod(dashboardData.currentContract || relevantInvoice)}</span>
+                        <span>{invoicePeriod(selectedProductContract || relevantInvoice)}</span>
                         <span>{contractProgress.percent}% elapsed</span>
                     </div>
                 </div>
@@ -1246,21 +1652,21 @@ export default function ClientBilling() {
                 <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
                     <DetailItem
                         label="Product"
-                        value={dashboardData.currentContract?.productName || relevantInvoice?.productName || "Software Maintenance"}
+                        value={selectedProductContract?.productName || relevantInvoice?.productName || "Software Maintenance"}
                         icon={FileText}
                     />
                     <DetailItem
                         label="Coverage Period"
-                        value={invoicePeriod(dashboardData.currentContract || relevantInvoice)}
+                        value={invoicePeriod(selectedProductContract || relevantInvoice)}
                         icon={CalendarDays}
                     />
                     <DetailItem
                         label="Next Renewal Date"
                         value={
-                            dashboardData.nextDueDate
+                            selectedProductContract?.endDate || selectedProductContract?.expiryDate
+                                ? formatDate(selectedProductContract.endDate || selectedProductContract.expiryDate)
+                                : dashboardData.nextDueDate
                                 ? formatDate(dashboardData.nextDueDate)
-                                : dashboardData.currentContract?.endDate
-                                ? formatDate(dashboardData.currentContract.endDate)
                                 : "Not available"
                         }
                         icon={Clock3}
@@ -1268,7 +1674,7 @@ export default function ClientBilling() {
                     />
                     <DetailItem
                         label="Support Tier"
-                        value={dashboardData.currentContract?.supportLevel || dashboardData.currentContract?.contractType || "Standard AMC"}
+                        value={selectedProductContract?.plan || selectedProductContract?.supportLevel || selectedProductContract?.contractType || "Standard AMC"}
                         icon={ShieldCheck}
                     />
                 </div>
@@ -1303,7 +1709,7 @@ export default function ClientBilling() {
                     <div className="flex items-center gap-2">
                         <button
                             type="button"
-                            onClick={() => openRequestModal("Quotation Request", dashboardData.currentContract)}
+                            onClick={() => openRequestModal("Quotation Request", selectedProductContract || dashboardData.currentContract)}
                             className="flex h-8 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50 active:scale-98"
                         >
                             <FileQuestion size={13} className="text-slate-500" />
@@ -1311,7 +1717,7 @@ export default function ClientBilling() {
                         </button>
                         <button
                             type="button"
-                            onClick={() => openRequestModal("AMC Renewal", dashboardData.currentContract)}
+                            onClick={() => openRequestModal("AMC Renewal", selectedProductContract || dashboardData.currentContract)}
                             className="flex h-8 items-center justify-center gap-1.5 rounded-lg bg-[#1B59F8] px-3.5 text-xs font-semibold text-white shadow-xs transition hover:bg-[#1548D1] active:scale-98"
                         >
                             <RefreshCw size={13} />
@@ -1327,9 +1733,9 @@ export default function ClientBilling() {
                     <div>
                         <div className="flex items-center gap-2">
                             <h2 className="text-xs font-bold text-slate-900">Renewal & Quotation Requests</h2>
-                            {amcRequests.length > 0 && (
+                            {filteredAmcRequests.length > 0 && (
                                 <span className="inline-flex items-center rounded-full bg-slate-200/80 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
-                                    {amcRequests.length}
+                                    {filteredAmcRequests.length}
                                 </span>
                             )}
                         </div>
@@ -1361,14 +1767,14 @@ export default function ClientBilling() {
                         </thead>
 
                         <tbody>
-                            {amcRequests.length === 0 ? (
+                            {filteredAmcRequests.length === 0 ? (
                                 <tr>
                                     <td colSpan={7} className="px-4 py-8 text-center text-xs text-slate-400">
                                         No renewal or quotation requests yet. Click "New Request" or use the action buttons above.
                                     </td>
                                 </tr>
                             ) : (
-                                amcRequests.map((req) => (
+                                filteredAmcRequests.map((req) => (
                                     <tr key={req.id} className="border-b border-slate-100 transition hover:bg-slate-50/60 text-xs">
                                         <td className="px-3.5 py-3 font-semibold text-slate-900">
                                             {req.requestCode}
@@ -2513,6 +2919,15 @@ export default function ClientBilling() {
                     </div>
                 </>
             )}
+            {/* Pay Now Modal */}
+            <PayNowModal
+                isOpen={Boolean(payNowInvoice)}
+                onClose={() => setPayNowInvoice(null)}
+                invoice={payNowInvoice}
+                onPaymentSuccess={() => {
+                    loadClientBilling();
+                }}
+            />
         </div>
     );
 }

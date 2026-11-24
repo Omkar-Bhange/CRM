@@ -3,8 +3,8 @@
 const mongoose = require("mongoose");
 
 /* =========================================================
-   USER SCHEMA
-   Admin, Employee and Client use the same users collection
+   USER SCHEMA (Enterprise Multi-Role & Permissions Matrix)
+   Admin, Employee, Sales, Support, Finance and Client
    ========================================================= */
 
 const userSchema = new mongoose.Schema(
@@ -39,10 +39,35 @@ const userSchema = new mongoose.Schema(
 
     role: {
       type: String,
-      enum: ["admin", "employee", "client"],
+      enum: [
+        "admin",
+        "sales_manager",
+        "sales_rep",
+        "support_agent",
+        "finance",
+        "employee",
+        "client",
+      ],
       required: true,
       lowercase: true,
     },
+
+    permissions: {
+      type: [String],
+      default: [],
+    },
+
+    mfaEnabled: {
+      type: Boolean,
+      default: false,
+    },
+
+    mfaSecret: {
+      type: String,
+      select: false,
+      default: "",
+    },
+
     clientId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Client",
@@ -89,6 +114,11 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+
+    lastLoginIp: {
+      type: String,
+      default: "",
+    },
   },
   {
     timestamps: true,
@@ -96,8 +126,6 @@ const userSchema = new mongoose.Schema(
   }
 );
 
-const User =
-  mongoose.models.User || mongoose.model("User", userSchema);
+const User = mongoose.models.User || mongoose.model("User", userSchema);
 
 module.exports = User;
-

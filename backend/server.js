@@ -260,6 +260,26 @@ app.use(
 );
 
 /* =========================================================
+   ENTERPRISE CRM DOMAIN ROUTES
+========================================================= */
+const leadRoutes = require("./routes/leadRoutes");
+const dealRoutes = require("./routes/dealRoutes");
+const contactRoutes = require("./routes/contactRoutes");
+const quotationRoutes = require("./routes/quotationRoutes");
+const paymentRoutes = require("./routes/paymentRoutes");
+const knowledgeBaseRoutes = require("./routes/knowledgeBaseRoutes");
+const { startBackgroundWorker } = require("./services/backgroundWorker");
+
+app.use("/api/leads", leadRoutes);
+app.use("/api/deals", dealRoutes);
+app.use("/api/contacts", contactRoutes);
+app.use("/api/quotations", quotationRoutes);
+app.use("/api/payments", paymentRoutes);
+app.use("/api/kb", knowledgeBaseRoutes);
+
+startBackgroundWorker();
+
+/* =========================================================
    HEALTH CHECK
 ========================================================= */
 
@@ -2084,9 +2104,13 @@ async function startServer() {
       );
     }
 
-    await mongoose.connect(
-      process.env.MONGO_URI
-    );
+    await mongoose.connect(process.env.MONGO_URI, {
+      maxPoolSize: 50,
+      minPoolSize: 10,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+      autoIndex: process.env.NODE_ENV !== "production",
+    });
 
     console.log(
       "MongoDB connected successfully."
@@ -2096,7 +2120,7 @@ async function startServer() {
       `Database: ${mongoose.connection.name}`
     );
 
-    app.listen(
+    const serverInstance = app.listen(
       PORT,
       () => {
         console.log(
@@ -2116,6 +2140,31 @@ async function startServer() {
         );
       }
     );
+
+    // Graceful Shutdown Handler
+    const shutdown = async (signal) => {
+      console.log(`\n[Server] Received ${signal}. Starting graceful shutdown...`);
+      serverInstance.close(async () => {
+        console.log("[Server] HTTP server closed.");
+        try {
+          await mongoose.connection.close(false);
+          console.log("[Server] MongoDB connection closed.");
+          process.exit(0);
+        } catch (closeErr) {
+          console.error("[Server] Error during DB disconnect:", closeErr.message);
+          process.exit(1);
+        }
+      });
+
+      // Force exit after 10 seconds if connections hang
+      setTimeout(() => {
+        console.error("[Server] Forced exit after shutdown timeout.");
+        process.exit(1);
+      }, 10000);
+    };
+
+    process.on("SIGTERM", () => shutdown("SIGTERM"));
+    process.on("SIGINT", () => shutdown("SIGINT"));
   } catch (error) {
     console.error(
       "Failed to start server:",

@@ -282,9 +282,10 @@ export default function MyProducts({ onNavigate }) {
     (sum, p) => sum + (Number(p.licensedUsers) || 0),
     0
   );
-  const activeSupportCount = productRecords.filter(
-    (p) => getSupportStatus(p.amcExpiry).status === "Active Support"
-  ).length;
+  const activeSupportCount = productRecords.filter((p) => {
+    const s = getSupportStatus(p.amcExpiry).status;
+    return s === "Active Support" || s === "Expiring Soon";
+  }).length;
 
   return (
     <div className="space-y-4">
@@ -608,7 +609,13 @@ export default function MyProducts({ onNavigate }) {
 
                       <button
                         type="button"
-                        onClick={() => onNavigate && onNavigate("billing")}
+                        onClick={() =>
+                          onNavigate &&
+                          onNavigate("billing", {
+                            productId: product.productId || product.id,
+                            productName: product.name,
+                          })
+                        }
                         className="flex h-8 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
                         title="View AMC and Billing Information"
                       >

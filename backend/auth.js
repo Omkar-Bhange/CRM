@@ -346,26 +346,34 @@ router.post("/login", loginIpLimiter, loginAccountLimiter, validate(loginSchema)
   try {
     const { email, password, role } = req.body;
 
-    if (!email || !password || !role) {
+    if (!email || !password) {
       return res.status(400).json({
         success: false,
-        message: "Email, password and role are required.",
+        message: "Email and password are required.",
       });
     }
 
-    const normalizedRole = String(role)
-      .trim()
-      .toLowerCase();
+    const normalizedRole = role
+      ? String(role).trim().toLowerCase()
+      : null;
 
-    if (
-      !["admin", "employee", "client"].includes(
-        normalizedRole
-      )
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Please select a valid role.",
-      });
+    if (normalizedRole) {
+      const validRoles = [
+        "admin",
+        "employee",
+        "client",
+        "sales_manager",
+        "sales_rep",
+        "support_agent",
+        "finance",
+      ];
+
+      if (!validRoles.includes(normalizedRole)) {
+        return res.status(400).json({
+          success: false,
+          message: "Please select a valid role.",
+        });
+      }
     }
 
     const normalizedEmail = String(email)
@@ -395,7 +403,7 @@ router.post("/login", loginIpLimiter, loginAccountLimiter, validate(loginSchema)
       });
     }
 
-    if (user.role !== normalizedRole) {
+    if (normalizedRole && user.role !== normalizedRole) {
       return res.status(403).json({
         success: false,
         message: `This account is registered as ${user.role}, not ${normalizedRole}.`,

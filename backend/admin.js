@@ -27189,13 +27189,27 @@ router.post(
             }
 
             // 2. Transactional Period Overlap Check
-            const overlappingInvoice = await AmcInvoice.findOne({
+            // Intervals strictly overlap when: existing.start < newExpiry && existing.expiry > newStart.
+            // When renewing consecutively from or adjacent to current cycle expiry, exclude the cycle being renewed.
+            const overlapQuery = {
               amcContractId: contract._id,
               isDeleted: false,
               status: { $in: ["Issued", "Draft"] },
-              contractStartDate: { $lte: newExpiryDate },
-              contractExpiryDate: { $gte: newStartDate },
-            }).session(session);
+              contractStartDate: { $lt: newExpiryDate },
+              contractExpiryDate: { $gt: newStartDate },
+            };
+
+            if (contract.currentInvoiceId && contract.expiryDate) {
+              const priorExpiry = new Date(contract.expiryDate);
+              const boundaryTolerance = new Date(priorExpiry);
+              boundaryTolerance.setDate(boundaryTolerance.getDate() - 1);
+
+              if (newStartDate >= boundaryTolerance) {
+                overlapQuery._id = { $ne: contract.currentInvoiceId };
+              }
+            }
+
+            const overlappingInvoice = await AmcInvoice.findOne(overlapQuery).session(session);
 
             if (overlappingInvoice) {
               const err = new Error(
